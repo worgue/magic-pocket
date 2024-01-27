@@ -73,7 +73,7 @@ class SecretsManager(BaseSettings):
     secrets: dict[str, str] = {}
 
 
-services = ["awscontainer", "secretsmanager", "neon", "s3"]
+resources = ["awscontainer", "secretsmanager", "neon", "s3"]
 
 
 class Settings(BaseSettings):
@@ -95,8 +95,8 @@ class Settings(BaseSettings):
         return "%s-%s" % (self.stage, self.project_name)
 
     @property
-    def services(self):
-        return services
+    def resources(self):
+        return resources
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path = Path("pocket.toml")):
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = ["project_name", "region", "stages"] + services + data["stages"]
+        valid_keys = ["project_name", "region", "stages"] + resources + data["stages"]
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"

@@ -7,8 +7,9 @@ from pathlib import Path
 from pydantic import Field, computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
-from . import settings
-from .utils import get_default_region, get_hosted_zone_id_from_domain
+from pocket import settings
+from pocket.resources.awscontainer import AwsContainer
+from pocket.utils import get_default_region, get_hosted_zone_id_from_domain
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
 
@@ -131,14 +132,14 @@ class Context(settings.Settings):
 
     model_config = SettingsConfigDict(extra="ignore")
 
-    # @cached_property
-    # def resources(self):
-    #     return {
-    #         "awscontainer": AwsContainer(self),
-    #         "neon": NeonDatabase(self),
-    #         "s3": S3Storage(self),
-    #         "secretsmanager": SecretsManager(self),
-    #     }
+    @cached_property
+    def resources(self):
+        return {
+            "awscontainer": AwsContainer(self),
+            # "neon": NeonDatabase(self),
+            # "s3": S3Storage(self),
+            # "secretsmanager": SecretsManager(self),
+        }
 
     @classmethod
     def from_settings(cls, settings: settings.Settings) -> Context:
