@@ -11,10 +11,10 @@ dockerfile_path = "docker/lambda/Dockerfile"
 [awscontainer.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 [awscontainer.handlers.management]
-command = "zerode.django.lambda_handlers.management_command_handler"
+command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 [awscontainer.handlers.sqsmanagement]
-command = "zerode.django.lambda_handlers.sqs_management_command_report_failuers_handler"
+command = "pocket.django.lambda_handlers.sqs_management_command_report_failuers_handler"
 timeout = 60
 sqs = {}
 

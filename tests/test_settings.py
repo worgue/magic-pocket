@@ -21,3 +21,16 @@ def test_context():
     handlers = context.awscontainer.handlers
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
     assert handlers["sqsmanagement"].sqs.name == "dev-testprj-sqsmanagement"
+
+
+@mock_route53
+def test_yaml():
+    res = boto3.client("route53").create_hosted_zone(
+        Name="project.com.", CallerReference="test"
+    )
+    hosted_zone_id = res["HostedZone"]["Id"][len("/hostedzone/") :]
+    context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
+    handlers = context.awscontainer.handlers
+    assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
+
+    print(context.resources["awscontainer"].stack.yaml)

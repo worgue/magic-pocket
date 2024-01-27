@@ -8,7 +8,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 from pocket import context
-from pocket.resources.aws import CloudFormation, Ecr
+from pocket.resources.aws.cloudformation import ContainerStack
+from pocket.resources.aws.ecr import Ecr
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
@@ -28,8 +29,8 @@ class AwsContainer:
         return boto3.client("logs", region_name=self.main_context.region)
 
     @property
-    def cloudformation(self):
-        return CloudFormation(self.main_context, "awslambda")
+    def stack(self):
+        return ContainerStack(self.main_context)
 
     @property
     def updating(self):
@@ -44,9 +45,9 @@ class AwsContainer:
 
     @property
     def status(self) -> ResourceStatus:
-        if self.cloudformation.status == "COMPLETED" and self.updating:
+        if self.stack.status == "COMPLETED" and self.updating:
             return "PROGRESS"
-        return self.cloudformation.status
+        return self.stack.status
 
     @property
     def repository(self):

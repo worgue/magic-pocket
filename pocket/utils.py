@@ -48,7 +48,7 @@ def get_hosted_zone_id_from_domain(domain: str):
     if len(zone_matched) == 0:
         raise Exception(
             "No route53 hosted zone for the domain. [%s]\n"
-            "Check your route53 hosted zone or set hosted_zone_id in awsde.toml"
+            "Check your route53 hosted zone or set hosted_zone_id in pocket.toml"
             % domain
         )
     best_match = sorted(zone_matched, key=lambda z: len(z["Name"]), reverse=True)[0]

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from pocket import context
 
 
-class CloudFormation:
+class Stack:
     def __init__(self, context: context.Context):
         self.client = boto3.client("cloudformation", region_name=context.region)
 
@@ -103,8 +103,8 @@ class CloudFormation:
     @property
     def yaml(self) -> str:
         template = Environment(
-            loader=PackageLoader("zerode.stacks"), autoescape=select_autoescape()
-        ).get_template(name=f"{self.target}.yaml")
+            loader=PackageLoader("pocket"), autoescape=select_autoescape()
+        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
@@ -148,14 +148,19 @@ class CloudFormation:
     def delete(self):
         return self.client.delete_stack(StackName=self.name)
 
+    @property
+    def export(self):
+        return {}
 
-class ContainerCloudFormation(CloudFormation):
-    context: context.AwslambdaContext
+
+class ContainerStack(Stack):
+    context: context.AwsContainerContext
+    template_filename = "awscontainer"
 
     def __init__(self, context: context.Context):
         super().__init__(context)
         self.main_context = context
-        self.context = context.awslambda
+        self.context = context.awscontainer
 
     @property
     def name(self):
@@ -166,8 +171,9 @@ class ContainerCloudFormation(CloudFormation):
         return ["CAPABILITY_NAMED_IAM"]
 
 
-class VpcCloudFormation(CloudFormation):
+class VpcStack(Stack):
     context: context.VpcContext
+    template_filename = "vpc"
 
     def __init__(self, context: context.Context):
         super().__init__(context)
