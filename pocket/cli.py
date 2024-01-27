@@ -1,6 +1,6 @@
 import click
 
-from magic_pocket import __version__
+from pocket import __version__
 
 
 @click.group()

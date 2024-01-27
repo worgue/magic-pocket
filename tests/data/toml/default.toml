@@ -1,0 +1,31 @@
+region = "ap-southeast-1"
+stages = ["dev", "tst", "stg", "prd"]
+project_name = "testprj"
+
+[s3]
+public_dirs = ["static"]
+
+[awscontainer]
+dockerfile_path = "docker/lambda/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+[awscontainer.handlers.management]
+command = "zerode.django.lambda_handlers.management_command_handler"
+timeout = 600
+[awscontainer.handlers.sqsmanagement]
+command = "zerode.django.lambda_handlers.sqs_management_command_report_failuers_handler"
+timeout = 60
+sqs = {}
+
+[dev.awscontainer.envs]
+DJANGO_ENV_PATH = "project/env/env.dev"
+
+[dev.awscontainer.handlers.wsgi]
+apigateway = { domain = "api.project.com" }
+
+[prd.awscontainer.envs]
+DJANGO_ENV_PATH = "project/env/env.prd"
+
+[prd.awscontainer.handlers.wsgi]
+apigateway = { domain = "api.project.com" }
