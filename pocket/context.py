@@ -67,8 +67,10 @@ class SecretsManagerContext(settings.SecretsManager):
 
 class AwsContainerContext(settings.AwsContainer):
     secretsmanager: SecretsManagerContext | None
+    region: str
+    slug: str
+    stage: str
     handlers: dict[str, AwslambdaHandlerContext]
-    deploy_version: str
     repository_name: str
     use_s3: bool
     use_route53: bool
@@ -78,10 +80,12 @@ class AwsContainerContext(settings.AwsContainer):
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
+        data["region"] = settings.region
+        data["slug"] = settings.slug
+        data["stage"] = settings.stage
         data["repository_name"] = (
             settings.object_prefix + settings.project_name + "-lambda"
         )
-        data["deploy_version"] = settings.stage
         data["use_s3"] = settings.s3 is not None
         data["use_route53"] = False
         data["use_sqs"] = False
@@ -142,7 +146,6 @@ class Context(settings.Settings):
     @cached_property
     def resources(self):
         return {
-            "awscontainer": AwsContainer(self),
             # "neon": NeonDatabase(self),
             # "s3": S3Storage(self),
         }

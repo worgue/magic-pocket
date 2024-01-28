@@ -28,12 +28,12 @@ Resources:
         # {% if use_sqs %}
         - arn:aws:iam::aws:policy/AmazonSQSFullAccess
         # {% endif %}
-        # {% if main_context.efs %}
+        # {% if efs %}
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
         # {% endif %}
       Policies:
         # # {% if secretsmanager %}
-        # - PolicyName: "{{ main_context.slug }}-access-secretsmanager"
+        # - PolicyName: "{{ slug }}-access-secretsmanager"
         #   PolicyDocument:
         #     Version: "2012-10-17"
         #     Statement:
@@ -41,8 +41,8 @@ Resources:
         #         Action:
         #           - "secretsmanager:GetSecretValue"
         #         Resource:
-        #           - Fn::Sub: "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:{{ main_context.slug }}/*"
-        #           # {% for value in main_context.secretsmanager.secrets.values() %}
+        #           - Fn::Sub: "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:{{ slug }}/*"
+        #           # {% for value in secretsmanager.secrets.values() %}
         #           - "{{ value }}"
         #           # {% endfor %}
         #       - Effect: "Allow"
@@ -52,7 +52,7 @@ Resources:
         #           - "*"
         # # {% endif %}
         - PolicyName:
-            Fn::Sub: "{{ main_context.slug }}-access-cloudformation"
+            Fn::Sub: "{{ slug }}-access-cloudformation"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -60,7 +60,7 @@ Resources:
                 Action:
                   - "cloudformation:DescribeStacks"
                 Resource:
-                  - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ main_context.slug }}-*"
+                  - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
       RoleName: "{{ stack_name }}"
 
   # {% for lambda_key, handler in handlers.items() %}
@@ -75,30 +75,30 @@ Resources:
         Fn::GetAtt: LambdaRole.Arn
       Code:
         ImageUri:
-          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ repository_name }}:{{ deploy_version }}"
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ repository_name }}:{{ stage }}"
       ImageConfig:
         Command:
           - "{{ handler.command }}"
       Environment:
         Variables:
-          "POCKET_STAGE": "{{ main_context.stage }}"
+          "POCKET_STAGE": "{{ stage }}"
           # {% for env_key, value in envs.items() %}
           "{{ env_key }}": "{{ value }}"
           # {% endfor %}
-      # # {% if main_context.vpc %}
+      # # {% if vpc %}
       # VpcConfig:
       #   SecurityGroupIds:
       #     - Ref: LambdaSecurityGroup
       #   SubnetIds:
-      #     # {% for zone in main_context.vpc.zones %}
+      #     # {% for zone in vpc.zones %}
       #     - Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
       #     # {% endfor %}
       # # {% endif %}
-      # # {% if main_context.efs %}
+      # # {% if efs %}
       # FileSystemConfigs:
       #   - Arn:
       #       Fn::GetAtt: EfsAccessPoint.Arn
-      #     LocalMountPath: "{{ main_context.efs.local_mount_path }}"
+      #     LocalMountPath: "{{ efs.local_mount_path }}"
       # # {% endif %}
   # {% endfor %}
 
@@ -107,13 +107,13 @@ Resources:
   ApigatewayCloudWatchLogsGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "{{ main_context.slug }}-{{ lambda_key }}-apigateway"
+      LogGroupName: "{{ slug }}-{{ lambda_key }}-apigateway"
       RetentionInDays: 365
 
   WsgiApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: "{{ main_context.slug }}-wsgi"
+      Name: "{{ slug }}-wsgi"
       ProtocolType: HTTP
       Target:
         Fn::GetAtt: "{{ lambda_key|capitalize }}LambdaFunction.Arn"
@@ -208,7 +208,7 @@ Resources:
           HostedZoneId: "{{ handler.apigateway.hosted_zone_id }}"
       Tags:
         - Key: Name
-          Value: "{{ main_context.slug }}-{{ lambda_key }}-cert"
+          Value: "{{ slug }}-{{ lambda_key }}-cert"
       ValidationMethod: DNS
 
   ##### Warning #####
@@ -292,34 +292,34 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
-  # # {% if main_context.efs %}
+  # # {% if efs %}
   # LambdaSecurityGroup:
   #   Type: AWS::EC2::SecurityGroup
   #   Properties:
-  #     GroupDescription: "{{ main_context.slug }}-lambda"
-  #     GroupName: "{{ main_context.slug }}-lambda"
+  #     GroupDescription: "{{ slug }}-lambda"
+  #     GroupName: "{{ slug }}-lambda"
   #     SecurityGroupEgress:
   #       - CidrIp: 0.0.0.0/0
   #         Description: Allow all outbound traffic by default
   #         IpProtocol: "-1"
   #     Tags:
   #       - Key: Name
-  #         Value: "{{ main_context.slug }}-lambda"
+  #         Value: "{{ slug }}-lambda"
   #     VpcId:
   #       Fn::ImportValue: "{{ export.vpc_id }}"
 
   # EFSSecurityGroup:
   #   Type: AWS::EC2::SecurityGroup
   #   Properties:
-  #     GroupDescription: "{{ main_context.slug }}-efs"
-  #     GroupName: "{{ main_context.slug }}-efs"
+  #     GroupDescription: "{{ slug }}-efs"
+  #     GroupName: "{{ slug }}-efs"
   #     SecurityGroupEgress:
   #       - CidrIp: 0.0.0.0/0
   #         Description: Allow all outbound traffic by default
   #         IpProtocol: "-1"
   #     Tags:
   #       - Key: Name
-  #         Value: "{{ main_context.slug }}-efs"
+  #         Value: "{{ slug }}-efs"
   #     VpcId:
   #       Fn::ImportValue: "{{ export.vpc_id }}"
 
@@ -337,7 +337,7 @@ Resources:
   # EfsAccessPoint:
   #   Type: AWS::EFS::AccessPoint
   #   Properties:
-  #     FileSystemId: "{{ main_context.resources.efs.filesystem_id }}"
+  #     FileSystemId: "{{ efs.resource.filesystem_id }}"
   #     PosixUser:
   #       Uid: "1000"
   #       Gid: "1000"
@@ -346,12 +346,12 @@ Resources:
   #         OwnerGid: "1000"
   #         OwnerUid: "1000"
   #         Permissions: "0777"
-  #       Path: "{{ main_context.efs.access_point_path }}"
-  # # {% for zone in main_context.vpc.zones %}
+  #       Path: "{{ efs.access_point_path }}"
+  # # {% for zone in vpc.zones %}
   # MountTarget{{ loop.index }}:
   #   Type: AWS::EFS::MountTarget
   #   Properties:
-  #     FileSystemId: "{{ main_context.resources.efs.filesystem_id }}"
+  #     FileSystemId: "{{ efs.resource.filesystem_id }}"
   #     SubnetId:
   #       Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
   #     SecurityGroups:

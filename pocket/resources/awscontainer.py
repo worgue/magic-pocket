@@ -13,24 +13,23 @@ from pocket.resources.aws.ecr import Ecr
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket import context
+    from pocket.context import AwsContainerContext
 
 
 class AwsContainer:
-    context: context.AwsContainerContext
+    context: AwsContainerContext
 
-    def __init__(self, context: context.Context) -> None:
-        self.main_context = context
-        self.context = context.awscontainer
+    def __init__(self, context: context.AwsContainerContext) -> None:
+        self.context = context
         self.client = boto3.client("lambda", region_name=context.region)
 
     @property
     def logs_client(self):
-        return boto3.client("logs", region_name=self.main_context.region)
+        return boto3.client("logs", region_name=self.context.region)
 
     @property
     def stack(self):
-        return ContainerStack(self.main_context)
+        return ContainerStack(self.context)
 
     @property
     def updating(self):
@@ -52,7 +51,7 @@ class AwsContainer:
     @property
     def repository(self):
         return Ecr(
-            self.main_context.region,
+            self.context.region,
             self.context.repository_name,
             self.context.deploy_version,
             self.context.dockerfile_path,

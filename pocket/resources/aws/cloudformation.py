@@ -13,11 +13,15 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket import context
+    from pocket.context import AwsContainerContext, VpcContext
 
 
 class Stack:
-    def __init__(self, context: context.Context):
+    template_filename: str
+    name: str
+
+    def __init__(self, context: AwsContainerContext | VpcContext):
+        self.context = context
         self.client = boto3.client("cloudformation", region_name=context.region)
 
     @property
@@ -108,7 +112,6 @@ class Stack:
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
-            main_context=self.main_context,
             **self.context.model_dump(),
         )
         return "\n".join(
@@ -154,17 +157,12 @@ class Stack:
 
 
 class ContainerStack(Stack):
-    context: context.AwsContainerContext
+    context: AwsContainerContext
     template_filename = "awscontainer"
-
-    def __init__(self, context: context.Context):
-        super().__init__(context)
-        self.main_context = context
-        self.context = context.awscontainer
 
     @property
     def name(self):
-        return f"{self.main_context.slug}-container"
+        return f"{self.context.slug}-container"
 
     @property
     def capabilities(self):
@@ -172,14 +170,9 @@ class ContainerStack(Stack):
 
 
 class VpcStack(Stack):
-    context: context.VpcContext
+    context: VpcContext
     template_filename = "vpc"
-
-    def __init__(self, context: context.Context):
-        super().__init__(context)
-        self.main_context = context
-        self.context = context.vpc
 
     @property
     def name(self):
-        return f"{self.main_context.slug}-vpc"
+        return f"{self.context.slug}-vpc"
