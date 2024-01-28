@@ -19,7 +19,9 @@ def test_context():
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
     assert context.project_name == "testprj"
     handlers = context.awscontainer.handlers
+    assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
+    assert handlers["sqsmanagement"].sqs
     assert handlers["sqsmanagement"].sqs.name == "dev-testprj-sqsmanagement"
 
 
@@ -31,6 +33,7 @@ def test_yaml():
     hosted_zone_id = res["HostedZone"]["Id"][len("/hostedzone/") :]
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
     handlers = context.awscontainer.handlers
+    assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
 
     print(context.resources["awscontainer"].stack.yaml)

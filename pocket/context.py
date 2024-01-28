@@ -8,6 +8,7 @@ from pydantic import Field, computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from pocket import settings
+from pocket.resources.aws.secretsmanager import SecretsManager
 from pocket.resources.awscontainer import AwsContainer
 from pocket.utils import get_default_region, get_hosted_zone_id_from_domain
 
@@ -49,7 +50,23 @@ class AwslambdaHandlerContext(settings.AwslambdaHandler):
         return data
 
 
+class SecretsManagerContext(settings.SecretsManager):
+    region: str
+
+    @cached_property
+    def resource(self):
+        return SecretsManager(self)
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        settings = context_settings.get()
+        data["region"] = settings.region
+        return data
+
+
 class AwsContainerContext(settings.AwsContainer):
+    secretsmanager: SecretsManagerContext | None
     handlers: dict[str, AwslambdaHandlerContext]
     deploy_version: str
     repository_name: str
@@ -75,6 +92,10 @@ class AwsContainerContext(settings.AwsContainer):
             if handler["sqs"]:
                 data["use_sqs"] = True
         return data
+
+    @cached_property
+    def resource(self):
+        return AwsContainer(self)
 
 
 class NeonContext(settings.Neon):
@@ -110,23 +131,9 @@ class S3Context(settings.S3):
         return data
 
 
-class SecretsManagerContext(settings.SecretsManager):
-    prefix: str
-
-    @model_validator(mode="before")
-    @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["prefix"] = settings.slug
-        return data
-
-
 class Context(settings.Settings):
     region: str
     awscontainer: AwsContainerContext = Field(default_factory=AwsContainerContext)
-    secretsmanager: SecretsManagerContext | None = Field(
-        default_factory=SecretsManagerContext  # pyright: ignore
-    )
     neon: NeonContext | None = Field(default_factory=NeonContext)  # pyright: ignore
     s3: S3Context | None = Field(default_factory=S3Context)  # pyright: ignore
 
@@ -138,7 +145,6 @@ class Context(settings.Settings):
             "awscontainer": AwsContainer(self),
             # "neon": NeonDatabase(self),
             # "s3": S3Storage(self),
-            # "secretsmanager": SecretsManager(self),
         }
 
     @classmethod
