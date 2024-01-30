@@ -57,7 +57,7 @@ class AwsContainer:
         return Ecr(
             self.context.region,
             self.context.repository_name,
-            self.context.deploy_version,
+            self.context.stage,
             self.context.dockerfile_path,
             self.context.platform,
         )
@@ -73,9 +73,7 @@ class AwsContainer:
                 continue
             res = self.client.update_function_code(
                 FunctionName=handler.function_name,
-                ImageUri=self.repository.repository_uri
-                + ":"
-                + self.context.deploy_version,
+                ImageUri=self.repository.repository_uri + ":" + self.context.stage,
             )
             print("function was updated.")
             for key, value in res.items():

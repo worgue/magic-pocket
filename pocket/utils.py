@@ -43,10 +43,6 @@ class Echo:
 echo = Echo()
 
 
-def get_default_region():
-    return boto3.Session().region_name
-
-
 def get_project_name():
     data = tomllib.loads(Path("pyproject.toml").read_text())
     if data.get("project", {}).get("name"):

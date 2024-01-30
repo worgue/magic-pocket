@@ -4,13 +4,13 @@ from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
 
-from pydantic import Field, computed_field, model_validator
+from pydantic import computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from pocket import settings
 from pocket.resources.aws.secretsmanager import SecretsManager
 from pocket.resources.awscontainer import AwsContainer
-from pocket.utils import get_default_region, get_hosted_zone_id_from_domain
+from pocket.utils import get_hosted_zone_id_from_domain
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
 
@@ -117,7 +117,7 @@ class NeonContext(settings.Neon):
         data["branch_name"] = settings.stage
         data["name"] = settings.project_name
         data["role_name"] = settings.project_name
-        data["region_id"] = "aws-" + (settings.region or get_default_region())
+        data["region_id"] = "aws-" + settings.region
         return data
 
 
@@ -137,9 +137,9 @@ class S3Context(settings.S3):
 
 class Context(settings.Settings):
     region: str
-    awscontainer: AwsContainerContext = Field(default_factory=AwsContainerContext)
-    neon: NeonContext | None = Field(default_factory=NeonContext)  # pyright: ignore
-    s3: S3Context | None = Field(default_factory=S3Context)  # pyright: ignore
+    awscontainer: AwsContainerContext | None = None
+    neon: NeonContext | None = None
+    s3: S3Context | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
 

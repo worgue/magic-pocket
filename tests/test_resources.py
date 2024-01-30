@@ -36,6 +36,7 @@ def test_secretsmanager():
         secrets={"DATABASE_URL": res["ARN"]}
     )
     context = Context.from_settings(settings)
+    assert context.awscontainer
     assert context.awscontainer.secretsmanager
     assert context.awscontainer.secretsmanager.resource.secrets == {
         "DATABASE_URL": "postgres://localhost:5432"
