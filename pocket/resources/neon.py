@@ -1,0 +1,261 @@
+from __future__ import annotations
+
+from functools import cached_property
+from typing import TYPE_CHECKING, Literal
+
+import requests
+from pydantic import BaseModel
+
+from pocket.resources.base import ResourceStatus
+
+if TYPE_CHECKING:
+    from pocket.context import NeonContext
+
+
+ResourceType = Literal["projects", "branches", "databases", "endpoints", "roles"]
+
+
+class Project(BaseModel):
+    id: str
+    name: str
+
+
+class Branch(BaseModel):
+    id: str
+    name: str
+
+
+class Database(BaseModel):
+    name: str
+    owner_name: str
+
+
+class Endpoint(BaseModel):
+    id: str
+    host: str
+    autoscaling_limit_min_cu: float
+    autoscaling_limit_max_cu: float
+    type: Literal["read_write", "read_only"]
+
+
+class Role(BaseModel):
+    name: str
+    password: str | None = None
+
+
+class NeonApi:
+    endpoint = "https://console.neon.tech/api/v2/"
+
+    def __init__(self, key) -> None:
+        self.key = key
+
+    @property
+    def header(self):
+        return {
+            "Accept": "application/json",
+            "Authorization": "Bearer %s" % self.key,
+        }
+
+    def get(self, path):
+        print("GET", self.endpoint + path)
+        return requests.get(self.endpoint + path, headers=self.header)
+
+    def post(self, path, data=None):
+        print("POST", self.endpoint + path, data)
+        return requests.post(self.endpoint + path, headers=self.header, json=data)
+
+    def delete(self, path, data=None):
+        print("DELETE", self.endpoint + path, data)
+        return requests.delete(self.endpoint + path, headers=self.header, json=data)
+
+    def projects_url(self):
+        return self.endpoint + "projects"
+
+
+class Neon:
+    context: NeonContext
+
+    def __init__(self, context: NeonContext) -> None:
+        self.context = context
+
+    def get_resource_path(self, resource_type: ResourceType) -> str:
+        requirements = {
+            "projects": [],
+            "branches": ["project"],
+            "databases": ["project", "branch"],
+            "endpoints": ["project"],
+            "roles": ["project", "branch"],
+        }
+        path_templates = {
+            "projects": "projects",
+            "branches": "projects/%(project_id)s/branches",
+            "databases": "projects/%(project_id)s/branches/%(branch_id)s/databases",
+            "endpoints": "projects/%(project_id)s/endpoints",
+            "roles": "projects/%(project_id)s/branches/%(branch_id)s/roles",
+        }
+        path_context = {}
+        for requirement in requirements[resource_type]:
+            if not getattr(self, requirement):
+                raise Exception("%s not found" % requirement)
+            path_context[requirement + "_id"] = getattr(self, requirement).id
+        return path_templates[resource_type] % path_context
+
+    def construct_path(
+        self, resource_type: ResourceType, resource_id: str | None = None
+    ):
+        path = self.get_resource_path(resource_type)
+        if resource_id:
+            path += "/" + resource_id
+        return path
+
+    def get(self, resource_type: ResourceType, resource_id: str | None = None):
+        path = self.construct_path(resource_type, resource_id)
+        return self.api.get(path)
+
+    def post(
+        self, resource_type: ResourceType, resource_id: str | None = None, data=None
+    ):
+        path = self.construct_path(resource_type, resource_id)
+        return self.api.post(path, data)
+
+    def delete(
+        self, resource_type: ResourceType, resource_id: str | None = None, data=None
+    ):
+        path = self.construct_path(resource_type, resource_id)
+        return self.api.delete(path, data)
+
+    @property
+    def api(self):
+        return NeonApi(self.context.api_key)
+
+    @cached_property
+    def role(self) -> Role | None:
+        if self.branch:
+            res = self.get("roles", self.context.role_name)
+            if res.status_code == 404:
+                return None
+            return Role(**res.json()["role"])
+
+    @cached_property
+    def project(self) -> Project | None:
+        for project in self.get("projects").json().get("projects", []):
+            if project["name"] == self.context.project_name:
+                return Project(**project)
+
+    @cached_property
+    def branch(self) -> Branch | None:
+        if self.project:
+            for branch in self.get("branches").json()["branches"]:
+                if branch["name"] == self.context.branch_name:
+                    return Branch(**branch)
+
+    @cached_property
+    def database(self) -> Database | None:
+        if self.branch:
+            for database in self.get("databases").json()["databases"]:
+                if database["name"] == self.context.name:
+                    return Database(**database)
+
+    @cached_property
+    def endpoint(self) -> Endpoint | None:
+        if self.branch:
+            for endpoint in self.get("endpoints").json()["endpoints"]:
+                if endpoint["branch_id"] == self.branch.id:
+                    return Endpoint(**endpoint)
+
+    @property
+    def database_url(self):
+        if self.role is None or self.endpoint is None:
+            raise Exception("Create role and endpoint first")
+        if self.role.password is None:
+            self.set_role_password()
+        return "postgres://%s:%s@%s:5432/%s" % (
+            self.context.role_name,
+            self.role.password,
+            self.endpoint.host,
+            self.context.name,
+        )
+
+    @property
+    def status(self) -> ResourceStatus:
+        if self.working:
+            return "COMPLETED"
+        return "NOEXIST"
+
+    @property
+    def working(self):
+        return all([self.project, self.branch, self.database, self.endpoint, self.role])
+
+    def create(self):
+        self.ensure_project()
+        self.create_branch()
+        self.ensure_role()
+        self.reset_database()
+
+    def ensure_project(self):
+        if self.project is None:
+            del self.project
+            data = {
+                "project": {
+                    "pg_version": self.context.pg_version,
+                    "name": self.context.project_name,
+                    "region_id": self.context.region_id,
+                }
+            }
+            self.post("projects", data=data)
+        return self.project
+
+    def create_branch(self, base_branch: Branch | None = None):
+        if self.branch is None:
+            del self.branch
+        data = {
+            "branch": {
+                "name": self.context.branch_name,
+            },
+            "endpoints": [{"type": "read_write"}],
+        }
+        if base_branch:
+            data["branch"]["parent_id"] = base_branch.id
+        self.post("branches", data=data)
+
+    def delete_branch(self):
+        if not self.endpoint or not self.branch:
+            raise Exception("Branch or endpoint not found. Something is wrong.")
+        self.delete("endpoints", self.endpoint.id)
+        self.delete("branches", self.branch.id)
+
+    def create_database(self):
+        if self.database is None:
+            del self.database
+        data = {
+            "database": {
+                "name": self.context.name,
+                "owner_name": self.context.role_name,
+            }
+        }
+        self.post("databases", data=data)
+
+    def reset_database(self):
+        if self.database:
+            self.delete("databases", self.context.name)
+        self.create_database()
+
+    def create_role(self):
+        if self.role is None:
+            del self.role
+        data = {"role": {"name": self.context.role_name}}
+        self.post("roles", data=data)
+
+    def set_role_password(self):
+        if self.role is None:
+            raise Exception("Create role first")
+        if self.role.password is None:
+            self.role.password = self.get(
+                "roles", self.role.name + "/reveal_password"
+            ).json()["password"]
+
+    def ensure_role(self):
+        if self.role is None:
+            del self.role
+            data = {"role": {"name": self.context.role_name}}
+            self.post("roles", data=data)

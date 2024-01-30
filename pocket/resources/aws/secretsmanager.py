@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import boto3
 
-from pocket.utils import console
+from pocket.utils import echo
 
 if TYPE_CHECKING:
     from pocket.context import SecretsManagerContext
@@ -20,7 +20,7 @@ class SecretsManager:
 
     @cached_property
     def secrets(self) -> dict[str, str]:
-        console.print("Requesting secrets list...", style="log")
+        echo.log("Requesting secrets list...")
         secrets = {}
         for key, arn in self.context.secrets.items():
             res = self.client.get_secret_value(SecretId=arn)

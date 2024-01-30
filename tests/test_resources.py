@@ -1,8 +1,21 @@
 import boto3
+from click.testing import CliRunner
 from moto import mock_secretsmanager
 
+from pocket import __version__
+from pocket.cli.main import main, version
 from pocket.context import Context
 from pocket.settings import SecretsManager, Settings
+
+
+def test_version():
+    runner = CliRunner()
+    result = runner.invoke(version)
+    assert result.exit_code == 0
+    assert result.output == f"{__version__}\n"
+    result = runner.invoke(main, ["version"])
+    assert result.exit_code == 0
+    assert result.output == f"{__version__}\n"
 
 
 def test_settings_from_toml():
@@ -27,3 +40,11 @@ def test_secretsmanager():
     assert context.awscontainer.secretsmanager.resource.secrets == {
         "DATABASE_URL": "postgres://localhost:5432"
     }
+
+
+def test_neon():
+    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+    assert not settings.neon
+    context = Context.from_settings(settings)
+    assert not context.neon
+    runner = CliRunner()

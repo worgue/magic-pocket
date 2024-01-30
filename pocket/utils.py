@@ -10,7 +10,7 @@ else:
 from rich.console import Console
 from rich.theme import Theme
 
-console = Console(
+_console = Console(
     theme=Theme(
         {
             "success": "green",
@@ -21,6 +21,26 @@ console = Console(
         }
     )
 )
+
+
+class Echo:
+    def success(self, message):
+        _console.print(message, style="success")
+
+    def info(self, message):
+        _console.print(message, style="info")
+
+    def warning(self, message):
+        _console.print(message, style="warning")
+
+    def danger(self, message):
+        _console.print(message, style="danger")
+
+    def log(self, message):
+        _console.print(message, style="log")
+
+
+echo = Echo()
 
 
 def get_default_region():
@@ -35,8 +55,8 @@ def get_project_name():
 
 
 def get_hosted_zone_id_from_domain(domain: str):
-    console.print("Searching hostedzone_id from domain: %s" % domain, style="log")
-    console.print("Requesting Route53 hosted zone list...", style="log")
+    echo.log("Searching hostedzone_id from domain: %s" % domain)
+    echo.log("Requesting Route53 hosted zone list...")
     res = boto3.client("route53").list_hosted_zones()
     if res["IsTruncated"]:
         raise Exception(
@@ -53,7 +73,7 @@ def get_hosted_zone_id_from_domain(domain: str):
         )
     best_match = sorted(zone_matched, key=lambda z: len(z["Name"]), reverse=True)[0]
     best_match_id = best_match["Id"][len("/hostedzone/") :]
-    console.print("Found hostedzone", style="log")
-    console.print("  Name: %s" % best_match["Name"], style="log")
-    console.print("  Id: %s" % best_match_id, style="log")
+    echo.log("Found hostedzone")
+    echo.log("  Name: %s" % best_match["Name"])
+    echo.log("  Id: %s" % best_match_id)
     return best_match_id

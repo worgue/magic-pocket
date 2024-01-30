@@ -17,6 +17,10 @@ if TYPE_CHECKING:
 
 
 class AwsContainer:
+    """This is abstructed resource to run container in aws.
+    This class depends on aws resources.
+    """
+
     context: AwsContainerContext
 
     def __init__(self, context: context.AwsContainerContext) -> None:

@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pocket = "pocket.cli:main"
+pocket = "pocket.cli.main:main"
 
 [tool]
 rye = { dev-dependencies = [

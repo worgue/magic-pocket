@@ -85,7 +85,6 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
-    secretsmanager: SecretsManager | None = None
 
     model_config = SettingsConfigDict(env_prefix="pocket_")
 
