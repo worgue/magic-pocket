@@ -3,7 +3,7 @@ from click.testing import CliRunner
 from moto import mock_secretsmanager
 
 from pocket import __version__
-from pocket.cli.main import main, version
+from pocket.cli.main_cli import main, version
 from pocket.context import Context
 from pocket.settings import SecretsManager, Settings
 
