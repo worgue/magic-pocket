@@ -10,6 +10,8 @@ from pydantic_settings import SettingsConfigDict
 from pocket import settings
 from pocket.resources.aws.secretsmanager import SecretsManager
 from pocket.resources.awscontainer import AwsContainer
+from pocket.resources.neon import Neon
+from pocket.resources.s3 import S3
 from pocket.utils import get_hosted_zone_id_from_domain
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
@@ -76,6 +78,10 @@ class AwsContainerContext(settings.AwsContainer):
     use_route53: bool
     use_sqs: bool
 
+    @cached_property
+    def resource(self):
+        return AwsContainer(self)
+
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
@@ -97,10 +103,6 @@ class AwsContainerContext(settings.AwsContainer):
                 data["use_sqs"] = True
         return data
 
-    @cached_property
-    def resource(self):
-        return AwsContainer(self)
-
 
 class NeonContext(settings.Neon):
     project_name: str
@@ -108,6 +110,10 @@ class NeonContext(settings.Neon):
     name: str
     role_name: str
     region_id: str
+
+    @cached_property
+    def resource(self):
+        return Neon(self)
 
     @model_validator(mode="before")
     @classmethod
@@ -122,12 +128,18 @@ class NeonContext(settings.Neon):
 
 
 class S3Context(settings.S3):
+    region: str
     name: str
+
+    @cached_property
+    def resource(self):
+        return S3(self)
 
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
+        data["region"] = settings.region
         data["name"] = "%s%s" % (
             settings.object_prefix,
             settings.slug,
