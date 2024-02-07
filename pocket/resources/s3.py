@@ -23,7 +23,7 @@ class S3:
 
     def create(self):
         self.client.create_bucket(
-            Bucket=self.context.name,
+            Bucket=self.context.bucket_name,
             CreateBucketConfiguration={
                 "LocationConstraint": self.context.region,
             },
@@ -44,7 +44,7 @@ class S3:
 
     def exists(self):
         try:
-            self.client.head_bucket(Bucket=self.context.name)
+            self.client.head_bucket(Bucket=self.context.bucket_name)
             return True
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "404":
@@ -65,7 +65,7 @@ class S3:
     def bucket_policy(self):
         try:
             return json.loads(
-                self.client.get_bucket_policy(Bucket=self.context.name)["Policy"]
+                self.client.get_bucket_policy(Bucket=self.context.bucket_name)["Policy"]
             )
         except ClientError:
             return None
@@ -73,7 +73,7 @@ class S3:
     @property
     def bucket_policy_should_be(self):
         public_resource = [
-            "arn:aws:s3:::%s/%s/*" % (self.context.name, dirname)
+            "arn:aws:s3:::%s/%s/*" % (self.context.bucket_name, dirname)
             for dirname in self.context.public_dirs
         ]
         if len(public_resource) == 1:
@@ -100,7 +100,7 @@ class S3:
     @cached_property
     def public_access_block(self):
         res = self.client.get_public_access_block(
-            Bucket=self.context.name,
+            Bucket=self.context.bucket_name,
         )["PublicAccessBlockConfiguration"]
         return res
 
@@ -122,7 +122,7 @@ class S3:
             echo.info("Update public access block configuration")
             echo.info("Current configuration: %s" % self.public_access_block)
             self.client.put_public_access_block(
-                Bucket=self.context.name,
+                Bucket=self.context.bucket_name,
                 PublicAccessBlockConfiguration=self.public_access_block_should_be,
             )
             del self.public_access_block
@@ -135,11 +135,11 @@ class S3:
             echo.info("Update bucket policy required.")
             echo.info("Current policy: %s" % self.public_access_block)
             if self.bucket_policy_should_be is None:
-                self.client.delete_bucket_policy(Bucket=self.context.name)
+                self.client.delete_bucket_policy(Bucket=self.context.bucket_name)
                 echo.info("Deleted bucket policy")
             else:
                 self.client.put_bucket_policy(
-                    Bucket=self.context.name,
+                    Bucket=self.context.bucket_name,
                     Policy=json.dumps(self.bucket_policy_should_be),
                 )
                 echo.info("Updated policy: %s" % self.bucket_policy_should_be)

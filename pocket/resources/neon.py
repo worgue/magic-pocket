@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
+import time
 from functools import cached_property
 from typing import TYPE_CHECKING, Literal
 
@@ -11,6 +15,9 @@ from pocket.resources.base import ResourceStatus
 if TYPE_CHECKING:
     from pocket.context import NeonContext
 
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+logger.setLevel(level=os.getenv('POCKET_LOGGER_LEVEL', 'WARNING').upper())
 
 ResourceType = Literal["projects", "branches", "databases", "endpoints", "roles"]
 
@@ -57,16 +64,29 @@ class NeonApi:
         }
 
     def get(self, path):
-        print("GET", self.endpoint + path)
-        return requests.get(self.endpoint + path, headers=self.header)
+        logger.info("GET %s" % self.endpoint + path)
+        res = requests.get(self.endpoint + path, headers=self.header)
+        logger.debug(res.status_code)
+        logger.debug(json.dumps(res.json(), indent=2))
+        return res
 
     def post(self, path, data=None):
-        print("POST", self.endpoint + path, data)
-        return requests.post(self.endpoint + path, headers=self.header, json=data)
+        logger.warning("POST %s" % self.endpoint + path)
+        logger.debug(json.dumps(data, indent=2))
+        res = requests.post(self.endpoint + path, headers=self.header, json=data)
+        logger.debug(res.status_code)
+        logger.debug(json.dumps(res.json(), indent=2))
+        time.sleep(1)
+        return res
 
     def delete(self, path, data=None):
-        print("DELETE", self.endpoint + path, data)
-        return requests.delete(self.endpoint + path, headers=self.header, json=data)
+        logger.warning("DELETE %s" % self.endpoint + path)
+        logger.debug(json.dumps(data, indent=2))
+        res = requests.delete(self.endpoint + path, headers=self.header, json=data)
+        logger.debug(res.status_code)
+        logger.debug(json.dumps(res.json(), indent=2))
+        time.sleep(1)
+        return res
 
     def projects_url(self):
         return self.endpoint + "projects"
@@ -185,12 +205,16 @@ class Neon:
     @property
     def working(self):
         return all([self.project, self.branch, self.database, self.endpoint, self.role])
+    
+    def create_new(self):
+        self.create()
+        self.reset_database()
 
     def create(self):
         self.ensure_project()
         self.create_branch()
         self.ensure_role()
-        self.reset_database()
+        self.ensure_database()
 
     def ensure_project(self):
         if self.project is None:
@@ -223,6 +247,10 @@ class Neon:
             raise Exception("Branch or endpoint not found. Something is wrong.")
         self.delete("endpoints", self.endpoint.id)
         self.delete("branches", self.branch.id)
+
+    def ensure_database(self):
+        if self.database is None:
+            self.create_database()
 
     def create_database(self):
         if self.database is None:
@@ -259,3 +287,4 @@ class Neon:
             del self.role
             data = {"role": {"name": self.context.role_name}}
             self.post("roles", data=data)
+            self.set_role_password()

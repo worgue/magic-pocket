@@ -1,7 +1,7 @@
 import click
 
 from pocket import __version__
-from pocket.cli import awscontainer_cli, neon_cli
+from pocket.cli import awscontainer_cli, deploy_cli, neon_cli, s3_cli, status_cli
 
 
 @click.group()
@@ -15,6 +15,10 @@ def version():
     click.echo(__version__)
 
 
+main.add_command(deploy_cli.deploy)
+main.add_command(status_cli.status)
+
+
 @main.group()
 def resource():
     pass
@@ -22,3 +26,4 @@ def resource():
 
 resource.add_command(awscontainer_cli.awscontainer)
 resource.add_command(neon_cli.neon)
+resource.add_command(s3_cli.s3)

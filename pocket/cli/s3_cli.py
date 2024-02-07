@@ -1,3 +1,5 @@
+from pprint import pprint
+
 import click
 
 from pocket.context import Context
@@ -20,6 +22,13 @@ def get_s3_resource(stage):
 
 @s3.command()
 @click.option("--stage", prompt=True)
+def context(stage):
+    storage = get_s3_resource(stage)
+    pprint(storage.context.model_dump())
+
+
+@s3.command()
+@click.option("--stage", prompt=True)
 def create(stage):
     storage = get_s3_resource(stage)
     if storage.exists():
@@ -30,7 +39,7 @@ def create(stage):
         )
         return
     storage.ensure_exists()
-    echo.success("Created: bucket %s" % storage.context.name)
+    echo.success("Created: bucket %s" % storage.context.bucket_name)
 
 
 @s3.command()

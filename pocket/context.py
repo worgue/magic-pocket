@@ -129,7 +129,7 @@ class NeonContext(settings.Neon):
 
 class S3Context(settings.S3):
     region: str
-    name: str
+    bucket_name: str
 
     @cached_property
     def resource(self):
@@ -140,7 +140,7 @@ class S3Context(settings.S3):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["name"] = "%s%s" % (
+        data["bucket_name"] = "%s%s" % (
             settings.object_prefix,
             settings.slug,
         )

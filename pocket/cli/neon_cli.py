@@ -1,3 +1,5 @@
+from pprint import pprint
+
 import click
 
 from pocket.context import Context
@@ -20,12 +22,16 @@ def get_neon_resource(stage):
 
 @neon.command()
 @click.option("--stage", prompt=True)
+def context(stage):
+    neon = get_neon_resource(stage)
+    pprint(neon.context.model_dump())
+
+
+@neon.command()
+@click.option("--stage", prompt=True)
 def create(stage):
     neon = get_neon_resource(stage)
-    neon.ensure_project()
-    neon.create_branch()
-    neon.ensure_role()
-    neon.reset_database()
+    neon.create()
     echo.success("New branch was created")
 
 
