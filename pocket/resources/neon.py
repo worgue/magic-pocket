@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
-logger.setLevel(level=os.getenv('POCKET_LOGGER_LEVEL', 'WARNING').upper())
+logger.setLevel(level=os.getenv("POCKET_LOGGER_LEVEL", "WARNING").upper())
 
 ResourceType = Literal["projects", "branches", "databases", "endpoints", "roles"]
 
@@ -205,7 +205,7 @@ class Neon:
     @property
     def working(self):
         return all([self.project, self.branch, self.database, self.endpoint, self.role])
-    
+
     def create_new(self):
         self.create()
         self.reset_database()

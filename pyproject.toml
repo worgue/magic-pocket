@@ -24,11 +24,21 @@ dependencies = [
 [project.scripts]
 pocket = "pocket.cli.main_cli:main"
 
-[tool]
-rye = { dev-dependencies = [
+[tool.rye]
+dev-dependencies = [
     "pytest>=7.4.4",
     "moto[all]>=4.2.13",
-] }
+    "ruff>=0.2.1",
+    "pre-commit>=3.6.0",
+]
 
 [tool.flit.module]
 name = "pocket"
+
+[tool.ruff]
+# check the default rules at https://beta.ruff.rs/docs/configuration/#using-pyprojecttoml
+select = ["E", "W", "F", "I", "C", "B"]
+# Black can't count Japanese characters correctly.
+ignore = ["E501"]
+# Ignore frontend and django migrations
+exclude = [".git", ".ruff_cache", ".venv", "frontend", "migrations"]

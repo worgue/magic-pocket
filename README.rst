@@ -30,4 +30,3 @@ Commands
 - magic-pocket dev update
 - magic-pocket dev django lambda-manage [command]
   - e.g) magic-pocket dev django lambda-manage showmigrations
-

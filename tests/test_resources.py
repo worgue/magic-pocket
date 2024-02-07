@@ -48,4 +48,4 @@ def test_neon():
     assert not settings.neon
     context = Context.from_settings(settings)
     assert not context.neon
-    runner = CliRunner()
+    CliRunner()
