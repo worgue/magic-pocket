@@ -1,5 +1,5 @@
 import boto3
-from moto import mock_route53
+from moto import mock_aws
 
 from pocket.context import Context
 from pocket.settings import Settings
@@ -10,7 +10,7 @@ def test_settings_from_toml():
     assert settings.project_name == "testprj"
 
 
-@mock_route53
+@mock_aws
 def test_context():
     res = boto3.client("route53").create_hosted_zone(
         Name="project.com.", CallerReference="test"
@@ -26,7 +26,7 @@ def test_context():
     assert handlers["sqsmanagement"].sqs.name == "dev-testprj-sqsmanagement"
 
 
-@mock_route53
+@mock_aws
 def test_yaml():
     res = boto3.client("route53").create_hosted_zone(
         Name="project.com.", CallerReference="test"

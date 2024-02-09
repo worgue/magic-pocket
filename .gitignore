@@ -11,3 +11,7 @@ wheels/
 
 # editors
 .vscode/
+
+# local env
+.envrc
+.env
