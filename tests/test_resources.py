@@ -1,4 +1,5 @@
 import boto3
+import pytest
 from click.testing import CliRunner
 from moto import mock_aws
 
@@ -43,9 +44,24 @@ def test_secretsmanager():
     }
 
 
-def test_neon():
-    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+@mock_aws
+def test_neon_none():
+    settings = Settings.from_toml(stage="prd", path="tests/data/toml/default.toml")
     assert not settings.neon
     context = Context.from_settings(settings)
     assert not context.neon
-    CliRunner()
+
+
+@pytest.mark.skip(reason="Requires API key and manual deletion of the resource.")
+@mock_aws
+def test_neon_default():
+    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+    assert settings.neon
+    context = Context.from_settings(settings)
+    assert context.neon
+    assert context.neon.resource.status == "NOEXIST"
+    context.neon.resource.create()
+    assert context.neon.resource.status == "COMPLETED"
+    context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
+    assert context.neon and context.neon.resource.status == "COMPLETED"
+    raise Exception("Test worked well, but you have to delete the resource manually.")

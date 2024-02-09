@@ -68,7 +68,9 @@ class NeonApi:
         res = requests.get(self.endpoint + path, headers=self.header)
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
-        return res
+        if 200 <= res.status_code < 300:
+            return res
+        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
 
     def post(self, path, data=None):
         logger.warning("POST %s" % self.endpoint + path)
@@ -76,8 +78,10 @@ class NeonApi:
         res = requests.post(self.endpoint + path, headers=self.header, json=data)
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
-        time.sleep(1)
-        return res
+        if 200 <= res.status_code < 300:
+            time.sleep(2)
+            return res
+        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
 
     def delete(self, path, data=None):
         logger.warning("DELETE %s" % self.endpoint + path)
@@ -85,8 +89,10 @@ class NeonApi:
         res = requests.delete(self.endpoint + path, headers=self.header, json=data)
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
-        time.sleep(1)
-        return res
+        if 200 <= res.status_code < 300:
+            time.sleep(2)
+            return res
+        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
 
     def projects_url(self):
         return self.endpoint + "projects"
@@ -204,7 +210,9 @@ class Neon:
 
     @property
     def working(self):
-        return all([self.project, self.branch, self.database, self.endpoint, self.role])
+        check = [self.project, self.branch, self.database, self.endpoint, self.role]
+        logger.info(str(check))
+        return all(check)
 
     def create_new(self):
         self.create()
@@ -232,6 +240,7 @@ class Neon:
     def create_branch(self, base_branch: Branch | None = None):
         if self.branch is None:
             del self.branch
+            del self.endpoint
         data = {
             "branch": {
                 "name": self.context.branch_name,
