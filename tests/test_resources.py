@@ -1,6 +1,6 @@
 import boto3
 from click.testing import CliRunner
-from moto import mock_secretsmanager
+from moto import mock_aws
 
 from pocket import __version__
 from pocket.cli.main_cli import main, version
@@ -23,7 +23,7 @@ def test_settings_from_toml():
     assert settings.project_name == "testprj"
 
 
-@mock_secretsmanager
+@mock_aws
 def test_secretsmanager():
     settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
     client = boto3.client("secretsmanager", region_name=settings.region)
