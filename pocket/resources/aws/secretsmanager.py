@@ -19,7 +19,7 @@ class SecretsManager:
         self.client = boto3.client("secretsmanager", region_name=context.region)
 
     @cached_property
-    def secrets(self) -> dict[str, str]:
+    def resolved_secrets(self) -> dict[str, str]:
         echo.log("Requesting secrets list...")
         secrets = {}
         for key, arn in self.context.secrets.items():
@@ -28,5 +28,5 @@ class SecretsManager:
         return secrets
 
     def clear_cache(self):
-        if hasattr(self, "secrets"):
-            del self.secrets
+        if hasattr(self, "resolved_secrets"):
+            del self.resolved_secrets
