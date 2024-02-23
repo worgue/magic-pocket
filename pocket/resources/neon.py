@@ -81,6 +81,9 @@ class NeonApi:
         if 200 <= res.status_code < 300:
             time.sleep(2)
             return res
+        if res.status_code == 401:
+            print("Used API key: %s" % (self.key[:5] + "..." + self.key[-5:]))
+            print("API key length: %s" % len(self.key))
         raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
 
     def delete(self, path, data=None):
