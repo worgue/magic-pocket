@@ -26,6 +26,7 @@ cryptography==42.0.2
 deepdiff==6.7.1
 distlib==0.3.8
 django==5.0.2
+django-storages==1.14.2
 docker==7.0.0
 ecdsa==0.18.0
 exceptiongroup==1.2.0
