@@ -70,6 +70,9 @@ class NeonApi:
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
             return res
+        if res.status_code == 401:
+            print("Used API key: %s" % (self.key[:5] + "..." + self.key[-5:]))
+            print("API key length: %s" % len(self.key))
         raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
 
     def post(self, path, data=None):
