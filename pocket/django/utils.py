@@ -4,6 +4,29 @@ import os
 import boto3
 from django.core.management import call_command
 
+from ..context import Context
+
+
+def get_storages(stage: str | None = None) -> dict:
+    stage = stage or os.environ.get("POCKET_STAGE")
+    if not stage:
+        return {}
+    context = Context.from_toml(stage=stage)
+    if not context.django or not context.django.storages:
+        return {}
+    storages = {}
+    for key, storage in context.django.storages.items():
+        storages[key] = {"BACKEND": storage.backend}
+        if storage.store == "s3":
+            if not context.s3:
+                raise ValueError("Never happen because of context validation.")
+            storages[key]["OPTIONS"] = {
+                "bucket_name": context.s3.bucket_name,
+                "location": storage.location,
+            }
+    return storages
+
+
 sqs_client = boto3.client("sqs")
 
 

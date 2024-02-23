@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import mergedeep
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .utils import get_project_name
@@ -77,6 +77,23 @@ class S3(BaseSettings):
 resources = ["awscontainer", "neon", "s3"]
 
 
+class DjangoStorage(BaseSettings):
+    store: Literal["s3"]
+    location: str
+    static: bool = False
+    manifest: bool = False
+
+    @model_validator(mode="after")
+    def check_manifest(self):
+        if self.manifest and not self.static:
+            raise ValueError("manifest can only be used with static")
+        return self
+
+
+class Django(BaseSettings):
+    storages: dict[str, DjangoStorage] = {}
+
+
 class Settings(BaseSettings):
     region: str
     object_prefix: str = "pocket-"
@@ -85,6 +102,7 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
+    django: Django | None = None
 
     model_config = SettingsConfigDict(env_prefix="pocket_")
 
@@ -132,7 +150,9 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = ["project_name", "region", "stages"] + resources + data["stages"]
+        valid_keys = (
+            ["project_name", "region", "stages", "django"] + resources + data["stages"]
+        )
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"

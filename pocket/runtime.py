@@ -3,14 +3,20 @@ import os
 from pocket.context import Context
 
 
-def set_user_secrets_from_secretsmanager(stage: str):
+def set_user_secrets_from_secretsmanager(stage: str | None = None):
+    stage = stage or os.environ.get("POCKET_STAGE")
+    if not stage:
+        return
     context = Context.from_toml(stage=stage, filters=["awscontainer", "region"])
     if secretsmanager := context.awscontainer and context.awscontainer.secretsmanager:
         for key, value in secretsmanager.resource.resolved_secrets.items():
             os.environ[key] = value
 
 
-def set_env_from_resources(stage: str):
+def set_env_from_resources(stage: str | None = None):
+    stage = stage or os.environ.get("POCKET_STAGE")
+    if not stage:
+        return
     context = Context.from_toml(stage=stage)
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
     if neon := context.neon:

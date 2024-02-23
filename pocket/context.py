@@ -147,20 +147,30 @@ class S3Context(settings.S3):
         return data
 
 
+class DjangoStorageContext(settings.DjangoStorage):
+    @property
+    def backend(self):
+        if self.store == "s3":
+            if self.static and self.manifest:
+                return "storages.backends.s3boto3.S3ManifestStaticStorage"
+            if self.static:
+                return "storages.backends.s3boto3.S3StaticStorage"
+            return "storages.backends.s3boto3.S3Boto3Storage"
+        raise ValueError("Unknown store")
+
+
+class DjangoContext(settings.Django):
+    storages: dict[str, DjangoStorageContext] = {}
+
+
 class Context(settings.Settings):
     region: str
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
+    django: DjangoContext | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
-
-    @cached_property
-    def resources(self):
-        return {
-            # "neon": NeonDatabase(self),
-            # "s3": S3Storage(self),
-        }
 
     @classmethod
     def from_settings(cls, settings: settings.Settings) -> Context:
@@ -178,3 +188,11 @@ class Context(settings.Settings):
         return cls.from_settings(
             settings.Settings.from_toml(stage=stage, path=path, filters=filters)
         )
+
+    @model_validator(mode="after")
+    def check_django_storage(self):
+        if self.django and self.django.storages:
+            for storage in self.django.storages.values():
+                if storage.store == "s3" and not self.s3:
+                    raise ValueError("s3 is required for s3 storage")
+        return self
