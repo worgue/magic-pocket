@@ -172,5 +172,9 @@ class Context(settings.Settings):
             context_settings.reset(token)
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path = Path("pocket.toml")):
-        return cls.from_settings(settings.Settings.from_toml(stage=stage, path=path))
+    def from_toml(
+        cls, *, stage: str, path: str | Path = Path("pocket.toml"), filters=None
+    ):
+        return cls.from_settings(
+            settings.Settings.from_toml(stage=stage, path=path, filters=filters)
+        )

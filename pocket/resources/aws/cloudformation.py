@@ -144,6 +144,7 @@ class Stack:
         )
 
     def update(self):
+        print("Update stack")
         return self.client.update_stack(
             StackName=self.name, TemplateBody=self.yaml, Capabilities=self.capabilities
         )

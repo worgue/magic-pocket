@@ -4,7 +4,7 @@ from pocket.context import Context
 
 
 def set_user_secrets_from_secretsmanager(stage: str):
-    context = Context.from_toml(stage=stage)
+    context = Context.from_toml(stage=stage, filters=["awscontainer", "region"])
     if context.awscontainer and context.awscontainer.secretsmanager:
         for key, value in context.awscontainer.secretsmanager.secrets.items():
             os.environ[key] = value

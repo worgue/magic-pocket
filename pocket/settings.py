@@ -65,7 +65,7 @@ class Sqs(BaseModel):
 
 class Neon(BaseSettings):
     pg_version: int = 15
-    api_key: str = Field(alias="neon_api_key")
+    api_key: str = Field(alias="neon_api_key___hoge")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -99,13 +99,26 @@ class Settings(BaseSettings):
         return resources
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path = Path("pocket.toml")):
+    def from_toml(
+        cls, *, stage: str, path: str | Path = Path("pocket.toml"), filters=None
+    ):
         path = cls.ensure_path(path)
         data = tomllib.loads(path.read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
+        if filters:
+            new_data = {}
+            for f in filters:
+                data_target = data
+                new_data_target = new_data
+                for key in f.split(".")[:-1]:
+                    data_target = data_target[key]
+                    new_data_target = new_data_target.setdefault(key, {})
+                key = f.split(".")[-1]
+                new_data_target[key] = data_target[key]
+            data = new_data
         data["stage"] = stage
         return cls.model_validate(data)
 
