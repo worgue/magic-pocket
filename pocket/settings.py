@@ -65,7 +65,7 @@ class Sqs(BaseModel):
 
 class Neon(BaseSettings):
     pg_version: int = 15
-    api_key: str | None = Field(alias="neon_api_key", default=None)
+    api_key: str = Field(alias="neon_api_key")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
