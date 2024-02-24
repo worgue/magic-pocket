@@ -21,7 +21,7 @@ TagStr = Annotated[str, Field(pattern="^[a-z0-9]+[a-z0-9._-]*$", max_length=128)
 
 class AwsContainer(BaseModel):
     secretsmanager: SecretsManager | None = None
-    handlers: dict[str, AwslambdaHandler] = {}
+    handlers: dict[str, LambdaHandler] = {}
     dockerfile_path: str
     envs: dict[str, str] = {}
     use_public_internet_access: bool = True
@@ -32,7 +32,7 @@ class SecretsManager(BaseSettings):
     secrets: dict[str, str] = {}
 
 
-class AwslambdaHandler(BaseModel):
+class LambdaHandler(BaseModel):
     command: str
     timeout: int = 30
     memory_size: int = 512

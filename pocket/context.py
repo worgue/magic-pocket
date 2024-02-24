@@ -33,7 +33,8 @@ class SqsContext(settings.Sqs):
     visibility_timeout: int
 
 
-class AwslambdaHandlerContext(settings.AwslambdaHandler):
+class LambdaHandlerContext(settings.LambdaHandler):
+    region: str
     apigateway: ApiGatewayContext | None
     sqs: SqsContext | None
     key: str
@@ -44,6 +45,7 @@ class AwslambdaHandlerContext(settings.AwslambdaHandler):
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
+        data["region"] = settings.region
         data["function_name"] = f"{settings.slug}-{data['key']}"
         data["log_group_name"] = f"/aws/lambda/{data['function_name']}"
         if data["sqs"]:
@@ -72,7 +74,7 @@ class AwsContainerContext(settings.AwsContainer):
     region: str
     slug: str
     stage: str
-    handlers: dict[str, AwslambdaHandlerContext]
+    handlers: dict[str, LambdaHandlerContext]
     repository_name: str
     use_s3: bool
     use_route53: bool
