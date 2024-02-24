@@ -1,0 +1,7 @@
+-e file:.
+asgiref==3.7.2
+awslambdaric==2.0.10
+django==5.0.2
+simplejson==3.17.2
+sqlparse==0.4.4
+typing-extensions==4.9.0

@@ -83,10 +83,10 @@ def status(stage):
 def url(stage, open):
     ac = get_awscontainer_resource(stage)
     if ac.status == "COMPLETED":
-        if "wsgi" in ac.endpoints:
-            echo.success("wsgi url: %s" % ac.endpoints["wsgi"])
+        if endpoint := ac.endpoints.get("wsgi"):
+            echo.success(f"wsgi url: {endpoint}")
             if open:
-                webbrowser.open(ac.endpoints["wsgi"])
+                webbrowser.open(endpoint)
         else:
             echo.warning("wsgi endpoint not found.")
     else:

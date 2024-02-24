@@ -6,7 +6,7 @@ project_name = "testprj"
 public_dirs = ["static"]
 
 [awscontainer]
-dockerfile_path = "docker/lambda/Dockerfile"
+dockerfile_path = "tests/sampleprj/Dockerfile"
 
 [awscontainer.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"

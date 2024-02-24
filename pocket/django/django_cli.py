@@ -27,16 +27,20 @@ def manage(stage, handler, command, args):
     context = Context.from_toml(stage=stage)
     if not context.awscontainer:
         raise Exception("awscontainer is not configured for this stage")
-    handler = context.awscontainer.handlers.get(handler)
-    if handler is None:
-        raise Exception("handler %s is not configured for this stage" % handler)
-    if handler.command != "pocket.django.lambda_handlers.management_command_handler":
-        raise Exception("handler %s is not management handler" % handler)
+    handler_context = context.awscontainer.handlers.get(handler)
+    handler = context.awscontainer.resource.handlers.get(handler)
+    if handler_context is None or handler is None:
+        raise Exception("handler %s is not configured for this stage" % handler_context)
+    if (
+        handler_context.command
+        != "pocket.django.lambda_handlers.management_command_handler"
+    ):
+        raise Exception("handler %s is not management handler" % handler_context)
     payload = json.dumps({"command": command, "args": args})
-    res = context.awscontainer.resource.invoke(handler, payload)
+    res = handler.invoke(payload)
     request_id = res["ResponseMetadata"]["RequestId"]
     created_at_rfc1123 = res["ResponseMetadata"]["HTTPHeaders"]["date"]
     created_at = parsedate_to_datetime(created_at_rfc1123)
     print("lambda request_id:", request_id)
     print("lambda created_at:", created_at)
-    context.awscontainer.resource.show_logs(handler, request_id, created_at)
+    handler.show_logs(request_id, created_at)
