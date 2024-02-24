@@ -5,7 +5,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import boto3
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, computed_field
 from python_on_whales import docker
 
 if TYPE_CHECKING:
@@ -13,7 +13,20 @@ if TYPE_CHECKING:
 
 
 class RepositoryDetail(BaseModel):
-    repositoryUri: str
+    uri: str | None = Field(alias="repositoryUri", default=None)
+    arn: str | None = Field(alias="repositoryArn", default=None)
+
+
+class ImageDetail(BaseModel):
+    image_digest: str | None = Field(alias="imageDigest", default=None)
+
+    @computed_field
+    def hash(self) -> str | None:
+        if self.image_digest:
+            alg, hash = self.image_digest.split(":")
+            if alg == "sha256":
+                return hash
+            raise ValueError("unsupported algorithm")
 
 
 class Ecr:
@@ -27,20 +40,33 @@ class Ecr:
         self.platform = platform
 
     @cached_property
-    def info(self) -> RepositoryDetail | None:
+    def info(self) -> RepositoryDetail:
         for repository in self.client.describe_repositories()["repositories"]:
             if repository["repositoryName"] == self.name:
                 return RepositoryDetail(**repository)
+        return RepositoryDetail()
 
     @property
-    def repository_uri(self):
-        if not self.info:
-            raise Exception("Repository not found.")
-        return self.info.repositoryUri
+    def uri(self):
+        return self.info.uri
+
+    @property
+    def arn(self):
+        return self.info.arn
 
     @property
     def target(self):
-        return self.repository_uri + ":" + self.tag
+        if self.uri:
+            return self.uri + ":" + self.tag
+
+    @property
+    def image_detail(self):
+        data = self.client.describe_images(repositoryName=self.name)
+        for detail in data["imageDetails"]:
+            if image_tags := detail.get("imageTags"):
+                if self.tag in image_tags:
+                    return ImageDetail(**detail)
+        return ImageDetail()
 
     def create(self):
         print("Creating repository ...")
@@ -48,13 +74,15 @@ class Ecr:
         self.client.create_repository(repositoryName=self.name)
         if hasattr(self, "info"):
             del self.info
-        print("  %s" % self.repository_uri)
+        print("  %s" % self.uri)
 
     def ensure_exists(self):
         if not self.info:
             self.create()
 
     def build(self):
+        if self.target is None:
+            raise ValueError("target is not defined")
         dockerfile_path = self.dockerfile_path
         platform = self.platform
         print("Building docker image...")
@@ -69,6 +97,8 @@ class Ecr:
         )
 
     def push(self):
+        if self.target is None:
+            raise ValueError("target is not defined")
         self.ensure_exists()
         token = self.client.get_authorization_token()
         username, password = (
@@ -77,7 +107,7 @@ class Ecr:
             .split(":")
         )
         print("Logging in to ecr...")
-        docker.login(self.repository_uri, username, password)
+        docker.login(self.uri, username, password)
         print("Pushing docker image...")
         docker.push(self.target)
 

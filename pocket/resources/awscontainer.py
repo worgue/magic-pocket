@@ -27,7 +27,8 @@ class AwsContainer:
 
     @property
     def image_uri(self):
-        return self.repository.repository_uri + ":" + self.context.stage
+        if self.repository.uri:
+            return self.repository.uri + ":" + self.context.stage
 
     @property
     def repository(self):
@@ -51,21 +52,31 @@ class AwsContainer:
         return handlers
 
     @property
-    def updating(self):
+    def handlers_updating(self):
         return any(handler.status == "PROGRESS" for handler in self.handlers.values())
 
     @property
     def status(self) -> ResourceStatus:
-        if self.stack.status == "COMPLETED" and self.updating:
-            return "PROGRESS"
-        return self.stack.status
+        status_list: list[ResourceStatus] = [
+            handler.status for handler in self.handlers.values()
+        ]
+        status_list.append(self.stack.status)
+        for status in ["NOEXIST", "FAILED", "PROGRESS", "REQUIRE_UPDATE"]:
+            if status in status_list:
+                return status
+        for handler in self.handlers.values():
+            if handler.configuration.hash != self.repository.image_detail.hash:
+                return "REQUIRE_UPDATE"
+        return "COMPLETED"
+
+    def deploy_init(self):
+        self.repository.sync()
 
     def create(self):
-        self.repository.sync()
-        print(self.stack.create())
+        print("Creating stack ...")
+        self.stack.create()
 
     def update(self):
-        self.repository.sync()
         for key, handler in self.handlers.items():
             if handler.status == "NOEXIST":
                 print(f"function {key} was not found and skipped.")

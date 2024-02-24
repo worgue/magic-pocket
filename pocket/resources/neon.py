@@ -224,6 +224,9 @@ class Neon:
         self.create()
         self.reset_database()
 
+    def deploy_init(self):
+        pass
+
     def create(self):
         self.ensure_project()
         self.create_branch()

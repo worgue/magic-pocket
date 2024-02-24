@@ -21,6 +21,9 @@ class S3:
         self.context = context
         self.client = boto3.client("s3", region_name=context.region)
 
+    def deploy_init(self):
+        pass
+
     def create(self):
         self.client.create_bucket(
             Bucket=self.context.bucket_name,

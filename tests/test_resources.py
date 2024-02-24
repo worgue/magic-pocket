@@ -55,7 +55,7 @@ def get_default_awscontainer():
 def test_ecr():
     ac = get_default_awscontainer()
     ac.repository.ensure_exists()
-    assert ac.repository.repository_uri
+    assert ac.repository.uri
 
 
 @mock_aws

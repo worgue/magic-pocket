@@ -2,15 +2,22 @@ from __future__ import annotations
 
 import datetime
 import time
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 import boto3
 from botocore.exceptions import ClientError
+from pydantic import BaseModel, Field
 
 from ..base import ResourceStatus
 
 if TYPE_CHECKING:
     from ...context import LambdaHandlerContext
+
+
+class Configuration(BaseModel):
+    hash: str | None = Field(alias="CodeSha256", default=None)
+    last_update_status: str | None = Field(alias="LastUpdateStatus", default=None)
 
 
 class LambdaHandler:
@@ -25,13 +32,25 @@ class LambdaHandler:
     def name(self):
         return self.context.function_name
 
+    @cached_property
+    def configuration(self):
+        try:
+            data = self.client.get_function(FunctionName=self.name)["Configuration"]
+            return Configuration(**data)
+        except ClientError:
+            return Configuration()
+
+    def refresh(self):
+        try:
+            del self.configuration
+        except AttributeError:
+            pass
+
     @property
     def status(self) -> ResourceStatus:
-        try:
-            function = self.client.get_function(FunctionName=self.name)
-        except ClientError:
+        if self.configuration is None:
             return "NOEXIST"
-        match function["Configuration"]["LastUpdateStatus"]:
+        match self.configuration.last_update_status:
             case "InProgress":
                 return "PROGRESS"
             case "Failed":
@@ -63,6 +82,7 @@ class LambdaHandler:
         print(f"waiting lambda fanction {self.name} update.", end="", flush=True)
         for _i in range(limit // interval):
             time.sleep(interval)
+            self.refresh()
             if self.status == "PROGRESS":
                 print(".", end="", flush=True)
             else:

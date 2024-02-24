@@ -19,6 +19,8 @@ def deploy(stage):
         resources.append(context.s3.resource)
     for resource in resources:
         target_name = resource.__class__.__name__
+        echo.log("Deploy init %s..." % target_name)
+        resource.deploy_init()
         if resource.status == "NOEXIST":
             echo.log("Creating %s..." % target_name)
             resource.create()
