@@ -3,9 +3,9 @@ from pprint import pprint
 
 import click
 
-from pocket.context import Context
-from pocket.resources.awscontainer import AwsContainer
-from pocket.utils import echo
+from ..context import Context
+from ..resources.awscontainer import AwsContainer
+from ..utils import echo
 
 
 @click.group()
@@ -34,6 +34,20 @@ def yaml(action, stage):
 def yaml_diff(stage):
     ac = get_awscontainer_resource(stage)
     pprint(ac.stack.yaml_diff)
+
+
+@awscontainer.command()
+@click.option("--stage", prompt=True)
+@click.option("--show-values", is_flag=True, default=False)
+def secrets(stage, show_values):
+    ac = get_awscontainer_resource(stage)
+    if sm := ac.context.secretsmanager:
+        for key, arn in sm.secrets.items():
+            print("%s: %s" % (key, arn))
+            if show_values:
+                print("  - " + sm.resource.resolved_secrets[key])
+    else:
+        echo.warning("secretsmanager is not configured for this stage")
 
 
 @awscontainer.command()
