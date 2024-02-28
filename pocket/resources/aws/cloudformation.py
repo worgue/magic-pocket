@@ -170,7 +170,11 @@ class ContainerStack(Stack):
 
     @property
     def export(self):
-        return {}
+        export = {}
+        if self.context.vpc:
+            export["vpc_id"] = self.context.vpc.name + "-vpc-id"
+            export["private_subnet_"] = self.context.vpc.name + "-private-subnet-"
+        return export
 
 
 class VpcStack(Stack):

@@ -62,6 +62,23 @@ Resources:
                   - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
       RoleName: "{{ stack_name }}"
 
+  # {% if vpc %}
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "{{ slug }}-lambda"
+      GroupName: "{{ slug }}-lambda"
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: "{{ slug }}-lambda"
+      VpcId:
+        Fn::ImportValue: "{{ export.vpc_id }}"
+  # {% endif %}
+
   # {% for lambda_key, handler in handlers.items() %}
   "{{ lambda_key|capitalize }}LambdaFunction":
     Type: AWS::Lambda::Function
@@ -84,21 +101,21 @@ Resources:
           # {% for env_key, value in envs.items() %}
           "{{ env_key }}": "{{ value }}"
           # {% endfor %}
-      # # {% if vpc %}
-      # VpcConfig:
-      #   SecurityGroupIds:
-      #     - Ref: LambdaSecurityGroup
-      #   SubnetIds:
-      #     # {% for zone in vpc.zones %}
-      #     - Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
-      #     # {% endfor %}
-      # # {% endif %}
-      # # {% if efs %}
-      # FileSystemConfigs:
-      #   - Arn:
-      #       Fn::GetAtt: EfsAccessPoint.Arn
-      #     LocalMountPath: "{{ efs.local_mount_path }}"
-      # # {% endif %}
+      # {% if vpc %}
+      VpcConfig:
+        SecurityGroupIds:
+          - Ref: LambdaSecurityGroup
+        SubnetIds:
+          # {% for zone in vpc.zones %}
+          - Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
+          # {% endfor %}
+      # {% endif %}
+      # {% if efs %}
+      FileSystemConfigs:
+        - Arn:
+            Fn::GetAtt: EfsAccessPoint.Arn
+          LocalMountPath: "{{ efs.local_mount_path }}"
+      # {% endif %}
   # {% endfor %}
 
   # {% for lambda_key, handler in handlers.items() %}
@@ -292,21 +309,6 @@ Resources:
   # {% endfor %}
 
   # # {% if efs %}
-  # LambdaSecurityGroup:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: "{{ slug }}-lambda"
-  #     GroupName: "{{ slug }}-lambda"
-  #     SecurityGroupEgress:
-  #       - CidrIp: 0.0.0.0/0
-  #         Description: Allow all outbound traffic by default
-  #         IpProtocol: "-1"
-  #     Tags:
-  #       - Key: Name
-  #         Value: "{{ slug }}-lambda"
-  #     VpcId:
-  #       Fn::ImportValue: "{{ export.vpc_id }}"
-
   # EFSSecurityGroup:
   #   Type: AWS::EC2::SecurityGroup
   #   Properties:

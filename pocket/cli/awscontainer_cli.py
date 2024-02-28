@@ -1,5 +1,4 @@
 import webbrowser
-from pprint import pprint
 
 import click
 
@@ -32,7 +31,7 @@ def yaml(stage):
 @click.option("--stage", prompt=True)
 def yaml_diff(stage):
     ac = get_awscontainer_resource(stage)
-    pprint(ac.stack.yaml_diff)
+    print(ac.stack.yaml_diff.to_json(indent=2))
 
 
 @awscontainer.command()
