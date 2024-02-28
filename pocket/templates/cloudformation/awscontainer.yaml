@@ -28,7 +28,7 @@ Resources:
         # {% if use_sqs %}
         - arn:aws:iam::aws:policy/AmazonSQSFullAccess
         # {% endif %}
-        # {% if efs %}
+        # {% if use_efs %}
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
         # {% endif %}
       Policies:
@@ -110,11 +110,11 @@ Resources:
           - Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
           # {% endfor %}
       # {% endif %}
-      # {% if efs %}
+      # {% if use_efs %}
       FileSystemConfigs:
         - Arn:
-            Fn::GetAtt: EfsAccessPoint.Arn
-          LocalMountPath: "{{ efs.local_mount_path }}"
+            Fn::ImportValue: "{{ export.efs_access_point_arn }}"
+          LocalMountPath: "{{ efs_local_mount_path }}"
       # {% endif %}
   # {% endfor %}
 
@@ -308,57 +308,18 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
-  # # {% if efs %}
-  # EFSSecurityGroup:
-  #   Type: AWS::EC2::SecurityGroup
-  #   Properties:
-  #     GroupDescription: "{{ slug }}-efs"
-  #     GroupName: "{{ slug }}-efs"
-  #     SecurityGroupEgress:
-  #       - CidrIp: 0.0.0.0/0
-  #         Description: Allow all outbound traffic by default
-  #         IpProtocol: "-1"
-  #     Tags:
-  #       - Key: Name
-  #         Value: "{{ slug }}-efs"
-  #     VpcId:
-  #       Fn::ImportValue: "{{ export.vpc_id }}"
-
-  # LambdaEFSAccess:
-  #   Type: AWS::EC2::SecurityGroupIngress
-  #   Properties:
-  #     GroupId:
-  #       Ref: EFSSecurityGroup
-  #     SourceSecurityGroupId:
-  #       Ref: LambdaSecurityGroup
-  #     IpProtocol: tcp
-  #     FromPort: 2049
-  #     ToPort: 2049
-
-  # EfsAccessPoint:
-  #   Type: AWS::EFS::AccessPoint
-  #   Properties:
-  #     FileSystemId: "{{ efs.resource.filesystem_id }}"
-  #     PosixUser:
-  #       Uid: "1000"
-  #       Gid: "1000"
-  #     RootDirectory:
-  #       CreationInfo:
-  #         OwnerGid: "1000"
-  #         OwnerUid: "1000"
-  #         Permissions: "0777"
-  #       Path: "{{ efs.access_point_path }}"
-  # # {% for zone in vpc.zones %}
-  # MountTarget{{ loop.index }}:
-  #   Type: AWS::EFS::MountTarget
-  #   Properties:
-  #     FileSystemId: "{{ efs.resource.filesystem_id }}"
-  #     SubnetId:
-  #       Fn::ImportValue: "{{ export.private_subnet_ }}{{ loop.index }}"
-  #     SecurityGroups:
-  #       - Ref: EFSSecurityGroup
-  # # {% endfor %}
-  # # {% endif %}
+  # {% if use_efs %}
+  LambdaEFSAccess:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::ImportValue: "{{ export.efs_security_group }}"
+      SourceSecurityGroupId:
+        Ref: LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+  # {% endif %}
 
 Outputs:
   # {% for key, handler in handlers.items() %}

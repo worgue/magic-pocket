@@ -136,6 +136,47 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
+  # {% if efs %}
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "{{ name }}-efs"
+      GroupName: "{{ name }}-efs"
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-efs"
+      VpcId:
+        Ref: VPC
+
+  EfsAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: "{{ resource.efs.filesystem_id }}"
+      PosixUser:
+        Uid: "1000"
+        Gid: "1000"
+      RootDirectory:
+        CreationInfo:
+          OwnerGid: "1000"
+          OwnerUid: "1000"
+          Permissions: "0777"
+        Path: "{{ efs.access_point_path }}"
+  # {% for zone in zones %}
+  MountTarget{{ loop.index }}:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: "{{ resource.efs.filesystem_id }}"
+      SubnetId:
+        Ref: PrivateSubnet{{ loop.index }}
+      SecurityGroups:
+        - Ref: EFSSecurityGroup
+  # {% endfor %}
+  # {% endif %}
+
 Outputs:
   VPC:
     Value:
@@ -156,3 +197,17 @@ Outputs:
       Ref: NATGatewayIP{{ loop.index }}
   # {% endif %}
   # {% endfor %}
+
+  # {% if efs %}
+  EFSAccessPointArn:
+    Value:
+      Fn::GetAtt: EfsAccessPoint.Arn
+    Export:
+      Name: "{{ export.efs_access_point_arn }}"
+
+  EFSSecurityGroup:
+    Value:
+      Ref: EFSSecurityGroup
+    Export:
+      Name: "{{ export.efs_security_group }}"
+  # {% endif %}

@@ -115,6 +115,7 @@ class Stack:
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
+            resource=self.context.resource,
             **self.context.model_dump(),
         )
         return "\n".join(
@@ -170,11 +171,9 @@ class ContainerStack(Stack):
 
     @property
     def export(self):
-        export = {}
         if self.context.vpc:
-            export["vpc_id"] = self.context.vpc.name + "-vpc-id"
-            export["private_subnet_"] = self.context.vpc.name + "-private-subnet-"
-        return export
+            return self.context.vpc.resource.stack.export
+        return {}
 
 
 class VpcStack(Stack):
@@ -190,4 +189,6 @@ class VpcStack(Stack):
         return {
             "vpc_id": self.context.name + "-vpc-id",
             "private_subnet_": self.context.name + "-private-subnet-",
+            "efs_access_point_arn": self.context.name + "-efs-access-point",
+            "efs_security_group": self.context.name + "-efs-security-group",
         }

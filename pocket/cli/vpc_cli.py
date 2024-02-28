@@ -1,5 +1,3 @@
-from pprint import pprint
-
 import click
 
 from ..context import VpcContext
@@ -27,7 +25,7 @@ def yaml(ref):
 @click.option("--ref", prompt=True)
 def yaml_diff(ref):
     vpc = get_vpc_resource(ref)
-    pprint(vpc.stack.yaml_diff)
+    print(vpc.stack.yaml_diff.to_json(indent=2))
 
 
 @vpc.command()

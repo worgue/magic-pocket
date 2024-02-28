@@ -2,6 +2,10 @@ region = "ap-southeast-1"
 stages = ["dev", "tst", "stg", "prd"]
 project_name = "testprj"
 
+[vpcs.sandbox]
+zone_suffixes = ["c"]
+efs = {}
+
 [s3]
 public_dirs = ["static"]
 
@@ -34,6 +38,3 @@ DJANGO_ENV_PATH = "project/env/env.prd"
 
 [prd.awscontainer.handlers.wsgi]
 apigateway = { domain = "api.project.com" }
-
-[vpcs.sandbox]
-zone_suffixes = ["c"]
