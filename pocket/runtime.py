@@ -7,7 +7,7 @@ def set_user_secrets_from_secretsmanager(stage: str | None = None):
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return
-    context = Context.from_toml(stage=stage, filters=["awscontainer", "region"])
+    context = Context.from_toml(stage=stage, filters=["awscontainer", "region", "vpcs"])
     if secretsmanager := context.awscontainer and context.awscontainer.secretsmanager:
         for key, value in secretsmanager.resource.resolved_secrets.items():
             os.environ[key] = value
