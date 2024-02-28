@@ -22,11 +22,10 @@ def get_awscontainer_resource(stage):
 
 
 @awscontainer.command()
-@click.argument("action")
 @click.option("--stage", prompt=True)
-def yaml(action, stage):
+def yaml(stage):
     ac = get_awscontainer_resource(stage)
-    pprint(ac.stack.yaml)
+    print(ac.stack.yaml)
 
 
 @awscontainer.command()

@@ -11,7 +11,7 @@ from .aws.lambdahandler import LambdaHandler
 from .base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext
+    from ..context import AwsContainerContext
 
 
 class AwsContainer:
@@ -71,9 +71,11 @@ class AwsContainer:
 
     def deploy_init(self):
         self.repository.sync()
+        if self.context.vpc:
+            self.context.vpc.resource.stack.wait_status("COMPLETED")
 
     def create(self):
-        print("Creating stack ...")
+        print("Creating cloudformation stack for awscontainer ...")
         self.stack.create()
 
     def update(self):

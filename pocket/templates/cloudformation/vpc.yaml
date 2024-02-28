@@ -1,0 +1,158 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: vpc stack created by zerode
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: "{{ name }}"
+
+  # {% if internet_gateway %}
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: "{{ name }}"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId:
+        Ref: InternetGateway
+      VpcId:
+        Ref: VPC
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-public"
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+
+  # {% for zone in zones %}
+  PublicSubnet{{ loop.index }}:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: "{{ zone }}"
+      CidrBlock: 10.0.1{{ loop.index0 }}.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-public-{{ loop.index }}"
+
+  PublicSubnetRouteTableAssociation{{ loop.index }}:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      SubnetId:
+        Ref: PublicSubnet{{ loop.index }}
+  # {% endfor %}
+  # {% endif %}
+
+  # {% for zone in zones %}
+  PrivateSubnet{{ loop.index }}:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: "{{ zone }}"
+      CidrBlock: 10.0.2{{ loop.index0 }}.0/24
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-private-{{ loop.index }}"
+
+  # {% if private_route_table %}
+  PrivateRouteTable{{ loop.index }}:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-private-{{ loop.index }}"
+
+  PrivateSubnetRouteTableAssociation{{ loop.index }}:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable{{ loop.index }}
+      SubnetId:
+        Ref: PrivateSubnet{{ loop.index }}
+  # {% endif %}
+
+  # {% if nat_gateway %}
+  NATGatewayIP{{ loop.index }}:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-natgateway-{{ loop.index }}"
+
+  NATGateway{{ loop.index }}:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - NATGatewayIP{{ loop.index }}
+          - AllocationId
+      SubnetId:
+        Ref: PublicSubnet{{ loop.index }}
+      Tags:
+        - Key: Name
+          Value: "{{ name }}-{{ loop.index }}"
+
+  PrivateRoute{{ loop.index }}:
+    Type: AWS::EC2::Route
+    DependsOn: PrivateSubnetRouteTableAssociation{{ loop.index }}
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable{{ loop.index }}
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NATGateway{{ loop.index }}
+  # {% endif %}
+  # {% endfor %}
+
+Outputs:
+  VPC:
+    Value:
+      Ref: VPC
+    Export:
+      Name: "{{ export.vpc_id }}"
+
+  # {% for zone in zones %}
+  PrivateSubnet{{ loop.index }}:
+    Value:
+      Ref: PrivateSubnet{{ loop.index }}
+    Export:
+      Name: "{{ export.private_subnet_ }}{{ loop.index }}"
+
+  # {% if nat_gateway %}
+  NATGatewayIP{{ loop.index }}:
+    Value:
+      Ref: NATGatewayIP{{ loop.index }}
+  # {% endif %}
+  # {% endfor %}

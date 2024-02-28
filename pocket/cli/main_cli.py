@@ -1,7 +1,14 @@
 import click
 
 from pocket import __version__
-from pocket.cli import awscontainer_cli, deploy_cli, neon_cli, s3_cli, status_cli
+from pocket.cli import (
+    awscontainer_cli,
+    deploy_cli,
+    neon_cli,
+    s3_cli,
+    status_cli,
+    vpc_cli,
+)
 from pocket.django import django_cli
 
 
@@ -26,6 +33,7 @@ def resource():
     pass
 
 
+resource.add_command(vpc_cli.vpc)
 resource.add_command(awscontainer_cli.awscontainer)
 resource.add_command(neon_cli.neon)
 resource.add_command(s3_cli.s3)

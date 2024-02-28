@@ -18,6 +18,9 @@ command = "pocket.django.lambda_handlers.sqs_management_command_report_failuers_
 timeout = 60
 sqs = {}
 
+[dev.awscontainer]
+vpc_ref = "sandbox"
+
 [dev.awscontainer.envs]
 DJANGO_ENV_PATH = "project/env/env.dev"
 
@@ -31,3 +34,6 @@ DJANGO_ENV_PATH = "project/env/env.prd"
 
 [prd.awscontainer.handlers.wsgi]
 apigateway = { domain = "api.project.com" }
+
+[vpcs.sandbox]
+zone_suffixes = ["c"]

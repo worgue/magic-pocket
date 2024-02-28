@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
@@ -7,14 +8,69 @@ from pathlib import Path
 from pydantic import computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
-from pocket import settings
-from pocket.resources.aws.secretsmanager import SecretsManager
-from pocket.resources.awscontainer import AwsContainer
-from pocket.resources.neon import Neon
-from pocket.resources.s3 import S3
-from pocket.utils import get_hosted_zone_id_from_domain
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+from . import settings
+from .resources.aws.secretsmanager import SecretsManager
+from .resources.awscontainer import AwsContainer
+from .resources.neon import Neon
+from .resources.s3 import S3
+from .resources.vpc import Vpc
+from .utils import get_hosted_zone_id_from_domain, get_project_name
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
+
+
+class VpcContext(settings.Vpc):
+    ref: str
+    name: str
+    region: str
+
+    @computed_field
+    @property
+    def private_route_table(self) -> bool:
+        # If we support vpcendpoints, they require private_route_table
+        return self.nat_gateway
+
+    @computed_field
+    @property
+    def zones(self) -> list[str]:
+        return [f"{self.region}{suffix}" for suffix in self.zone_suffixes]
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        settings = context_settings.get()
+        data["region"] = settings.region
+        data["name"] = settings.project_name + "-" + data["ref"]
+        return data
+
+    @classmethod
+    def from_toml(cls, *, ref: str, path: str | Path = Path("pocket.toml")):
+        data = tomllib.loads(Path(path).read_text())
+
+        class MockContext:
+            region = data["region"]
+            project_name = data.get("project_name") or get_project_name()
+
+        if "vpcs" not in data:
+            raise ValueError("vpcs is required when vpc_ref is used")
+        if ref not in data["vpcs"]:
+            raise ValueError(f"vpc {ref} not found in vpcs")
+        vpc_data = data.get("vpcs", {}).get(ref)
+        vpc_data["ref"] = ref
+        token = context_settings.set(MockContext)  # pyright: ignore
+        try:
+            print(f"{vpc_data=}")
+            return cls.model_validate(vpc_data)
+        finally:
+            context_settings.reset(token)
+
+    @cached_property
+    def resource(self):
+        return Vpc(self)
 
 
 class ApiGatewayContext(settings.ApiGateway):
@@ -70,6 +126,7 @@ class SecretsManagerContext(settings.SecretsManager):
 
 
 class AwsContainerContext(settings.AwsContainer):
+    vpc: VpcContext | None = None
     secretsmanager: SecretsManagerContext | None
     region: str
     slug: str

@@ -19,7 +19,26 @@ else:
 TagStr = Annotated[str, Field(pattern="^[a-z0-9]+[a-z0-9._-]*$", max_length=128)]
 
 
+class Vpc(BaseSettings):
+    ref: str
+    zone_suffixes: list[Annotated[str, Field(max_length=1)]] = ["a"]
+    nat_gateway: bool = True
+    internet_gateway: bool = True
+
+    @model_validator(mode="after")
+    def check_nat_gateway(self):
+        if self.nat_gateway and not self.internet_gateway:
+            raise ValueError("nat_gateway without internet_gateway is not supported.")
+        if self.internet_gateway and not self.nat_gateway:
+            raise ValueError(
+                "lambda runs in private subnet, internet_gateway without nat_gateway is not supported yet."
+                "It will be supported in the future with fargate."
+            )
+        return self
+
+
 class AwsContainer(BaseModel):
+    vpc: Vpc | None = None
     secretsmanager: SecretsManager | None = None
     handlers: dict[str, LambdaHandler] = {}
     dockerfile_path: str
@@ -74,9 +93,6 @@ class S3(BaseSettings):
     public_dirs: list[str] = []
 
 
-resources = ["awscontainer", "neon", "s3"]
-
-
 class DjangoStorage(BaseSettings):
     store: Literal["s3"]
     location: str
@@ -112,16 +128,11 @@ class Settings(BaseSettings):
         """Identify the environment. e.g) dev-myprj"""
         return "%s-%s" % (self.stage, self.project_name)
 
-    @property
-    def resources(self):
-        return resources
-
     @classmethod
     def from_toml(
         cls, *, stage: str, path: str | Path = Path("pocket.toml"), filters=None
     ):
-        path = cls.ensure_path(path)
-        data = tomllib.loads(path.read_text())
+        data = tomllib.loads(Path(path).read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
@@ -138,20 +149,33 @@ class Settings(BaseSettings):
                 new_data_target[key] = data_target[key]
             data = new_data
         data["stage"] = stage
+        cls.check_vpc(data)
+        cls.pop_vpc(data)
         return cls.model_validate(data)
 
     @classmethod
-    def ensure_path(cls, path: str | Path) -> Path:
-        if isinstance(path, str):
-            path = Path(path)
-        if not path.exists():
-            raise FileNotFoundError(path)
-        return path
+    def check_vpc(cls, data: dict):
+        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
+            if "vpcs" not in data:
+                raise ValueError("vpcs is required when vpc_ref is used")
+            if vpc_ref not in data["vpcs"]:
+                raise ValueError(f"vpc {vpc_ref} not found in vpcs")
+
+    @classmethod
+    def pop_vpc(cls, data: dict):
+        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
+            data["awscontainer"]["vpc"] = data["vpcs"][vpc_ref]
+            data["awscontainer"]["vpc"]["ref"] = vpc_ref
+            data["awscontainer"].pop("vpc_ref", None)
+        data.pop("vpcs", None)
 
     @classmethod
     def check_keys(cls, data: dict):
         valid_keys = (
-            ["project_name", "region", "stages", "django"] + resources + data["stages"]
+            ["project_name", "region", "stages", "vpcs"]
+            + ["awscontainer", "neon", "s3"]
+            + ["django"]
+            + data["stages"]
         )
         for key in data:
             if key not in valid_keys:

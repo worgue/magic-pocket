@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 class Stack:
     template_filename: str
     name: str
+    export: dict
 
     def __init__(self, context: AwsContainerContext | VpcContext):
         self.context = context
@@ -48,20 +49,22 @@ class Stack:
         if hasattr(self, "uploaded_template"):
             del self.uploaded_template
 
-    def wait_status(self, status: ResourceStatus, timeout=60):
-        max_iter = 100
+    def wait_status(self, status: ResourceStatus, timeout=300):
         interval = 3
-        if (timeout < 0) or ((max_iter * interval) < timeout):
-            raise Exception("timeout value is out of range")
-        for i in range(max_iter):
+        for i in range(timeout // interval):
             self.clear_status()
             if self.status == status:
                 print("")
                 return
             if i == 0:
-                print("Waiting for stack status to be %s" % status, end="", flush=True)
+                msg = "Waiting for %s stack status to be %s" % (
+                    self.template_filename,
+                    status,
+                )
+                print(msg, end="", flush=True)
             print(".", end="", flush=True)
             time.sleep(interval)
+        raise Exception("Timeout is %s seconds" % timeout)
 
     @property
     def output(self) -> dict[str, str] | None:
@@ -152,10 +155,6 @@ class Stack:
     def delete(self):
         return self.client.delete_stack(StackName=self.name)
 
-    @property
-    def export(self):
-        return {}
-
 
 class ContainerStack(Stack):
     context: AwsContainerContext
@@ -169,6 +168,10 @@ class ContainerStack(Stack):
     def capabilities(self):
         return ["CAPABILITY_NAMED_IAM"]
 
+    @property
+    def export(self):
+        return {}
+
 
 class VpcStack(Stack):
     context: VpcContext
@@ -176,4 +179,11 @@ class VpcStack(Stack):
 
     @property
     def name(self):
-        return f"{self.context.slug}-vpc"
+        return f"{self.context.name}-vpc"
+
+    @property
+    def export(self):
+        return {
+            "vpc_id": self.context.name + "-vpc-id",
+            "private_subnet_": self.context.name + "-private-subnet-",
+        }
