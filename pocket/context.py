@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
 
-from pydantic import computed_field, model_validator
+from pydantic import BaseModel, computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
 if sys.version_info >= (3, 11):
@@ -18,15 +18,36 @@ from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
 from .resources.vpc import Vpc
-from .utils import get_hosted_zone_id_from_domain, get_project_name
+from .utils import get_hosted_zone_id_from_domain, get_object_prefix, get_project_name
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
+context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
+
+
+class EfsContext(settings.Efs):
+    name: str
+    region: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        vvc = context_vpcvalidate.get()
+        data["name"] = "%s%s-%s" % (get_object_prefix(), vvc.project_name, vvc.ref)
+        data["region"] = vvc.region
+        return data
+
+
+class VpcValidateContext(BaseModel):
+    project_name: str
+    ref: str
+    region: str
 
 
 class VpcContext(settings.Vpc):
     ref: str
     name: str
     region: str
+    efs: EfsContext | None = None
 
     @computed_field
     @property
@@ -47,23 +68,40 @@ class VpcContext(settings.Vpc):
         data["name"] = settings.project_name + "-" + data["ref"]
         return data
 
+    @model_validator(mode="wrap")
+    @classmethod
+    def validate_model(cls, v, handler):
+        settings = context_settings.get()
+        vvc = VpcValidateContext.model_validate(
+            {
+                "project_name": settings.project_name,
+                "ref": v["ref"],
+                "region": settings.region,
+            }
+        )
+        token = context_vpcvalidate.set(vvc)
+        try:
+            return handler(v)
+        finally:
+            context_vpcvalidate.reset(token)
+
     @classmethod
     def from_toml(cls, *, ref: str, path: str | Path = Path("pocket.toml")):
         data = tomllib.loads(Path(path).read_text())
+        if "vpcs" not in data:
+            raise ValueError("vpcs is required when vpc_ref is used")
+        if ref not in data["vpcs"]:
+            raise ValueError(f"vpc {ref} not found in vpcs")
+
+        vpc_data = data.get("vpcs", {}).get(ref)
+        vpc_data["ref"] = ref
 
         class MockContext:
             region = data["region"]
             project_name = data.get("project_name") or get_project_name()
 
-        if "vpcs" not in data:
-            raise ValueError("vpcs is required when vpc_ref is used")
-        if ref not in data["vpcs"]:
-            raise ValueError(f"vpc {ref} not found in vpcs")
-        vpc_data = data.get("vpcs", {}).get(ref)
-        vpc_data["ref"] = ref
         token = context_settings.set(MockContext)  # pyright: ignore
         try:
-            print(f"{vpc_data=}")
             return cls.model_validate(vpc_data)
         finally:
             context_settings.reset(token)
@@ -134,8 +172,10 @@ class AwsContainerContext(settings.AwsContainer):
     handlers: dict[str, LambdaHandlerContext]
     repository_name: str
     use_s3: bool
-    use_route53: bool
-    use_sqs: bool
+    use_route53: bool = False
+    use_sqs: bool = False
+    use_efs: bool = False
+    efs_local_mount_path: str = ""
 
     @cached_property
     def resource(self):
@@ -149,11 +189,12 @@ class AwsContainerContext(settings.AwsContainer):
         data["slug"] = settings.slug
         data["stage"] = settings.stage
         data["repository_name"] = (
-            settings.object_prefix + settings.project_name + "-lambda"
+            get_object_prefix() + settings.project_name + "-lambda"
         )
         data["use_s3"] = settings.s3 is not None
-        data["use_route53"] = False
-        data["use_sqs"] = False
+        if data["vpc"] and (data["vpc"]["efs"] is not None):
+            data["use_efs"] = True
+            data["efs_local_mount_path"] = data["vpc"]["efs"]["local_mount_path"]
         for key, handler in data["handlers"].items():
             handler["key"] = key
             if handler["apigateway"]:
@@ -199,10 +240,7 @@ class S3Context(settings.S3):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["bucket_name"] = "%s%s" % (
-            settings.object_prefix,
-            settings.slug,
-        )
+        data["bucket_name"] = "%s%s" % (get_object_prefix(), settings.slug)
         return data
 
 

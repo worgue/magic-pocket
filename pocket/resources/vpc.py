@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .aws.cloudformation import VpcStack
+from .aws.efs import Efs
 from .base import ResourceStatus
 
 if TYPE_CHECKING:
@@ -21,6 +22,11 @@ class Vpc:
         return VpcStack(self.context)
 
     @property
+    def efs(self):
+        if self.context.efs:
+            return Efs(self.context.efs)
+
+    @property
     def status(self) -> ResourceStatus:
         return self.stack.status
 
@@ -30,7 +36,8 @@ class Vpc:
             return self.stack.output[self.stack.export["vpc_id"]]
 
     def deploy_init(self):
-        pass
+        if self.efs:
+            self.efs.ensure_exists()
 
     def create(self):
         print("Creating cloudformation stack for vpc ...")

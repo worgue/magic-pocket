@@ -19,11 +19,17 @@ else:
 TagStr = Annotated[str, Field(pattern="^[a-z0-9]+[a-z0-9._-]*$", max_length=128)]
 
 
+class Efs(BaseModel):
+    local_mount_path: str = Field(pattern="^/mnt/.*", default="/mnt/efs")
+    access_point_path: str = Field(pattern="^/.+", default="/lambda")
+
+
 class Vpc(BaseSettings):
     ref: str
     zone_suffixes: list[Annotated[str, Field(max_length=1)]] = ["a"]
     nat_gateway: bool = True
     internet_gateway: bool = True
+    efs: Efs | None = None
 
     @model_validator(mode="after")
     def check_nat_gateway(self):
@@ -112,7 +118,6 @@ class Django(BaseSettings):
 
 class Settings(BaseSettings):
     region: str
-    object_prefix: str = "pocket-"
     project_name: str = Field(default_factory=get_project_name)
     stage: TagStr
     awscontainer: AwsContainer | None = None
