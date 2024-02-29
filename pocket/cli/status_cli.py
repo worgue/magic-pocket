@@ -17,23 +17,30 @@ def get_resources(context: Context):
     return resources
 
 
+def show_status_message(resource):
+    target_name = resource.__class__.__name__
+    message = f"{target_name} status: {resource.status}"
+    echo_fn = {
+        "NOEXIST": echo.info,
+        "REQUIRE_UPDATE": echo.warning,
+        "PROGRESS": echo.warning,
+        "COMPLETED": echo.success,
+        "FAILED": echo.danger,
+    }[resource.status]
+    echo_fn(message)
+
+
+def show_info_message(resource):
+    print(resource.context.model_dump_json(indent=2))
+
+
 @click.command()
+@click.option("--show-info", is_flag=True, default=False)
 @click.option("--stage", prompt=True)
-def status(stage):
+def status(stage, show_info):
     context = Context.from_toml(stage=stage)
     resources = get_resources(context)
     for resource in resources:
-        target_name = resource.__class__.__name__
-        message = f"{target_name} status: {resource.status}"
-        if resource.status == "NOEXIST":
-            echo.info(message)
-        elif resource.status == "REQUIRE_UPDATE":
-            echo.warning(message)
-        elif resource.status == "PROGRESS":
-            echo.warning(message)
-        elif resource.status == "COMPLETED":
-            echo.success(message)
-        elif resource.status == "FAILED":
-            echo.danger(message)
-        else:
-            raise Exception(f"Unknown status: {resource.status}")
+        show_status_message(resource)
+        if show_info:
+            show_info_message(resource)

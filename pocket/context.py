@@ -240,7 +240,12 @@ class S3Context(settings.S3):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["bucket_name"] = "%s%s" % (get_object_prefix(), settings.slug)
+        format_vars = {
+            "prefix": get_object_prefix(),
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
         return data
 
 

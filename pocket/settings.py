@@ -16,7 +16,21 @@ else:
     import tomli as tomllib
 
 # Restrict string to a valid Docker tag
-TagStr = Annotated[str, Field(pattern="^[a-z0-9]+[a-z0-9._-]*$", max_length=128)]
+TagStr = Annotated[str, Field(pattern="^[a-z0-9][a-z0-9._-]*$", max_length=128)]
+
+# Formatted string
+FormatStr = Annotated[
+    str,
+    Field(
+        pattern="^[a-z0-9{][{}a-z0-9._-]*$",
+        max_length=128,
+        description=(
+            "Formatted string."
+            "You can use variables: prefix, project, stage(for containers), and ref(for vpc)"
+            "e.g) {prefix}{stage}-{project}"
+        ),
+    ),
+]
 
 
 class Efs(BaseModel):
@@ -97,6 +111,7 @@ class Neon(BaseSettings):
 
 class S3(BaseSettings):
     public_dirs: list[str] = []
+    bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
 
 
 class DjangoStorage(BaseSettings):
