@@ -34,16 +34,19 @@ def test_cache():
         context.awscontainer
         and context.awscontainer.django
         and context.awscontainer.django.caches["default"]
+        and context.awscontainer.vpc
+        and context.awscontainer.vpc.efs
     )
+    assert context.awscontainer.vpc.efs.local_mount_path == "/mnt/efs"
     assert context.awscontainer.django.caches["default"].model_dump() == {
         "store": "efs",
         "subdir": "{stage}",
-        "location": "/lambda/dev",
+        "location": "/mnt/efs/dev",
     }
     caches = get_caches(stage="dev", path=toml_path)
     assert caches == {
         "default": {
             "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-            "LOCATION": "/lambda/dev",
+            "LOCATION": "/mnt/efs/dev",
         }
     }

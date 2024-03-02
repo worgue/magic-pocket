@@ -193,7 +193,13 @@ class DjangoCacheContext(settings.DjangoCache):
             "stage": settings.stage,
             "project": settings.project_name,
         }
-        data["location"] = str(Path("/lambda") / data["subdir"]).format(**format_vars)
+        assert (
+            settings.awscontainer
+            and settings.awscontainer.vpc
+            and settings.awscontainer.vpc.efs
+        )
+        mnt = Path(settings.awscontainer.vpc.efs.local_mount_path)
+        data["location"] = str(mnt / data["subdir"]).format(**format_vars)
         return data
 
 
