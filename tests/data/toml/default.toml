@@ -40,6 +40,9 @@ apigateway = { domain = "api.project.com" }
 
 [dev.neon]
 
+[prd.awscontainer]
+vpc_ref = "sandbox"
+
 [prd.awscontainer.envs]
 DJANGO_ENV_PATH = "project/env/env.prd"
 

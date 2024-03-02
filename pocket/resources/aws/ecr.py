@@ -77,7 +77,7 @@ class Ecr:
         print("  %s" % self.uri)
 
     def ensure_exists(self):
-        if not self.info:
+        if not self.info.uri:
             self.create()
 
     def build(self):
