@@ -12,6 +12,13 @@ public_dirs = ["static"]
 [awscontainer]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
+[awscontainer.django.storages]
+default = { store = "s3", location = "media" }
+staticfiles = { store = "s3", location = "static", static = true, manifest = true }
+
+[awscontainer.django.caches]
+default = { store = "efs" }
+
 [awscontainer.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 [awscontainer.handlers.management]

@@ -57,6 +57,29 @@ class Vpc(BaseSettings):
         return self
 
 
+class DjangoStorage(BaseSettings):
+    store: Literal["s3"]
+    location: str
+    static: bool = False
+    manifest: bool = False
+
+    @model_validator(mode="after")
+    def check_manifest(self):
+        if self.manifest and not self.static:
+            raise ValueError("manifest can only be used with static")
+        return self
+
+
+class DjangoCache(BaseSettings):
+    store: Literal["efs"]
+    subdir: str = "{stage}"
+
+
+class Django(BaseSettings):
+    storages: dict[str, DjangoStorage] = {}
+    caches: dict[str, DjangoCache] = {}
+
+
 class AwsContainer(BaseModel):
     vpc: Vpc | None = None
     secretsmanager: SecretsManager | None = None
@@ -65,6 +88,7 @@ class AwsContainer(BaseModel):
     envs: dict[str, str] = {}
     use_public_internet_access: bool = True
     platform: str = "linux/amd64"
+    django: Django | None = None
 
 
 class SecretsManager(BaseSettings):
@@ -114,23 +138,6 @@ class S3(BaseSettings):
     bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
 
 
-class DjangoStorage(BaseSettings):
-    store: Literal["s3"]
-    location: str
-    static: bool = False
-    manifest: bool = False
-
-    @model_validator(mode="after")
-    def check_manifest(self):
-        if self.manifest and not self.static:
-            raise ValueError("manifest can only be used with static")
-        return self
-
-
-class Django(BaseSettings):
-    storages: dict[str, DjangoStorage] = {}
-
-
 class Settings(BaseSettings):
     region: str
     project_name: str = Field(default_factory=get_project_name)
@@ -138,7 +145,6 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
-    django: Django | None = None
 
     model_config = SettingsConfigDict(env_prefix="pocket_")
 
@@ -149,9 +155,8 @@ class Settings(BaseSettings):
         return "%s-%s" % (self.stage, self.project_name)
 
     @classmethod
-    def from_toml(
-        cls, *, stage: str, path: str | Path = Path("pocket.toml"), filters=None
-    ):
+    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
+        path = path or "pocket.toml"
         data = tomllib.loads(Path(path).read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)

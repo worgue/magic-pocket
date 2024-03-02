@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import boto3
 from django.core.management import call_command
@@ -7,19 +8,21 @@ from django.core.management import call_command
 from ..context import Context
 
 
-def get_storages(*, default=None, stage: str | None = None) -> dict:
-    stage = stage or os.environ.get("POCKET_STAGE")
+def get_storages(
+    *, default=None, stage: str | None = None, path: str | Path | None = None
+) -> dict:
     storages = default or {}
+    stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return storages
-    context = Context.from_toml(stage=stage)
-    if not context.django or not context.django.storages:
+    path = path or "pocket.toml"
+    context = Context.from_toml(stage=stage, path=path)
+    if not (context.awscontainer and context.awscontainer.django):
         return storages
-    for key, storage in context.django.storages.items():
+    for key, storage in context.awscontainer.django.storages.items():
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
-            if not context.s3:
-                raise ValueError("Never happen because of context validation.")
+            assert context.s3, "Never happen because of context validation."
             storages[key]["OPTIONS"] = {
                 "bucket_name": context.s3.bucket_name,
                 "location": storage.location,
@@ -27,6 +30,25 @@ def get_storages(*, default=None, stage: str | None = None) -> dict:
         else:
             raise ValueError("Unknown store")
     return storages
+
+
+def get_caches(
+    *, default=None, stage: str | None = None, path: str | Path | None = None
+) -> dict:
+    caches = default or {}
+    stage = stage or os.environ.get("POCKET_STAGE")
+    if not stage:
+        return caches
+    path = path or "pocket.toml"
+    context = Context.from_toml(stage=stage, path=path)
+    if not (context.awscontainer and context.awscontainer.django):
+        return caches
+    for key, cache in context.awscontainer.django.caches.items():
+        caches[key] = {
+            "BACKEND": cache.backend,
+            "LOCATION": cache.location,
+        }
+    return caches
 
 
 sqs_client = boto3.client("sqs")

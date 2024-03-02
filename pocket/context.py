@@ -163,6 +163,45 @@ class SecretsManagerContext(settings.SecretsManager):
         return data
 
 
+class DjangoStorageContext(settings.DjangoStorage):
+    @property
+    def backend(self):
+        if self.store == "s3":
+            if self.static and self.manifest:
+                return "storages.backends.s3boto3.S3ManifestStaticStorage"
+            if self.static:
+                return "storages.backends.s3boto3.S3StaticStorage"
+            return "storages.backends.s3boto3.S3Boto3Storage"
+        raise ValueError("Unknown store")
+
+
+class DjangoCacheContext(settings.DjangoCache):
+    location: str
+
+    @property
+    def backend(self):
+        if self.store == "efs":
+            return "django.core.cache.backends.filebased.FileBasedCache"
+        raise ValueError("Unknown store")
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        settings = context_settings.get()
+        format_vars = {
+            "prefix": get_object_prefix(),
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["location"] = str(Path("/lambda") / data["subdir"]).format(**format_vars)
+        return data
+
+
+class DjangoContext(settings.Django):
+    storages: dict[str, DjangoStorageContext] = {}
+    caches: dict[str, DjangoCacheContext] = {}
+
+
 class AwsContainerContext(settings.AwsContainer):
     vpc: VpcContext | None = None
     secretsmanager: SecretsManagerContext | None
@@ -176,6 +215,7 @@ class AwsContainerContext(settings.AwsContainer):
     use_sqs: bool = False
     use_efs: bool = False
     efs_local_mount_path: str = ""
+    django: DjangoContext | None = None
 
     @cached_property
     def resource(self):
@@ -249,28 +289,11 @@ class S3Context(settings.S3):
         return data
 
 
-class DjangoStorageContext(settings.DjangoStorage):
-    @property
-    def backend(self):
-        if self.store == "s3":
-            if self.static and self.manifest:
-                return "storages.backends.s3boto3.S3ManifestStaticStorage"
-            if self.static:
-                return "storages.backends.s3boto3.S3StaticStorage"
-            return "storages.backends.s3boto3.S3Boto3Storage"
-        raise ValueError("Unknown store")
-
-
-class DjangoContext(settings.Django):
-    storages: dict[str, DjangoStorageContext] = {}
-
-
 class Context(settings.Settings):
     region: str
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
-    django: DjangoContext | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
 
@@ -284,17 +307,21 @@ class Context(settings.Settings):
             context_settings.reset(token)
 
     @classmethod
-    def from_toml(
-        cls, *, stage: str, path: str | Path = Path("pocket.toml"), filters=None
-    ):
+    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
+        path = path or "pocket.toml"
         return cls.from_settings(
             settings.Settings.from_toml(stage=stage, path=path, filters=filters)
         )
 
     @model_validator(mode="after")
-    def check_django_storage(self):
-        if self.django and self.django.storages:
-            for storage in self.django.storages.values():
+    def check_django(self):
+        if self.awscontainer and self.awscontainer.django:
+            for _, storage in self.awscontainer.django.storages.items():
                 if storage.store == "s3" and not self.s3:
                     raise ValueError("s3 is required for s3 storage")
+            for _, cache in self.awscontainer.django.caches.items():
+                if cache.store == "efs" and not (
+                    self.awscontainer.vpc and self.awscontainer.vpc.efs
+                ):
+                    raise ValueError("vpc is required for efs cache")
         return self
