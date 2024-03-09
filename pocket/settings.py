@@ -93,7 +93,25 @@ class AwsContainer(BaseModel):
 
 
 class SecretsManager(BaseSettings):
-    secrets: dict[str, str] = {}
+    secrets: Annotated[
+        dict[str, str],
+        Field(
+            description=(
+                "These secres got GetSecretValue permissions automatically, "
+                "so does not need to be explicitly defined in resources"
+            )
+        ),
+    ] = {}
+    extra_resources: Annotated[
+        list[str],
+        Field(
+            description=(
+                "List secret names or regexp to allow GetSecretValue, "
+                "if you want to access them from your own lambda functions."
+            )
+        ),
+    ] = []
+    require_list_secrets: bool = False
 
 
 class LambdaHandler(BaseModel):
