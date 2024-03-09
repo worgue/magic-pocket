@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
@@ -78,6 +78,7 @@ class DjangoCache(BaseSettings):
 class Django(BaseSettings):
     storages: dict[str, DjangoStorage] = {}
     caches: dict[str, DjangoCache] = {}
+    settings: dict[str, Any] = {}
 
 
 class AwsContainer(BaseModel):

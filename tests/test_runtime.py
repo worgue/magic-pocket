@@ -1,6 +1,7 @@
 import boto3
 from moto import mock_aws
 
+from pocket.django.runtime import get_django_settings
 from pocket.runtime import get_user_secrets_from_secretsmanager
 from pocket.settings import Settings
 
@@ -14,3 +15,9 @@ def test_secretsmanager():
         SecretString="postgres://localhost:5432",
     )
     print(get_user_secrets_from_secretsmanager("dev", "tests/data/toml/default.toml"))
+
+
+def test_django_settings():
+    assert {
+        "TEST_NESTED": {"first": {"second": {"third": {"NAME": "key"}}}}
+    } == get_django_settings("dev", "tests/data/toml/default.toml")

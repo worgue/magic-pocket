@@ -12,6 +12,9 @@ public_dirs = ["static"]
 [awscontainer]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
+[awscontainer.django.settings]
+TEST_NESTED = { "first" = { "second" = { "third" = { "NAME" = "key" } } } }
+
 [awscontainer.django.storages]
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
