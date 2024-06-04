@@ -4,6 +4,10 @@ from pathlib import Path
 from pocket.context import Context
 
 
+def get_stage():
+    return os.environ.get("POCKET_STAGE") or "__none__"
+
+
 def get_user_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict:
