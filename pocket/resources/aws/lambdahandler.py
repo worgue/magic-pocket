@@ -48,9 +48,9 @@ class LambdaHandler:
 
     @property
     def status(self) -> ResourceStatus:
-        if self.configuration is None:
-            return "NOEXIST"
         match self.configuration.last_update_status:
+            case None:
+                return "NOEXIST"
             case "InProgress":
                 return "PROGRESS"
             case "Failed":
