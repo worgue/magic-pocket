@@ -51,10 +51,6 @@ def get_project_name():
     return Path.cwd().name
 
 
-def get_object_prefix():
-    return "pocket-"
-
-
 def get_hosted_zone_id_from_domain(domain: str):
     echo.log("Searching hostedzone_id from domain: %s" % domain)
     echo.log("Requesting Route53 hosted zone list...")

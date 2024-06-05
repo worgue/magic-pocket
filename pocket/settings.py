@@ -158,14 +158,13 @@ class S3(BaseSettings):
 
 
 class Settings(BaseSettings):
+    object_prefix: str = "pocket-"
     region: str
     project_name: str = Field(default_factory=get_project_name)
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
-
-    model_config = SettingsConfigDict(env_prefix="pocket_")
 
     @computed_field
     @property
