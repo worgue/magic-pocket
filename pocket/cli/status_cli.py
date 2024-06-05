@@ -31,6 +31,8 @@ def show_status_message(resource):
 
 
 def show_info_message(resource):
+    if hasattr(resource, "description"):
+        echo.info(resource.description)
     print(resource.context.model_dump_json(indent=2))
 
 

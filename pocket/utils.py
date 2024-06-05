@@ -81,7 +81,7 @@ def get_wsgi_application():
         mod = importlib.import_module("%s.wsgi" % get_project_name())
     except ModuleNotFoundError as err:
         raise Exception(
-            "Failed to import WSGI application %s.wsgi.\n wsgi handler may have detailed log."
-            % get_project_name()
+            "Failed to import WSGI application %s.wsgi.\n"
+            " wsgi handler may have detailed log." % get_project_name()
         ) from err
     return mod.application

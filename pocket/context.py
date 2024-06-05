@@ -32,7 +32,7 @@ class EfsContext(settings.Efs):
     @classmethod
     def context(cls, data: dict) -> dict:
         vvc = context_vpcvalidate.get()
-        data["name"] = "%s%s-%s" % (vvc.object_prefix, vvc.project_name, vvc.ref)
+        data["name"] = vvc.object_prefix + vvc.ref + "-" + vvc.project_name
         data["region"] = vvc.region
         return data
 
@@ -66,7 +66,9 @@ class VpcContext(settings.Vpc):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["name"] = data["ref"] + "-" + settings.project_name
+        data["name"] = (
+            settings.object_prefix + data["ref"] + "-" + settings.project_name
+        )
         return data
 
     @model_validator(mode="wrap")
@@ -142,7 +144,7 @@ class LambdaHandlerContext(settings.LambdaHandler):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["function_name"] = f"{settings.slug}-{data['key']}"
+        data["function_name"] = f"{settings.object_prefix}{settings.slug}-{data['key']}"
         data["log_group_name"] = f"/aws/lambda/{data['function_name']}"
         if data["sqs"]:
             data["sqs"]["name"] = f"{settings.slug}-{data['key']}"

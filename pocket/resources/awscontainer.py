@@ -69,6 +69,13 @@ class AwsContainer:
                 return "REQUIRE_UPDATE"
         return "COMPLETED"
 
+    @property
+    def description(self):
+        return "Create aws cloudformation stack: %s\n" "Create ecr repository: %s" % (
+            self.stack.name,
+            self.repository.name,
+        )
+
     def deploy_init(self):
         self.repository.sync()
         if self.context.vpc:

@@ -220,6 +220,10 @@ class Neon:
         logger.info(str(check))
         return all(check)
 
+    @property
+    def description(self):
+        return "Create Neon project, branch, database, role, and endpoint"
+
     def create_new(self):
         self.create()
         self.reset_database()

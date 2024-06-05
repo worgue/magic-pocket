@@ -35,6 +35,13 @@ class Vpc:
         if self.stack.output:
             return self.stack.output[self.stack.export["vpc_id"]]
 
+    @property
+    def description(self):
+        description = "Create aws cloudformation stack: %s" % self.stack.name
+        if self.efs:
+            description += "\nCreate efs: %s" % self.efs.context.name
+        return description
+
     def deploy_init(self):
         if self.efs:
             self.efs.ensure_exists()
