@@ -164,8 +164,7 @@ class LambdaHandler:
             if events:
                 return events
         print(
-            "Searched %s log stream below..."
-            % len(target_log_stream_names)  # pyright: ignore
+            "Searched %s log stream below..." % len(target_log_stream_names)  # pyright: ignore
         )
         for s in target_log_stream_names:  # pyright: ignore
             print("  - %s" % s)

@@ -4,8 +4,8 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "magic-pocket"
-authors = [{name = "Masaaki Yasui", email = "yasu@worgue.com"}]
-license = {file = "LICENSE"}
+authors = [{ name = "Masaaki Yasui", email = "yasu@worgue.com" }]
+license = { file = "LICENSE" }
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
 dependencies = [
@@ -26,9 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-django = [
-    "django>=4.2.0",
-]
+django = ["django>=4.2.0"]
 
 [project.scripts]
 pocket = "pocket.cli.main_cli:main"
@@ -45,9 +43,8 @@ dev-dependencies = [
 name = "pocket"
 
 [tool.ruff]
-# check the default rules at https://beta.ruff.rs/docs/configuration/#using-pyprojecttoml
-select = ["E", "W", "F", "I", "C", "B"]
-# Black can't count Japanese characters correctly.
-ignore = ["E501"]
 # Ignore frontend and django migrations
 exclude = [".git", ".ruff_cache", ".venv", "frontend", "migrations"]
+[tool.ruff.lint]
+# check the default rules at https://beta.ruff.rs/docs/configuration/#using-pyprojecttoml
+select = ["E", "W", "F", "I", "C", "B"]
