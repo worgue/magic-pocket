@@ -22,6 +22,10 @@ logger.setLevel(level=os.getenv("POCKET_LOGGER_LEVEL", "WARNING").upper())
 ResourceType = Literal["projects", "branches", "databases", "endpoints", "roles"]
 
 
+class NeonResourceIsNotReady(Exception):
+    pass
+
+
 class Project(BaseModel):
     id: str
     name: str
@@ -198,7 +202,7 @@ class Neon:
     @property
     def database_url(self):
         if self.role is None or self.endpoint is None:
-            raise Exception("Create role and endpoint first")
+            raise NeonResourceIsNotReady("Create role and endpoint first")
         if self.role.password is None:
             self.set_role_password()
         return "postgres://%s:%s@%s:5432/%s" % (

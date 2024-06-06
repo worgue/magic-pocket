@@ -154,6 +154,9 @@ class LambdaHandlerContext(settings.LambdaHandler):
 
 class SecretsManagerContext(settings.SecretsManager):
     region: str
+    pocket_key: str
+    stage: str
+    project_name: str
 
     @cached_property
     def resource(self):
@@ -164,6 +167,14 @@ class SecretsManagerContext(settings.SecretsManager):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
+        format_vars = {
+            "prefix": settings.object_prefix,
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["pocket_key"] = data["pocket_key_format"].format(**format_vars)
+        data["stage"] = settings.stage
+        data["project_name"] = settings.project_name
         return data
 
 

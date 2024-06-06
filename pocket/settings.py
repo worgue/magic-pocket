@@ -15,6 +15,9 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
+# Restrict string to a valid environment variable name
+EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
+
 # Restrict string to a valid Docker tag
 TagStr = Annotated[str, Field(pattern="^[a-z0-9][a-z0-9._-]*$", max_length=128)]
 
@@ -92,13 +95,43 @@ class AwsContainer(BaseModel):
     django: Django | None = None
 
 
+class PocketSecret(BaseModel):
+    type: str
+    options: dict[str, str | int] = {}
+
+
 class SecretsManager(BaseSettings):
+    pocket_key_format: Annotated[
+        FormatStr,
+        Field(
+            description=(
+                "Format string for pocket key. e.g) {prefix}{stage}-{project}\n"
+                "You can use variables: prefix, project, stage\n"
+                "Although default value contains stage and project, "
+                "it is not required. Because the secret value is stored "
+                "under the stage and project key in json.\n"
+                "If you remove stage or project from the key, be careful "
+                "not to generate secret keys simaltaneously in different situations.\n"
+                "It might cause a race condition."
+            )
+        ),
+    ] = "{prefix}{stage}-{project}"
+    pocket: Annotated[
+        dict[EnvStr, PocketSecret],
+        Field(
+            description=(
+                "These secrets are managed by magic-pocket, "
+                "magic-pocket create secrets when creating lambda container."
+            )
+        ),
+    ] = {}
     secrets: Annotated[
-        dict[str, str],
+        dict[EnvStr, str],
         Field(
             description=(
                 "These secres got GetSecretValue permissions automatically, "
-                "so does not need to be explicitly defined in resources"
+                "so does not need to be explicitly defined in resources.\n"
+                "But, you still need to create it by yourself."
             )
         ),
     ] = {}
