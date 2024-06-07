@@ -34,15 +34,22 @@ def set_user_secrets_from_secretsmanager(
         os.environ[key] = value
 
 
-def set_env_from_resources(stage: str | None = None, path: str | Path | None = None):
+def set_env_from_resources(
+    stage: str | None = None,
+    path: str | Path | None = None,
+    use_neon=False,
+    use_awscontainer=True,
+):
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return
     context = Context.from_toml(stage=stage, path=path or "pocket.toml")
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
-    if neon := context.neon:
+    if (neon := context.neon) and use_neon:
+        # secretmanager.pocket in pocket.toml is preferred.
+        # e.g) DATABASE_URL = { type = "neon_database_url" }
         os.environ["DATABASE_URL"] = neon.resource.database_url
-    if awscontainer := context.awscontainer:
+    if (awscontainer := context.awscontainer) and use_awscontainer:
         hosts = []
         for lambda_key, host in awscontainer.resource.hosts.items():
             if host:
