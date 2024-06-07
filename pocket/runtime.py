@@ -11,18 +11,19 @@ def get_stage():
 def get_user_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict:
-    stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
+    stage = stage or get_stage()
+    if stage == "__none__":
+        return {}
+    context = Context.from_toml(stage=stage, path=path or "pocket.toml")
+    if (ac := context.awscontainer) is None:
+        return {}
+    if (sm := ac.secretsmanager) is None:
         return {}
     secrets = {}
-    context = Context.from_toml(
-        stage=stage,
-        filters=["awscontainer", "region", "vpcs", "s3"],
-        path=path or "pocket.toml",
-    )
-    if secretsmanager := context.awscontainer and context.awscontainer.secretsmanager:
-        for key, value in secretsmanager.resource.resolved_secrets.items():
-            secrets[key] = value
+    for key, value in sm.resource.resolved_secrets.items():
+        secrets[key] = value
+    for key, value in sm.resource.pocket_secrets.items():
+        secrets[key] = value
     return secrets
 
 

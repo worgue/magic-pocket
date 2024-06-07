@@ -322,7 +322,7 @@ class Context(settings.Settings):
     def from_settings(cls, settings: settings.Settings) -> Context:
         token = context_settings.set(settings)
         try:
-            data = settings.model_dump()
+            data = settings.model_dump(by_alias=True)
             return cls.model_validate(data)
         finally:
             context_settings.reset(token)
