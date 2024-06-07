@@ -1,20 +1,8 @@
 import click
 
-from pocket.context import Context
-from pocket.utils import echo
-
-
-def get_resources(context: Context):
-    resources = []
-    if context.awscontainer:
-        if context.awscontainer.vpc:
-            resources.append(context.awscontainer.vpc.resource)
-        resources.append(context.awscontainer.resource)
-    if context.neon:
-        resources.append(context.neon.resource)
-    if context.s3:
-        resources.append(context.s3.resource)
-    return resources
+from ..context import Context
+from ..utils import echo
+from .deploy_cli import get_resources
 
 
 def show_status_message(resource):

@@ -2,9 +2,9 @@ from pprint import pprint
 
 import click
 
-from pocket.context import Context
-from pocket.resources.neon import Neon
-from pocket.utils import echo
+from ..context import Context
+from ..resources.neon import Neon
+from ..utils import echo
 
 
 @click.group()

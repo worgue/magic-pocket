@@ -154,17 +154,50 @@ class LambdaHandlerContext(settings.LambdaHandler):
 
 class SecretsManagerContext(settings.SecretsManager):
     region: str
+    pocket_key: str
+    stage: str
+    project_name: str
 
     @cached_property
     def resource(self):
         return SecretsManager(self)
+
+    def _ensure_arn(self, resource: str):
+        if resource.startswith("arn:"):
+            return resource
+        return (
+            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:" + resource
+        )
+
+    @computed_field
+    @cached_property
+    def allowed_resources(self) -> list[str]:
+        resources = list(self.secrets.values())
+        if self.pocket:
+            resources.append(self.resource.pocket_secrets_arn)
+        resources += self.extra_resources
+        return [self._ensure_arn(resource) for resource in resources if resource]
 
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
+        format_vars = {
+            "prefix": settings.object_prefix,
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["pocket_key"] = data["pocket_key_format"].format(**format_vars)
+        data["stage"] = settings.stage
+        data["project_name"] = settings.project_name
         return data
+
+    @model_validator(mode="after")
+    def check_entry(self):
+        if (not self.require_list_secrets) and (not self.allowed_resources):
+            raise ValueError("No resources are registered to secretsmanager")
+        return self
 
 
 class DjangoStorageContext(settings.DjangoStorage):
@@ -311,7 +344,7 @@ class Context(settings.Settings):
     def from_settings(cls, settings: settings.Settings) -> Context:
         token = context_settings.set(settings)
         try:
-            data = settings.model_dump()
+            data = settings.model_dump(by_alias=True)
             return cls.model_validate(data)
         finally:
             context_settings.reset(token)
