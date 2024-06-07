@@ -73,10 +73,16 @@ class AwsContainer:
 
     @property
     def description(self):
-        return "Create aws cloudformation stack: %s\n" "Create ecr repository: %s" % (
+        msg = "Create aws cloudformation stack: %s\n" "Create ecr repository: %s" % (
             self.stack.name,
             self.repository.name,
         )
+        if self.context.secretsmanager and self.context.secretsmanager.pocket:
+            msg += (
+                "\nCreate secretsmanager pocket managed secrets: %s"
+                % self.context.secretsmanager.pocket_key
+            )
+        return msg
 
     def deploy_init(self):
         self.repository.sync()
