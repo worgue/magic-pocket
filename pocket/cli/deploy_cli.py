@@ -1,7 +1,7 @@
 import click
 
-from pocket.context import Context
-from pocket.utils import echo
+from ..context import Context
+from ..utils import echo
 
 
 def get_resources(context: Context):
