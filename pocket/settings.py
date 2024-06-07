@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 
 import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .utils import get_project_name
 
@@ -182,6 +182,8 @@ class Sqs(BaseModel):
 class Neon(BaseSettings):
     pg_version: int = 15
     api_key: str | None = Field(alias="neon_api_key", default=None)
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 class S3(BaseSettings):
