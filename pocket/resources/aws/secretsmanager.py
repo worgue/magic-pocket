@@ -42,15 +42,27 @@ class SecretsManager:
                 SecretId=secret_arn,
                 SecretString=json.dumps(data),
             )
+        del self._pocket_secrets_response
 
     @cached_property
-    def pocket_secrets(self) -> dict[str, str]:
+    def _pocket_secrets_response(self):
         echo.log("Requesting pocket secrets %s ..." % self.context.pocket_key)
         try:
-            res = self.client.get_secret_value(SecretId=self.context.pocket_key)
+            return self.client.get_secret_value(SecretId=self.context.pocket_key)
         except self.client.exceptions.ResourceNotFoundException:
+            return None
+
+    @property
+    def pocket_secrets_arn(self) -> str:
+        if self._pocket_secrets_response:
+            return self._pocket_secrets_response["ARN"]
+        raise ValueError("Pocket secrets not found")
+
+    @property
+    def pocket_secrets(self) -> dict[str, str]:
+        if self._pocket_secrets_response is None:
             return {}
-        data = json.loads(res["SecretString"])
+        data = json.loads(self._pocket_secrets_response["SecretString"])
         if self.context.stage in data:
             if self.context.project_name in data[self.context.stage]:
                 return data[self.context.stage][self.context.project_name]

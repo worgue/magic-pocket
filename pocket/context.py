@@ -162,6 +162,22 @@ class SecretsManagerContext(settings.SecretsManager):
     def resource(self):
         return SecretsManager(self)
 
+    def _ensure_arn(self, resource: str):
+        if resource.startswith("arn:"):
+            return resource
+        return (
+            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:" + resource
+        )
+
+    @computed_field
+    @cached_property
+    def allowed_resources(self) -> list[str]:
+        resources = list(self.secrets.values())
+        if self.pocket:
+            resources.append(self.resource.pocket_secrets_arn)
+        resources += self.extra_resources
+        return [self._ensure_arn(resource) for resource in resources if resource]
+
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
@@ -176,6 +192,12 @@ class SecretsManagerContext(settings.SecretsManager):
         data["stage"] = settings.stage
         data["project_name"] = settings.project_name
         return data
+
+    @model_validator(mode="after")
+    def check_entry(self):
+        if (not self.require_list_secrets) and (not self.allowed_resources):
+            raise ValueError("No resources are registered to secretsmanager")
+        return self
 
 
 class DjangoStorageContext(settings.DjangoStorage):
