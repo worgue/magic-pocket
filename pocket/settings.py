@@ -28,8 +28,8 @@ FormatStr = Annotated[
         pattern="^[a-z0-9{][{}a-z0-9._-]*$",
         max_length=128,
         description=(
-            "Formatted string."
-            "You can use variables: prefix, project, stage(for containers), and ref(for vpc)"
+            "Formatted string. You can use variables: "
+            "prefix, project, stage(for containers), and ref(for vpc)\n"
             "e.g) {prefix}{stage}-{project}"
         ),
     ),
@@ -54,8 +54,9 @@ class Vpc(BaseSettings):
             raise ValueError("nat_gateway without internet_gateway is not supported.")
         if self.internet_gateway and not self.nat_gateway:
             raise ValueError(
-                "lambda runs in private subnet, internet_gateway without nat_gateway is not supported yet."
-                "It will be supported in the future with fargate."
+                "lambda runs in private subnet, internet_gateway without nat_gateway is"
+                " not supported yet.\nWe should support it in the future if we want to "
+                "support fargate."
             )
         return self
 
