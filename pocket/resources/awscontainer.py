@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import boto3
 
+from pocket.mediator import Mediator
+
 from .. import context
 from .aws.cloudformation import ContainerStack
 from .aws.ecr import Ecr
@@ -81,11 +83,14 @@ class AwsContainer:
         if self.context.vpc:
             self.context.vpc.resource.stack.wait_status("COMPLETED")
 
-    def create(self):
+    def create(self, mediator: Mediator):
+        print("Creating secrets ...")
+        mediator.ensure_pocket_managed_secrets()
         print("Creating cloudformation stack for awscontainer ...")
         self.stack.create()
 
-    def update(self):
+    def update(self, mediator: Mediator):
+        mediator.ensure_pocket_managed_secrets()
         for key, handler in self.handlers.items():
             if handler.status == "NOEXIST":
                 print(f"function {key} was not found and skipped.")

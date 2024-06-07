@@ -3,8 +3,8 @@ import webbrowser
 import click
 
 from ..context import Context
+from ..mediator import Mediator
 from ..resources.awscontainer import AwsContainer
-from ..secret_generator import generate_secret
 from ..utils import echo
 
 
@@ -69,23 +69,8 @@ def create_pocket_managed(stage):
     if not sm:
         echo.warning("secretsmanager is not configured for this stage")
         return
-    created_secrets = {}
-    for key, pocket_secret_setting in sm.pocket.items():
-        if key in sm.resource.pocket_secrets:
-            echo.warning(
-                "%s is already created. "
-                "Use rotate-pocket-managed if you want to refresh the secrets" % key
-            )
-        else:
-            if secret := generate_secret(
-                Context.from_toml(stage=stage), pocket_secret_setting
-            ):
-                created_secrets[key] = secret
-            else:
-                echo.warning("Secret generation for %s is failed." % key)
-    if created_secrets:
-        new_pocket_secrets = sm.resource.pocket_secrets.copy() | created_secrets
-        sm.resource.update_pocket_secrets(new_pocket_secrets)
+    mediator = Mediator(Context.from_toml(stage=stage))
+    mediator.create_pocket_managed_secrets()
 
 
 @awscontainer.command()
@@ -95,7 +80,8 @@ def create(stage):
     if not ac.status == "NOEXIST":
         echo.warning("AWS lambda container is already created.")
     else:
-        ac.create()
+        mediator = Mediator(Context.from_toml(stage=stage))
+        ac.create(mediator)
         echo.success("Created: lambda")
 
 
@@ -112,7 +98,8 @@ def update(stage):
     if ac.status == "PROGRESS":
         echo.warning("AWS lambda is updating. Please wait.")
         return
-    ac.update()
+    mediator = Mediator(Context.from_toml(stage=stage))
+    ac.update(mediator)
 
 
 @awscontainer.command()
