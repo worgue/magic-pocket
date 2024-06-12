@@ -52,8 +52,8 @@ def list(stage, show_values):
     for key, arn in sm.secrets.items():
         print("%s: %s" % (key, arn))
         if show_values:
-            print("  - " + sm.resource.resolved_secrets[key])
-    for key, pocket_secret in sm.pocket.items():
+            print("  - " + sm.resource.user_secrets[key])
+    for key, pocket_secret in sm.pocket_secrets.items():
         status = "CREATED" if key in sm.resource.pocket_secrets else "NOEXIST"
         print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
         print("  - " + status)

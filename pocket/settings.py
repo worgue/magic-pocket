@@ -96,7 +96,7 @@ class AwsContainer(BaseModel):
     django: Django | None = None
 
 
-class PocketSecret(BaseModel):
+class PocketSecretSpec(BaseModel):
     type: str
     options: dict[str, str | int] = {}
 
@@ -117,8 +117,8 @@ class SecretsManager(BaseSettings):
             )
         ),
     ] = "{prefix}{stage}-{project}"
-    pocket: Annotated[
-        dict[EnvStr, PocketSecret],
+    pocket_secrets: Annotated[
+        dict[EnvStr, PocketSecretSpec],
         Field(
             description=(
                 "These secrets are managed by magic-pocket, "

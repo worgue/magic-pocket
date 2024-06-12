@@ -77,7 +77,7 @@ class AwsContainer:
             self.stack.name,
             self.repository.name,
         )
-        if self.context.secretsmanager and self.context.secretsmanager.pocket:
+        if self.context.secretsmanager and self.context.secretsmanager.pocket_secrets:
             msg += (
                 "\nCreate secretsmanager pocket managed secrets: %s"
                 % self.context.secretsmanager.pocket_key

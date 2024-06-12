@@ -9,7 +9,7 @@ from .utils import echo
 
 if TYPE_CHECKING:
     from pocket.context import Context
-    from pocket.settings import PocketSecret
+    from pocket.settings import PocketSecretSpec
 
 
 class Mediator:
@@ -37,7 +37,7 @@ class Mediator:
         if (sm := self.context.awscontainer.secretsmanager) is None:
             return
         generated = {}
-        for key, pocket_secret in sm.pocket.items():
+        for key, pocket_secret in sm.pocket_secrets.items():
             if key not in sm.resource.pocket_secrets:
                 value = self._generate_secret(pocket_secret)
                 if value is None:
@@ -58,13 +58,13 @@ class Mediator:
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
 
-    def _generate_secret(self, pocket_secret: PocketSecret):
-        if pocket_secret.type == "password":
-            return self._generate_password(pocket_secret.options)
-        elif pocket_secret.type == "neon_database_url":
+    def _generate_secret(self, spec: PocketSecretSpec):
+        if spec.type == "password":
+            return self._generate_password(spec.options)
+        elif spec.type == "neon_database_url":
             return self._get_neon_database_url()
         else:
-            raise Exception("Unknown secret type: %s" % pocket_secret.type)
+            raise Exception("Unknown secret type: %s" % spec.type)
 
     def _generate_password(self, options):
         length = options.get("length", 16)

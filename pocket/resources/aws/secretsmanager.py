@@ -21,51 +21,40 @@ class SecretsManager:
 
     def delete_pocket_secrets(self):
         echo.log("Deleting pocket secrets %s ..." % self.context.pocket_key)
-        try:
-            res = self.client.get_secret_value(SecretId=self.context.pocket_key)
-            secret_arn = res["ARN"]
-            data = json.loads(res["SecretString"])
-        except self.client.exceptions.ResourceNotFoundException:
+        res = self._pocket_secrets_response
+        if res is None:
             echo.warning("Pocket secrets key was not found")
             return
+        data = json.loads(res["SecretString"])
         if data.get(self.context.stage, {}).get(self.context.project_name) is None:
             echo.warning("Pocket secrets entry was not found")
             return
         del data[self.context.stage][self.context.project_name]
         if data[self.context.stage] == {}:
             del data[self.context.stage]
-        echo.log("Deleting pocket secrets %s ..." % self.context.pocket_key)
+        echo.log("Deleting the entry...")
+        self.client.put_secret_value(SecretId=res["ARN"], SecretString=json.dumps(data))
         if data == {}:
-            echo.log(f"No entry left, deleting the secret {secret_arn}...")
-            self.client.delete_secret(SecretId=secret_arn, RecoveryWindowInDays=30)
-        else:
-            echo.log("Deleting the entry...")
-            self.client.put_secret_value(
-                SecretId=secret_arn,
-                SecretString=json.dumps(data),
-            )
+            echo.log(f"No entry left, deleting the secret {res['ARN']}...")
+            self.client.delete_secret(SecretId=res["ARN"], RecoveryWindowInDays=30)
+        del self._pocket_secrets_response
 
     def update_pocket_secrets(self, secrets: dict[str, str]):
         echo.log("Getting pocket secrets %s ..." % self.context.pocket_key)
-        try:
-            res = self.client.get_secret_value(SecretId=self.context.pocket_key)
-            secret_arn = res["ARN"]
-            data = json.loads(res["SecretString"])
-        except self.client.exceptions.ResourceNotFoundException:
-            data = {}
-            secret_arn = None
+        res = self._pocket_secrets_response
+        data = json.loads(res["SecretString"]) if res else {}
         if self.context.stage not in data:
             data[self.context.stage] = {}
         data[self.context.stage][self.context.project_name] = secrets
         echo.log("Updating pocket secrets %s ..." % self.context.pocket_key)
-        if secret_arn is None:
+        if res is None:
             self.client.create_secret(
                 Name=self.context.pocket_key,
                 SecretString=json.dumps(data),
             )
         else:
             self.client.put_secret_value(
-                SecretId=secret_arn,
+                SecretId=res["ARN"],
                 SecretString=json.dumps(data),
             )
         del self._pocket_secrets_response
@@ -77,6 +66,9 @@ class SecretsManager:
             return self.client.get_secret_value(SecretId=self.context.pocket_key)
         except self.client.exceptions.ResourceNotFoundException:
             return None
+        except self.client.exceptions.InvalidRequestException:
+            self.client.restore_secret(SecretId=self.context.pocket_key)
+            return self.client.get_secret_value(SecretId=self.context.pocket_key)
 
     @property
     def pocket_secrets_arn(self) -> str:
@@ -95,13 +87,8 @@ class SecretsManager:
         return {}
 
     @cached_property
-    def resolved_secrets(self) -> dict[str, str]:
-        """These are only containe explicitly defined secrets in the pocket.toml file.
-        The variable name is confusing because this was created before pocket_secrets.
-        We should rename this to clearer one... someday.
-        """
-
-        echo.log("Requesting secrets list...")
+    def user_secrets(self) -> dict[str, str]:
+        echo.log("Requesting user secrets list...")
         secrets = {}
         for key, arn in self.context.secrets.items():
             res = self.client.get_secret_value(SecretId=arn)
@@ -110,4 +97,4 @@ class SecretsManager:
 
     def clear_cache(self):
         if hasattr(self, "resolved_secrets"):
-            del self.resolved_secrets
+            del self.user_secrets

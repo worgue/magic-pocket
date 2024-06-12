@@ -173,7 +173,7 @@ class SecretsManagerContext(settings.SecretsManager):
     @cached_property
     def allowed_resources(self) -> list[str]:
         resources = list(self.secrets.values())
-        if self.pocket:
+        if self.pocket_secrets:
             resources.append(self.resource.pocket_secrets_arn)
         resources += self.extra_resources
         return [self._ensure_arn(resource) for resource in resources if resource]

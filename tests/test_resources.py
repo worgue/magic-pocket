@@ -39,7 +39,7 @@ def test_secretsmanager():
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secretsmanager
-    assert context.awscontainer.secretsmanager.resource.resolved_secrets == {
+    assert context.awscontainer.secretsmanager.resource.user_secrets == {
         "DATABASE_URL": "postgres://localhost:5432"
     }
 

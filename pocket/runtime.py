@@ -20,7 +20,7 @@ def get_user_secrets_from_secretsmanager(
     if (sm := ac.secretsmanager) is None:
         return {}
     secrets = {}
-    for key, value in sm.resource.resolved_secrets.items():
+    for key, value in sm.resource.user_secrets.items():
         secrets[key] = value
     for key, value in sm.resource.pocket_secrets.items():
         secrets[key] = value
