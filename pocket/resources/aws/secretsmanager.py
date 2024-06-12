@@ -19,6 +19,32 @@ class SecretsManager:
         self.context = context
         self.client = boto3.client("secretsmanager", region_name=context.region)
 
+    def delete_pocket_secrets(self):
+        echo.log("Deleting pocket secrets %s ..." % self.context.pocket_key)
+        try:
+            res = self.client.get_secret_value(SecretId=self.context.pocket_key)
+            secret_arn = res["ARN"]
+            data = json.loads(res["SecretString"])
+        except self.client.exceptions.ResourceNotFoundException:
+            echo.warning("Pocket secrets key was not found")
+            return
+        if data.get(self.context.stage, {}).get(self.context.project_name) is None:
+            echo.warning("Pocket secrets entry was not found")
+            return
+        del data[self.context.stage][self.context.project_name]
+        if data[self.context.stage] == {}:
+            del data[self.context.stage]
+        echo.log("Deleting pocket secrets %s ..." % self.context.pocket_key)
+        if data == {}:
+            echo.log(f"No entry left, deleting the secret {secret_arn}...")
+            self.client.delete_secret(SecretId=secret_arn, RecoveryWindowInDays=30)
+        else:
+            echo.log("Deleting the entry...")
+            self.client.put_secret_value(
+                SecretId=secret_arn,
+                SecretString=json.dumps(data),
+            )
+
     def update_pocket_secrets(self, secrets: dict[str, str]):
         echo.log("Getting pocket secrets %s ..." % self.context.pocket_key)
         try:

@@ -73,6 +73,17 @@ def create_pocket_managed(stage):
     mediator.create_pocket_managed_secrets()
 
 
+@secretsmanager.command()
+@click.option("--stage", prompt=True)
+def delete_pocket_managed(stage):
+    ac = get_awscontainer_resource(stage)
+    sm = ac.context.secretsmanager
+    if not sm:
+        echo.warning("secretsmanager is not configured for this stage")
+        return
+    sm.resource.delete_pocket_secrets()
+
+
 @awscontainer.command()
 @click.option("--stage", prompt=True)
 def create(stage):
