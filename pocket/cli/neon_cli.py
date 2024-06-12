@@ -37,6 +37,14 @@ def create(stage):
 
 @neon.command()
 @click.option("--stage", prompt=True)
+def reset_database(stage):
+    neon = get_neon_resource(stage)
+    neon.reset_database()
+    echo.success("Reset database")
+
+
+@neon.command()
+@click.option("--stage", prompt=True)
 @click.option("--base-stage", default=None)
 def branch_out(stage, base_stage):
     neon = get_neon_resource(stage)
