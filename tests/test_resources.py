@@ -47,15 +47,15 @@ def test_secretsmanager():
 def get_default_awscontainer():
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
     assert context.awscontainer
-    assert context.awscontainer.resource.repository
+    assert context.awscontainer.resource.ecr
     return context.awscontainer.resource
 
 
 @mock_aws
 def test_ecr():
     ac = get_default_awscontainer()
-    ac.repository.ensure_exists()
-    assert ac.repository.uri
+    ac.ecr.ensure_exists()
+    assert ac.ecr.uri
 
 
 @mock_aws

@@ -252,7 +252,7 @@ class AwsContainerContext(settings.AwsContainer):
     slug: str
     stage: str
     handlers: dict[str, LambdaHandlerContext] = {}
-    repository_name: str
+    ecr_name: str
     use_s3: bool
     use_route53: bool = False
     use_sqs: bool = False
@@ -271,9 +271,7 @@ class AwsContainerContext(settings.AwsContainer):
         data["region"] = settings.region
         data["slug"] = settings.slug
         data["stage"] = settings.stage
-        data["repository_name"] = (
-            settings.object_prefix + settings.project_name + "-lambda"
-        )
+        data["ecr_name"] = settings.object_prefix + settings.project_name + "-lambda"
         data["use_s3"] = settings.s3 is not None
         if data["vpc"] and (data["vpc"]["efs"] is not None):
             data["use_efs"] = True

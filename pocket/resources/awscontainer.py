@@ -29,14 +29,14 @@ class AwsContainer:
 
     @property
     def image_uri(self):
-        if self.repository.uri:
-            return self.repository.uri + ":" + self.context.stage
+        if self.ecr.uri:
+            return self.ecr.uri + ":" + self.context.stage
 
     @property
-    def repository(self):
+    def ecr(self):
         return Ecr(
             self.context.region,
-            self.context.repository_name,
+            self.context.ecr_name,
             self.context.stage,
             self.context.dockerfile_path,
             self.context.platform,
@@ -67,7 +67,7 @@ class AwsContainer:
             if status in status_list:
                 return status
         for handler in self.handlers.values():
-            if handler.configuration.hash != self.repository.image_detail.hash:
+            if handler.configuration.hash != self.ecr.image_detail.hash:
                 return "REQUIRE_UPDATE"
         return "COMPLETED"
 
@@ -75,7 +75,7 @@ class AwsContainer:
     def description(self):
         msg = "Create aws cloudformation stack: %s\n" "Create ecr repository: %s" % (
             self.stack.name,
-            self.repository.name,
+            self.ecr.name,
         )
         if self.context.secretsmanager and self.context.secretsmanager.pocket_secrets:
             msg += (
@@ -85,7 +85,7 @@ class AwsContainer:
         return msg
 
     def deploy_init(self):
-        self.repository.sync()
+        self.ecr.sync()
         if self.context.vpc:
             self.context.vpc.resource.stack.wait_status("COMPLETED")
 
