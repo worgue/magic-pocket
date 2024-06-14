@@ -8,7 +8,7 @@ import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .utils import get_project_name
+from .utils import get_project_name, get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -208,7 +208,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
-        path = path or "pocket.toml"
+        path = path or get_toml_path()
         data = tomllib.loads(Path(path).read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)

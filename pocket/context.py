@@ -18,7 +18,7 @@ from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
 from .resources.vpc import Vpc
-from .utils import get_hosted_zone_id_from_domain, get_project_name
+from .utils import get_hosted_zone_id_from_domain, get_project_name, get_toml_path
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
 context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
@@ -90,7 +90,8 @@ class VpcContext(settings.Vpc):
             context_vpcvalidate.reset(token)
 
     @classmethod
-    def from_toml(cls, *, ref: str, path: str | Path = Path("pocket.toml")):
+    def from_toml(cls, *, ref: str, path: str | Path | None = None):
+        path = path or get_toml_path()
         data = tomllib.loads(Path(path).read_text())
         if "vpcs" not in data:
             raise ValueError("vpcs is required when vpc_ref is used")
@@ -349,7 +350,7 @@ class Context(settings.Settings):
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
-        path = path or "pocket.toml"
+        path = path or get_toml_path()
         return cls.from_settings(settings.Settings.from_toml(stage=stage, path=path))
 
     @model_validator(mode="after")

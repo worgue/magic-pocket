@@ -5,7 +5,7 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.urls import path
 
-from ..runtime import get_stage
+from ..utils import get_stage
 
 if sys.version_info >= (3, 11):
     import tomllib

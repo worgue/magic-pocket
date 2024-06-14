@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -42,6 +43,15 @@ class Echo:
 
 
 echo = Echo()
+
+
+def get_stage():
+    return os.environ.get("POCKET_STAGE") or "__none__"
+
+
+def get_toml_path():
+    pathname = os.environ.get("POCKET_TOML_PATH") or "pocket.toml"
+    return Path(pathname)
 
 
 def get_project_name():

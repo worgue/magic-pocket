@@ -30,7 +30,7 @@ def get_django_settings(
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return {}
-    context = Context.from_toml(stage=stage, path=path or "pocket.toml")
+    context = Context.from_toml(stage=stage, path=path)
     if context.awscontainer and context.awscontainer.django:
         return context.awscontainer.django.settings
     return {}

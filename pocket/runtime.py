@@ -1,11 +1,8 @@
 import os
 from pathlib import Path
 
-from pocket.context import Context
-
-
-def get_stage():
-    return os.environ.get("POCKET_STAGE") or "__none__"
+from .context import Context
+from .utils import get_stage, get_toml_path
 
 
 def get_user_secrets_from_secretsmanager(
@@ -14,7 +11,8 @@ def get_user_secrets_from_secretsmanager(
     stage = stage or get_stage()
     if stage == "__none__":
         return {}
-    context = Context.from_toml(stage=stage, path=path or "pocket.toml")
+    path = path or get_toml_path()
+    context = Context.from_toml(stage=stage, path=path)
     if (ac := context.awscontainer) is None:
         return {}
     if (sm := ac.secretsmanager) is None:
@@ -40,10 +38,11 @@ def set_env_from_resources(
     use_neon=False,
     use_awscontainer=True,
 ):
-    stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
+    stage = stage or get_stage()
+    if stage == "__none__":
         return
-    context = Context.from_toml(stage=stage, path=path or "pocket.toml")
+    path = path or get_toml_path()
+    context = Context.from_toml(stage=stage, path=path)
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
     if (neon := context.neon) and use_neon:
         # secretmanager.pocket in pocket.toml is preferred.
