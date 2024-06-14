@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -44,15 +45,20 @@ class Echo:
 echo = Echo()
 
 
+def get_stage():
+    return os.environ.get("POCKET_STAGE") or "__none__"
+
+
+def get_toml_path():
+    pathname = os.environ.get("POCKET_TOML_PATH") or "pocket.toml"
+    return Path(pathname)
+
+
 def get_project_name():
     data = tomllib.loads(Path("pyproject.toml").read_text())
     if data.get("project", {}).get("name"):
         return data["project"]["name"]
     return Path.cwd().name
-
-
-def get_object_prefix():
-    return "pocket-"
 
 
 def get_hosted_zone_id_from_domain(domain: str):
@@ -85,7 +91,7 @@ def get_wsgi_application():
         mod = importlib.import_module("%s.wsgi" % get_project_name())
     except ModuleNotFoundError as err:
         raise Exception(
-            "Failed to import WSGI application %s.wsgi.\n wsgi handler may have detailed log."
-            % get_project_name()
+            "Failed to import WSGI application %s.wsgi.\n"
+            " wsgi handler may have detailed log." % get_project_name()
         ) from err
     return mod.application

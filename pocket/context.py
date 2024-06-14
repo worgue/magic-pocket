@@ -18,7 +18,7 @@ from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
 from .resources.vpc import Vpc
-from .utils import get_hosted_zone_id_from_domain, get_object_prefix, get_project_name
+from .utils import get_hosted_zone_id_from_domain, get_project_name, get_toml_path
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
 context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
@@ -32,12 +32,13 @@ class EfsContext(settings.Efs):
     @classmethod
     def context(cls, data: dict) -> dict:
         vvc = context_vpcvalidate.get()
-        data["name"] = "%s%s-%s" % (get_object_prefix(), vvc.project_name, vvc.ref)
+        data["name"] = vvc.object_prefix + vvc.ref + "-" + vvc.project_name
         data["region"] = vvc.region
         return data
 
 
 class VpcValidateContext(BaseModel):
+    object_prefix: str
     project_name: str
     ref: str
     region: str
@@ -65,7 +66,9 @@ class VpcContext(settings.Vpc):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["name"] = settings.project_name + "-" + data["ref"]
+        data["name"] = (
+            settings.object_prefix + data["ref"] + "-" + settings.project_name
+        )
         return data
 
     @model_validator(mode="wrap")
@@ -74,6 +77,7 @@ class VpcContext(settings.Vpc):
         settings = context_settings.get()
         vvc = VpcValidateContext.model_validate(
             {
+                "object_prefix": settings.object_prefix,
                 "project_name": settings.project_name,
                 "ref": v["ref"],
                 "region": settings.region,
@@ -86,7 +90,8 @@ class VpcContext(settings.Vpc):
             context_vpcvalidate.reset(token)
 
     @classmethod
-    def from_toml(cls, *, ref: str, path: str | Path = Path("pocket.toml")):
+    def from_toml(cls, *, ref: str, path: str | Path | None = None):
+        path = path or get_toml_path()
         data = tomllib.loads(Path(path).read_text())
         if "vpcs" not in data:
             raise ValueError("vpcs is required when vpc_ref is used")
@@ -129,8 +134,8 @@ class SqsContext(settings.Sqs):
 
 class LambdaHandlerContext(settings.LambdaHandler):
     region: str
-    apigateway: ApiGatewayContext | None
-    sqs: SqsContext | None
+    apigateway: ApiGatewayContext | None = None
+    sqs: SqsContext | None = None
     key: str
     function_name: str
     log_group_name: str
@@ -140,7 +145,7 @@ class LambdaHandlerContext(settings.LambdaHandler):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
-        data["function_name"] = f"{settings.slug}-{data['key']}"
+        data["function_name"] = f"{settings.object_prefix}{settings.slug}-{data['key']}"
         data["log_group_name"] = f"/aws/lambda/{data['function_name']}"
         if data["sqs"]:
             data["sqs"]["name"] = f"{settings.slug}-{data['key']}"
@@ -150,17 +155,50 @@ class LambdaHandlerContext(settings.LambdaHandler):
 
 class SecretsManagerContext(settings.SecretsManager):
     region: str
+    pocket_key: str
+    stage: str
+    project_name: str
 
     @cached_property
     def resource(self):
         return SecretsManager(self)
+
+    def _ensure_arn(self, resource: str):
+        if resource.startswith("arn:"):
+            return resource
+        return (
+            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:" + resource
+        )
+
+    @computed_field
+    @cached_property
+    def allowed_resources(self) -> list[str]:
+        resources = list(self.secrets.values())
+        if self.pocket_secrets:
+            resources.append(self.resource.pocket_secrets_arn)
+        resources += self.extra_resources
+        return [self._ensure_arn(resource) for resource in resources if resource]
 
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
+        format_vars = {
+            "prefix": settings.object_prefix,
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["pocket_key"] = data["pocket_key_format"].format(**format_vars)
+        data["stage"] = settings.stage
+        data["project_name"] = settings.project_name
         return data
+
+    @model_validator(mode="after")
+    def check_entry(self):
+        if (not self.require_list_secrets) and (not self.allowed_resources):
+            raise ValueError("No resources are registered to secretsmanager")
+        return self
 
 
 class DjangoStorageContext(settings.DjangoStorage):
@@ -189,7 +227,7 @@ class DjangoCacheContext(settings.DjangoCache):
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         format_vars = {
-            "prefix": get_object_prefix(),
+            "prefix": settings.object_prefix,
             "stage": settings.stage,
             "project": settings.project_name,
         }
@@ -210,12 +248,12 @@ class DjangoContext(settings.Django):
 
 class AwsContainerContext(settings.AwsContainer):
     vpc: VpcContext | None = None
-    secretsmanager: SecretsManagerContext | None
+    secretsmanager: SecretsManagerContext | None = None
     region: str
     slug: str
     stage: str
-    handlers: dict[str, LambdaHandlerContext]
-    repository_name: str
+    handlers: dict[str, LambdaHandlerContext] = {}
+    ecr_name: str
     use_s3: bool
     use_route53: bool = False
     use_sqs: bool = False
@@ -234,9 +272,7 @@ class AwsContainerContext(settings.AwsContainer):
         data["region"] = settings.region
         data["slug"] = settings.slug
         data["stage"] = settings.stage
-        data["repository_name"] = (
-            get_object_prefix() + settings.project_name + "-lambda"
-        )
+        data["ecr_name"] = settings.object_prefix + settings.project_name + "-lambda"
         data["use_s3"] = settings.s3 is not None
         if data["vpc"] and (data["vpc"]["efs"] is not None):
             data["use_efs"] = True
@@ -287,7 +323,7 @@ class S3Context(settings.S3):
         settings = context_settings.get()
         data["region"] = settings.region
         format_vars = {
-            "prefix": get_object_prefix(),
+            "prefix": settings.object_prefix,
             "stage": settings.stage,
             "project": settings.project_name,
         }
@@ -307,17 +343,15 @@ class Context(settings.Settings):
     def from_settings(cls, settings: settings.Settings) -> Context:
         token = context_settings.set(settings)
         try:
-            data = settings.model_dump()
+            data = settings.model_dump(by_alias=True)
             return cls.model_validate(data)
         finally:
             context_settings.reset(token)
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
-        path = path or "pocket.toml"
-        return cls.from_settings(
-            settings.Settings.from_toml(stage=stage, path=path, filters=filters)
-        )
+    def from_toml(cls, *, stage: str, path: str | Path | None = None):
+        path = path or get_toml_path()
+        return cls.from_settings(settings.Settings.from_toml(stage=stage, path=path))
 
     @model_validator(mode="after")
     def check_django(self):

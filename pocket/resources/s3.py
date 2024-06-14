@@ -21,6 +21,10 @@ class S3:
         self.context = context
         self.client = boto3.client("s3", region_name=context.region)
 
+    @property
+    def description(self):
+        return "Create bucket: %s" % self.context.bucket_name
+
     def deploy_init(self):
         pass
 

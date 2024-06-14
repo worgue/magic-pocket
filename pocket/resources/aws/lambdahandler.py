@@ -48,9 +48,9 @@ class LambdaHandler:
 
     @property
     def status(self) -> ResourceStatus:
-        if self.configuration is None:
-            return "NOEXIST"
         match self.configuration.last_update_status:
+            case None:
+                return "NOEXIST"
             case "InProgress":
                 return "PROGRESS"
             case "Failed":
@@ -123,12 +123,15 @@ class LambdaHandler:
         print("Timeout %s seconds. Please check logs in cloudwatch." % timeout_seconds)
 
     def _get_recent_log_stream_names(self, limit: int):
-        res = self.logs_client.describe_log_streams(
-            logGroupName=self.context.log_group_name,
-            orderBy="LastEventTime",
-            descending=True,
-            limit=limit,
-        )
+        try:
+            res = self.logs_client.describe_log_streams(
+                logGroupName=self.context.log_group_name,
+                orderBy="LastEventTime",
+                descending=True,
+                limit=limit,
+            )
+        except self.logs_client.exceptions.ResourceNotFoundException:
+            return []
         return [s["logStreamName"] for s in res["logStreams"]]
 
     def _find_events(
@@ -146,6 +149,8 @@ class LambdaHandler:
             target_log_stream_names = (
                 log_stream_names or self._get_recent_log_stream_names(log_stream_limit)
             )
+            if not target_log_stream_names:
+                continue
             kwargs = {
                 "logGroupName": self.context.log_group_name,
                 "logStreamNames": target_log_stream_names,
@@ -164,8 +169,7 @@ class LambdaHandler:
             if events:
                 return events
         print(
-            "Searched %s log stream below..."
-            % len(target_log_stream_names)  # pyright: ignore
+            "Searched %s log stream below..." % len(target_log_stream_names)  # pyright: ignore
         )
         for s in target_log_stream_names:  # pyright: ignore
             print("  - %s" % s)

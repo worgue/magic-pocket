@@ -43,6 +43,15 @@ apigateway = { domain = "api.project.com" }
 
 [dev.neon]
 
+# [prd.awscontainer.secretsmanager]
+# pocket_key_format = "{prefix}{stage}-{project}"
+# [awscontainer.secretsmanager]
+# pocket_key_format = "{prefix}{project}"
+# [awscontainer.secretsmanager.pocket_secrets]
+# SECRET_KEY = { type = "password", options = { length = 50 } }
+# DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+# DATABASE_URL = { type = "neon_database_url" }
+
 [prd.awscontainer]
 vpc_ref = "sandbox"
 

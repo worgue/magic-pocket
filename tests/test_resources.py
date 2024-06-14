@@ -39,7 +39,7 @@ def test_secretsmanager():
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secretsmanager
-    assert context.awscontainer.secretsmanager.resource.resolved_secrets == {
+    assert context.awscontainer.secretsmanager.resource.user_secrets == {
         "DATABASE_URL": "postgres://localhost:5432"
     }
 
@@ -47,15 +47,15 @@ def test_secretsmanager():
 def get_default_awscontainer():
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
     assert context.awscontainer
-    assert context.awscontainer.resource.repository
+    assert context.awscontainer.resource.ecr
     return context.awscontainer.resource
 
 
 @mock_aws
 def test_ecr():
     ac = get_default_awscontainer()
-    ac.repository.ensure_exists()
-    assert ac.repository.uri
+    ac.ecr.ensure_exists()
+    assert ac.ecr.uri
 
 
 @mock_aws

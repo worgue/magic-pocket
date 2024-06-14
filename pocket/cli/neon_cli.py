@@ -2,9 +2,9 @@ from pprint import pprint
 
 import click
 
-from pocket.context import Context
-from pocket.resources.neon import Neon
-from pocket.utils import echo
+from ..context import Context
+from ..resources.neon import Neon
+from ..utils import echo
 
 
 @click.group()
@@ -33,6 +33,14 @@ def create(stage):
     neon = get_neon_resource(stage)
     neon.create()
     echo.success("New branch was created")
+
+
+@neon.command()
+@click.option("--stage", prompt=True)
+def reset_database(stage):
+    neon = get_neon_resource(stage)
+    neon.reset_database()
+    echo.success("Reset database")
 
 
 @neon.command()

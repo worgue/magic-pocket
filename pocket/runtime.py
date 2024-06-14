@@ -1,28 +1,27 @@
 import os
 from pathlib import Path
 
-from pocket.context import Context
-
-
-def get_stage():
-    return os.environ.get("POCKET_STAGE") or "__none__"
+from .context import Context
+from .utils import get_stage, get_toml_path
 
 
 def get_user_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict:
-    stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
+    stage = stage or get_stage()
+    if stage == "__none__":
+        return {}
+    path = path or get_toml_path()
+    context = Context.from_toml(stage=stage, path=path)
+    if (ac := context.awscontainer) is None:
+        return {}
+    if (sm := ac.secretsmanager) is None:
         return {}
     secrets = {}
-    context = Context.from_toml(
-        stage=stage,
-        filters=["awscontainer", "region", "vpcs", "s3"],
-        path=path or "pocket.toml",
-    )
-    if secretsmanager := context.awscontainer and context.awscontainer.secretsmanager:
-        for key, value in secretsmanager.resource.resolved_secrets.items():
-            secrets[key] = value
+    for key, value in sm.resource.user_secrets.items():
+        secrets[key] = value
+    for key, value in sm.resource.pocket_secrets.items():
+        secrets[key] = value
     return secrets
 
 
@@ -33,15 +32,23 @@ def set_user_secrets_from_secretsmanager(
         os.environ[key] = value
 
 
-def set_env_from_resources(stage: str | None = None, path: str | Path | None = None):
-    stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
+def set_env_from_resources(
+    stage: str | None = None,
+    path: str | Path | None = None,
+    use_neon=False,
+    use_awscontainer=True,
+):
+    stage = stage or get_stage()
+    if stage == "__none__":
         return
-    context = Context.from_toml(stage=stage, path=path or "pocket.toml")
+    path = path or get_toml_path()
+    context = Context.from_toml(stage=stage, path=path)
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
-    if neon := context.neon:
+    if (neon := context.neon) and use_neon:
+        # secretmanager.pocket in pocket.toml is preferred.
+        # e.g) DATABASE_URL = { type = "neon_database_url" }
         os.environ["DATABASE_URL"] = neon.resource.database_url
-    if awscontainer := context.awscontainer:
+    if (awscontainer := context.awscontainer) and use_awscontainer:
         hosts = []
         for lambda_key, host in awscontainer.resource.hosts.items():
             if host:

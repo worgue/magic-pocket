@@ -1,7 +1,8 @@
 import click
 
-from pocket import __version__
-from pocket.cli import (
+from .. import __version__
+from ..django import django_cli
+from . import (
     awscontainer_cli,
     deploy_cli,
     neon_cli,
@@ -9,7 +10,6 @@ from pocket.cli import (
     status_cli,
     vpc_cli,
 )
-from pocket.django import django_cli
 
 
 @click.group()

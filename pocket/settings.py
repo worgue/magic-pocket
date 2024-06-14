@@ -8,12 +8,15 @@ import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .utils import get_project_name
+from .utils import get_project_name, get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+# Restrict string to a valid environment variable name
+EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
 
 # Restrict string to a valid Docker tag
 TagStr = Annotated[str, Field(pattern="^[a-z0-9][a-z0-9._-]*$", max_length=128)]
@@ -25,8 +28,8 @@ FormatStr = Annotated[
         pattern="^[a-z0-9{][{}a-z0-9._-]*$",
         max_length=128,
         description=(
-            "Formatted string."
-            "You can use variables: prefix, project, stage(for containers), and ref(for vpc)"
+            "Formatted string. You can use variables: "
+            "prefix, project, stage(for containers), and ref(for vpc)\n"
             "e.g) {prefix}{stage}-{project}"
         ),
     ),
@@ -51,8 +54,9 @@ class Vpc(BaseSettings):
             raise ValueError("nat_gateway without internet_gateway is not supported.")
         if self.internet_gateway and not self.nat_gateway:
             raise ValueError(
-                "lambda runs in private subnet, internet_gateway without nat_gateway is not supported yet."
-                "It will be supported in the future with fargate."
+                "lambda runs in private subnet, internet_gateway without nat_gateway is"
+                " not supported yet.\nWe should support it in the future if we want to "
+                "support fargate."
             )
         return self
 
@@ -92,13 +96,43 @@ class AwsContainer(BaseModel):
     django: Django | None = None
 
 
+class PocketSecretSpec(BaseModel):
+    type: str
+    options: dict[str, str | int] = {}
+
+
 class SecretsManager(BaseSettings):
+    pocket_key_format: Annotated[
+        FormatStr,
+        Field(
+            description=(
+                "Format string for pocket key. e.g) {prefix}{stage}-{project}\n"
+                "You can use variables: prefix, project, stage\n"
+                "Although default value contains stage and project, "
+                "it is not required. Because the secret value is stored "
+                "under the stage and project key in json.\n"
+                "If you remove stage or project from the key, be careful "
+                "not to generate secret keys simaltaneously in different situations.\n"
+                "It might cause a race condition."
+            )
+        ),
+    ] = "{prefix}{stage}-{project}"
+    pocket_secrets: Annotated[
+        dict[EnvStr, PocketSecretSpec],
+        Field(
+            description=(
+                "These secrets are managed by magic-pocket, "
+                "magic-pocket create secrets when creating lambda container."
+            )
+        ),
+    ] = {}
     secrets: Annotated[
-        dict[str, str],
+        dict[EnvStr, str],
         Field(
             description=(
                 "These secres got GetSecretValue permissions automatically, "
-                "so does not need to be explicitly defined in resources"
+                "so does not need to be explicitly defined in resources.\n"
+                "But, you still need to create it by yourself."
             )
         ),
     ] = {}
@@ -147,7 +181,7 @@ class Sqs(BaseModel):
 
 class Neon(BaseSettings):
     pg_version: int = 15
-    api_key: str = Field(alias="neon_api_key")
+    api_key: str | None = Field(alias="neon_api_key", default=None)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -158,14 +192,13 @@ class S3(BaseSettings):
 
 
 class Settings(BaseSettings):
+    object_prefix: str = "pocket-"
     region: str
     project_name: str = Field(default_factory=get_project_name)
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
-
-    model_config = SettingsConfigDict(env_prefix="pocket_")
 
     @computed_field
     @property
@@ -174,24 +207,13 @@ class Settings(BaseSettings):
         return "%s-%s" % (self.stage, self.project_name)
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
-        path = path or "pocket.toml"
+    def from_toml(cls, *, stage: str, path: str | Path | None = None):
+        path = path or get_toml_path()
         data = tomllib.loads(Path(path).read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
-        if filters:
-            new_data = {}
-            for f in filters:
-                data_target = data
-                new_data_target = new_data
-                for key in f.split(".")[:-1]:
-                    data_target = data_target[key]
-                    new_data_target = new_data_target.setdefault(key, {})
-                key = f.split(".")[-1]
-                new_data_target[key] = data_target[key]
-            data = new_data
         data["stage"] = stage
         cls.check_vpc(data)
         cls.pop_vpc(data)

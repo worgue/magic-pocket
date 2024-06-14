@@ -6,6 +6,7 @@ import boto3
 from django.core.management import call_command
 
 from ..context import Context
+from ..utils import get_toml_path
 
 
 def get_storages(
@@ -15,7 +16,7 @@ def get_storages(
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return storages
-    path = path or "pocket.toml"
+    path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
     if not (context.awscontainer and context.awscontainer.django):
         return storages
@@ -39,7 +40,7 @@ def get_caches(
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return caches
-    path = path or "pocket.toml"
+    path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
     if not (context.awscontainer and context.awscontainer.django):
         return caches

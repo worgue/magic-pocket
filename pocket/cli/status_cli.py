@@ -1,20 +1,10 @@
 import click
 
-from pocket.context import Context
-from pocket.utils import echo
-
-
-def get_resources(context: Context):
-    resources = []
-    if context.awscontainer:
-        if context.awscontainer.vpc:
-            resources.append(context.awscontainer.vpc.resource)
-        resources.append(context.awscontainer.resource)
-    if context.neon:
-        resources.append(context.neon.resource)
-    if context.s3:
-        resources.append(context.s3.resource)
-    return resources
+from ..context import Context
+from ..resources.aws.secretsmanager import PocketSecretIsNotReady
+from ..resources.awscontainer import AwsContainer
+from ..utils import echo
+from .deploy_cli import get_resources
 
 
 def show_status_message(resource):
@@ -31,6 +21,17 @@ def show_status_message(resource):
 
 
 def show_info_message(resource):
+    if hasattr(resource, "description"):
+        echo.info(resource.description)
+    if isinstance(resource, AwsContainer) and resource.context.secretsmanager:
+        try:
+            _ = resource.context.secretsmanager.allowed_resources
+        except PocketSecretIsNotReady:
+            echo.warning("Please create pocket secrets first.")
+            echo.warning(
+                "Because the data is not ready yet, context couldn't be shown."
+            )
+            return
     print(resource.context.model_dump_json(indent=2))
 
 
