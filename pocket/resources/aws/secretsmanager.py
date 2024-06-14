@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from pocket.context import SecretsManagerContext
 
 
+class PocketSecretIsNotReady(Exception):
+    pass
+
+
 class SecretsManager:
     context: SecretsManagerContext
 
@@ -74,7 +78,7 @@ class SecretsManager:
     def pocket_secrets_arn(self) -> str:
         if self._pocket_secrets_response:
             return self._pocket_secrets_response["ARN"]
-        raise ValueError("Pocket secrets not found")
+        raise PocketSecretIsNotReady("Pocket secrets not found")
 
     @property
     def pocket_secrets(self) -> dict[str, str]:

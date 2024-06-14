@@ -57,7 +57,7 @@ def list(stage, show_values):
         status = "CREATED" if key in sm.resource.pocket_secrets else "NOEXIST"
         print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
         print("  - " + status)
-        if show_values:
+        if (status == "CREATED") and show_values:
             print("  - " + sm.resource.pocket_secrets[key])
 
 
