@@ -348,11 +348,9 @@ class Context(settings.Settings):
             context_settings.reset(token)
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
+    def from_toml(cls, *, stage: str, path: str | Path | None = None):
         path = path or "pocket.toml"
-        return cls.from_settings(
-            settings.Settings.from_toml(stage=stage, path=path, filters=filters)
-        )
+        return cls.from_settings(settings.Settings.from_toml(stage=stage, path=path))
 
     @model_validator(mode="after")
     def check_django(self):

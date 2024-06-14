@@ -207,24 +207,13 @@ class Settings(BaseSettings):
         return "%s-%s" % (self.stage, self.project_name)
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None, filters=None):
+    def from_toml(cls, *, stage: str, path: str | Path | None = None):
         path = path or "pocket.toml"
         data = tomllib.loads(Path(path).read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
-        if filters:
-            new_data = {}
-            for f in filters:
-                data_target = data
-                new_data_target = new_data
-                for key in f.split(".")[:-1]:
-                    data_target = data_target[key]
-                    new_data_target = new_data_target.setdefault(key, {})
-                key = f.split(".")[-1]
-                new_data_target[key] = data_target[key]
-            data = new_data
         data["stage"] = stage
         cls.check_vpc(data)
         cls.pop_vpc(data)
