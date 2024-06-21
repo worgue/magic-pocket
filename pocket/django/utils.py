@@ -8,18 +8,33 @@ from django.core.management import call_command
 from ..context import Context
 from ..utils import get_toml_path
 
+# https://docs.djangoproject.com/en/5.0/ref/settings/#storages
+default_storages = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
-def get_storages(
-    *, default=None, stage: str | None = None, path: str | Path | None = None
-) -> dict:
-    storages = default or {}
+# https://docs.djangoproject.com/en/5.0/ref/settings/#caches
+default_caches = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
+
+def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
-        return storages
+        return default_storages
     path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
     if not (context.awscontainer and context.awscontainer.django):
-        return storages
+        return default_storages
+    storages = {}
     for key, storage in context.awscontainer.django.storages.items():
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
@@ -33,17 +48,15 @@ def get_storages(
     return storages
 
 
-def get_caches(
-    *, default=None, stage: str | None = None, path: str | Path | None = None
-) -> dict:
-    caches = default or {}
+def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
-        return caches
+        return default_caches
     path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
     if not (context.awscontainer and context.awscontainer.django):
-        return caches
+        return default_caches
+    caches = {}
     for key, cache in context.awscontainer.django.caches.items():
         caches[key] = {
             "BACKEND": cache.backend,
