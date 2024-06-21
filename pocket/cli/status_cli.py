@@ -24,13 +24,24 @@ def show_info_message(resource):
     if hasattr(resource, "description"):
         echo.info(resource.description)
     if isinstance(resource, AwsContainer) and resource.context.secretsmanager:
+        if resource.context.secretsmanager.pocket_secrets:
+            try:
+                _ = resource.context.secretsmanager.resource.pocket_secrets_arn
+            except PocketSecretIsNotReady:
+                echo.warning(
+                    "Because pocket managed secrets is not ready yet, "
+                    "the context is not ready to use."
+                )
+                echo.warning("Just use it for reference.")
+                echo.info("You can create pocket managed secrets by running the below.")
+                echo.info(
+                    "pocket resource awscontainer secretsmanager create-pocket-managed"
+                )
+
         try:
             _ = resource.context.secretsmanager.allowed_resources
         except PocketSecretIsNotReady:
             echo.warning("Please create pocket secrets first.")
-            echo.warning(
-                "Because the data is not ready yet, context couldn't be shown."
-            )
             return
     print(resource.context.model_dump_json(indent=2))
 

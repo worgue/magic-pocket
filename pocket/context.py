@@ -13,12 +13,12 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 from . import settings
-from .resources.aws.secretsmanager import SecretsManager
+from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
 from .resources.vpc import Vpc
-from .utils import get_hosted_zone_id_from_domain, get_project_name, get_toml_path
+from .utils import echo, get_hosted_zone_id_from_domain, get_project_name, get_toml_path
 
 context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
 context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
@@ -175,7 +175,13 @@ class SecretsManagerContext(settings.SecretsManager):
     def allowed_resources(self) -> list[str]:
         resources = list(self.secrets.values())
         if self.pocket_secrets:
-            resources.append(self.resource.pocket_secrets_arn)
+            try:
+                resources.append(self.resource.pocket_secrets_arn)
+            except PocketSecretIsNotReady:
+                echo.log(
+                    "Pocket managed secrets is not ready. "
+                    "The context is not complete data."
+                )
         resources += self.extra_resources
         return [self._ensure_arn(resource) for resource in resources if resource]
 
@@ -197,7 +203,10 @@ class SecretsManagerContext(settings.SecretsManager):
     @model_validator(mode="after")
     def check_entry(self):
         if (not self.require_list_secrets) and (not self.allowed_resources):
-            raise ValueError("No resources are registered to secretsmanager")
+            echo.log(
+                "No secret resouces are associated to lambda."
+                "The data is for reference only."
+            )
         return self
 
 
