@@ -95,7 +95,7 @@ Resources:
         Fn::GetAtt: LambdaRole.Arn
       Code:
         ImageUri:
-          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ repository_name }}:{{ stage }}"
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ ecr_name }}:{{ stage }}"
       ImageConfig:
         Command:
           - "{{ handler.command }}"
