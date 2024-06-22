@@ -97,8 +97,15 @@ class AwsContainer(BaseModel):
 
 
 class PocketSecretSpec(BaseModel):
-    type: str
+    type: Literal["password", "neon_database_url", "rsa_pem_base64"]
     options: dict[str, str | int] = {}
+    # Used in mediator
+    # PasswordOptions:
+    #     length: int
+    # Used in runtime
+    # RsaPemBase64Options:
+    #     pem_base64_environ_suffix: str = "_PEM_BASE64"
+    #     pub_base64_environ_suffix: str = "_PUB_BASE64"
 
 
 class SecretsManager(BaseSettings):

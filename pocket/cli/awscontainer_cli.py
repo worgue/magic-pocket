@@ -58,7 +58,12 @@ def list(stage, show_values):
         print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
         print("  - " + status)
         if (status == "CREATED") and show_values:
-            print("  - " + sm.resource.pocket_secrets[key])
+            value = sm.resource.pocket_secrets[key]
+            if isinstance(value, str):
+                print("  - " + value)
+            else:
+                for k, v in value.items():
+                    print(f"  - {k}: {v}")
 
 
 @secretsmanager.command()

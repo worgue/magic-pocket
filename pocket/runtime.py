@@ -2,7 +2,23 @@ import os
 from pathlib import Path
 
 from .context import Context
+from .settings import PocketSecretSpec
 from .utils import get_stage, get_toml_path
+
+
+def _pocket_secret_to_envs(
+    key: str, secrets: str | dict[str, str], spec: PocketSecretSpec
+) -> dict[str, str]:
+    if isinstance(secrets, str):
+        return {key: secrets}
+    elif spec.type == "rsa_pem_base64":
+        pem_suffix = spec.options["pem_base64_environ_suffix"]
+        pub_suffix = spec.options["pub_base64_environ_suffix"]
+        return {
+            f"{key}{pem_suffix}": secrets["pem"],
+            f"{key}{pub_suffix}": secrets["pub"],
+        }
+    raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
 def get_user_secrets_from_secretsmanager(
@@ -21,7 +37,8 @@ def get_user_secrets_from_secretsmanager(
     for key, value in sm.resource.user_secrets.items():
         secrets[key] = value
     for key, value in sm.resource.pocket_secrets.items():
-        secrets[key] = value
+        envs = _pocket_secret_to_envs(key, value, sm.pocket_secrets[key])
+        secrets.update(envs)
     return secrets
 
 

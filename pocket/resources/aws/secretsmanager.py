@@ -43,7 +43,7 @@ class SecretsManager:
             self.client.delete_secret(SecretId=res["ARN"], RecoveryWindowInDays=30)
         del self._pocket_secrets_response
 
-    def update_pocket_secrets(self, secrets: dict[str, str]):
+    def update_pocket_secrets(self, secrets: dict[str, str | dict[str, str]]):
         echo.log("Getting pocket secrets %s ..." % self.context.pocket_key)
         res = self._pocket_secrets_response
         data = json.loads(res["SecretString"]) if res else {}
@@ -81,7 +81,7 @@ class SecretsManager:
         raise PocketSecretIsNotReady("Pocket secrets not found")
 
     @property
-    def pocket_secrets(self) -> dict[str, str]:
+    def pocket_secrets(self) -> dict[str, str | dict[str, str]]:
         if self._pocket_secrets_response is None:
             return {}
         data = json.loads(self._pocket_secrets_response["SecretString"])

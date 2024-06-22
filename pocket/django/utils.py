@@ -32,7 +32,11 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
         return default_storages
     path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
-    if not (context.awscontainer and context.awscontainer.django):
+    if not (
+        context.awscontainer
+        and context.awscontainer.django
+        and context.awscontainer.django.storages
+    ):
         return default_storages
     storages = {}
     for key, storage in context.awscontainer.django.storages.items():
@@ -54,7 +58,11 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
         return default_caches
     path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
-    if not (context.awscontainer and context.awscontainer.django):
+    if not (
+        context.awscontainer
+        and context.awscontainer.django
+        and context.awscontainer.django.caches
+    ):
         return default_caches
     caches = {}
     for key, cache in context.awscontainer.django.caches.items():
