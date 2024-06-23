@@ -86,6 +86,18 @@ def delete_pocket_managed(stage):
     if not sm:
         echo.warning("secretsmanager is not configured for this stage")
         return
+    existing_secret_keys = [
+        key for key in sm.pocket_secrets.keys() if key in sm.resource.pocket_secrets
+    ]
+    if not existing_secret_keys:
+        echo.warning("No pocket managed secets are created yet.")
+        return
+    echo.warning("You are deleting pocket managed secrets.")
+    echo.info("Deleting secrets:")
+    for key in existing_secret_keys:
+        echo.info(" - " + key)
+    echo.danger("This data cannot be restored!")
+    click.confirm("Do you realy want to delet pocket managed secrets?", abort=True)
     sm.resource.delete_pocket_secrets()
 
 
