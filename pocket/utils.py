@@ -4,13 +4,13 @@ import sys
 from pathlib import Path
 
 import boto3
+from rich.console import Console
+from rich.theme import Theme
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-from rich.console import Console
-from rich.theme import Theme
 
 _console = Console(
     theme=Theme(
