@@ -5,41 +5,31 @@ from pathlib import Path
 import boto3
 from django.core.management import call_command
 
+from pocket.global_context import GlobalContext
+
 from ..context import Context
 from ..utils import get_toml_path
-
-# https://docs.djangoproject.com/en/5.0/ref/settings/#storages
-default_storages = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-    },
-}
-
-# https://docs.djangoproject.com/en/5.0/ref/settings/#caches
-default_caches = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-    }
-}
 
 
 def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
-        return default_storages
     path = path or get_toml_path()
-    context = Context.from_toml(stage=stage, path=path)
-    if not (
-        context.awscontainer
-        and context.awscontainer.django
-        and context.awscontainer.django.storages
-    ):
-        return default_storages
+    global_context = GlobalContext.from_toml(path=path)
+    assert global_context.django_fallback, "Never happen because of context validation."
+    if not stage:
+        django_context = global_context.django_fallback
+    else:
+        context = Context.from_toml(stage=stage, path=path)
+        if not (
+            context.awscontainer
+            and context.awscontainer.django
+            and context.awscontainer.django.storages
+        ):
+            django_context = global_context.django_fallback
+        else:
+            django_context = context.awscontainer.django
     storages = {}
-    for key, storage in context.awscontainer.django.storages.items():
+    for key, storage in django_context.storages.items():
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
             assert context.s3, "Never happen because of context validation."
@@ -47,6 +37,9 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 "bucket_name": context.s3.bucket_name,
                 "location": storage.location,
             }
+        elif storage.store == "filesystem":
+            if storage.location is not None:
+                storages[key]["OPTIONS"] = {"location": storage.location}
         else:
             raise ValueError("Unknown store")
     return storages
@@ -54,22 +47,26 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
 
 def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
-    if not stage:
-        return default_caches
     path = path or get_toml_path()
-    context = Context.from_toml(stage=stage, path=path)
-    if not (
-        context.awscontainer
-        and context.awscontainer.django
-        and context.awscontainer.django.caches
-    ):
-        return default_caches
+    global_context = GlobalContext.from_toml(path=path)
+    assert global_context.django_fallback, "Never happen because of context validation."
+    if not stage:
+        django_context = global_context.django_fallback
+    else:
+        context = Context.from_toml(stage=stage, path=path)
+        if not (
+            context.awscontainer
+            and context.awscontainer.django
+            and context.awscontainer.django.caches
+        ):
+            django_context = global_context.django_fallback
+        else:
+            django_context = context.awscontainer.django
     caches = {}
-    for key, cache in context.awscontainer.django.caches.items():
-        caches[key] = {
-            "BACKEND": cache.backend,
-            "LOCATION": cache.location,
-        }
+    for key, cache in django_context.caches.items():
+        caches[key] = {"BACKEND": cache.backend}
+        if cache.location is not None:
+            caches[key]["LOCATION"] = cache.location
     return caches
 
 

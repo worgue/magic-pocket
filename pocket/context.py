@@ -219,34 +219,45 @@ class DjangoStorageContext(settings.DjangoStorage):
             if self.static:
                 return "storages.backends.s3boto3.S3StaticStorage"
             return "storages.backends.s3boto3.S3Boto3Storage"
+        elif self.store == "filesystem":
+            if self.static and self.manifest:
+                return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+            if self.static:
+                return "django.contrib.staticfiles.storage.StaticFilesStorage"
+            return "django.core.files.storage.FileSystemStorage"
         raise ValueError("Unknown store")
 
 
 class DjangoCacheContext(settings.DjangoCache):
-    location: str
+    location: str | None
 
     @property
     def backend(self):
         if self.store == "efs":
             return "django.core.cache.backends.filebased.FileBasedCache"
+        elif self.store == "locmem":
+            return "django.core.cache.backends.locmem.LocMemCache"
         raise ValueError("Unknown store")
 
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        format_vars = {
-            "prefix": settings.object_prefix,
-            "stage": settings.stage,
-            "project": settings.project_name,
-        }
-        assert (
-            settings.awscontainer
-            and settings.awscontainer.vpc
-            and settings.awscontainer.vpc.efs
-        )
-        mnt = Path(settings.awscontainer.vpc.efs.local_mount_path)
-        data["location"] = str(mnt / data["subdir"]).format(**format_vars)
+        if data["store"] == "locmem":
+            data["location"] = None
+        elif data["store"] == "efs":
+            settings = context_settings.get()
+            format_vars = {
+                "prefix": settings.object_prefix,
+                "stage": settings.stage,
+                "project": settings.project_name,
+            }
+            assert (
+                settings.awscontainer
+                and settings.awscontainer.vpc
+                and settings.awscontainer.vpc.efs
+            )
+            mnt = Path(settings.awscontainer.vpc.efs.local_mount_path)
+            data["location"] = str(mnt / data["location_subdir"]).format(**format_vars)
         return data
 
 

@@ -40,7 +40,7 @@ def test_cache():
     assert context.awscontainer.vpc.efs.local_mount_path == "/mnt/efs"
     assert context.awscontainer.django.caches["default"].model_dump() == {
         "store": "efs",
-        "subdir": "{stage}",
+        "location_subdir": "{stage}",
         "location": "/mnt/efs/dev",
     }
     caches = get_caches(stage="dev", path=toml_path)

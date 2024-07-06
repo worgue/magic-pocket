@@ -62,8 +62,8 @@ class Vpc(BaseSettings):
 
 
 class DjangoStorage(BaseSettings):
-    store: Literal["s3"]
-    location: str
+    store: Literal["s3", "filesystem"]
+    location: str | None = None
     static: bool = False
     manifest: bool = False
 
@@ -73,16 +73,35 @@ class DjangoStorage(BaseSettings):
             raise ValueError("manifest can only be used with static")
         return self
 
+    @model_validator(mode="after")
+    def check_location(self):
+        if self.store == "s3" and self.location is None:
+            raise ValueError("location is required for s3 storage")
+        return self
+
 
 class DjangoCache(BaseSettings):
-    store: Literal["efs"]
-    subdir: str = "{stage}"
+    store: Literal["efs", "locmem"]
+    location_subdir: str = "{stage}"
 
 
 class Django(BaseSettings):
-    storages: dict[str, DjangoStorage] = {}
-    caches: dict[str, DjangoCache] = {}
+    storages: dict[str, DjangoStorage] | None = None
+    caches: dict[str, DjangoCache] | None = None
     settings: dict[str, Any] = {}
+
+    @model_validator(mode="after")
+    def set_defaults(self):
+        if self.storages is None:
+            # https://docs.djangoproject.com/en/5.0/ref/settings/#storages
+            self.storages = {
+                "default": DjangoStorage(store="filesystem"),
+                "staticfiles": DjangoStorage(store="filesystem", static=True),
+            }
+        if self.caches is None:
+            # https://docs.djangoproject.com/en/5.0/ref/settings/#caches
+            self.caches = self.caches or {"default": DjangoCache(store="locmem")}
+        return self
 
 
 class AwsContainer(BaseModel):
@@ -224,6 +243,7 @@ class Settings(BaseSettings):
         data["stage"] = stage
         cls.check_vpc(data)
         cls.pop_vpc(data)
+        cls.pop_global(data)
         return cls.model_validate(data)
 
     @classmethod
@@ -243,9 +263,13 @@ class Settings(BaseSettings):
         data.pop("vpcs", None)
 
     @classmethod
+    def pop_global(cls, data: dict):
+        data.pop("global", None)
+
+    @classmethod
     def check_keys(cls, data: dict):
         valid_keys = (
-            ["project_name", "region", "stages", "vpcs"]
+            ["global", "project_name", "region", "stages", "vpcs"]
             + ["awscontainer", "neon", "s3"]
             + ["django"]
             + data["stages"]
