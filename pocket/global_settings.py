@@ -14,6 +14,7 @@ else:
 
 class GlobalSettings(BaseSettings):
     django_fallback: Django = Django()
+    django_test: Django | None = None
 
     @classmethod
     def from_toml(cls, *, path: str | Path | None = None):

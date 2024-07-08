@@ -11,6 +11,7 @@ from .utils import get_toml_path
 
 class GlobalContext(GlobalSettings):
     django_fallback: DjangoContext | None = None
+    django_test: DjangoContext | None = None
 
     @classmethod
     def from_global_settings(cls, global_settings: GlobalSettings) -> GlobalContext:
