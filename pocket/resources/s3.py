@@ -140,7 +140,7 @@ class S3:
     def ensure_policy(self):
         if self.bucket_policy_require_update:
             echo.info("Update bucket policy required.")
-            echo.info("Current policy: %s" % self.public_access_block)
+            echo.info("Current policy: %s" % self.bucket_policy)
             if self.bucket_policy_should_be is None:
                 self.client.delete_bucket_policy(Bucket=self.context.bucket_name)
                 echo.info("Deleted bucket policy")
