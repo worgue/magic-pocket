@@ -27,6 +27,9 @@ class GlobalContext(GlobalSettings):
     def check_django(self):
         assert self.django_fallback, "django_fallback should be set by settings."
         for _, storage in self.django_fallback.storages.items():
-            if storage.store == "s3":
-                raise ValueError("s3 storage is not allowed for fallback.")
+            if storage.store == "s3" and not self.s3_fallback_bucket_name:
+                raise ValueError(
+                    "s3_fallback_bucket_name is required "
+                    "to use s3 storage is fallback_context."
+                )
         return self

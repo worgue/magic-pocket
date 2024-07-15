@@ -13,6 +13,7 @@ else:
 
 
 class GlobalSettings(BaseSettings):
+    s3_fallback_bucket_name: str | None = None
     django_fallback: Django = Django()
     django_test: Django | None = None
 

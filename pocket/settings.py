@@ -66,6 +66,7 @@ class DjangoStorage(BaseSettings):
     location: str | None = None
     static: bool = False
     manifest: bool = False
+    options: dict[str, Any] = {}
 
     @model_validator(mode="after")
     def check_manifest(self):

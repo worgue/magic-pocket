@@ -8,7 +8,7 @@ from django.core.management import call_command
 
 from pocket.global_context import GlobalContext
 
-from ..context import Context
+from ..context import Context, DjangoContext
 from ..utils import get_toml_path
 
 
@@ -18,16 +18,20 @@ def _check_django_test():
     return False
 
 
+def _get_current_fallback_context(global_context: GlobalContext) -> DjangoContext:
+    assert global_context.django_fallback, "Never happen because of context validation."
+    if _check_django_test() and global_context.django_test:
+        return global_context.django_test
+    return global_context.django_fallback
+
+
 def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     path = path or get_toml_path()
     global_context = GlobalContext.from_toml(path=path)
-    assert global_context.django_fallback, "Never happen because of context validation."
+    context: Context | None = None
     if not stage:
-        if _check_django_test() and global_context.django_test:
-            django_context = global_context.django_test
-        else:
-            django_context = global_context.django_fallback
+        django_context = _get_current_fallback_context(global_context)
     else:
         context = Context.from_toml(stage=stage, path=path)
         if not (
@@ -35,19 +39,21 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             and context.awscontainer.django
             and context.awscontainer.django.storages
         ):
-            if _check_django_test() and global_context.django_test:
-                django_context = global_context.django_test
-            else:
-                django_context = global_context.django_fallback
+            django_context = _get_current_fallback_context(global_context)
         else:
             django_context = context.awscontainer.django
     storages = {}
     for key, storage in django_context.storages.items():
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
-            assert context.s3, "Never happen because of context validation."
+            if context:
+                assert context.s3, "Never happen because of context validation."
+                bucket_name = context.s3.bucket_name
+            else:
+                assert global_context.s3_fallback_bucket_name, "use context validation."
+                bucket_name = global_context.s3_fallback_bucket_name
             storages[key]["OPTIONS"] = {
-                "bucket_name": context.s3.bucket_name,
+                "bucket_name": bucket_name,
                 "location": storage.location,
             }
         elif storage.store == "filesystem":
@@ -55,6 +61,10 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 storages[key]["OPTIONS"] = {"location": storage.location}
         else:
             raise ValueError("Unknown store")
+        if storage.options:
+            if "OPTIONS" not in storages[key]:
+                storages[key]["OPTIONS"] = {}
+            storages[key]["OPTIONS"] = {**storages[key]["OPTIONS"], **storage.options}
     return storages
 
 
