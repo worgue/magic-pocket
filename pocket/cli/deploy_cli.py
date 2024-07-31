@@ -1,4 +1,5 @@
 import inspect
+import webbrowser
 
 import click
 
@@ -49,7 +50,14 @@ def _deploy_resources(context: Context):
 
 @click.command()
 @click.option("--stage", prompt=True)
-def deploy(stage):
+@click.option("--noopen", is_flag=True, default=False)
+def deploy(stage: str, noopen: bool):
     context = Context.from_toml(stage=stage)
     _deploy_init_resources(context)
     _deploy_resources(context)
+    if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
+        "wsgi"
+    ):
+        echo.success(f"wsgi url: {endpoint}")
+        if not noopen:
+            webbrowser.open(endpoint)
