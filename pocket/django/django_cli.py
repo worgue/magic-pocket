@@ -1,10 +1,12 @@
 import json
 from email.utils import parsedate_to_datetime
+from subprocess import run
 
 import click
 
 from ..context import Context
 from . import django_installed
+from .utils import get_storages
 
 
 @click.group()
@@ -44,3 +46,34 @@ def manage(stage, handler, command, args):
     print("lambda request_id:", request_id)
     print("lambda created_at:", created_at)
     handler.show_logs(request_id, created_at)
+
+
+@django.group()
+def storage():
+    pass
+
+
+def _check_upload_backends(from_storage, to_storage):
+    if from_storage["BACKEND"] != "django.core.files.storage.FileSystemStorage":
+        raise Exception("Upload from only support FileSystemStorage")
+    if to_storage["BACKEND"] != "storages.backends.s3boto3.S3Boto3Storage":
+        raise Exception("Upload to only support S3Boto3Storage")
+
+
+@storage.command()
+@click.option("--stage", prompt=True)
+@click.option("--delete", is_flag=True, default=False)
+@click.argument("storage")
+def upload(storage, stage, delete):
+    from_storage = get_storages()[storage]
+    to_storage = get_storages(stage=stage)[storage]
+    _check_upload_backends(from_storage, to_storage)
+    from_location = from_storage["OPTIONS"]["location"]
+    to_backet_name = to_storage["OPTIONS"]["bucket_name"]
+    to_location = to_storage["OPTIONS"]["location"]
+    cmd = "aws s3 sync %s s3://%s/%s" % (from_location, to_backet_name, to_location)
+    cmd += ' --exclude ".*" --exclude "*/.*"'
+    if delete:
+        cmd += " --delete"
+    print(cmd)
+    run(cmd, shell=True, check=True)
