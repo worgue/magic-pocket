@@ -55,12 +55,12 @@ def set_env_from_resources(
     use_neon=False,
     use_awscontainer=True,
 ):
+    os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
     stage = stage or get_stage()
     if stage == "__none__":
         return
     path = path or get_toml_path()
     context = Context.from_toml(stage=stage, path=path)
-    os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
     if (neon := context.neon) and use_neon:
         # secretmanager.pocket in pocket.toml is preferred.
         # e.g) DATABASE_URL = { type = "neon_database_url" }
