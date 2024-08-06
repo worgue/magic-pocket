@@ -4,8 +4,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+from pocket.global_context import GlobalContext
+
 from ..context import Context
 from ..runtime import set_env_from_resources
+from ..utils import get_toml_path
+from .utils import check_django_test
 
 
 def add_or_append_env(key: str, value: str):
@@ -28,9 +32,21 @@ def get_django_settings(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict[str, Any]:
     stage = stage or os.environ.get("POCKET_STAGE")
+    path = path or get_toml_path()
+    global_context = GlobalContext.from_toml(path=path)
+    assert global_context.django_fallback, "Never happen because of context validation."
     if not stage:
-        return {}
-    context = Context.from_toml(stage=stage, path=path)
-    if context.awscontainer and context.awscontainer.django:
-        return context.awscontainer.django.settings
-    return {}
+        if check_django_test() and global_context.django_test:
+            django_context = global_context.django_test
+        else:
+            django_context = global_context.django_fallback
+    else:
+        context = Context.from_toml(stage=stage, path=path)
+        if context.awscontainer and context.awscontainer.django:
+            django_context = context.awscontainer.django
+        else:
+            if check_django_test() and global_context.django_test:
+                django_context = global_context.django_test
+            else:
+                django_context = global_context.django_fallback
+    return django_context.settings

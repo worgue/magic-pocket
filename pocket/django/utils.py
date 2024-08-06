@@ -12,7 +12,7 @@ from ..context import Context, DjangoContext
 from ..utils import get_toml_path
 
 
-def _check_django_test():
+def check_django_test():
     if 2 <= len(sys.argv) and sys.argv[1] == "test":
         return True
     return False
@@ -20,7 +20,7 @@ def _check_django_test():
 
 def _get_current_fallback_context(global_context: GlobalContext) -> DjangoContext:
     assert global_context.django_fallback, "Never happen because of context validation."
-    if _check_django_test() and global_context.django_test:
+    if check_django_test() and global_context.django_test:
         return global_context.django_test
     return global_context.django_fallback
 
@@ -74,7 +74,7 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
     global_context = GlobalContext.from_toml(path=path)
     assert global_context.django_fallback, "Never happen because of context validation."
     if not stage:
-        if _check_django_test() and global_context.django_test:
+        if check_django_test() and global_context.django_test:
             django_context = global_context.django_test
         else:
             django_context = global_context.django_fallback
@@ -85,7 +85,7 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
             and context.awscontainer.django
             and context.awscontainer.django.caches
         ):
-            if _check_django_test() and global_context.django_test:
+            if check_django_test() and global_context.django_test:
                 django_context = global_context.django_test
             else:
                 django_context = global_context.django_fallback
