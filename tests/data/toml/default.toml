@@ -1,15 +1,17 @@
+[general]
 region = "ap-southeast-1"
-stages = ["dev", "tst", "stg", "prd"]
 project_name = "testprj"
+stages = ["dev", "tst", "stg", "prd"]
 
-[global.django_fallback.storages]
+[[general.vpcs]]
+ref = "sandbox"
+zone_suffixes = ["c"]
+efs = {}
+
+[general.django_fallback.storages]
 default = { store = "filesystem" }
 management = { store = "filesystem", location = "management" }
 staticfiles = { store = "filesystem", static = true }
-
-[vpcs.sandbox]
-zone_suffixes = ["c"]
-efs = {}
 
 [s3]
 public_dirs = ["static"]

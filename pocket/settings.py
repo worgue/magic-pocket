@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import sys
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 import mergedeep
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .utils import get_project_name, get_toml_path
+from .django.settings import Django
+from .general_settings import GeneralSettings, Vpc
+from .utils import get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+context_settings: ContextVar[Settings] = ContextVar("context_settings")
 
 # Restrict string to a valid environment variable name
 EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
@@ -34,75 +39,6 @@ FormatStr = Annotated[
         ),
     ),
 ]
-
-
-class Efs(BaseModel):
-    local_mount_path: str = Field(pattern="^/mnt/.*", default="/mnt/efs")
-    access_point_path: str = Field(pattern="^/.+", default="/lambda")
-
-
-class Vpc(BaseSettings):
-    ref: str
-    zone_suffixes: list[Annotated[str, Field(max_length=1)]] = ["a"]
-    nat_gateway: bool = True
-    internet_gateway: bool = True
-    efs: Efs | None = None
-
-    @model_validator(mode="after")
-    def check_nat_gateway(self):
-        if self.nat_gateway and not self.internet_gateway:
-            raise ValueError("nat_gateway without internet_gateway is not supported.")
-        if self.internet_gateway and not self.nat_gateway:
-            raise ValueError(
-                "lambda runs in private subnet, internet_gateway without nat_gateway is"
-                " not supported yet.\nWe should support it in the future if we want to "
-                "support fargate."
-            )
-        return self
-
-
-class DjangoStorage(BaseSettings):
-    store: Literal["s3", "filesystem"]
-    location: str | None = None
-    static: bool = False
-    manifest: bool = False
-    options: dict[str, Any] = {}
-
-    @model_validator(mode="after")
-    def check_manifest(self):
-        if self.manifest and not self.static:
-            raise ValueError("manifest can only be used with static")
-        return self
-
-    @model_validator(mode="after")
-    def check_location(self):
-        if self.store == "s3" and self.location is None:
-            raise ValueError("location is required for s3 storage")
-        return self
-
-
-class DjangoCache(BaseSettings):
-    store: Literal["efs", "locmem"]
-    location_subdir: str = "{stage}"
-
-
-class Django(BaseSettings):
-    storages: dict[str, DjangoStorage] | None = None
-    caches: dict[str, DjangoCache] | None = None
-    settings: dict[str, Any] = {}
-
-    @model_validator(mode="after")
-    def set_defaults(self):
-        if self.storages is None:
-            # https://docs.djangoproject.com/en/5.0/ref/settings/#storages
-            self.storages = {
-                "default": DjangoStorage(store="filesystem"),
-                "staticfiles": DjangoStorage(store="filesystem", static=True),
-            }
-        if self.caches is None:
-            # https://docs.djangoproject.com/en/5.0/ref/settings/#caches
-            self.caches = self.caches or {"default": DjangoCache(store="locmem")}
-        return self
 
 
 class AwsContainer(BaseModel):
@@ -219,19 +155,29 @@ class S3(BaseSettings):
 
 
 class Settings(BaseSettings):
-    object_prefix: str = "pocket-"
-    region: str
-    project_name: str = Field(default_factory=get_project_name)
+    general: GeneralSettings
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
 
+    @property
+    def project_name(self):
+        return self.general.project_name
+
+    @property
+    def region(self):
+        return self.general.region
+
+    @property
+    def object_prefix(self):
+        return self.general.object_prefix
+
     @computed_field
     @property
     def slug(self) -> str:
         """Identify the environment. e.g) dev-myprj"""
-        return "%s-%s" % (self.stage, self.project_name)
+        return "%s-%s" % (self.stage, self.general.project_name)
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
@@ -242,39 +188,27 @@ class Settings(BaseSettings):
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
         data["stage"] = stage
-        cls.check_vpc(data)
-        cls.pop_vpc(data)
-        cls.pop_global(data)
+        cls.process_vpc_ref(data)
         return cls.model_validate(data)
 
     @classmethod
-    def check_vpc(cls, data: dict):
-        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
-            if "vpcs" not in data:
-                raise ValueError("vpcs is required when vpc_ref is used")
-            if vpc_ref not in data["vpcs"]:
-                raise ValueError(f"vpc {vpc_ref} not found in vpcs")
-
-    @classmethod
-    def pop_vpc(cls, data: dict):
-        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
-            data["awscontainer"]["vpc"] = data["vpcs"][vpc_ref]
-            data["awscontainer"]["vpc"]["ref"] = vpc_ref
-            data["awscontainer"].pop("vpc_ref", None)
-        data.pop("vpcs", None)
-
-    @classmethod
-    def pop_global(cls, data: dict):
-        data.pop("global", None)
+    def process_vpc_ref(cls, data: dict):
+        if "awscontainer" not in data:
+            return
+        if "vpc_ref" not in data["awscontainer"]:
+            return
+        vpc_ref = data["awscontainer"].pop("vpc_ref")
+        for vpc_data in data["general"]["vpcs"]:
+            if vpc_data["ref"] == vpc_ref:
+                data["awscontainer"]["vpc"] = vpc_data
+                break
+        else:
+            raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = (
-            ["global", "project_name", "region", "stages", "vpcs"]
-            + ["awscontainer", "neon", "s3"]
-            + ["django"]
-            + data["stages"]
-        )
+        valid_keys = ["general", "awscontainer", "neon", "s3"]
+        valid_keys += data["general"]["stages"]
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
@@ -283,8 +217,8 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):
-        if stage not in data["stages"]:
-            raise ValueError(f"stage {stage} not found in {data['stages']}")
+        if stage not in data["general"]["stages"]:
+            raise ValueError(f"stage {stage} not found in {data['general']['stages']}")
 
     @classmethod
     def merge_stage_data(cls, stage: str, data: dict):
@@ -292,6 +226,5 @@ class Settings(BaseSettings):
 
     @classmethod
     def remove_stages_data(cls, stage: str, data: dict):
-        for s in data["stages"]:
+        for s in data["general"]["stages"]:
             data.pop(s, None)
-        del data["stages"]
