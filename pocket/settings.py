@@ -1,19 +1,24 @@
 from __future__ import annotations
 
 import sys
+from contextvars import ContextVar
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .utils import get_project_name, get_toml_path
+from .django.settings import Django
+from .general_settings import GeneralSettings
+from .utils import get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+context_settings: ContextVar[Settings] = ContextVar("context_settings")
 
 # Restrict string to a valid environment variable name
 EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
@@ -58,50 +63,6 @@ class Vpc(BaseSettings):
                 " not supported yet.\nWe should support it in the future if we want to "
                 "support fargate."
             )
-        return self
-
-
-class DjangoStorage(BaseSettings):
-    store: Literal["s3", "filesystem"]
-    location: str | None = None
-    static: bool = False
-    manifest: bool = False
-    options: dict[str, Any] = {}
-
-    @model_validator(mode="after")
-    def check_manifest(self):
-        if self.manifest and not self.static:
-            raise ValueError("manifest can only be used with static")
-        return self
-
-    @model_validator(mode="after")
-    def check_location(self):
-        if self.store == "s3" and self.location is None:
-            raise ValueError("location is required for s3 storage")
-        return self
-
-
-class DjangoCache(BaseSettings):
-    store: Literal["efs", "locmem"]
-    location_subdir: str = "{stage}"
-
-
-class Django(BaseSettings):
-    storages: dict[str, DjangoStorage] | None = None
-    caches: dict[str, DjangoCache] | None = None
-    settings: dict[str, Any] = {}
-
-    @model_validator(mode="after")
-    def set_defaults(self):
-        if self.storages is None:
-            # https://docs.djangoproject.com/en/5.0/ref/settings/#storages
-            self.storages = {
-                "default": DjangoStorage(store="filesystem"),
-                "staticfiles": DjangoStorage(store="filesystem", static=True),
-            }
-        if self.caches is None:
-            # https://docs.djangoproject.com/en/5.0/ref/settings/#caches
-            self.caches = self.caches or {"default": DjangoCache(store="locmem")}
         return self
 
 
@@ -219,19 +180,29 @@ class S3(BaseSettings):
 
 
 class Settings(BaseSettings):
-    object_prefix: str = "pocket-"
-    region: str
-    project_name: str = Field(default_factory=get_project_name)
+    general: GeneralSettings
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
 
+    @property
+    def project_name(self):
+        return self.general.project_name
+
+    @property
+    def region(self):
+        return self.general.region
+
+    @property
+    def object_prefix(self):
+        return self.general.object_prefix
+
     @computed_field
     @property
     def slug(self) -> str:
         """Identify the environment. e.g) dev-myprj"""
-        return "%s-%s" % (self.stage, self.project_name)
+        return "%s-%s" % (self.stage, self.general.project_name)
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
@@ -244,7 +215,6 @@ class Settings(BaseSettings):
         data["stage"] = stage
         cls.check_vpc(data)
         cls.pop_vpc(data)
-        cls.pop_general(data)
         return cls.model_validate(data)
 
     @classmethod
@@ -264,15 +234,10 @@ class Settings(BaseSettings):
         data.pop("vpcs", None)
 
     @classmethod
-    def pop_general(cls, data: dict):
-        data.pop("general", None)
-
-    @classmethod
     def check_keys(cls, data: dict):
         valid_keys = (
-            ["general", "project_name", "region", "stages", "vpcs"]
+            ["general", "stages", "vpcs"]
             + ["awscontainer", "neon", "s3"]
-            + ["django"]
             + data["stages"]
         )
         for key in data:

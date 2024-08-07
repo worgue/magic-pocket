@@ -1,4 +1,5 @@
-from pocket.context import Context, DjangoStorageContext
+from pocket.context import Context
+from pocket.django.context import DjangoStorageContext
 from pocket.django.utils import get_caches, get_storages
 
 

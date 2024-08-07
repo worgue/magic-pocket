@@ -13,6 +13,8 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 from . import settings
+from .django.context import DjangoContext
+from .general_context import GeneralContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
@@ -20,7 +22,7 @@ from .resources.s3 import S3
 from .resources.vpc import Vpc
 from .utils import echo, get_hosted_zone_id_from_domain, get_project_name, get_toml_path
 
-context_settings: ContextVar[settings.Settings] = ContextVar("context_settings")
+context_settings = settings.context_settings
 context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
 
 
@@ -210,62 +212,6 @@ class SecretsManagerContext(settings.SecretsManager):
         return self
 
 
-class DjangoStorageContext(settings.DjangoStorage):
-    @property
-    def backend(self):
-        if self.store == "s3":
-            if self.static and self.manifest:
-                return "storages.backends.s3boto3.S3ManifestStaticStorage"
-            if self.static:
-                return "storages.backends.s3boto3.S3StaticStorage"
-            return "storages.backends.s3boto3.S3Boto3Storage"
-        elif self.store == "filesystem":
-            if self.static and self.manifest:
-                return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
-            if self.static:
-                return "django.contrib.staticfiles.storage.StaticFilesStorage"
-            return "django.core.files.storage.FileSystemStorage"
-        raise ValueError("Unknown store")
-
-
-class DjangoCacheContext(settings.DjangoCache):
-    location: str | None
-
-    @property
-    def backend(self):
-        if self.store == "efs":
-            return "django.core.cache.backends.filebased.FileBasedCache"
-        elif self.store == "locmem":
-            return "django.core.cache.backends.locmem.LocMemCache"
-        raise ValueError("Unknown store")
-
-    @model_validator(mode="before")
-    @classmethod
-    def context(cls, data: dict) -> dict:
-        if data["store"] == "locmem":
-            data["location"] = None
-        elif data["store"] == "efs":
-            settings = context_settings.get()
-            format_vars = {
-                "prefix": settings.object_prefix,
-                "stage": settings.stage,
-                "project": settings.project_name,
-            }
-            assert (
-                settings.awscontainer
-                and settings.awscontainer.vpc
-                and settings.awscontainer.vpc.efs
-            )
-            mnt = Path(settings.awscontainer.vpc.efs.local_mount_path)
-            data["location"] = str(mnt / data["location_subdir"]).format(**format_vars)
-        return data
-
-
-class DjangoContext(settings.Django):
-    storages: dict[str, DjangoStorageContext] = {}
-    caches: dict[str, DjangoCacheContext] = {}
-
-
 class AwsContainerContext(settings.AwsContainer):
     vpc: VpcContext | None = None
     secretsmanager: SecretsManagerContext | None = None
@@ -352,7 +298,7 @@ class S3Context(settings.S3):
 
 
 class Context(settings.Settings):
-    region: str
+    general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
