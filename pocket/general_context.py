@@ -5,23 +5,23 @@ from pathlib import Path
 from pydantic import model_validator
 
 from .context import DjangoContext
-from .global_settings import GlobalSettings
+from .general_settings import GeneralSettings
 from .utils import get_toml_path
 
 
-class GlobalContext(GlobalSettings):
+class GeneralContext(GeneralSettings):
     django_fallback: DjangoContext | None = None
     django_test: DjangoContext | None = None
 
     @classmethod
-    def from_global_settings(cls, global_settings: GlobalSettings) -> GlobalContext:
-        data = global_settings.model_dump(by_alias=True)
+    def from_general_settings(cls, general_settings: GeneralSettings) -> GeneralContext:
+        data = general_settings.model_dump(by_alias=True)
         return cls.model_validate(data)
 
     @classmethod
     def from_toml(cls, *, path: str | Path | None = None):
         path = path or get_toml_path()
-        return cls.from_global_settings(GlobalSettings.from_toml(path=path))
+        return cls.from_general_settings(GeneralSettings.from_toml(path=path))
 
     @model_validator(mode="after")
     def check_django(self):

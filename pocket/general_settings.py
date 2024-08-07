@@ -12,7 +12,7 @@ else:
     import tomli as tomllib
 
 
-class GlobalSettings(BaseSettings):
+class GeneralSettings(BaseSettings):
     s3_fallback_bucket_name: str | None = None
     django_fallback: Django = Django()
     django_test: Django | None = None
@@ -21,4 +21,4 @@ class GlobalSettings(BaseSettings):
     def from_toml(cls, *, path: str | Path | None = None):
         path = path or get_toml_path()
         data = tomllib.loads(Path(path).read_text())
-        return cls.model_validate(data.get("global", {}))
+        return cls.model_validate(data.get("general", {}))

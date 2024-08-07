@@ -244,7 +244,7 @@ class Settings(BaseSettings):
         data["stage"] = stage
         cls.check_vpc(data)
         cls.pop_vpc(data)
-        cls.pop_global(data)
+        cls.pop_general(data)
         return cls.model_validate(data)
 
     @classmethod
@@ -264,13 +264,13 @@ class Settings(BaseSettings):
         data.pop("vpcs", None)
 
     @classmethod
-    def pop_global(cls, data: dict):
-        data.pop("global", None)
+    def pop_general(cls, data: dict):
+        data.pop("general", None)
 
     @classmethod
     def check_keys(cls, data: dict):
         valid_keys = (
-            ["global", "project_name", "region", "stages", "vpcs"]
+            ["general", "project_name", "region", "stages", "vpcs"]
             + ["awscontainer", "neon", "s3"]
             + ["django"]
             + data["stages"]
