@@ -236,9 +236,9 @@ class Settings(BaseSettings):
     @classmethod
     def check_keys(cls, data: dict):
         valid_keys = (
-            ["general", "stages", "vpcs"]
+            ["general", "vpcs"]
             + ["awscontainer", "neon", "s3"]
-            + data["stages"]
+            + data["general"]["stages"]
         )
         for key in data:
             if key not in valid_keys:
@@ -248,8 +248,8 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):
-        if stage not in data["stages"]:
-            raise ValueError(f"stage {stage} not found in {data['stages']}")
+        if stage not in data["general"]["stages"]:
+            raise ValueError(f"stage {stage} not found in {data['general']['stages']}")
 
     @classmethod
     def merge_stage_data(cls, stage: str, data: dict):
@@ -257,6 +257,5 @@ class Settings(BaseSettings):
 
     @classmethod
     def remove_stages_data(cls, stage: str, data: dict):
-        for s in data["stages"]:
+        for s in data["general"]["stages"]:
             data.pop(s, None)
-        del data["stages"]

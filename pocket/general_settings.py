@@ -17,6 +17,7 @@ class GeneralSettings(BaseSettings):
     object_prefix: str = "pocket-"
     region: str
     project_name: str = Field(default_factory=get_project_name)
+    stages: list[str]
     s3_fallback_bucket_name: str | None = None
     django_fallback: Django = Django()
     django_test: Django | None = None
