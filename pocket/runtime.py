@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
 
+from pocket.general_context import GeneralContext
+
 from .context import Context
 from .settings import PocketSecretSpec
 from .utils import get_stage, get_toml_path
@@ -56,6 +58,10 @@ def set_env_from_resources(
     use_awscontainer=True,
 ):
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
+    general_context = GeneralContext.from_toml(path=path)
+    os.environ["POCKET_OBJECT_PREFIX"] = general_context.object_prefix
+    os.environ["POCKET_PROJECT_NAME"] = general_context.project_name
+    os.environ["POCKET_REGION"] = general_context.region
     stage = stage or get_stage()
     if stage == "__none__":
         return
