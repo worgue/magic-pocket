@@ -1,121 +1,22 @@
 from __future__ import annotations
 
-import sys
-from contextvars import ContextVar
 from functools import cached_property
 from pathlib import Path
 
-from pydantic import BaseModel, computed_field, model_validator
+from pydantic import computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 from . import settings
 from .django.context import DjangoContext
-from .general_context import GeneralContext
+from .general_context import GeneralContext, VpcContext
+from .general_settings import context_general_settings
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
-from .resources.vpc import Vpc
-from .utils import echo, get_hosted_zone_id_from_domain, get_project_name, get_toml_path
+from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
 context_settings = settings.context_settings
-context_vpcvalidate: ContextVar[VpcValidateContext] = ContextVar("context_vpcvalidate")
-
-
-class EfsContext(settings.Efs):
-    name: str
-    region: str
-
-    @model_validator(mode="before")
-    @classmethod
-    def context(cls, data: dict) -> dict:
-        vvc = context_vpcvalidate.get()
-        data["name"] = vvc.object_prefix + vvc.ref + "-" + vvc.project_name
-        data["region"] = vvc.region
-        return data
-
-
-class VpcValidateContext(BaseModel):
-    object_prefix: str
-    project_name: str
-    ref: str
-    region: str
-
-
-class VpcContext(settings.Vpc):
-    ref: str
-    name: str
-    region: str
-    efs: EfsContext | None = None
-
-    @computed_field
-    @property
-    def private_route_table(self) -> bool:
-        # If we support vpcendpoints, they require private_route_table
-        return self.nat_gateway
-
-    @computed_field
-    @property
-    def zones(self) -> list[str]:
-        return [f"{self.region}{suffix}" for suffix in self.zone_suffixes]
-
-    @model_validator(mode="before")
-    @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["region"] = settings.region
-        data["name"] = (
-            settings.object_prefix + data["ref"] + "-" + settings.project_name
-        )
-        return data
-
-    @model_validator(mode="wrap")
-    @classmethod
-    def validate_model(cls, v, handler):
-        settings = context_settings.get()
-        vvc = VpcValidateContext.model_validate(
-            {
-                "object_prefix": settings.object_prefix,
-                "project_name": settings.project_name,
-                "ref": v["ref"],
-                "region": settings.region,
-            }
-        )
-        token = context_vpcvalidate.set(vvc)
-        try:
-            return handler(v)
-        finally:
-            context_vpcvalidate.reset(token)
-
-    @classmethod
-    def from_toml(cls, *, ref: str, path: str | Path | None = None):
-        path = path or get_toml_path()
-        data = tomllib.loads(Path(path).read_text())
-        if "vpcs" not in data:
-            raise ValueError("vpcs is required when vpc_ref is used")
-        if ref not in data["vpcs"]:
-            raise ValueError(f"vpc {ref} not found in vpcs")
-
-        vpc_data = data.get("vpcs", {}).get(ref)
-        vpc_data["ref"] = ref
-
-        class MockContext:
-            region = data["region"]
-            project_name = data.get("project_name") or get_project_name()
-
-        token = context_settings.set(MockContext)  # pyright: ignore
-        try:
-            return cls.model_validate(vpc_data)
-        finally:
-            context_settings.reset(token)
-
-    @cached_property
-    def resource(self):
-        return Vpc(self)
 
 
 class ApiGatewayContext(settings.ApiGateway):
@@ -308,11 +209,13 @@ class Context(settings.Settings):
     @classmethod
     def from_settings(cls, settings: settings.Settings) -> Context:
         token = context_settings.set(settings)
+        general_token = context_general_settings.set(settings.general)
         try:
             data = settings.model_dump(by_alias=True)
             return cls.model_validate(data)
         finally:
             context_settings.reset(token)
+            context_general_settings.reset(general_token)
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):

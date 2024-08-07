@@ -6,11 +6,11 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import mergedeep
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
-from .general_settings import GeneralSettings
+from .general_settings import GeneralSettings, Vpc
 from .utils import get_toml_path
 
 if sys.version_info >= (3, 11):
@@ -39,31 +39,6 @@ FormatStr = Annotated[
         ),
     ),
 ]
-
-
-class Efs(BaseModel):
-    local_mount_path: str = Field(pattern="^/mnt/.*", default="/mnt/efs")
-    access_point_path: str = Field(pattern="^/.+", default="/lambda")
-
-
-class Vpc(BaseSettings):
-    ref: str
-    zone_suffixes: list[Annotated[str, Field(max_length=1)]] = ["a"]
-    nat_gateway: bool = True
-    internet_gateway: bool = True
-    efs: Efs | None = None
-
-    @model_validator(mode="after")
-    def check_nat_gateway(self):
-        if self.nat_gateway and not self.internet_gateway:
-            raise ValueError("nat_gateway without internet_gateway is not supported.")
-        if self.internet_gateway and not self.nat_gateway:
-            raise ValueError(
-                "lambda runs in private subnet, internet_gateway without nat_gateway is"
-                " not supported yet.\nWe should support it in the future if we want to "
-                "support fargate."
-            )
-        return self
 
 
 class AwsContainer(BaseModel):
@@ -213,33 +188,27 @@ class Settings(BaseSettings):
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
         data["stage"] = stage
-        cls.check_vpc(data)
-        cls.pop_vpc(data)
+        cls.process_vpc_ref(data)
         return cls.model_validate(data)
 
     @classmethod
-    def check_vpc(cls, data: dict):
-        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
-            if "vpcs" not in data:
-                raise ValueError("vpcs is required when vpc_ref is used")
-            if vpc_ref not in data["vpcs"]:
-                raise ValueError(f"vpc {vpc_ref} not found in vpcs")
-
-    @classmethod
-    def pop_vpc(cls, data: dict):
-        if vpc_ref := data.get("awscontainer", {}).get("vpc_ref"):
-            data["awscontainer"]["vpc"] = data["vpcs"][vpc_ref]
-            data["awscontainer"]["vpc"]["ref"] = vpc_ref
-            data["awscontainer"].pop("vpc_ref", None)
-        data.pop("vpcs", None)
+    def process_vpc_ref(cls, data: dict):
+        if "awscontainer" not in data:
+            return
+        if "vpc_ref" not in data["awscontainer"]:
+            return
+        vpc_ref = data["awscontainer"].pop("vpc_ref")
+        for vpc_data in data["general"]["vpcs"]:
+            if vpc_data["ref"] == vpc_ref:
+                data["awscontainer"]["vpc"] = vpc_data
+                break
+        else:
+            raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = (
-            ["general", "vpcs"]
-            + ["awscontainer", "neon", "s3"]
-            + data["general"]["stages"]
-        )
+        valid_keys = ["general", "awscontainer", "neon", "s3"]
+        valid_keys += data["general"]["stages"]
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
