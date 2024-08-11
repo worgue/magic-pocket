@@ -37,7 +37,7 @@ class Stack:
             return None
 
     @cached_property
-    def uploaded_template(self):
+    def uploaded_template(self) -> str | None:
         try:
             return self.client.get_template(StackName=self.name)["TemplateBody"]
         except ClientError:

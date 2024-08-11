@@ -78,13 +78,10 @@ def create_pocket_managed(stage):
     mediator.create_pocket_managed_secrets()
 
 
-@secretsmanager.command()
-@click.option("--stage", prompt=True)
-def delete_pocket_managed(stage):
-    ac = get_awscontainer_resource(stage)
-    sm = ac.context.secretsmanager
+def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
+    sm = awscontainer.context.secretsmanager
     if not sm:
-        echo.warning("secretsmanager is not configured for this stage")
+        echo.warning("secretsmanager is not configured")
         return
     existing_secret_keys = [
         key for key in sm.pocket_secrets.keys() if key in sm.resource.pocket_secrets
@@ -97,8 +94,16 @@ def delete_pocket_managed(stage):
     for key in existing_secret_keys:
         echo.info(" - " + key)
     echo.danger("This data cannot be restored!")
-    click.confirm("Do you realy want to delet pocket managed secrets?", abort=True)
-    sm.resource.delete_pocket_secrets()
+    click.confirm("Do you realy want to delete pocket managed secrets?", abort=True)
+
+
+@secretsmanager.command()
+@click.option("--stage", prompt=True)
+def delete_pocket_managed(stage):
+    ac = get_awscontainer_resource(stage)
+    _confirm_delete_pocket_managed_secrets(ac)
+    if ac.context.secretsmanager:
+        ac.context.secretsmanager.resource.delete_pocket_secrets()
 
 
 @awscontainer.command()
@@ -111,6 +116,25 @@ def create(stage):
         mediator = Mediator(Context.from_toml(stage=stage))
         ac.create(mediator)
         echo.success("Created: lambda")
+
+
+@awscontainer.command()
+@click.option("--stage", prompt=True)
+@click.option("--with-secrets", is_flag=True, default=False)
+def destroy(stage, with_secrets):
+    ac = get_awscontainer_resource(stage)
+    if ac.stack.status == "NOEXIST":
+        echo.warning("No AWS lambda container found.")
+    else:
+        ac.stack.delete()
+        echo.success("Aws lambda container was destroyed.")
+    if with_secrets:
+        _confirm_delete_pocket_managed_secrets(ac)
+        if ac.context.secretsmanager:
+            ac.context.secretsmanager.resource.delete_pocket_secrets()
+            echo.success("Pocket managed secrets were deleted.")
+    else:
+        echo.warning("Pocket managed secrets still exists.")
 
 
 @awscontainer.command()
