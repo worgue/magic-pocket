@@ -83,7 +83,8 @@ class SecretsManagerContext(settings.SecretsManager):
             except PocketSecretIsNotReady:
                 echo.warning(
                     "Pocket managed secrets is not ready. "
-                    "The context is not complete data."
+                    "The context is not complete data.\n"
+                    "Use deploy command or create secrets before create awslambda."
                 )
         resources += self.extra_resources
         return [self._ensure_arn(resource) for resource in resources if resource]
