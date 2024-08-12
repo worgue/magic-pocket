@@ -58,6 +58,8 @@ class Mediator:
 
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
+        if self.context.awscontainer and self.context.awscontainer.secretsmanager:
+            del self.context.awscontainer.secretsmanager.allowed_resources
 
     def _generate_secret(self, spec: PocketSecretSpec):
         if spec.type == "password":

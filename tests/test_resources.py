@@ -6,6 +6,7 @@ from moto import mock_aws
 from pocket import __version__
 from pocket.cli.main_cli import main, version
 from pocket.context import Context
+from pocket.mediator import Mediator
 from pocket.settings import SecretsManager, Settings
 
 
@@ -42,6 +43,20 @@ def test_secretsmanager():
     assert context.awscontainer.secretsmanager.resource.user_secrets == {
         "DATABASE_URL": "postgres://localhost:5432"
     }
+
+
+@mock_aws
+def test_initial_secretsmanager_policy():
+    settings = Settings.from_toml(
+        stage="prd", path="tests/data/toml/awscontainer_pocket_secrets.toml"
+    )
+    context = Context.from_settings(settings)
+    assert context.awscontainer
+    assert context.awscontainer.secretsmanager
+    assert context.awscontainer.secretsmanager.allowed_resources == []
+    mediator = Mediator(context)
+    mediator.ensure_pocket_managed_secrets()
+    assert context.awscontainer.secretsmanager.allowed_resources != []
 
 
 def get_default_awscontainer():

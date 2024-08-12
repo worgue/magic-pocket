@@ -81,7 +81,7 @@ class SecretsManagerContext(settings.SecretsManager):
             try:
                 resources.append(self.resource.pocket_secrets_arn)
             except PocketSecretIsNotReady:
-                echo.log(
+                echo.warning(
                     "Pocket managed secrets is not ready. "
                     "The context is not complete data."
                 )
