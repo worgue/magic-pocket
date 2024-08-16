@@ -1,4 +1,5 @@
 import json
+import warnings
 from email.utils import parsedate_to_datetime
 from subprocess import run
 
@@ -14,30 +15,38 @@ def django():
     pass
 
 
+def _get_management_command_handler(context: Context, key: str | None = None):
+    if not context.awscontainer:
+        raise Exception("awscontainer is not configured for this stage")
+    if key:
+        warnings.warn(
+            "Do not use key to get management command handler",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return context.awscontainer.resource.handlers[key]
+    target_command = "pocket.django.lambda_handlers.management_command_handler"
+    for key, handler_context in context.awscontainer.handlers.items():
+        if handler_context.command == target_command:
+            return context.awscontainer.resource.handlers[key]
+    print("management command handler not found")
+    raise Exception("Add management command handler for this stage")
+
+
 @django.command(
     context_settings={
         "ignore_unknown_options": True,
     },
 )
 @click.option("--stage", prompt=True)
-@click.option("--handler", prompt=True)
 @click.argument("command")
 @click.argument("args", nargs=-1)
-def manage(stage, handler, command, args):
+@click.option("--handler")
+def manage(stage, command, args, handler):
     if not django_installed:
         raise Exception("django is not installed")
     context = Context.from_toml(stage=stage)
-    if not context.awscontainer:
-        raise Exception("awscontainer is not configured for this stage")
-    handler_context = context.awscontainer.handlers.get(handler)
-    handler = context.awscontainer.resource.handlers.get(handler)
-    if handler_context is None or handler is None:
-        raise Exception("handler %s is not configured for this stage" % handler_context)
-    if (
-        handler_context.command
-        != "pocket.django.lambda_handlers.management_command_handler"
-    ):
-        raise Exception("handler %s is not management handler" % handler_context)
+    handler = _get_management_command_handler(context, key=handler)
     payload = json.dumps({"command": command, "args": args})
     res = handler.invoke(payload)
     request_id = res["ResponseMetadata"]["RequestId"]

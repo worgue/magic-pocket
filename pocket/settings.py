@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import mergedeep
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
@@ -50,6 +50,14 @@ class AwsContainer(BaseModel):
     use_public_internet_access: bool = True
     platform: str = "linux/amd64"
     django: Django | None = None
+
+    @model_validator(mode="after")
+    def check_handlers(self):
+        check_command = "pocket.django.lambda_handlers.management_command_handler"
+        commend_list = [h for h in self.handlers.values() if h.command == check_command]
+        if 1 < len(commend_list):
+            raise ValueError("Only one management command handler is allowed.")
+        return self
 
 
 class PocketSecretSpec(BaseModel):
