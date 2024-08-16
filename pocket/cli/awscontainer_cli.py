@@ -170,14 +170,14 @@ def status(stage):
 
 @awscontainer.command()
 @click.option("--stage", prompt=True)
-@click.option("--open", is_flag=True, default=False)
-def url(stage, open):
+@click.option("--openpath")
+def url(stage, openpath):
     ac = get_awscontainer_resource(stage)
     if ac.status == "COMPLETED":
         if endpoint := ac.endpoints.get("wsgi"):
             echo.success(f"wsgi url: {endpoint}")
-            if open:
-                webbrowser.open(endpoint)
+            if openpath:
+                webbrowser.open(endpoint + "/" + openpath)
         else:
             echo.warning("wsgi endpoint not found.")
     else:

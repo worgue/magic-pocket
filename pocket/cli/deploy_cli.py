@@ -50,8 +50,8 @@ def _deploy_resources(context: Context):
 
 @click.command()
 @click.option("--stage", prompt=True)
-@click.option("--noopen", is_flag=True, default=False)
-def deploy(stage: str, noopen: bool):
+@click.option("--openpath")
+def deploy(stage: str, openpath):
     context = Context.from_toml(stage=stage)
     _deploy_init_resources(context)
     _deploy_resources(context)
@@ -59,5 +59,5 @@ def deploy(stage: str, noopen: bool):
         "wsgi"
     ):
         echo.success(f"wsgi url: {endpoint}")
-        if not noopen:
-            webbrowser.open(endpoint)
+        if openpath:
+            webbrowser.open(endpoint + "/" + openpath)
