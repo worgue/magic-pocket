@@ -21,14 +21,14 @@ def get_resources(context: Context):
     return resources
 
 
-def _deploy_init_resources(context: Context):
+def deploy_init_resources(context: Context):
     for resource in get_resources(context):
         target_name = resource.__class__.__name__
         echo.log("Deploy init %s..." % target_name)
         resource.deploy_init()
 
 
-def _deploy_resources(context: Context):
+def deploy_resources(context: Context):
     mediator = Mediator(context)
     for resource in get_resources(context):
         target_name = resource.__class__.__name__
@@ -53,8 +53,8 @@ def _deploy_resources(context: Context):
 @click.option("--openpath")
 def deploy(stage: str, openpath):
     context = Context.from_toml(stage=stage)
-    _deploy_init_resources(context)
-    _deploy_resources(context)
+    deploy_init_resources(context)
+    deploy_resources(context)
     if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
         "wsgi"
     ):

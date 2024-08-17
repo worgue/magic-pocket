@@ -1,11 +1,13 @@
 import json
 import warnings
-from email.utils import parsedate_to_datetime
+import webbrowser
 from subprocess import run
 
 import click
 
+from ..cli.deploy_cli import deploy_init_resources, deploy_resources
 from ..context import Context
+from ..utils import echo
 from . import django_installed
 from .utils import get_storages
 
@@ -13,6 +15,31 @@ from .utils import get_storages
 @click.group()
 def django():
     pass
+
+
+@django.command()
+@click.option("--stage", prompt=True)
+@click.option("--openpath")
+@click.option("--force", is_flag=True, default=False)
+def deploy(stage: str, openpath, force):
+    context = Context.from_toml(stage=stage)
+    deploy_init_resources(context)
+    deploy_resources(context)
+    handler = _get_management_command_handler(context)
+    if force or click.confirm("collectstatic?"):
+        res = handler.invoke(
+            json.dumps({"command": "collectstatic", "args": ["--noinput"]})
+        )
+        handler.show_logs(res)
+    if force or click.confirm("migrate?"):
+        res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
+        handler.show_logs(res)
+    if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
+        "wsgi"
+    ):
+        echo.success(f"wsgi url: {endpoint}")
+        if openpath:
+            webbrowser.open(endpoint + "/" + openpath)
 
 
 def _get_management_command_handler(context: Context, key: str | None = None):
@@ -47,14 +74,8 @@ def manage(stage, command, args, handler):
         raise Exception("django is not installed")
     context = Context.from_toml(stage=stage)
     handler = _get_management_command_handler(context, key=handler)
-    payload = json.dumps({"command": command, "args": args})
-    res = handler.invoke(payload)
-    request_id = res["ResponseMetadata"]["RequestId"]
-    created_at_rfc1123 = res["ResponseMetadata"]["HTTPHeaders"]["date"]
-    created_at = parsedate_to_datetime(created_at_rfc1123)
-    print("lambda request_id:", request_id)
-    print("lambda created_at:", created_at)
-    handler.show_logs(request_id, created_at)
+    res = handler.invoke(json.dumps({"command": command, "args": args}))
+    handler.show_logs(res)
 
 
 @django.group()

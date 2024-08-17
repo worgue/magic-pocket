@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import time
+from email.utils import parsedate_to_datetime
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -96,7 +97,13 @@ class LambdaHandler:
             FunctionName=self.name, InvocationType="Event", Payload=payload
         )
 
-    def show_logs(self, request_id: str, created_at: datetime.datetime):
+    def show_logs(self, invoke_http_response):
+        res = invoke_http_response
+        request_id = res["ResponseMetadata"]["RequestId"]
+        created_at_rfc1123 = res["ResponseMetadata"]["HTTPHeaders"]["date"]
+        created_at = parsedate_to_datetime(created_at_rfc1123)
+        print("lambda request_id:", request_id)
+        print("lambda created_at:", created_at)
         start_pattern = '"START RequestId: %s"' % request_id
         report_prefix = "REPORT RequestId: %s" % request_id
         events = self._find_events(start_pattern, created_at)
