@@ -162,12 +162,17 @@ class S3(BaseSettings):
     bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
 
 
+class Spa(BaseSettings):
+    domain: str | None = None
+
+
 class Settings(BaseSettings):
     general: GeneralSettings
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
+    spa: Spa | None = None
 
     @property
     def project_name(self):

@@ -14,6 +14,7 @@ from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
+from .resources.spa import Spa
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
 context_settings = settings.context_settings
@@ -199,11 +200,27 @@ class S3Context(settings.S3):
         return data
 
 
+class SpaContext(settings.Spa):
+    region: str
+
+    @cached_property
+    def resource(self):
+        return Spa(self)
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        settings = context_settings.get()
+        data["region"] = settings.region
+        return data
+
+
 class Context(settings.Settings):
     general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
+    spa: SpaContext | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
 
