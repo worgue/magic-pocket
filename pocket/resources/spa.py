@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
+from ..utils import echo
 from .aws.cloudformation import SpaStack
 from .base import ResourceStatus
 
@@ -45,14 +46,14 @@ class Spa:
         if not self._s3_exists():
             self._create_s3_bucket()
         self.stack.create()
-        # self._ensure_bucket_policy()
+        self._ensure_bucket_policy()
 
     def update(self):
         if not self._s3_exists():
             self._create_s3_bucket()
         if not self.stack.yaml_synced:
             self.stack.update()
-        # self._ensure_bucket_policy()
+        self._ensure_bucket_policy()
 
     def _create_s3_bucket(self):
         self.s3_client.create_bucket(
@@ -75,11 +76,21 @@ class Spa:
         )
 
     def _ensure_bucket_policy(self):
-        policy = self.bucket_policy_should_be
-        self.s3_client.put_bucket_policy(
-            Bucket=self.context.domain,
-            Policy=policy,
-        )
+        if self.bucket_policy_require_update:
+            echo.info("Update bucket policy required.")
+            echo.info("Current policy: %s" % self.bucket_policy)
+            if self.bucket_policy_should_be is None:
+                self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
+                echo.info("Deleted bucket policy")
+            else:
+                self.s3_client.put_bucket_policy(
+                    Bucket=self.context.bucket_name,
+                    Policy=json.dumps(self.bucket_policy_should_be),
+                )
+                echo.info("Updated policy: %s" % self.bucket_policy_should_be)
+            del self.bucket_policy
+        else:
+            echo.info("Bucket policy is already configured properly.")
 
     @property
     def bucket_policy_require_update(self):
@@ -98,7 +109,7 @@ class Spa:
 
     @cached_property
     def account_id(self):
-        boto3.client("sts").get_caller_identity().get("Account")
+        return boto3.client("sts").get_caller_identity().get("Account")
 
     @property
     def bucket_policy_should_be(self):
