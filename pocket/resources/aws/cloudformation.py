@@ -13,7 +13,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, VpcContext
+    from pocket.context import AwsContainerContext, SpaContext, VpcContext
 
 
 class Stack:
@@ -21,9 +21,12 @@ class Stack:
     name: str
     export: dict
 
-    def __init__(self, context: AwsContainerContext | VpcContext):
+    def __init__(self, context: AwsContainerContext | VpcContext | SpaContext):
         self.context = context
-        self.client = boto3.client("cloudformation", region_name=context.region)
+        self.client = self.get_client()
+
+    def get_client(self):
+        return boto3.client("cloudformation", region_name=self.context.region)
 
     @property
     def capabilities(self):
@@ -155,6 +158,22 @@ class Stack:
 
     def delete(self):
         return self.client.delete_stack(StackName=self.name)
+
+
+class SpaStack(Stack):
+    context: SpaContext
+    template_filename = "spa"
+
+    def get_client(self):
+        return boto3.client("cloudformation", region_name="us-east-1")
+
+    @property
+    def name(self):
+        return f"{self.context.slug}-spa"
+
+    @property
+    def export(self):
+        return {}
 
 
 class ContainerStack(Stack):

@@ -20,6 +20,20 @@ def get_spa_resource(stage):
 
 @spa.command()
 @click.option("--stage", prompt=True)
+def yaml(stage):
+    spa = get_spa_resource(stage)
+    print(spa.stack.yaml)
+
+
+@spa.command()
+@click.option("--stage", prompt=True)
+def yaml_diff(stage):
+    spa = get_spa_resource(stage)
+    print(spa.stack.yaml_diff.to_json(indent=2))
+
+
+@spa.command()
+@click.option("--stage", prompt=True)
 def context(stage):
     spa = get_spa_resource(stage)
     print(spa.context.model_dump_json(indent=2))
@@ -35,11 +49,27 @@ def create(stage):
 
 @spa.command()
 @click.option("--stage", prompt=True)
-def delete(stage):
-    raise NotImplementedError("delete method is not implemented yet")
+def destroy(stage):
+    raise NotImplementedError("destroy method is not implemented yet")
     spa = get_spa_resource(stage)
     spa.delete()
     echo.success("spa store was deleted successfully.")
+
+
+@spa.command()
+@click.option("--stage", prompt=True)
+def update(stage):
+    spa = get_spa_resource(stage)
+    if spa.status == "NOEXIST":
+        echo.warning("Spa resource has not created yet.")
+        return
+    if spa.status == "FAILED":
+        echo.danger("Spa resource creation has failed. Please check console.")
+        return
+    if spa.status == "PROGRESS":
+        echo.warning("Spa is updating. Please wait.")
+        return
+    spa.update()
 
 
 @spa.command()

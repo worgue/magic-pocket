@@ -202,16 +202,34 @@ class S3Context(settings.S3):
 
 class SpaContext(settings.Spa):
     region: str
+    slug: str
+    bucket_name: str
 
     @cached_property
     def resource(self):
         return Spa(self)
+
+    @computed_field
+    @cached_property
+    def hosted_zone_id(self) -> str | None:
+        if self.hosted_zone_id_override:
+            return self.hosted_zone_id_override
+        if not self.domain:
+            return None
+        return get_hosted_zone_id_from_domain(self.domain)
 
     @model_validator(mode="before")
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
         data["region"] = settings.region
+        data["slug"] = settings.slug
+        format_vars = {
+            "prefix": settings.object_prefix,
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
         return data
 
 
