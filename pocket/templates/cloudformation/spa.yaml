@@ -2,30 +2,14 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: spa configuration for webapp
 
 Resources:
-  CloudFrontDistribution:
-    Type: AWS::CloudFront::Distribution
-    DependsOn:
-      - Certificate
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
     Properties:
-      DistributionConfig:
-        Aliases:
-          - "{{ domain }}"
-        Enabled: true
-        Origins:
-          - Id: "{{ origin_id }}"
-            DomainName:
-              Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
-            # OriginPath: "" ##### stage info should be here, after change bucket name #####
-            S3OriginConfig:
-              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
-        DefaultCacheBehavior:
-          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
-          TargetOriginId: "{{ origin_id }}"
-          ViewerProtocolPolicy: "redirect-to-https"
-        ViewerCertificate:
-          AcmCertificateArn:
-            Ref: Certificate
-          SslSupportMethod: sni-only
+      OriginAccessControlConfig:
+        Name: "{{ oac_config_name }}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
 
   Certificate:
     Type: AWS::CertificateManager::Certificate
@@ -38,6 +22,34 @@ Resources:
         - Key: Name
           Value: "{{ slug }}-spa-cert"
       ValidationMethod: DNS
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - OriginAccessControl
+      - Certificate
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - "{{ domain }}"
+        Enabled: true
+        Origins:
+          - Id: "{{ origin_id }}"
+            DomainName:
+              Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
+            # OriginPath: "" ##### stage info should be here, after change bucket name #####
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+        DefaultCacheBehavior:
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          TargetOriginId: "{{ origin_id }}"
+          ViewerProtocolPolicy: "redirect-to-https"
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: Certificate
+          SslSupportMethod: sni-only
 
   DNSRecord:
     Type: AWS::Route53::RecordSet

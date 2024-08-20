@@ -69,89 +69,21 @@ class Spa:
             self.stack.create()
         elif not self.stack.yaml_synced:
             self.stack.update()
+        w = echo.warning
+        w("Waiting for cloudformation stack to be completed ...")
+        w("This may take a few minutes.")
+        w("Because cloudfront distribution id is required to set s3 bucket policy.")
+        w("If you want to come back later, you can safely cancel this process.")
+        w("Please run `pocket resource spa update` later.")
         self.stack.wait_status("COMPLETED")
         self._ensure_bucket_policy()
-        self._ensure_origin_access_control()
-        self._ensure_distribution_use_oac()
 
     def delete(self):
-        self._remove_oac_from_distribution()
-        self._delete_origin_access_control()
         self._delete_bucket_policy()
         self.stack.delete()
         echo.info("Deleting cloudformation stack for spa ...")
         echo.warning("Please delete the bucket resources manually.")
         echo.warning("The bucket name: " + self.context.bucket_name)
-
-    def _update_oac_id(self, value):
-        get_res = self.cf_client.get_distribution_config(Id=self.distribution_id)
-        data = get_res["DistributionConfig"].copy()
-        for item in data["Origins"]["Items"]:
-            if item["Id"] == self.context.origin_id:
-                if item["OriginAccessControlId"] == value:
-                    echo.log("OriginAccessControlId is already set.")
-                    return
-                item["OriginAccessControlId"] = value
-        self.cf_client.update_distribution(
-            Id=self.distribution_id,
-            DistributionConfig=data,
-            IfMatch=get_res["ETag"],
-        )
-
-    def _ensure_distribution_use_oac(self):
-        self._update_oac_id(self.origin_access_control.Id)
-
-    def _remove_oac_from_distribution(self):
-        self._update_oac_id("")
-
-    @cached_property
-    def origin_access_control(self) -> OriginAccessControl:
-        res = self.cf_client.list_origin_access_controls(MaxItems="100")
-        items = res["OriginAccessControlList"].get("Items", [])
-        if 100 <= len(items):
-            raise Exception("Pagination is not supported yet.")
-        for item in items:
-            if item["Name"] == self.context.oac_config_name:
-                return OriginAccessControl(**item)
-        raise NoOacException("OriginAccessControlConfig not found.")
-
-    def _has_origin_access_control(self):
-        try:
-            return bool(self.origin_access_control)
-        except NoOacException:
-            return False
-
-    def _ensure_origin_access_control(self):
-        # 以下のドキュメントによれば、S3のパーミンション追加の後に作成する必要がある
-        # また、cloudformationで作ることはできても、
-        # cloudformationでdistributionに紐づける方法が見つからなかった
-        # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html
-        # 暫定手動対応
-        if self._has_origin_access_control():
-            print("OriginAccessControlConfig already exists.")
-        else:
-            print("Create OriginAccessControlConfig")
-            self._create_origin_access_control()
-
-    def _delete_origin_access_control(self):
-        if self._has_origin_access_control():
-            res = self.cf_client.get_origin_access_control(
-                Id=self.origin_access_control.Id
-            )
-            self.cf_client.delete_origin_access_control(
-                Id=self.origin_access_control.Id,
-                IfMatch=res["ETag"],
-            )
-
-    def _create_origin_access_control(self):
-        self.cf_client.create_origin_access_control(
-            OriginAccessControlConfig={
-                "Name": self.context.oac_config_name,
-                "OriginAccessControlOriginType": "s3",
-                "SigningProtocol": "sigv4",
-                "SigningBehavior": "always",
-            }
-        )
 
     def _create_s3_bucket(self):
         if self.context.region == "us-east-1":
