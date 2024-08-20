@@ -165,7 +165,7 @@ class S3(BaseSettings):
 class Spa(BaseSettings):
     domain: str
     bucket_name_format: FormatStr = "{prefix}{stage}-spa-{project}"
-    fallback_html: str = "200.html"
+    fallback_html: str = "index.html"
     hosted_zone_id_override: str | None = None
 
 
