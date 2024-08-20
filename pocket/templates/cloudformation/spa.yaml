@@ -12,7 +12,7 @@ Resources:
           - "{{ domain }}"
         Enabled: true
         Origins:
-          - Id: "spa-files"
+          - Id: "{{ origin_id }}"
             DomainName:
               Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
             # OriginPath: "" ##### stage info should be here, after change bucket name #####
@@ -20,7 +20,7 @@ Resources:
               OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
         DefaultCacheBehavior:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
-          TargetOriginId: "spa-files"
+          TargetOriginId: "{{ origin_id }}"
           ViewerProtocolPolicy: "redirect-to-https"
         ViewerCertificate:
           AcmCertificateArn:

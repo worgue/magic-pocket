@@ -74,21 +74,35 @@ class Spa:
         self._ensure_origin_access_control()
         self._ensure_distribution_use_oac()
 
-    def _ensure_distribution_use_oac(self):
+    def delete(self):
+        self._remove_oac_from_distribution()
+        self._delete_origin_access_control()
+        self._delete_bucket_policy()
+        self.stack.delete()
+        echo.info("Deleting cloudformation stack for spa ...")
+        echo.warning("Please delete the bucket resources manually.")
+        echo.warning("The bucket name: " + self.context.bucket_name)
+
+    def _update_oac_id(self, value):
         get_res = self.cf_client.get_distribution_config(Id=self.distribution_id)
         data = get_res["DistributionConfig"].copy()
         for item in data["Origins"]["Items"]:
-            if item["Id"] == "spa-files":
-                item["OriginAccessControlId"] = self.origin_access_control.Id
-        from pprint import pprint
-
-        pprint(data)
-        res = self.cf_client.update_distribution(
+            if item["Id"] == self.context.origin_id:
+                if item["OriginAccessControlId"] == value:
+                    echo.log("OriginAccessControlId is already set.")
+                    return
+                item["OriginAccessControlId"] = value
+        self.cf_client.update_distribution(
             Id=self.distribution_id,
             DistributionConfig=data,
             IfMatch=get_res["ETag"],
         )
-        pprint(res)
+
+    def _ensure_distribution_use_oac(self):
+        self._update_oac_id(self.origin_access_control.Id)
+
+    def _remove_oac_from_distribution(self):
+        self._update_oac_id("")
 
     @cached_property
     def origin_access_control(self) -> OriginAccessControl:
@@ -118,6 +132,16 @@ class Spa:
         else:
             print("Create OriginAccessControlConfig")
             self._create_origin_access_control()
+
+    def _delete_origin_access_control(self):
+        if self._has_origin_access_control():
+            res = self.cf_client.get_origin_access_control(
+                Id=self.origin_access_control.Id
+            )
+            self.cf_client.delete_origin_access_control(
+                Id=self.origin_access_control.Id,
+                IfMatch=res["ETag"],
+            )
 
     def _create_origin_access_control(self):
         self.cf_client.create_origin_access_control(
@@ -168,6 +192,9 @@ class Spa:
             del self.bucket_policy
         else:
             echo.info("Bucket policy is already configured properly.")
+
+    def _delete_bucket_policy(self):
+        self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
 
     @property
     def bucket_policy_require_update(self):

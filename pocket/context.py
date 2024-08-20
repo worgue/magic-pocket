@@ -209,6 +209,7 @@ class SpaContext(settings.Spa):
     region: Literal["us-east-1"] = "us-east-1"
     slug: str
     bucket_name: str
+    origin_id: str
     oac_config_name: str
 
     @cached_property
@@ -235,6 +236,7 @@ class SpaContext(settings.Spa):
             "project": settings.project_name,
         }
         data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
+        data["origin_id"] = data["bucket_name"] + "-origin"
         data["oac_config_name"] = data["bucket_name"] + "-oac"
         return data
 

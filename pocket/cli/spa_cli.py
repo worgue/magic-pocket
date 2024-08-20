@@ -50,7 +50,6 @@ def create(stage):
 @spa.command()
 @click.option("--stage", prompt=True)
 def destroy(stage):
-    raise NotImplementedError("destroy method is not implemented yet")
     spa = get_spa_resource(stage)
     spa.delete()
     echo.success("spa store was deleted successfully.")
