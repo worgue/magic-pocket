@@ -173,3 +173,28 @@ class Spa:
                 }
             ],
         }
+
+    @property
+    def url_fallback_function_indent8(self):
+        lines = []
+        for i, line in enumerate(self._url_fallback_function.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * 8 + line)
+        return "\n".join(lines)
+
+    @property
+    def _url_fallback_function(self):
+        return (
+            """function handler(event) {
+    var request = event.request;
+    var lastItem = request.uri.split('/').pop();
+    if (!lastItem.includes('.')) {
+        request.uri = '/%s';
+    }
+    return request;
+}
+"""
+            % self.context.fallback_html
+        )
