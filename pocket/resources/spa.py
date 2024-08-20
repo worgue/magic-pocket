@@ -75,7 +75,7 @@ class Spa:
         w("Because cloudfront distribution id is required to set s3 bucket policy.")
         w("If you want to come back later, you can safely cancel this process.")
         w("Please run `pocket resource spa update` later.")
-        self.stack.wait_status("COMPLETED")
+        self.stack.wait_status("COMPLETED", timeout=600)
         self._ensure_bucket_policy()
 
     def delete(self):
