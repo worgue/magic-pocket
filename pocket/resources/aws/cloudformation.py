@@ -90,6 +90,10 @@ class Stack:
         return self.description["StackStatus"]
 
     @property
+    def exists(self):
+        return self.status != "NOEXIST"
+
+    @property
     def status(self) -> ResourceStatus:
         if self.status_detail == "NOT_CREATED":
             return "NOEXIST"

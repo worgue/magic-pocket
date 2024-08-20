@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from pathlib import Path
+from typing import Literal
 
 from pydantic import computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
@@ -201,9 +202,14 @@ class S3Context(settings.S3):
 
 
 class SpaContext(settings.Spa):
-    region: str
+    # Although the following guide says that s3 buckets can be created in any region,
+    # access from cloudfront fails, so fixed to us-east-1
+    # In any case, cloudfront is only us-east-1
+    # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html#private-content-oac-permission-to-access-s3
+    region: Literal["us-east-1"] = "us-east-1"
     slug: str
     bucket_name: str
+    oac_config_name: str
 
     @cached_property
     def resource(self):
@@ -222,7 +228,6 @@ class SpaContext(settings.Spa):
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
-        data["region"] = settings.region
         data["slug"] = settings.slug
         format_vars = {
             "prefix": settings.object_prefix,
@@ -230,6 +235,7 @@ class SpaContext(settings.Spa):
             "project": settings.project_name,
         }
         data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
+        data["oac_config_name"] = data["bucket_name"] + "-oac"
         return data
 
 

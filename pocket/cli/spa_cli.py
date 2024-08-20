@@ -77,7 +77,8 @@ def update(stage):
 def status(stage):
     spa = get_spa_resource(stage)
     if spa._s3_exists():
-        echo.success("s3 for spa exists")
+        echo.info("s3 for spa exists")
     if spa.status == "COMPLETED":
-        echo.success("completed")
-    print(spa.status)
+        echo.success("COMPLETED")
+    else:
+        print(spa.status)

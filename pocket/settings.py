@@ -164,7 +164,7 @@ class S3(BaseSettings):
 
 class Spa(BaseSettings):
     domain: str
-    bucket_name_format: FormatStr = "{prefix}{stage}-{project}spa"
+    bucket_name_format: FormatStr = "{prefix}{stage}-spa-{project}"
     hosted_zone_id_override: str | None = None
 
 
