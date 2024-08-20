@@ -226,6 +226,10 @@ class Settings(BaseSettings):
         valid_keys = ["general", "awscontainer", "neon", "s3"]
         valid_keys += data["general"]["stages"]
         for key in data:
+            if key == "spa":
+                raise ValueError(
+                    "Currently spa is not supported for top level. Use it under stage."
+                )
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
