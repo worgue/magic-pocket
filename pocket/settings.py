@@ -171,8 +171,11 @@ class Spa(BaseSettings):
 
     @model_validator(mode="after")
     def check_origin_path(self):
-        if self.origin_path_format and self.origin_path_format[0] != "/":
-            raise ValueError("origin_path_format must starts with /")
+        if self.origin_path_format:
+            if self.origin_path_format[0] != "/":
+                raise ValueError("origin_path_format must starts with /")
+            if self.origin_path_format[-1] == "/":
+                raise ValueError("origin_path_format must not ends with /")
         return self
 
     @model_validator(mode="after")

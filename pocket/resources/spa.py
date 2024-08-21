@@ -108,39 +108,56 @@ class Spa:
             "You may need to change the domain."
         )
 
+    def _update_bucket_policy(self, policy: dict | None):
+        echo.info("Current policy: %s" % self.bucket_policy)
+        if policy is None:
+            self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
+        else:
+            self.s3_client.put_bucket_policy(
+                Bucket=self.context.bucket_name,
+                Policy=json.dumps(policy),
+            )
+        echo.info("Updated policy: %s" % policy)
+        del self.bucket_policy
+
     def _ensure_bucket_policy(self):
-        bucket_policy_should_change = False
         if self.bucket_policy is None:
-            echo.info("Update bucket policy required.")
-            bucket_policy_should_be = {
-                "Version": self.bucket_policy_version_should_be,
-                "Statement": [self.bucket_policy_statement_should_contain],
-            }
-            bucket_policy_should_change = True
+            self._update_bucket_policy(
+                {
+                    "Version": self.bucket_policy_version_should_be,
+                    "Statement": [self.bucket_policy_statement_should_contain],
+                }
+            )
         elif self.bucket_policy["Version"] != self.bucket_policy_version_should_be:
             raise Exception(
                 "Bucket policy version is not supported. "
                 "Please update the policy manually."
             )
         elif self.bucket_policy_require_update:
-            echo.info("Update bucket policy required.")
             bucket_policy_should_be = self.bucket_policy.copy()
             bucket_policy_should_be["Statement"].append(
                 self.bucket_policy_statement_should_contain
             )
+            self._update_bucket_policy(bucket_policy_should_be)
         else:
             echo.info("Bucket policy is already configured properly.")
-        if bucket_policy_should_change:
-            echo.info("Current policy: %s" % self.bucket_policy)
-            self.s3_client.put_bucket_policy(
-                Bucket=self.context.bucket_name,
-                Policy=json.dumps(bucket_policy_should_be),
-            )
-            echo.info("Updated policy: %s" % bucket_policy_should_be)
-            del self.bucket_policy
 
     def _delete_bucket_policy(self):
-        self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
+        delete_target = self.bucket_policy_statement_should_contain
+        if self.bucket_policy is None:
+            echo.info("Bucket policy is already None.")
+        elif self.bucket_policy["Version"] != self.bucket_policy_version_should_be:
+            echo.warning("Bucket policy version missmatch. Check the policy manually.")
+        elif delete_target not in self.bucket_policy["Statement"]:
+            echo.warning("No policy found. Check the policy manually.")
+        else:
+            echo.info("Deleting bucket policy.")
+            bucket_policy_should_be = self.bucket_policy.copy()
+            bucket_policy_should_be["Statement"].remove(delete_target)
+            if not bucket_policy_should_be["Statement"]:
+                self._update_bucket_policy(None)
+            else:
+                self._update_bucket_policy(bucket_policy_should_be)
 
     @property
     def bucket_policy_require_update(self):
@@ -177,11 +194,12 @@ class Spa:
     @property
     def bucket_policy_statement_should_contain(self):
         return {
-            "Sid": "AllowCloudFrontServicePrincipalReadOnly",
+            "Sid": "AllowCloudFrontReadOnly%s" % self.context.origin_path,
             "Effect": "Allow",
             "Principal": {"Service": "cloudfront.amazonaws.com"},
             "Action": "s3:GetObject",
-            "Resource": "arn:aws:s3:::%s/*" % self.context.bucket_name,
+            "Resource": "arn:aws:s3:::%s%s/*"
+            % (self.context.bucket_name, self.context.origin_path),
             "Condition": {
                 "StringEquals": {
                     "AWS:SourceArn": "arn:aws:cloudfront::%s:distribution/%s"
