@@ -164,9 +164,29 @@ class S3(BaseSettings):
 
 class Spa(BaseSettings):
     domain: str
-    bucket_name_format: FormatStr = "{prefix}{stage}-spa-{project}"
+    bucket_name_format: FormatStr = "{prefix}{stage}-{project}-spa"
+    origin_path_format: str
     fallback_html: str = "index.html"
     hosted_zone_id_override: str | None = None
+
+    @model_validator(mode="after")
+    def check_origin_path(self):
+        if self.origin_path_format and self.origin_path_format[0] != "/":
+            raise ValueError("origin_path_format must starts with /")
+        return self
+
+    @model_validator(mode="after")
+    def check_path(self):
+        path = self.bucket_name_format + self.origin_path_format
+        if "{stage}" not in path:
+            raise ValueError(
+                "{stage} must exists in origin_path_format or bucket_name_format"
+            )
+        if "{project}" not in path:
+            raise ValueError(
+                "{project} must exists in origin_path_format or bucket_name_format"
+            )
+        return self
 
 
 class Settings(BaseSettings):

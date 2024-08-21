@@ -209,8 +209,10 @@ class SpaContext(settings.Spa):
     region: Literal["us-east-1"] = "us-east-1"
     slug: str
     bucket_name: str
+    origin_path: str
     origin_id: str
     oac_config_name: str
+    object_prefix: str
 
     @cached_property
     def resource(self):
@@ -229,6 +231,7 @@ class SpaContext(settings.Spa):
     @classmethod
     def context(cls, data: dict) -> dict:
         settings = context_settings.get()
+        data["object_prefix"] = settings.object_prefix
         data["slug"] = settings.slug
         format_vars = {
             "prefix": settings.object_prefix,
@@ -236,8 +239,10 @@ class SpaContext(settings.Spa):
             "project": settings.project_name,
         }
         data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
-        data["origin_id"] = data["bucket_name"] + "-origin"
-        data["oac_config_name"] = data["bucket_name"] + "-oac"
+        data["origin_path"] = data["origin_path_format"].format(**format_vars)
+        origin_slug = "{prefix}{stage}-{project}".format(**format_vars)
+        data["origin_id"] = origin_slug + "-origin"
+        data["oac_config_name"] = origin_slug + "-oac"
         return data
 
 

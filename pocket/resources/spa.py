@@ -109,28 +109,45 @@ class Spa:
         )
 
     def _ensure_bucket_policy(self):
-        if self.bucket_policy_require_update:
+        bucket_policy_should_change = False
+        if self.bucket_policy is None:
             echo.info("Update bucket policy required.")
-            echo.info("Current policy: %s" % self.bucket_policy)
-            if self.bucket_policy_should_be is None:
-                self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
-                echo.info("Deleted bucket policy")
-            else:
-                self.s3_client.put_bucket_policy(
-                    Bucket=self.context.bucket_name,
-                    Policy=json.dumps(self.bucket_policy_should_be),
-                )
-                echo.info("Updated policy: %s" % self.bucket_policy_should_be)
-            del self.bucket_policy
+            bucket_policy_should_be = {
+                "Version": self.bucket_policy_version_should_be,
+                "Statement": [self.bucket_policy_statement_should_contain],
+            }
+            bucket_policy_should_change = True
+        elif self.bucket_policy["Version"] != self.bucket_policy_version_should_be:
+            raise Exception(
+                "Bucket policy version is not supported. "
+                "Please update the policy manually."
+            )
+        elif self.bucket_policy_require_update:
+            echo.info("Update bucket policy required.")
+            bucket_policy_should_be = self.bucket_policy.copy()
+            bucket_policy_should_be["Statement"].append(
+                self.bucket_policy_statement_should_contain
+            )
         else:
             echo.info("Bucket policy is already configured properly.")
+        if bucket_policy_should_change:
+            echo.info("Current policy: %s" % self.bucket_policy)
+            self.s3_client.put_bucket_policy(
+                Bucket=self.context.bucket_name,
+                Policy=json.dumps(bucket_policy_should_be),
+            )
+            echo.info("Updated policy: %s" % bucket_policy_should_be)
+            del self.bucket_policy
 
     def _delete_bucket_policy(self):
         self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
 
     @property
     def bucket_policy_require_update(self):
-        return self.bucket_policy_should_be != self.bucket_policy
+        return (self.bucket_policy is None) or (
+            self.bucket_policy_statement_should_contain
+            not in self.bucket_policy["Statement"]
+        )
 
     @cached_property
     def bucket_policy(self):
@@ -154,24 +171,23 @@ class Spa:
         return self.stack.output["DistributionId"]
 
     @property
-    def bucket_policy_should_be(self):
+    def bucket_policy_version_should_be(self):
+        return "2012-10-17"
+
+    @property
+    def bucket_policy_statement_should_contain(self):
         return {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AllowCloudFrontServicePrincipalReadOnly",
-                    "Effect": "Allow",
-                    "Principal": {"Service": "cloudfront.amazonaws.com"},
-                    "Action": "s3:GetObject",
-                    "Resource": "arn:aws:s3:::%s/*" % self.context.bucket_name,
-                    "Condition": {
-                        "StringEquals": {
-                            "AWS:SourceArn": "arn:aws:cloudfront::%s:distribution/%s"
-                            % (self.account_id, self.distribution_id)
-                        }
-                    },
+            "Sid": "AllowCloudFrontServicePrincipalReadOnly",
+            "Effect": "Allow",
+            "Principal": {"Service": "cloudfront.amazonaws.com"},
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::%s/*" % self.context.bucket_name,
+            "Condition": {
+                "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::%s:distribution/%s"
+                    % (self.account_id, self.distribution_id)
                 }
-            ],
+            },
         }
 
     @property

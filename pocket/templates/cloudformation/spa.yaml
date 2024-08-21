@@ -20,13 +20,13 @@ Resources:
           HostedZoneId: "{{ hosted_zone_id }}"
       Tags:
         - Key: Name
-          Value: "{{ slug }}-spa-cert"
+          Value: "{{ object_prefix }}{{ slug }}-spa-cert"
       ValidationMethod: DNS
 
   UrlFallbackFunction:
     Type: AWS::CloudFront::Function
     Properties:
-      Name: "{{ slug }}-spa-url-fallback"
+      Name: "{{ object_prefix }}{{ slug }}-spa-url-fallback"
       AutoPublish: true
       FunctionCode: |
         {{ resource.url_fallback_function_indent8 }}
@@ -49,7 +49,7 @@ Resources:
           - Id: "{{ origin_id }}"
             DomainName:
               Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
-            # OriginPath: "" ##### stage info should be here, after change bucket name #####
+            OriginPath: "{{ origin_path }}"
             OriginAccessControlId:
               Fn::GetAtt: OriginAccessControl.Id
             S3OriginConfig:
