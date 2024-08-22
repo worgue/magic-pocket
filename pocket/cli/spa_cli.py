@@ -75,7 +75,7 @@ def update(stage):
 @click.option("--stage", prompt=True)
 def status(stage):
     spa = get_spa_resource(stage)
-    if spa._s3_exists():
+    if spa._origin_s3_exists():
         echo.info("s3 for spa exists")
     if spa.status == "COMPLETED":
         echo.success("COMPLETED")

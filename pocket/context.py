@@ -201,6 +201,17 @@ class S3Context(settings.S3):
         return data
 
 
+class RedirectFromContext(settings.RedirectFrom):
+    @computed_field
+    @cached_property
+    def hosted_zone_id(self) -> str | None:
+        if self.hosted_zone_id_override:
+            return self.hosted_zone_id_override
+        if not self.domain:
+            return None
+        return get_hosted_zone_id_from_domain(self.domain)
+
+
 class SpaContext(settings.Spa):
     # Although the following guide says that s3 buckets can be created in any region,
     # access from cloudfront fails, so fixed to us-east-1
@@ -213,6 +224,7 @@ class SpaContext(settings.Spa):
     origin_id: str
     oac_config_name: str
     object_prefix: str
+    redirect_from: list[RedirectFromContext] = []
 
     @cached_property
     def resource(self):

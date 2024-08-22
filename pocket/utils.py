@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from functools import cache
 from pathlib import Path
 
 import boto3
@@ -61,16 +62,22 @@ def get_project_name():
     return Path.cwd().name
 
 
-def get_hosted_zone_id_from_domain(domain: str):
-    echo.log("Searching hostedzone_id from domain: %s" % domain)
+@cache
+def get_hosted_zones():
     echo.log("Requesting Route53 hosted zone list...")
     res = boto3.client("route53").list_hosted_zones()
     if res["IsTruncated"]:
         raise Exception(
             "Route53 hosted zone list is truncated. Please set hosted_zone_id."
         )
+    return res["HostedZones"]
+
+
+@cache
+def get_hosted_zone_id_from_domain(domain: str):
+    echo.log("Searching hostedzone_id from domain: %s" % domain)
     zone_matched = [
-        zone for zone in res["HostedZones"] if zone["Name"].strip(".") in domain
+        zone for zone in get_hosted_zones() if zone["Name"].strip(".") in domain
     ]
     if len(zone_matched) == 0:
         raise Exception(

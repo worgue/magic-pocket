@@ -52,8 +52,7 @@ class Stack:
         if hasattr(self, "uploaded_template"):
             del self.uploaded_template
 
-    def wait_status(self, status: ResourceStatus, timeout=300):
-        interval = 3
+    def wait_status(self, status: ResourceStatus, timeout=300, interval=3):
         for i in range(timeout // interval):
             self.clear_status()
             if self.status == status:

@@ -31,6 +31,10 @@ class NoOacException(Exception):
     pass
 
 
+class BucketOwnershipException(Exception):
+    pass
+
+
 class Spa:
     context: SpaContext
 
@@ -51,7 +55,7 @@ class Spa:
 
     @property
     def status(self) -> ResourceStatus:
-        if not self._s3_exists():
+        if not self._origin_s3_exists():
             return "NOEXIST"
         return self.stack.status
 
@@ -63,53 +67,127 @@ class Spa:
         self.update()
 
     def update(self):
-        if not self._s3_exists():
-            self._create_s3_bucket()
+        self._ensure_redirect_from()
+        if not self._origin_s3_exists():
+            self._create_origin_bucket()
         if not self.stack.exists:
             self.stack.create()
         elif not self.stack.yaml_synced:
             self.stack.update()
-        w = echo.warning
-        w("Waiting for cloudformation stack to be completed ...")
-        w("This may take a few minutes.")
-        w("Because cloudfront distribution id is required to set s3 bucket policy.")
-        w("If you want to come back later, you can safely cancel this process.")
-        w("Please run `pocket resource spa update` later.")
-        self.stack.wait_status("COMPLETED", timeout=600)
+        warn = echo.warning
+        info = echo.info
+        log = echo.log
+        log("Waiting for cloudformation stack to be completed ...")
+        log("This may take a few minutes.")
+        log("Because cloudfront distribution id is required to set s3 bucket policy.")
+        info("If you want to come back later, you can safely cancel this process.")
+        info("In that case, run `pocket resource spa update` later.")
+        self.stack.wait_status("COMPLETED", timeout=600, interval=10)
         self._ensure_bucket_policy()
+        log("Bucket for spa is ready.")
+        warn(
+            "Upload spa files manually to s3://%s%s"
+            % (self.context.bucket_name, self.context.origin_path)
+        )
+        if not self.context.origin_path:
+            info("e.g) npx s3-spa-upload build %s --delete" % self.context.bucket_name)
+        else:
+            info(
+                "e.g) npx s3-spa-upload build %s --delete --prefix %s"
+                % (self.context.bucket_name, self.context.origin_path[1:])
+            )
 
     def delete(self):
+        self._delete_redirect_from()
         self._delete_bucket_policy()
         self.stack.delete()
         echo.info("Deleting cloudformation stack for spa ...")
         echo.warning("Please delete the bucket resources manually.")
         echo.warning("The bucket name: " + self.context.bucket_name)
 
-    def _create_s3_bucket(self):
-        if self.context.region == "us-east-1":
-            self.s3_client.create_bucket(Bucket=self.context.bucket_name)
-        else:
-            self.s3_client.create_bucket(
-                Bucket=self.context.bucket_name,
-                CreateBucketConfiguration={
-                    "LocationConstraint": self.context.region,
-                },
-            )
-
-    def _s3_exists(self):
+    def _bucket_exists(self, bucket_name):
         try:
-            self.s3_client.head_bucket(Bucket=self.context.bucket_name)
+            self.s3_client.head_bucket(Bucket=bucket_name)
             return True
         except ClientError as e:
             if e.response.get("Error", {}).get("Code") == "404":
                 return False
-        raise Exception(
+        raise BucketOwnershipException(
             "Bucket might be already used by other account. "
             "You may need to change the domain."
         )
 
-    def _update_bucket_policy(self, policy: dict | None):
-        echo.info("Current policy: %s" % self.bucket_policy)
+    def _bucket_assert_empty(self, bucket_name):
+        res = self.s3_client.list_objects_v2(Bucket=bucket_name)
+        if "Contents" in res:
+            echo.danger("Redirect from bucket should be empty.")
+            raise Exception("Redirect from bucket is not empty.")
+
+    def _create_bucket(self, bucket_name, region):
+        if region == "us-east-1":
+            self.s3_client.create_bucket(Bucket=bucket_name)
+        else:
+            self.s3_client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration={"LocationConstraint": region},
+            )
+
+    def _ensure_redirect_from(self):
+        self._ensure_redirect_from_exists()
+        self._ensure_redirect_from_empty()
+        self._ensure_redirect_from_website()
+
+    def _ensure_redirect_from_website(self):
+        for redirect_from in self.context.redirect_from:
+            self.s3_client.put_bucket_website(
+                Bucket=redirect_from.domain,
+                WebsiteConfiguration={
+                    "RedirectAllRequestsTo": {
+                        "HostName": self.context.domain,
+                    }
+                },
+            )
+
+    def _ensure_redirect_from_exists(self):
+        for redirect_from in self.context.redirect_from:
+            if not self._bucket_exists(redirect_from.domain):
+                self._create_bucket(redirect_from.domain, self.context.region)
+
+    def _ensure_redirect_from_empty(self):
+        for redirect_from in self.context.redirect_from:
+            self._bucket_assert_empty(redirect_from.domain)
+
+    def _delete_redirect_from(self):
+        for redirect_from in self.context.redirect_from:
+            bucket = redirect_from.domain
+            try:
+                if self._bucket_exists(bucket):
+                    self._bucket_assert_empty(bucket)
+                    self.s3_client.delete_bucket_website(Bucket=bucket)
+                    echo.info("Bucket website hosting for %s was deleted." % bucket)
+                    echo.warning("Delete the bucket manually: %s" % bucket)
+                else:
+                    echo.warning("Redirect from bucket does not exists.")
+            except BucketOwnershipException:
+                echo.danger("Redirect bucket might be already used by other account.")
+
+    def _delete_redirect_from_policies(self, bucket_name):
+        echo.danger("Delete redirect from bucket policies is implementing ...")
+        echo.warning("Please delete the bucket policy manually.")
+        echo.info("The bucket name: " + bucket_name)
+
+    def _create_origin_bucket(self):
+        self._create_bucket(self.context.bucket_name, self.context.region)
+
+    def _origin_s3_exists(self):
+        return self._bucket_exists(self.context.bucket_name)
+
+    def _update_origin_bucket_policy(self, policy: dict | None):
+        if policy is None:
+            echo.info("Deleting bucket policy for %s." % self.context.bucket_name)
+        else:
+            echo.info("Updating bucket policy for %s." % self.context.bucket_name)
+        echo.log("Current policy: %s" % self.bucket_policy)
         if policy is None:
             self.s3_client.delete_bucket_policy(Bucket=self.context.bucket_name)
         else:
@@ -117,12 +195,12 @@ class Spa:
                 Bucket=self.context.bucket_name,
                 Policy=json.dumps(policy),
             )
-        echo.info("Updated policy: %s" % policy)
+        echo.log("Updated policy: %s" % policy)
         del self.bucket_policy
 
     def _ensure_bucket_policy(self):
         if self.bucket_policy is None:
-            self._update_bucket_policy(
+            self._update_origin_bucket_policy(
                 {
                     "Version": self.bucket_policy_version_should_be,
                     "Statement": [self.bucket_policy_statement_should_contain],
@@ -138,7 +216,7 @@ class Spa:
             bucket_policy_should_be["Statement"].append(
                 self.bucket_policy_statement_should_contain
             )
-            self._update_bucket_policy(bucket_policy_should_be)
+            self._update_origin_bucket_policy(bucket_policy_should_be)
         else:
             echo.info("Bucket policy is already configured properly.")
 
@@ -151,13 +229,12 @@ class Spa:
         elif delete_target not in self.bucket_policy["Statement"]:
             echo.warning("No policy found. Check the policy manually.")
         else:
-            echo.info("Deleting bucket policy.")
             bucket_policy_should_be = self.bucket_policy.copy()
             bucket_policy_should_be["Statement"].remove(delete_target)
             if not bucket_policy_should_be["Statement"]:
-                self._update_bucket_policy(None)
+                self._update_origin_bucket_policy(None)
             else:
-                self._update_bucket_policy(bucket_policy_should_be)
+                self._update_origin_bucket_policy(bucket_policy_should_be)
 
     @property
     def bucket_policy_require_update(self):
