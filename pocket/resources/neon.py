@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 import requests
 from pydantic import BaseModel
 
-from pocket.resources.base import ResourceStatus
+from .base import ResourceStatus
 
 if TYPE_CHECKING:
     from pocket.context import NeonContext

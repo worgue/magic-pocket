@@ -29,12 +29,15 @@ class S3:
         pass
 
     def create(self):
-        self.client.create_bucket(
-            Bucket=self.context.bucket_name,
-            CreateBucketConfiguration={
-                "LocationConstraint": self.context.region,
-            },
-        )
+        if self.context.region == "us-east-1":
+            self.client.create_bucket(Bucket=self.context.bucket_name)
+        else:
+            self.client.create_bucket(
+                Bucket=self.context.bucket_name,
+                CreateBucketConfiguration={
+                    "LocationConstraint": self.context.region,
+                },
+            )
         self.ensure_public_access_block()
         self.ensure_policy()
 

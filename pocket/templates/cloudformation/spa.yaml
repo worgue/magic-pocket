@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: spa configuration for webapp
+
+Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: "{{ oac_config_name }}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "{{ domain }}"
+      DomainValidationOptions:
+        - DomainName: "{{ domain }}"
+          HostedZoneId: "{{ hosted_zone_id }}"
+      Tags:
+        - Key: Name
+          Value: "{{ object_prefix }}{{ slug }}-spa-cert"
+      ValidationMethod: DNS
+
+  UrlFallbackFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "{{ object_prefix }}{{ slug }}-spa-url-fallback"
+      AutoPublish: true
+      FunctionCode: |
+        {{ resource.url_fallback_function_indent8 }}
+      FunctionConfig:
+        Comment: "Function to handle SPA url fallback"
+        Runtime: cloudfront-js-2.0
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - OriginAccessControl
+      - Certificate
+      - UrlFallbackFunction
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - "{{ domain }}"
+        Enabled: true
+        Origins:
+          - Id: "{{ origin_id }}"
+            DomainName:
+              Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
+            OriginPath: "{{ origin_path }}"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+        DefaultCacheBehavior:
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          TargetOriginId: "{{ origin_id }}"
+          ViewerProtocolPolicy: "redirect-to-https"
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt: UrlFallbackFunction.FunctionMetadata.FunctionARN
+        ViewerCertificate:
+          AcmCertificateArn:
+            Ref: Certificate
+          SslSupportMethod: sni-only
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - CloudFrontDistribution
+    Properties:
+      HostedZoneId: "{{ hosted_zone_id }}"
+      Name: "{{ domain }}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2 # Z2FDTNDATAQYW2 is the fixed hosted zone id for cloudfront
+        DNSName:
+          Fn::GetAtt: CloudFrontDistribution.DomainName
+
+Outputs:
+  DistributionId:
+    Value:
+      Ref: CloudFrontDistribution

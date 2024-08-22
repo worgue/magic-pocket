@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import cached_property
 from pathlib import Path
+from typing import Literal
 
 from pydantic import computed_field, model_validator
 from pydantic_settings import SettingsConfigDict
@@ -14,6 +15,7 @@ from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.neon import Neon
 from .resources.s3 import S3
+from .resources.spa import Spa
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
 context_settings = settings.context_settings
@@ -199,11 +201,69 @@ class S3Context(settings.S3):
         return data
 
 
+class RedirectFromContext(settings.RedirectFrom):
+    @computed_field
+    @cached_property
+    def hosted_zone_id(self) -> str | None:
+        if self.hosted_zone_id_override:
+            return self.hosted_zone_id_override
+        if not self.domain:
+            return None
+        return get_hosted_zone_id_from_domain(self.domain)
+
+
+class SpaContext(settings.Spa):
+    # Although the following guide says that s3 buckets can be created in any region,
+    # access from cloudfront fails, so fixed to us-east-1
+    # In any case, cloudfront is only us-east-1
+    # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html#private-content-oac-permission-to-access-s3
+    region: Literal["us-east-1"] = "us-east-1"
+    slug: str
+    bucket_name: str
+    origin_path: str
+    origin_id: str
+    oac_config_name: str
+    object_prefix: str
+    redirect_from: list[RedirectFromContext] = []
+
+    @cached_property
+    def resource(self):
+        return Spa(self)
+
+    @computed_field
+    @cached_property
+    def hosted_zone_id(self) -> str | None:
+        if self.hosted_zone_id_override:
+            return self.hosted_zone_id_override
+        if not self.domain:
+            return None
+        return get_hosted_zone_id_from_domain(self.domain)
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        settings = context_settings.get()
+        data["object_prefix"] = settings.object_prefix
+        data["slug"] = settings.slug
+        format_vars = {
+            "prefix": settings.object_prefix,
+            "stage": settings.stage,
+            "project": settings.project_name,
+        }
+        data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
+        data["origin_path"] = data["origin_path_format"].format(**format_vars)
+        origin_slug = "{prefix}{stage}-{project}".format(**format_vars)
+        data["origin_id"] = origin_slug + "-origin"
+        data["oac_config_name"] = origin_slug + "-oac"
+        return data
+
+
 class Context(settings.Settings):
     general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
+    spa: SpaContext | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
 

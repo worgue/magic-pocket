@@ -162,12 +162,49 @@ class S3(BaseSettings):
     bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
 
 
+class RedirectFrom(BaseSettings):
+    domain: str
+    hosted_zone_id_override: str | None = None
+
+
+class Spa(BaseSettings):
+    domain: str
+    bucket_name_format: FormatStr = "{prefix}{stage}-{project}-spa"
+    origin_path_format: str = ""
+    fallback_html: str = "index.html"
+    hosted_zone_id_override: str | None = None
+    redirect_from: list[RedirectFrom] = []
+
+    @model_validator(mode="after")
+    def check_origin_path(self):
+        if self.origin_path_format:
+            if self.origin_path_format[0] != "/":
+                raise ValueError("origin_path_format must starts with /")
+            if self.origin_path_format[-1] == "/":
+                raise ValueError("origin_path_format must not ends with /")
+        return self
+
+    @model_validator(mode="after")
+    def check_path(self):
+        path = self.bucket_name_format + self.origin_path_format
+        if "{stage}" not in path:
+            raise ValueError(
+                "{stage} must exists in origin_path_format or bucket_name_format"
+            )
+        if "{project}" not in path:
+            raise ValueError(
+                "{project} must exists in origin_path_format or bucket_name_format"
+            )
+        return self
+
+
 class Settings(BaseSettings):
     general: GeneralSettings
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
+    spa: Spa | None = None
 
     @property
     def project_name(self):
@@ -218,6 +255,10 @@ class Settings(BaseSettings):
         valid_keys = ["general", "awscontainer", "neon", "s3"]
         valid_keys += data["general"]["stages"]
         for key in data:
+            if key == "spa":
+                raise ValueError(
+                    "Currently spa is not supported for top level. Use it under stage."
+                )
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
