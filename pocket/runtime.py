@@ -1,4 +1,5 @@
 import os
+from functools import cache
 from pathlib import Path
 
 from pocket.general_context import GeneralContext
@@ -6,6 +7,11 @@ from pocket.general_context import GeneralContext
 from .context import Context
 from .settings import PocketSecretSpec
 from .utils import get_stage, get_toml_path
+
+
+@cache
+def get_context(stage: str, path: str | Path) -> Context:
+    return Context.from_toml(stage=stage, path=Path(path))
 
 
 def _pocket_secret_to_envs(
@@ -30,7 +36,7 @@ def get_user_secrets_from_secretsmanager(
     if stage == "__none__":
         return {}
     path = path or get_toml_path()
-    context = Context.from_toml(stage=stage, path=path)
+    context = get_context(stage=stage, path=path)
     if (ac := context.awscontainer) is None:
         return {}
     if (sm := ac.secretsmanager) is None:
@@ -66,7 +72,7 @@ def set_env_from_resources(
     if stage == "__none__":
         return
     path = path or get_toml_path()
-    context = Context.from_toml(stage=stage, path=path)
+    context = get_context(stage=stage, path=path)
     if (neon := context.neon) and use_neon:
         # secretmanager.pocket in pocket.toml is preferred.
         # e.g) DATABASE_URL = { type = "neon_database_url" }
