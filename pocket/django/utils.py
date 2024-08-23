@@ -6,9 +6,9 @@ from pathlib import Path
 import boto3
 from django.core.management import call_command
 
-from pocket.general_context import GeneralContext
-
 from ..context import Context, DjangoContext
+from ..general_context import GeneralContext
+from ..runtime import get_context
 from ..utils import get_toml_path
 
 
@@ -35,7 +35,7 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
     if not stage:
         django_context = _get_current_fallback_context(general_context)
     else:
-        context = Context.from_toml(stage=stage, path=path)
+        context = get_context(stage=stage, path=path)
         if not (
             context.awscontainer
             and context.awscontainer.django
@@ -85,7 +85,7 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
         else:
             django_context = general_context.django_fallback
     else:
-        context = Context.from_toml(stage=stage, path=path)
+        context = get_context(stage=stage, path=path)
         if not (
             context.awscontainer
             and context.awscontainer.django

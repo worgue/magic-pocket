@@ -4,10 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pocket.general_context import GeneralContext
-
-from ..context import Context
-from ..runtime import set_env_from_resources
+from ..general_context import GeneralContext
+from ..runtime import get_context, set_env_from_resources
 from ..utils import get_toml_path
 from .utils import check_django_test
 
@@ -43,7 +41,7 @@ def get_django_settings(
         else:
             django_context = general_context.django_fallback
     else:
-        context = Context.from_toml(stage=stage, path=path)
+        context = get_context(stage=stage, path=path)
         if context.awscontainer and context.awscontainer.django:
             django_context = context.awscontainer.django
         else:
