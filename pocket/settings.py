@@ -123,6 +123,7 @@ class LambdaHandler(BaseModel):
     command: str
     timeout: int = 30
     memory_size: int = 512
+    reserved_concurrency: int | None = None
     apigateway: ApiGateway | None = None
     sqs: Sqs | None = None
 

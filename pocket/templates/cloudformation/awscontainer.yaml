@@ -91,6 +91,9 @@ Resources:
       PackageType: Image
       MemorySize: "{{ handler.memory_size }}"
       Timeout: "{{ handler.timeout }}"
+      # {% if handler.reserved_concurrency %}
+      ReservedConcurrentExecutions: "{{ handler.reserved_concurrency }}"
+      # {% endif %}
       Role:
         Fn::GetAtt: LambdaRole.Arn
       Code:
