@@ -18,6 +18,8 @@ def get_resources(context: Context):
         if context.awscontainer.vpc:
             resources.append(context.awscontainer.vpc.resource)
         resources.append(context.awscontainer.resource)
+    if context.spa:
+        resources.append(context.spa.resource)
     return resources
 
 
@@ -45,7 +47,7 @@ def deploy_resources(context: Context):
             else:
                 resource.update()
         else:
-            echo.log("%s is already created." % target_name)
+            echo.log("%s is already the latest version." % target_name)
 
 
 @click.command()

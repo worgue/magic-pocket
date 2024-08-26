@@ -1,7 +1,6 @@
 import click
 
 from ..context import Context
-from ..resources.spa import Spa
 from ..utils import echo
 
 
@@ -15,7 +14,7 @@ def get_spa_resource(stage):
     if not context.spa:
         echo.danger("spa is not configured for this stage")
         raise Exception("spa is not configured for this stage")
-    return Spa(context=context.spa)
+    return context.spa.resource
 
 
 @spa.command()

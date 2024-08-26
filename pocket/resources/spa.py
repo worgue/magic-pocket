@@ -51,7 +51,7 @@ class Spa:
         )
 
     def deploy_init(self):
-        pass
+        self.warn_contents()
 
     @property
     def status(self) -> ResourceStatus:
@@ -74,7 +74,6 @@ class Spa:
             self.stack.create()
         elif not self.stack.yaml_synced:
             self.stack.update()
-        warn = echo.warning
         info = echo.info
         log = echo.log
         log("Waiting for cloudformation stack to be completed ...")
@@ -85,17 +84,16 @@ class Spa:
         self.stack.wait_status("COMPLETED", timeout=600, interval=10)
         self._ensure_bucket_policy()
         log("Bucket for spa is ready.")
-        warn(
-            "Upload spa files manually to s3://%s%s"
-            % (self.context.bucket_name, self.context.origin_path)
-        )
-        if not self.context.origin_path:
-            info("e.g) npx s3-spa-upload build %s --delete" % self.context.bucket_name)
-        else:
-            info(
-                "e.g) npx s3-spa-upload build %s --delete --prefix %s"
-                % (self.context.bucket_name, self.context.origin_path[1:])
-            )
+        self.warn_contents()
+
+    def warn_contents(self):
+        bucket = self.context.bucket_name
+        origin = self.context.origin_path
+        echo.warning("Upload spa files manually to s3://%s%s" % (bucket, origin))
+        eg_cmd = "npx s3-spa-upload build %s --delete" % bucket
+        if origin:
+            eg_cmd += " --prefix %s" % origin[1:]
+        echo.info("e.g) " + eg_cmd)
 
     def delete(self):
         self._delete_redirect_from()
