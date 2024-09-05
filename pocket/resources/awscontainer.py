@@ -59,13 +59,15 @@ class AwsContainer:
 
     @property
     def status(self) -> ResourceStatus:
-        status_list: list[ResourceStatus] = [
+        handler_status_list: list[ResourceStatus] = [
             handler.status for handler in self.handlers.values()
         ]
-        status_list.append(self.stack.status)
-        for status in ["NOEXIST", "FAILED", "PROGRESS", "REQUIRE_UPDATE"]:
-            if status in status_list:
-                return status
+        if ("FAILED" in handler_status_list) or (self.stack.status == "FAILED"):
+            return "FAILED"
+        if ("PROGRESS" in handler_status_list) or (self.stack.status == "PROGRESS"):
+            return "PROGRESS"
+        if self.stack.status in ["NOEXIST", "REQUIRE_UPDATE"]:
+            return self.stack.status
         for handler in self.handlers.values():
             if handler.configuration.hash != self.ecr.image_detail.hash:
                 return "REQUIRE_UPDATE"

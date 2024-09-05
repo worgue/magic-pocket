@@ -328,6 +328,7 @@ Resources:
       ToPort: 2049
   # {% endif %}
 
+# {% if handlers %}
 Outputs:
   # {% for key, handler in handlers.items() %}
   "{{ key|capitalize }}LambdaFunction":
@@ -347,3 +348,4 @@ Outputs:
       # {% endif %}
   # {% endif %}
   # {% endfor %}
+# {% endif %}
