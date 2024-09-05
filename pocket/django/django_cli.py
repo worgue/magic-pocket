@@ -69,13 +69,17 @@ def _get_management_command_handler(context: Context, key: str | None = None):
 @click.argument("command")
 @click.argument("args", nargs=-1)
 @click.option("--handler")
-def manage(stage, command, args, handler):
+@click.option("--timeout-seconds", type=int)
+def manage(stage, command, args, handler, timeout_seconds):
     if not django_installed:
         raise Exception("django is not installed")
     context = Context.from_toml(stage=stage)
     handler = _get_management_command_handler(context, key=handler)
     res = handler.invoke(json.dumps({"command": command, "args": args}))
-    handler.show_logs(res)
+    if timeout_seconds:
+        handler.show_logs(res, timeout_seconds)
+    else:
+        handler.show_logs(res)
 
 
 @django.group()

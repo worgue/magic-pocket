@@ -97,7 +97,7 @@ class LambdaHandler:
             FunctionName=self.name, InvocationType="Event", Payload=payload
         )
 
-    def show_logs(self, invoke_http_response):
+    def show_logs(self, invoke_http_response, timeout_seconds=120):
         res = invoke_http_response
         request_id = res["ResponseMetadata"]["RequestId"]
         created_at_rfc1123 = res["ResponseMetadata"]["HTTPHeaders"]["date"]
@@ -109,7 +109,6 @@ class LambdaHandler:
         events = self._find_events(start_pattern, created_at)
         print("Log stream found: %s" % events[0]["logStreamName"])
         printed = []
-        timeout_seconds = 120
         sleep_seconds = 5
         for _i in range(timeout_seconds // sleep_seconds):
             res = self.logs_client.filter_log_events(
