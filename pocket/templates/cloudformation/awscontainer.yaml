@@ -83,8 +83,8 @@ Resources:
         Fn::ImportValue: "{{ export.vpc_id }}"
   # {% endif %}
 
-  # {% for lambda_key, handler in handlers.items() %}
-  "{{ lambda_key|capitalize }}LambdaFunction":
+  # {% for handler in handlers.values() %}
+  "{{ handler.key|capitalize }}LambdaFunction":
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: "{{ handler.function_name }}"
@@ -125,33 +125,33 @@ Resources:
       # {% endif %}
   # {% endfor %}
 
-  # {% for lambda_key, handler in handlers.items() %}
+  # {% for handler in handlers.values() %}
   # {% if handler.apigateway %}
-  ApigatewayCloudWatchLogsGroup:
+  "{{ handler.key|capitalize }}ApigatewayCloudWatchLogsGroup":
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "{{ slug }}-{{ lambda_key }}-apigateway"
+      LogGroupName: "{{ slug }}-{{ handler.key }}-apigateway"
       RetentionInDays: 365
 
-  WsgiApi:
+  "{{ handler.key|capitalize }}Api":
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: "{{ slug }}-wsgi"
+      Name: "{{ slug }}-{{ handler.key }}"
       ProtocolType: HTTP
       Target:
-        Fn::GetAtt: "{{ lambda_key|capitalize }}LambdaFunction.Arn"
+        Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
       DisableExecuteApiEndpoint: "{{ handler.apigateway.disable_execute_api_endpoint }}"
 
-  WsgiApiGatewayManagedOverrides:
+  "{{ handler.key|capitalize }}ApiGatewayManagedOverrides":
     Type: AWS::ApiGatewayV2::ApiGatewayManagedOverrides
     Properties:
       ApiId:
-        Ref: WsgiApi
+        Ref: "{{ handler.key|capitalize }}Api"
       Stage:
         AutoDeploy: true
         AccessLogSettings:
           DestinationArn:
-            Fn::GetAtt: ApigatewayCloudWatchLogsGroup.Arn
+            Fn::GetAtt: "{{ handler.key|capitalize }}ApigatewayCloudWatchLogsGroup.Arn"
           Format: >-
             {"requestTime": "$context.requestTime",
             "requestId": "$context.requestId",
@@ -168,25 +168,25 @@ Resources:
             "ip": "$context.identity.sourceIp",
             "userAgent": "$context.identity.userAgent"}
 
-  WsgiRoute:
+  "{{ handler.key|capitalize }}Route":
     Type: AWS::ApiGatewayV2::Route
     DependsOn:
-      - WsgiIntegration
+      - "{{ handler.key|capitalize }}Integration"
     Properties:
       ApiId:
-        Ref: WsgiApi
+        Ref: "{{ handler.key|capitalize }}Api"
       RouteKey: "ANY /{proxy+}"
       Target:
         Fn::Join:
           - /
           - - integrations
-            - Ref: WsgiIntegration
+            - Ref: "{{ handler.key|capitalize }}Integration"
 
-  WsgiIntegration:
+  "{{ handler.key|capitalize }}Integration":
     Type: AWS::ApiGatewayV2::Integration
     Properties:
       ApiId:
-        Ref: WsgiApi
+        Ref: "{{ handler.key|capitalize }}Api"
       IntegrationType: AWS_PROXY
       IntegrationUri:
         Fn::Join:
@@ -196,15 +196,15 @@ Resources:
             - ":apigateway:"
             - Ref: "AWS::Region"
             - ":lambda:path/2015-03-31/functions/"
-            - Fn::GetAtt: "{{ lambda_key|capitalize }}LambdaFunction.Arn"
+            - Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
             - /invocations
       PayloadFormatVersion: "2.0"
 
-  WsgiPermission:
+  "{{ handler.key|capitalize }}Permission":
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName:
-        Ref: "{{ lambda_key|capitalize }}LambdaFunction"
+        Ref: "{{ handler.key|capitalize }}LambdaFunction"
       Action: lambda:InvokeFunction
       Principal: apigateway.amazonaws.com
       SourceArn:
@@ -217,21 +217,23 @@ Resources:
             - ":"
             - Ref: "AWS::AccountId"
             - ":"
-            - Ref: WsgiApi
+            - Ref: "{{ handler.key|capitalize }}Api"
             - "/*/*"
   # {% endif %}
 
   # {% if handler.apigateway.domain %}
-  Certificate:
+  "{{ handler.cloudformation_cert_ref_name }}":
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: "{{ handler.apigateway.domain }}"
+      # {% if handler.apigateway.create_records %}
       DomainValidationOptions:
         - DomainName: "{{ handler.apigateway.domain }}"
           HostedZoneId: "{{ handler.apigateway.hosted_zone_id }}"
+      # {% endif %}
       Tags:
         - Key: Name
-          Value: "{{ slug }}-{{ lambda_key }}-cert"
+          Value: "{{ slug }}-{{ handler.key }}-cert"
       ValidationMethod: DNS
 
   ##### Warning #####
@@ -240,15 +242,16 @@ Resources:
   #  - https://stackoverflow.com/a/58683733
   #  - https://stackoverflow.com/q/47311081
   ###################
-  ApiGatewayDomainName:
+  "{{ handler.key|capitalize }}ApiGatewayDomainName":
     Type: AWS::ApiGatewayV2::DomainName
     Properties:
       DomainName: "{{ handler.apigateway.domain }}"
       DomainNameConfigurations:
         - CertificateArn:
-            Ref: Certificate
+            Ref: "{{ handler.cloudformation_cert_ref_name }}"
 
-  DNSRecord:
+  # {% if handler.apigateway.create_records %}
+  "{{ handler.key|capitalize }}DNSRecord":
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: "{{ handler.apigateway.hosted_zone_id }}"
@@ -256,38 +259,39 @@ Resources:
       Type: A
       AliasTarget:
         HostedZoneId:
-          Fn::GetAtt: ApiGatewayDomainName.RegionalHostedZoneId
+          Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalHostedZoneId"
         DNSName:
-          Fn::GetAtt: ApiGatewayDomainName.RegionalDomainName
+          Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalDomainName"
+  # {% endif %}
 
-  ApiGatewayApiMapping:
+  "{{ handler.key|capitalize }}ApiGatewayApiMapping":
     DependsOn:
-      - ApiGatewayDomainName
+      - "{{ handler.key|capitalize }}ApiGatewayDomainName"
     Type: "AWS::ApiGatewayV2::ApiMapping"
     Properties:
       DomainName: "{{ handler.apigateway.domain }}"
       ApiId:
-        Ref: WsgiApi
+        Ref: "{{ handler.key|capitalize }}Api"
       Stage: "$default"
   # {% endif %}
   # {% endfor %}
 
-  # {% for lambda_key, handler in handlers.items() %}
+  # {% for handler in handlers.values() %}
   # {% if handler.sqs %}
-  SqsQueue:
+  "{{ handler.key|capitalize }}SqsQueue":
     Type: AWS::SQS::Queue
     Properties:
       QueueName:
         Fn::Sub: "{{ handler.sqs.name }}"
       RedrivePolicy:
         deadLetterTargetArn:
-          Fn::GetAtt: DeadLetterQueue.Arn
+          Fn::GetAtt: "{{ handler.key|capitalize }}DeadLetterQueue.Arn"
         maxReceiveCount: "{{ handler.sqs.dead_letter_max_receive_count }}"
       VisibilityTimeout: "{{ handler.sqs.visibility_timeout }}"
       # default 4 days
       MessageRetentionPeriod: "{{ handler.sqs.message_retention_period }}"
 
-  DeadLetterQueue:
+  "{{ handler.key|capitalize }}DeadLetterQueue":
     Type: AWS::SQS::Queue
     Properties:
       QueueName:
@@ -295,16 +299,16 @@ Resources:
       # max 14 days
       MessageRetentionPeriod: "{{ handler.sqs.dead_letter_message_retention_period }}"
 
-  SqsEventSourceMapping:
+  "{{ handler.key|capitalize }}SqsEventSourceMapping":
     DependsOn:
-      - SqsQueue
-      - "{{ lambda_key|capitalize }}LambdaFunction"
+      - "{{ handler.key|capitalize }}SqsQueue"
+      - "{{ handler.key|capitalize }}LambdaFunction"
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       EventSourceArn:
-        Fn::GetAtt: SqsQueue.Arn
+        Fn::GetAtt: "{{ handler.key|capitalize }}SqsQueue.Arn"
       FunctionName:
-        Ref: "{{ lambda_key|capitalize }}LambdaFunction"
+        Ref: "{{ handler.key|capitalize }}LambdaFunction"
       BatchSize: "{{ handler.sqs.batch_size }}"
       ScalingConfig:
         MaximumConcurrency: "{{ handler.sqs.maximum_concurrency }}"
@@ -330,22 +334,26 @@ Resources:
 
 # {% if handlers %}
 Outputs:
-  # {% for key, handler in handlers.items() %}
-  "{{ key|capitalize }}LambdaFunction":
+  # {% for handler in handlers.values() %}
+  "{{ handler.key|capitalize }}LambdaFunction":
     Value:
-      Fn::GetAtt: "{{ key|capitalize }}LambdaFunction.Arn"
+      Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
   # {% if handler.apigateway %}
-  "{{ key|capitalize }}ApiEndpoint":
+  "{{ handler.key|capitalize }}ApiEndpoint":
     Value:
       # {% if handler.apigateway.domain %}
       Fn::Join:
         - ""
-        - - "https://"
-          - Fn::GetAtt: ApiGatewayDomainName.RegionalDomainName
-          - "/"
+        - - "https://{{ handler.apigateway.domain }}/"
       # {% else %}
-      Fn::GetAtt: WsgiApi.ApiEndpoint
+      Fn::GetAtt: "{{ handler.key|capitalize }}Api.ApiEndpoint"
       # {% endif %}
+  "{{ handler.key|capitalize }}RegionalDomainName":
+    Value:
+      Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalDomainName"
+  "{{ handler.key|capitalize }}RegionalHostedZoneId":
+    Value:
+      Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalHostedZoneId"
   # {% endif %}
   # {% endfor %}
 # {% endif %}

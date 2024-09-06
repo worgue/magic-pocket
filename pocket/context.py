@@ -23,13 +23,17 @@ context_settings = settings.context_settings
 
 class ApiGatewayContext(settings.ApiGateway):
     @computed_field
+    def disable_execute_api_endpoint(self) -> bool:
+        return bool(self.domain)
+
+    @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
         if self.hosted_zone_id_override:
             return self.hosted_zone_id_override
-        if not self.domain:
-            return None
-        return get_hosted_zone_id_from_domain(self.domain)
+        if self.domain and self.create_records:
+            return get_hosted_zone_id_from_domain(self.domain)
+        return None
 
 
 class SqsContext(settings.Sqs):
@@ -44,6 +48,11 @@ class LambdaHandlerContext(settings.LambdaHandler):
     key: str
     function_name: str
     log_group_name: str
+
+    @computed_field
+    @property
+    def cloudformation_cert_ref_name(self) -> str:
+        return self.key.capitalize() + "Certificate"
 
     @model_validator(mode="before")
     @classmethod

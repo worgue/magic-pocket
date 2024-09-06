@@ -140,13 +140,11 @@ class Stack:
 
     @property
     def yaml_diff(self):
-        if self.uploaded_template:
-            return DeepDiff(
-                yaml.safe_load(self.uploaded_template or ""),
-                yaml.safe_load(self.yaml),
-                ignore_order=True,
-            )
-        return yaml.safe_load(self.yaml)
+        return DeepDiff(
+            yaml.safe_load(self.uploaded_template or ""),
+            yaml.safe_load(self.yaml),
+            ignore_order=True,
+        )
 
     def create(self):
         return self.client.create_stack(

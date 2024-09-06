@@ -128,14 +128,10 @@ class LambdaHandler(BaseModel):
     sqs: Sqs | None = None
 
 
-class ApiGateway(BaseModel):
+class ApiGateway(BaseSettings):
     domain: str | None = None
+    create_records: bool = True
     hosted_zone_id_override: str | None = None
-
-    @computed_field
-    @property
-    def disable_execute_api_endpoint(self) -> bool:
-        return bool(self.domain)
 
 
 class Sqs(BaseModel):

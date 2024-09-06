@@ -7,6 +7,7 @@ import boto3
 from pocket.mediator import Mediator
 
 from .. import context
+from ..utils import echo
 from .aws.cloudformation import ContainerStack
 from .aws.ecr import Ecr
 from .aws.lambdahandler import LambdaHandler
@@ -86,6 +87,34 @@ class AwsContainer:
             )
         return msg
 
+    def _require_acm_manual_upadte(self):
+        manual_cert_ref_names = []
+        for handler in self.handlers.values():
+            apig_c = handler.context.apigateway
+            if apig_c and apig_c.domain and not apig_c.create_records:
+                manual_cert_ref_names.append(
+                    handler.context.cloudformation_cert_ref_name
+                )
+        yaml_diff = self.stack.yaml_diff
+        for ref_name in manual_cert_ref_names:
+            if t := yaml_diff.get("type_changes", {}).get("root", {}).get("old_type"):
+                if t == "NoneType":
+                    return True
+            resource = "root['Resources']['%s']" % ref_name
+            if resource in yaml_diff.get("dictionary_item_added", []):
+                return True
+            for changed_resource in yaml_diff.get("values_changed", {}).keys():
+                if changed_resource.startswith(resource):
+                    return True
+        return False
+
+    def show_acm_manual_request(self):
+        if self._require_acm_manual_upadte():
+            w = echo.warning
+            w("You need to request ACM manually to complete stack events.")
+            w("See CloudFormation stack log.")
+            w("Probably, you need to request dns A record to WsgiRegionalDomainName")
+
     def deploy_init(self):
         self.ecr.sync()
         if self.context.vpc:
@@ -95,10 +124,12 @@ class AwsContainer:
         print("Creating secrets ...")
         mediator.ensure_pocket_managed_secrets()
         print("Creating cloudformation stack for awscontainer ...")
+        self.show_acm_manual_request()
         self.stack.create()
 
     def update(self, mediator: Mediator):
         mediator.ensure_pocket_managed_secrets()
+        self.show_acm_manual_request()
         for key, handler in self.handlers.items():
             if handler.status == "NOEXIST":
                 print(f"function {key} was not found and skipped.")
