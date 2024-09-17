@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -100,14 +99,8 @@ class Ecr:
         if self.target is None:
             raise ValueError("target is not defined")
         self.ensure_exists()
-        token = self.client.get_authorization_token()
-        username, password = (
-            base64.b64decode(token["authorizationData"][0]["authorizationToken"])
-            .decode()
-            .split(":")
-        )
         print("Logging in to ecr...")
-        docker.login(self.uri, username, password)
+        docker.login_ecr(region_name=self.client.meta.config.region_name)
         print("Pushing docker image...")
         docker.push(self.target)
 
