@@ -37,4 +37,3 @@ def test_yaml():
     handlers = context.awscontainer.handlers
     assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
-    print(context.awscontainer.resource.stack.yaml)

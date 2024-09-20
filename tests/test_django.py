@@ -7,34 +7,6 @@ from pocket.django.django_cli import _get_management_command_handler
 from pocket.django.utils import get_caches, get_storages
 
 
-@pytest.fixture
-def base_settings():
-    return settings.Settings.model_validate(
-        {
-            "stage": "test",
-            "general": {
-                "region": "ap-southeast-1",
-                "project_name": "testprj",
-                "stages": ["dev", "prod"],
-            },
-        }
-    )
-
-
-@pytest.fixture
-def aws_settings():
-    management_name = "pocket.django.lambda_handlers.management_command_handler"
-    return settings.AwsContainer.model_validate(
-        {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {
-                "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
-                "management": {"command": management_name},
-            },
-        }
-    )
-
-
 def test_manage_cli(base_settings, aws_settings):
     s = base_settings
     with pytest.raises(Exception, match="awscontainer is not configured .*"):
