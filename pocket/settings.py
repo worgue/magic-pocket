@@ -47,7 +47,6 @@ class AwsContainer(BaseModel):
     handlers: dict[str, LambdaHandler] = {}
     dockerfile_path: str
     envs: dict[str, str] = {}
-    use_public_internet_access: bool = True
     platform: str = "linux/amd64"
     django: Django | None = None
 
