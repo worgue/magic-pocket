@@ -27,6 +27,8 @@ aws-xray-sdk==2.12.1
     # via moto
 awslambdaric==2.0.10
     # via magic-pocket
+babel==2.16.0
+    # via mkdocs-material
 boto3==1.34.38
     # via aws-sam-translator
     # via magic-pocket
@@ -48,7 +50,10 @@ charset-normalizer==3.3.2
     # via requests
 click==8.1.7
     # via magic-pocket
+    # via mkdocs
     # via typer
+colorama==0.4.6
+    # via mkdocs-material
 cryptography==43.0.0
     # via moto
     # via python-jose
@@ -72,6 +77,8 @@ exceptiongroup==1.2.0
     # via pytest
 filelock==3.13.1
     # via virtualenv
+ghp-import==2.1.0
+    # via mkdocs
 graphql-core==3.2.3
     # via moto
 identify==2.5.33
@@ -82,6 +89,8 @@ iniconfig==2.0.0
     # via pytest
 jinja2==3.1.3
     # via magic-pocket
+    # via mkdocs
+    # via mkdocs-material
     # via moto
 jmespath==1.0.1
     # via boto3
@@ -110,15 +119,29 @@ junit-xml==1.9
     # via cfn-lint
 lazy-object-proxy==1.10.0
     # via openapi-spec-validator
+markdown==3.7
+    # via mkdocs
+    # via mkdocs-material
+    # via pymdown-extensions
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
     # via jinja2
+    # via mkdocs
     # via werkzeug
 mdurl==0.1.2
     # via markdown-it-py
 mergedeep==1.3.4
     # via magic-pocket
+    # via mkdocs
+    # via mkdocs-get-deps
+mkdocs==1.6.1
+    # via mkdocs-material
+mkdocs-get-deps==0.2.0
+    # via mkdocs
+mkdocs-material==9.5.38
+mkdocs-material-extensions==1.3.1
+    # via mkdocs-material
 moto==5.0.1
 mpmath==1.3.0
     # via sympy
@@ -136,13 +159,19 @@ ordered-set==4.1.0
     # via deepdiff
 packaging==23.2
     # via docker
+    # via mkdocs
     # via pytest
+paginate==0.5.7
+    # via mkdocs-material
 pathable==0.4.3
     # via jsonschema-path
+pathspec==0.12.1
+    # via mkdocs
 pbr==6.0.0
     # via jschema-to-python
     # via sarif-om
 platformdirs==4.2.0
+    # via mkdocs-get-deps
     # via virtualenv
 pluggy==1.4.0
     # via pytest
@@ -164,12 +193,16 @@ pydantic-core==2.16.2
 pydantic-settings==2.1.0
     # via magic-pocket
 pygments==2.17.2
+    # via mkdocs-material
     # via rich
+pymdown-extensions==10.11
+    # via mkdocs-material
 pyparsing==3.1.1
     # via moto
 pytest==8.0.0
 python-dateutil==2.8.2
     # via botocore
+    # via ghp-import
     # via moto
 python-dotenv==1.0.1
     # via pydantic-settings
@@ -181,18 +214,26 @@ pyyaml==6.0.1
     # via cfn-lint
     # via jsonschema-path
     # via magic-pocket
+    # via mkdocs
+    # via mkdocs-get-deps
     # via moto
     # via pre-commit
+    # via pymdown-extensions
+    # via pyyaml-env-tag
     # via responses
+pyyaml-env-tag==0.1
+    # via mkdocs
 referencing==0.31.1
     # via jsonschema
     # via jsonschema-path
     # via jsonschema-specifications
 regex==2023.12.25
     # via cfn-lint
+    # via mkdocs-material
 requests==2.31.0
     # via docker
     # via jsonschema-path
+    # via mkdocs-material
     # via moto
     # via python-on-whales
     # via responses
@@ -249,6 +290,8 @@ urllib3==2.0.7
     # via responses
 virtualenv==20.25.0
     # via pre-commit
+watchdog==5.0.3
+    # via mkdocs
 werkzeug==3.0.1
     # via moto
 wrapt==1.16.0

@@ -1,0 +1,4 @@
+site_name: Magic Pocket
+site_url: https://worgue.github.io/magic-pocket
+theme:
+  name: material
