@@ -38,6 +38,7 @@ dev-dependencies = [
     "ruff>=0.2.1",
     "pre-commit>=3.6.0",
     "cryptography>=42.0.8",
+    "mkdocs-material>=9.5.38",
 ]
 
 [tool.flit.module]
