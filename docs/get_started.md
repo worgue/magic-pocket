@@ -3,9 +3,9 @@
 基本的な使い方は以下の通りです。
 
 - [Installation](#installation)
-- [Add pocket.toml](#add-pockettoml)
-- [Update django settings](#update-django-settings)
-- [Add Dockerfile](#add-dockerfile)
+- [pocket.toml](#pockettoml)
+- [django settings](#django-settings)
+- [Dockerfile](#dockerfile)
 - [Deploy](#deploy)
 
 ## Installation
@@ -14,67 +14,77 @@
 pip install magic-pocket
 ```
 
-## Add pocket.toml
+## pocket.toml
+
+```yaml
+theme:
+  features:
+    - content.code.annotate # (1)
+```
+
+1.  I'm a code annotation! I can contain `code`, **formatted
+    text**, images, ... basically anything that can be written in Markdown.
 
 プロジェクトのルートディレクトリに `pocket.toml` を作成します。
 以下は、dev と prd 環境を持つ、django プロジェクトの例です。
 
 ```toml
 [general]
-region = "ap-southeast-1"
-stages = ["dev", "prd"]
+region = "ap-southeast-1" # (1)!
+stages = ["dev", "prd"] # (2)!
 
-[s3]
-public_dirs = ["static"]
+[s3] # (3)!
+public_dirs = ["static"] # (4)!
 
-[neon]
+[neon] # (5)!
 
-[awscontainer]
-dockerfile_path = "Dockerfile"
+[awscontainer] # (6)!
+dockerfile_path = "Dockerfile" # (7)!
 
-[awscontainer.handlers.wsgi]
+[awscontainer.handlers.wsgi] # (8)!
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management]
+[awscontainer.handlers.management] # (9)!
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
-[dev.awscontainer.handlers.wsgi]
+[dev.awscontainer.handlers.wsgi] # (10)!
 apigateway = {}
-[prd.awscontainer.handlers.wsgi]
+[prd.awscontainer.handlers.wsgi] # (11)!
 apigateway = { domain = "example.com" }
 
-[awscontainer.secretsmanager.pocket_secrets]
+[awscontainer.secretsmanager.pocket_secrets] # (12)!
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 
-[awscontainer.django.storages]
+[awscontainer.django.storages] # (13)!
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 
-[prd.awscontainer.django.settings]
+[prd.awscontainer.django.settings] # (14)!
 DEFAULT_FROM_EMAIL = '"MagicPocket" <noreply@example.com>'
 [dev.awscontainer.django.settings]
 DEFAULT_FROM_EMAIL = '"MagicPocket Dev" <noreply-dev@example.com>'
 ```
 
-こちらの yaml は、以下の環境を宣言します。
-
-- ap-southeast-1 リージョンでリソースは作成されます
-- dev と prd の 2 つのステージが指定可能です
-- S3 のバケット名は指定されていないので、環境ごとに自動生成され、static ディレクトリは公開されます
-- neon データベースが作成されます
-- Dockerfile を元にした lambda が作成されます
-- wsgi 実行用と management コマンド実行用の lambda が、同じイメージから作成されます
-- wsgi には、dev でも prd でも apigateway が設定され、prd ではドメインが設定されます
-- ドメインが設定されない apigateway は、自動で作られた API Gateway の URL が使われ、deploy 時に表示されます
-- SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL が自動生成され secretsmanager に保存されます
-- S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます
-- prd, dev 環境でそれぞれ、DEFAULT_FROM_EMAIL が設定され、settings.py から簡単に読み込めます
+1.  :man_raising_hand: ap-southeast-1 リージョンでリソースは作成されます。
+2.  dev と prd の 2 つのステージが指定可能です。
+3.  S3 バケットを作成します。名前は指定されていないので、プロジェクト名とステージ名から自動生成されます。
+4.  作成されたバケットの static ディレクトリは公開されます
+5.  neon データベースが作成されます。名前はプロジェクト名とステージ名から自動生成されます。
+6.  lambda コンテナイメージを作成します。ECR リポジトリ名はプロジェクト名とステージ名から自動生成されます。
+7.  lambda コンテナを作成する、Dockerfile のパスを指定します。
+8.  wsgi という名前で、wsgi を実行する lambda が作成されます。
+9.  management という名前で、マネジメントコマンド を実行する lambda が作成されます。timeout は 600 秒です。
+10. dev の wsgi に apigateway が設定されます。URL は自動生成され、デプロイ時に表示されます。
+11. prd の wsgi に apigateway が設定されます。ドメインは example.com です。
+12. SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL が自動生成され secretsmanager に保存されます
+13. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
+14. prd, dev 環境でそれぞれ、DEFAULT_FROM_EMAIL が設定され、settings.py から簡単に読み込めます
 
 読んで理解するままの環境が作成されるべきだと思うので、分かりにくい記述があれば、issue に投げてください。
 
-## Update django settings
+## django settings
 
 `settings.py` に以下の設定を追加します。
 
@@ -94,7 +104,7 @@ STORAGES = get_storages()
 CACHES = get_caches()
 ```
 
-## Add Dockerfile
+## Dockerfile
 
 awscontainer.dockerfile_path で指定した先に、lambda 対応の`Dockerfile` を作成します。
 利用用途によると思いますが、requirements.lock を持つ django プロジェクトの場合、以下の設定で動作すると思います。
