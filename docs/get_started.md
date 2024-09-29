@@ -16,15 +16,6 @@ pip install magic-pocket
 
 ## pocket.toml
 
-```yaml
-theme:
-  features:
-    - content.code.annotate # (1)
-```
-
-1.  I'm a code annotation! I can contain `code`, **formatted
-    text**, images, ... basically anything that can be written in Markdown.
-
 プロジェクトのルートディレクトリに `pocket.toml` を作成します。
 以下は、dev と prd 環境を持つ、django プロジェクトの例です。
 
