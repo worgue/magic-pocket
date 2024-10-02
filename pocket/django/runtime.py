@@ -5,9 +5,23 @@ from pathlib import Path
 from typing import Any
 
 from ..general_context import GeneralContext
-from ..runtime import get_context, set_env_from_resources
+from ..runtime import (
+    get_context,
+    set_env_from_resources,
+    set_user_secrets_from_secretsmanager,
+)
 from ..utils import get_toml_path
-from .utils import check_django_test
+from .utils import check_django_test, get_caches, get_storages
+
+
+def init():
+    set_user_secrets_from_secretsmanager()
+    set_env_from_resources()
+    set_django_env()
+    settings_data = get_django_settings()
+    settings_data["STORAGES"] = get_storages()
+    settings_data["CACHES"] = get_caches()
+    return settings_data.items()
 
 
 def add_or_append_env(key: str, value: str):
