@@ -2,12 +2,6 @@
 
 基本的な使い方は以下の通りです。
 
-- [Installation](#installation)
-- [pocket.toml](#pockettoml)
-- [django settings](#django-settings)
-- [Dockerfile](#dockerfile)
-- [Deploy](#deploy)
-
 ## Installation
 
 ```bash
@@ -63,17 +57,17 @@ DEFAULT_FROM_EMAIL = '"MagicPocket Dev" <noreply-dev@example.com>'
 3.  S3 バケットを作成します。名前は指定されていないので、プロジェクト名とステージ名から自動生成されます。
 4.  作成されたバケットの static ディレクトリは公開されます
 5.  neon データベースが作成されます。名前はプロジェクト名とステージ名から自動生成されます。
-6.  lambda コンテナイメージを作成します。ECR リポジトリ名はプロジェクト名とステージ名から自動生成されます。
-7.  lambda コンテナを作成する、Dockerfile のパスを指定します。
-8.  wsgi という名前で、wsgi を実行する lambda が作成されます。
-9.  management という名前で、マネジメントコマンド を実行する lambda が作成されます。timeout は 600 秒です。
+6.  Lambda コンテナイメージを作成します。ECR リポジトリ名はプロジェクト名とステージ名から自動生成されます。
+7.  Lambda コンテナを作成する、Dockerfile のパスを指定します。
+8.  wsgi という名前で、wsgi を実行する Lambda が作成されます。
+9.  management という名前で、マネジメントコマンド を実行する Lambda が作成されます。timeout は 600 秒です。
 10. dev の wsgi に apigateway が設定されます。URL は自動生成され、デプロイ時に表示されます。
 11. prd の wsgi に apigateway が設定されます。ドメインは example.com です。
 12. SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL が自動生成され secretsmanager に保存されます
 13. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
 14. prd, dev 環境でそれぞれ、DEFAULT_FROM_EMAIL が設定され、settings.py から簡単に読み込めます
 
-読んで理解するままの環境が作成されるべきだと思うので、分かりにくい記述があれば、issue に投げてください。
+読んで理解されるままの環境が作成されるべきだと思うので、分かりにくい記述があれば、issue に投げてください。
 
 ## django settings
 
@@ -97,7 +91,7 @@ CACHES = get_caches()
 
 ## Dockerfile
 
-awscontainer.dockerfile_path で指定した先に、lambda 対応の`Dockerfile` を作成します。
+awscontainer.dockerfile_path で指定した先に、Lambda 対応の`Dockerfile` を作成します。
 利用用途によると思いますが、requirements.lock を持つ django プロジェクトの場合、以下の設定で動作すると思います。
 git 管理された python モジュールが requirements.lock に記述されていることを前提としていますが、なければ、git のインストールは不要です。
 
@@ -143,11 +137,12 @@ ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]
 
 ```bash
 pocket deploy --stage=dev
+pocket django manage migrate --stage=dev
 pocket django manage collectstatic --noinput --stage=dev
 pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=dev
 ```
 
-上記の yaml では、SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL は、secretsmanager に保存されます。内容は、上記 settings.py から読み込まれます。
+上記設定では、SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL は、SecretsManager に保存され settings.py から読み込まれます。
 
 DJANGO_SUPERUSER_PASSWORD を含む自動生成された内容は、以下のコマンドで取得できます。
 
