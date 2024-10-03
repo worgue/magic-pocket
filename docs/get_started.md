@@ -24,7 +24,7 @@ public_dirs = ["static"] # (4)!
 [neon] # (5)!
 
 [awscontainer] # (6)!
-dockerfile_path = "Dockerfile" # (7)!
+dockerfile_path = "pocket.Dockerfile" # (7)!
 
 [awscontainer.handlers.wsgi] # (8)!
 command = "pocket.django.lambda_handlers.wsgi_handler"
@@ -67,33 +67,38 @@ DEFAULT_FROM_EMAIL = '"MagicPocket Dev" <noreply-dev@example.com>'
 13. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
 14. prd, dev 環境でそれぞれ、DEFAULT_FROM_EMAIL が設定され、settings.py から簡単に読み込めます
 
-読んで理解されるままの環境が作成されるべきだと思うので、分かりにくい記述があれば、issue に投げてください。
-
 ## django settings
 
-`settings.py` に以下の設定を追加します。
+`settings.py`からmagic-pocketによって管理されるリソースを読み込みます。
 
 ```python
-from pocket.django.runtime import get_django_settings, set_django_env
 from pocket.django.utils import get_caches, get_storages
-from pocket.runtime import (
-    set_env_from_resources,
-    set_user_secrets_from_secretsmanager,
-)
+from pocket.django.runtime import set_envs
+from pocket.django.runtime import get_django_settings
 
-set_user_secrets_from_secretsmanager()
-set_env_from_resources()
-set_django_env()
-vars().update(get_django_settings().items())
 STORAGES = get_storages()
 CACHES = get_caches()
+vars().update(get_django_settings().items())
+set_envs()
+
+# Read enviroment variables here
+# SECRET_KEY = os.environ.get("SECRET_KEY")
+# etc...
 ```
+
+!!! warning "環境変数からsettings.pyに読み込むのを忘れないでください"
+    作者はdjagno-environを利用することをお勧めします。
+
+    どの様な方法でも構いませんが、環境変数には型がありません。
+    os.environ.get("DEBUG")として、DEBUG=Falseを設定すると、デバッグモードになってしまいます。気をつけましょう。
 
 ## Dockerfile
 
-awscontainer.dockerfile_path で指定した先に、Lambda 対応の`Dockerfile` を作成します。
-利用用途によると思いますが、requirements.lock を持つ django プロジェクトの場合、以下の設定で動作すると思います。
-git 管理された python モジュールが requirements.lock に記述されていることを前提としていますが、なければ、git のインストールは不要です。
+`awscontainer.dockerfile_path`で指定した先に、Lambda対応の`Dockerfile` を作成します。
+`requirements.lock`を持つdjangoプロジェクトの場合、以下の設定で動作します(1)。
+{.annotate}
+
+1. どういうライブラリが動かないのか、良く分かっていません。動かないライブラリがあれば、issueに投げてください。
 
 ```Dockerfile
 ARG PYTHON_VERSION=3.12
@@ -109,6 +114,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/venv/bin:${PATH}"
 WORKDIR /app
 
+# install git (1)
 RUN apt-get update && apt-get install -y git
 
 RUN python -m venv $VIRTUAL_ENV
@@ -129,11 +135,13 @@ COPY . .
 ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]
 ```
 
+1. gitレポジトリからモジュールをダウンロードする必要がある場合に必要です。なければ不要です。
+
 ## Deploy
 
 ### dev
-
-以下のコマンドで dev 環境をデプロイと、初期設定を行います。
+ここまでの設定で、`SECRET_KEY`、`DJANGO_SUPERUSER_PASSWORD`、`DATABASE_URL` は、SecretsManagerに保存され`settings.py`から読み込まれます。
+そのため、以下のコマンドでdev環境をデプロイと、djangoの初期設定を行います。
 
 ```bash
 pocket deploy --stage=dev
@@ -142,14 +150,18 @@ pocket django manage collectstatic --noinput --stage=dev
 pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=dev
 ```
 
-上記設定では、SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL は、SecretsManager に保存され settings.py から読み込まれます。
 
-DJANGO_SUPERUSER_PASSWORD を含む自動生成された内容は、以下のコマンドで取得できます。
+`DJANGO_SUPERUSER_PASSWORD`を含む自動生成された内容は、以下で取得できます。
 
 ```bash
 pocket resource awscontainer secretsmanager list --stage dev --show-values
 ```
 
 ### prd
-
-上記の dev を prd に変えるだけで、prd 環境にデプロイできます。
+devをprdに変えるだけです。環境がコンフリクトすることはありません。
+```bash
+pocket deploy --stage=prd
+pocket django manage migrate --stage=prd
+pocket django manage collectstatic --noinput --stage=prd
+pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=prd
+```

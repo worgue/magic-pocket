@@ -6,6 +6,8 @@ nav:
   - Intro: index.md
   - "features.md"
   - "get_started.md"
+  - Tutorial:
+      - "Simple Project": tutorial/simple.md
   - "changelog.md"
 
 theme:
@@ -13,10 +15,11 @@ theme:
   icon:
     repo: fontawesome/brands/github
   features:
-    - content.code.annotate
     - navigation.instant
     - navigation.top
     - navigation.footer
+    - content.code.annotate
+    - content.code.copy
 
 markdown_extensions:
   - admonition
