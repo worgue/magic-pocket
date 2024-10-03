@@ -348,12 +348,14 @@ Outputs:
       # {% else %}
       Fn::GetAtt: "{{ handler.key|capitalize }}Api.ApiEndpoint"
       # {% endif %}
+  # {% if handler.apigateway.domain %}
   "{{ handler.key|capitalize }}RegionalDomainName":
     Value:
       Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalDomainName"
   "{{ handler.key|capitalize }}RegionalHostedZoneId":
     Value:
       Fn::GetAtt: "{{ handler.key|capitalize }}ApiGatewayDomainName.RegionalHostedZoneId"
+  # {% endif %}
   # {% endif %}
   # {% endfor %}
 # {% endif %}

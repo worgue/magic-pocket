@@ -60,6 +60,13 @@ def deploy(stage: str, openpath):
     if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
         "wsgi"
     ):
-        echo.success(f"wsgi url: {endpoint}")
-        if openpath:
-            webbrowser.open(endpoint + "/" + openpath)
+        if endpoint is None:
+            echo.warning("wsgi endpoint is not created yet.")
+            echo.warning("You can check the endpoint later by resource command.")
+            echo.warning("$ pocket resource awscontainer url")
+            echo.warning("Or deploy again.")
+            echo.warning("$ pocket deploy")
+        else:
+            echo.success(f"wsgi url: {endpoint}")
+            if openpath:
+                webbrowser.open(endpoint + "/" + openpath)

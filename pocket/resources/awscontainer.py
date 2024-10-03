@@ -17,6 +17,14 @@ if TYPE_CHECKING:
     from ..context import AwsContainerContext
 
 
+class NotCreatedYetError(Exception):
+    pass
+
+
+class NoApiEndpointError(Exception):
+    pass
+
+
 class AwsContainer:
     """This is abstructed resource to run container in aws.
     This class depends on aws resources.
@@ -143,25 +151,29 @@ class AwsContainer:
     def get_host(self, key: str):
         handler = self.handlers[key]
         if handler.context.apigateway is None:
-            return
+            raise NoApiEndpointError(f"ApiGateway is not defined in {key}")
         if handler.context.apigateway.domain:
             return handler.context.apigateway.domain
         apiendpoint_key = key.capitalize() + "ApiEndpoint"
         if self.stack.output and apiendpoint_key in self.stack.output:
             return self.stack.output[apiendpoint_key][len("https://") :]
+        raise NotCreatedYetError(f"ApiGateway endpoint for {key} is not created yet.")
 
     @property
     def hosts(self) -> dict[str, str | None]:
-        return {key: self.get_host(key) for key in self.handlers}
-
-    def get_endpoint(self, key: str):
-        host = self.get_host(key)
-        if host:
-            return f"https://{host}"
+        data = {}
+        for key in self.handlers:
+            try:
+                data[key] = self.get_host(key)
+            except NotCreatedYetError:
+                data[key] = None
+            except NoApiEndpointError:
+                pass
+        return data
 
     @property
     def endpoints(self):
-        return {key: self.get_endpoint(key) for key in self.handlers}
+        return {key: f"https://{host}" for key, host in self.hosts.items() if host}
 
     @property
     def queueurls(self) -> dict[str, str | None]:
