@@ -1,0 +1,31 @@
+[general]
+region = "ap-southeast-1"
+stages = ["dev", "prd"]
+
+[s3]
+public_dirs = ["static"]
+
+[neon]
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+[awscontainer.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[dev.awscontainer.handlers.wsgi]
+apigateway = {}
+[prd.awscontainer.handlers.wsgi]
+apigateway = { domain = "example.com" }
+
+[awscontainer.secretsmanager.pocket_secrets]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+DATABASE_URL = { type = "neon_database_url" }
+
+[awscontainer.django.storages]
+default = { store = "s3", location = "media" }
+staticfiles = { store = "s3", location = "static", static = true, manifest = true }

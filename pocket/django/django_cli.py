@@ -1,9 +1,12 @@
 import json
 import warnings
 import webbrowser
+from pathlib import Path
 from subprocess import run
 
 import click
+from django.core.management.utils import get_random_secret_key
+from jinja2 import Environment, PackageLoader, select_autoescape
 
 from ..cli.deploy_cli import deploy_init_resources, deploy_resources
 from ..context import Context
@@ -15,6 +18,40 @@ from .utils import get_storages
 @click.group()
 def django():
     pass
+
+
+@django.command()
+def init():
+    jinja2_env = Environment(
+        loader=PackageLoader("pocket"),
+        autoescape=select_autoescape(),
+        keep_trailing_newline=True,
+    )
+    project_name = Path(".").resolve().name
+    with open("pocket.toml", "w") as f:
+        f.write(jinja2_env.get_template(name="init/pocket_simple.toml").render())
+    with open("pocket.Dockerfile", "w") as f:
+        f.write(jinja2_env.get_template(name="init/pocket.Dockerfile").render())
+    with open(f"{project_name}/settings.py", "w") as f:
+        f.write(
+            jinja2_env.get_template(name="init/django-settings.py").render(
+                project_name=project_name
+            )
+        )
+    if click.confirm("Do you want to create .env file?"):
+        dotenv_path = Path(".env")
+        dotenv_content = jinja2_env.get_template(name="init/django-dotenv.env").render(
+            secret_key=get_random_secret_key()
+        )
+        if dotenv_path.exists():
+            echo.warning(".env file already exists")
+            if not click.confirm("Do you want to overwrite .env file?"):
+                echo.warning("ensure you have correct values in .env file")
+                echo.info("sample .env file:")
+                echo.info(dotenv_content)
+                return
+        with open(dotenv_path, "w") as f:
+            f.write(dotenv_content)
 
 
 @django.command()

@@ -14,3 +14,4 @@ repos:
       - id: ruff
         args: [--select, I, --fix]
       - id: ruff-format
+        exclude: "pocket/templates/init/django-settings.py"
