@@ -52,16 +52,16 @@ def get_user_secrets_from_secretsmanager(
 
 def set_user_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
-):
-    for key, value in get_user_secrets_from_secretsmanager(stage, path).items():
+) -> dict[str, str]:
+    data = get_user_secrets_from_secretsmanager(stage, path)
+    for key, value in data.items():
         os.environ[key] = value
+    return data
 
 
-def set_env_from_resources(
+def set_env_from_aws_resources(
     stage: str | None = None,
     path: str | Path | None = None,
-    use_neon=False,
-    use_awscontainer=True,
 ):
     os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
     general_context = GeneralContext.from_toml(path=path)
@@ -70,16 +70,12 @@ def set_env_from_resources(
     os.environ["POCKET_REGION"] = general_context.region
     stage = stage or get_stage()
     if stage == "__none__":
-        return
+        return {}
     path = path or get_toml_path()
     context = get_context(stage=stage, path=path)
-    if (neon := context.neon) and use_neon:
-        # secretmanager.pocket in pocket.toml is preferred.
-        # e.g) DATABASE_URL = { type = "neon_database_url" }
-        os.environ["DATABASE_URL"] = neon.resource.database_url
-    if (awscontainer := context.awscontainer) and use_awscontainer:
+    if context.awscontainer:
         hosts = []
-        for lambda_key, host in awscontainer.resource.hosts.items():
+        for lambda_key, host in context.awscontainer.resource.hosts.items():
             if host:
                 hosts.append(host)
                 os.environ["POCKET_%s_HOST" % lambda_key.upper()] = host
@@ -87,7 +83,7 @@ def set_env_from_resources(
                     "https://%s" % host
                 )
         os.environ["POCKET_HOSTS"] = "".join(hosts)
-        for lambda_key, queueurl in awscontainer.resource.queueurls.items():
+        for lambda_key, queueurl in context.awscontainer.resource.queueurls.items():
             if queueurl:
                 os.environ["POCKET_%s_QUEUEURL" % lambda_key.upper()] = queueurl
     else:

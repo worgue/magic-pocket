@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import warnings
 import webbrowser
@@ -30,28 +31,43 @@ def init():
     project_name = Path(".").resolve().name
     with open("pocket.toml", "w") as f:
         f.write(jinja2_env.get_template(name="init/pocket_simple.toml").render())
+        echo.success("Update: pocket.toml")
     with open("pocket.Dockerfile", "w") as f:
         f.write(jinja2_env.get_template(name="init/pocket.Dockerfile").render())
-    with open(f"{project_name}/settings.py", "w") as f:
-        f.write(
-            jinja2_env.get_template(name="init/django-settings.py").render(
-                project_name=project_name
+        echo.success("Update: pocket.Dockerfile")
+    if importlib.util.find_spec("environ") is not None:
+        with open(f"{project_name}/settings.py", "w") as f:
+            echo.success("Update: settings.py")
+            f.write(
+                jinja2_env.get_template(name="init/django-settings.py").render(
+                    project_name=project_name
+                )
             )
-        )
-    if click.confirm("Do you want to create .env file?"):
-        dotenv_path = Path(".env")
-        dotenv_content = jinja2_env.get_template(name="init/django-dotenv.env").render(
-            secret_key=get_random_secret_key()
-        )
-        if dotenv_path.exists():
-            echo.warning(".env file already exists")
-            if not click.confirm("Do you want to overwrite .env file?"):
-                echo.warning("ensure you have correct values in .env file")
-                echo.info("sample .env file:")
-                echo.info(dotenv_content)
-                return
-        with open(dotenv_path, "w") as f:
-            f.write(dotenv_content)
+        if click.confirm("Do you want to create .env file?"):
+            _update_dotenv(jinja2_env)
+    else:
+        echo.warning("django-environ is not installed")
+        echo.warning("`settings.py` and `.env` file will be updated with it.")
+
+
+def _update_dotenv(jinja2_env):
+    dotenv_path = Path(".env")
+    dotenv_content = jinja2_env.get_template(name="init/django-dotenv.env").render(
+        secret_key=get_random_secret_key()
+    )
+    if dotenv_path.exists():
+        echo.warning(".env file already exists")
+        if not click.confirm("Do you want to overwrite .env file?"):
+            echo.warning("ensure you have correct values in .env file")
+            echo.info("sample .env file:")
+            echo.info(dotenv_content)
+            return
+        elif click.confirm("Log the deleting .env?", default=True):
+            echo.info(dotenv_path.read_text())
+            echo.danger("The contnet above was deleted")
+    with open(dotenv_path, "w") as f:
+        f.write(dotenv_content)
+        echo.success("Update: .env")
 
 
 @django.command()

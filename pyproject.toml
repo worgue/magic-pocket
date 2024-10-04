@@ -23,7 +23,6 @@ dependencies = [
     "awslambdaric>=2.0.10",
     "apig_wsgi>=2.18.0",
     "django-storages>=1.14.2,!=1.14.3",
-    "django-environ>=0.11.2",
 ]
 
 [project.optional-dependencies]

@@ -19,7 +19,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Added by magic-pocket start
 import environ
 
-from pocket.django.runtime import init
+from pocket.django.runtime import set_django_env
+from pocket.django.utils import get_caches, get_storages
+from pocket.runtime import set_user_secrets_from_secretsmanager
+
+STORAGES = get_storages()
+CACHES = get_caches()
 
 environ.Env.read_env(BASE_DIR / '.env')
 env = environ.Env(
@@ -27,22 +32,26 @@ env = environ.Env(
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
+
+set_user_secrets_from_secretsmanager()
 SECRET_KEY = env.str('SECRET_KEY')
 DEBUG = env.bool('DEBUG')
+DATABASES = {"default": env.db()}
+
+set_django_env()
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
-vars().update(init())
 # Added by magic-pocket end
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# REMOVED: SECRET_KEY
+# REMOVED by magic-pocket: SECRET_KEY
 
 # SECURITY WARNING: don't run with debug turned on in production!
-# REMOVED: DEBUG
+# REMOVED by magic-pocket: DEBUG
 
-# REMOVED: ALLOWED_HOSTS
+# REMOVED by magic-pocket: ALLOWED_HOSTS
 
 
 # Application definition
@@ -90,7 +99,7 @@ WSGI_APPLICATION = '{{ project_name }}.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-# REMOVED: DATABASES
+# REMOVED by magic-pocket: DATABASES
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
