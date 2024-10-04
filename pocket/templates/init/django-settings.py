@@ -21,7 +21,7 @@ import environ
 
 from pocket.django.runtime import set_django_env
 from pocket.django.utils import get_caches, get_storages
-from pocket.runtime import set_user_secrets_from_secretsmanager
+from pocket.runtime import set_secrets_from_secretsmanager
 
 STORAGES = get_storages()
 CACHES = get_caches()
@@ -33,7 +33,7 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
 )
 
-set_user_secrets_from_secretsmanager()
+set_secrets_from_secretsmanager()
 SECRET_KEY = env.str('SECRET_KEY')
 DEBUG = env.bool('DEBUG')
 DATABASES = {"default": env.db()}

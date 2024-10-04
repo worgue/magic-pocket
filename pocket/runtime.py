@@ -29,7 +29,7 @@ def _pocket_secret_to_envs(
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
-def get_user_secrets_from_secretsmanager(
+def get_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict:
     stage = stage or get_stage()
@@ -50,10 +50,10 @@ def get_user_secrets_from_secretsmanager(
     return secrets
 
 
-def set_user_secrets_from_secretsmanager(
+def set_secrets_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
 ) -> dict[str, str]:
-    data = get_user_secrets_from_secretsmanager(stage, path)
+    data = get_secrets_from_secretsmanager(stage, path)
     for key, value in data.items():
         os.environ[key] = value
     return data
