@@ -1,9 +1,26 @@
 site_name: Magic Pocket
 site_url: https://worgue.github.io/magic-pocket
+repo_url: https://github.com/worgue/magic-pocket
+
+nav:
+  - Intro: index.md
+  - "features.md"
+  - "get_started.md"
+  - Tutorial:
+      - "Simple Project": tutorial/simple.md
+  - "changelog.md"
+
 theme:
   name: material
+  icon:
+    repo: fontawesome/brands/github
   features:
+    - navigation.instant
+    - navigation.top
+    - navigation.footer
     - content.code.annotate
+    - content.code.copy
+
 markdown_extensions:
   - admonition
   - pymdownx.details
