@@ -7,10 +7,16 @@ from typing import Any
 from ..general_context import GeneralContext
 from ..runtime import (
     get_context,
-    set_env_from_aws_resources,
+    set_envs_from_aws_resources,
+    set_envs_from_secretsmanager,
 )
 from ..utils import get_toml_path
 from .utils import check_django_test
+
+
+def set_envs():
+    set_envs_from_resources()
+    set_envs_from_secretsmanager()
 
 
 def add_or_append_env(key: str, value: str):
@@ -20,12 +26,11 @@ def add_or_append_env(key: str, value: str):
         os.environ[key] += "," + value
 
 
-def set_django_env(stage: str | None = None):
+def set_envs_from_resources(stage: str | None = None):
     stage = stage or os.environ.get("POCKET_STAGE")
     if not stage:
         return
-    if not os.environ.get("POCKET_RESOURCES_ENV_LOADED"):
-        set_env_from_aws_resources(stage)
+    set_envs_from_aws_resources(stage)
     add_or_append_env("ALLOWED_HOSTS", os.environ["POCKET_HOSTS"])
 
 

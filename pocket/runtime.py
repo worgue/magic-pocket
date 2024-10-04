@@ -50,20 +50,24 @@ def get_secrets_from_secretsmanager(
     return secrets
 
 
-def set_secrets_from_secretsmanager(
+def set_envs_from_secretsmanager(
     stage: str | None = None, path: str | Path | None = None
-) -> dict[str, str]:
+):
+    if os.environ.get("POCKET_ENVS_SECRETSMANAGER_LOADED") == "true":
+        return
+    os.environ["POCKET_ENVS_SECRETSMANAGER_LOADED"] = "true"
     data = get_secrets_from_secretsmanager(stage, path)
     for key, value in data.items():
         os.environ[key] = value
-    return data
 
 
-def set_env_from_aws_resources(
+def set_envs_from_aws_resources(
     stage: str | None = None,
     path: str | Path | None = None,
 ):
-    os.environ["POCKET_RESOURCES_ENV_LOADED"] = "true"
+    if os.environ.get("POCKET_ENVS_AWS_RESOURCES_LOADED") == "true":
+        return
+    os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
     general_context = GeneralContext.from_toml(path=path)
     os.environ["POCKET_OBJECT_PREFIX"] = general_context.object_prefix
     os.environ["POCKET_PROJECT_NAME"] = general_context.project_name

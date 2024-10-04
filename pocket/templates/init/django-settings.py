@@ -19,27 +19,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Added by magic-pocket start
 import environ
 
-from pocket.django.runtime import set_django_env
+from pocket.django.runtime import set_envs
 from pocket.django.utils import get_caches, get_storages
-from pocket.runtime import set_secrets_from_secretsmanager
 
 STORAGES = get_storages()
 CACHES = get_caches()
 
-environ.Env.read_env(BASE_DIR / '.env')
+environ.Env.read_env(BASE_DIR / ".env")
 env = environ.Env(
     SECRET_KEY=str,
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
 )
 
-set_secrets_from_secretsmanager()
-SECRET_KEY = env.str('SECRET_KEY')
-DEBUG = env.bool('DEBUG')
+set_envs()
+SECRET_KEY = env.str("SECRET_KEY")
+DEBUG = env.bool("DEBUG")
 DATABASES = {"default": env.db()}
-
-set_django_env()
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 # Added by magic-pocket end
 
 
