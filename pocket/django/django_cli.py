@@ -43,8 +43,7 @@ def init():
                     project_name=project_name
                 )
             )
-        if click.confirm("Do you want to create .env file?"):
-            _update_dotenv(jinja2_env)
+        _update_dotenv(jinja2_env)
     else:
         echo.warning("django-environ is not installed")
         echo.warning("`settings.py` and `.env` file will be updated with it.")
@@ -55,6 +54,11 @@ def _update_dotenv(jinja2_env):
     dotenv_content = jinja2_env.get_template(name="init/django-dotenv.env").render(
         secret_key=get_random_secret_key()
     )
+    echo.info("You may need to update .env file")
+    if click.confirm("Do you want to check the content?", default=True):
+        echo.info(dotenv_content)
+    if not click.confirm("Do you want to create .env file?"):
+        return
     if dotenv_path.exists():
         echo.warning(".env file already exists")
         if not click.confirm("Do you want to overwrite .env file?"):
