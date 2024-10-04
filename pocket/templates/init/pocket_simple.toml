@@ -19,7 +19,7 @@ timeout = 600
 [dev.awscontainer.handlers.wsgi]
 apigateway = {}
 [prd.awscontainer.handlers.wsgi]
-apigateway = { domain = "example.com" }
+apigateway = {}
 
 [awscontainer.secretsmanager.pocket_secrets]
 SECRET_KEY = { type = "password", options = { length = 50 } }
