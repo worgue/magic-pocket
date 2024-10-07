@@ -4,7 +4,10 @@ repo_url: https://github.com/worgue/magic-pocket
 
 nav:
   - Intro: index.md
-  - "features.md"
+  - Features:
+      - 概要: features/outline.md
+      - コマンドライン: features/cli.md
+      - 実行環境: features/runtime.md
   - "get_started.md"
   - Tutorial:
       - "Simple Project": tutorial/simple.md
