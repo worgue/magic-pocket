@@ -1,30 +1,14 @@
 import json
 import os
-import sys
 from pathlib import Path
 
 import boto3
 from django.core.management import call_command
 
-from ..context import Context, DjangoContext
+from ..context import Context
 from ..general_context import GeneralContext
 from ..runtime import get_context
 from ..utils import get_toml_path
-
-
-def check_django_test():
-    if 2 <= len(sys.argv) and sys.argv[1] == "test":
-        return True
-    return False
-
-
-def _get_current_fallback_context(general_context: GeneralContext) -> DjangoContext:
-    assert (
-        general_context.django_fallback
-    ), "Never happen because of context validation."
-    if check_django_test() and general_context.django_test:
-        return general_context.django_test
-    return general_context.django_fallback
 
 
 def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
@@ -33,7 +17,8 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
     general_context = GeneralContext.from_toml(path=path)
     context: Context | None = None
     if not stage:
-        django_context = _get_current_fallback_context(general_context)
+        django_context = general_context.django_fallback
+        assert django_context, "Never happen because of context validation."
     else:
         context = get_context(stage=stage, path=path)
         if not (
@@ -41,7 +26,8 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             and context.awscontainer.django
             and context.awscontainer.django.storages
         ):
-            django_context = _get_current_fallback_context(general_context)
+            django_context = general_context.django_fallback
+            assert django_context, "Never happen because of context validation."
         else:
             django_context = context.awscontainer.django
     storages = {}
@@ -80,10 +66,7 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
         general_context.django_fallback
     ), "Never happen because of context validation."
     if not stage:
-        if check_django_test() and general_context.django_test:
-            django_context = general_context.django_test
-        else:
-            django_context = general_context.django_fallback
+        django_context = general_context.django_fallback
     else:
         context = get_context(stage=stage, path=path)
         if not (
@@ -91,10 +74,7 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
             and context.awscontainer.django
             and context.awscontainer.django.caches
         ):
-            if check_django_test() and general_context.django_test:
-                django_context = general_context.django_test
-            else:
-                django_context = general_context.django_fallback
+            django_context = general_context.django_fallback
         else:
             django_context = context.awscontainer.django
     caches = {}

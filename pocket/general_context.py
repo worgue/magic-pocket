@@ -18,7 +18,6 @@ context_vpcref: ContextVar[VpcRefContext] = ContextVar("vpcref")
 class GeneralContext(general_settings.GeneralSettings):
     vpcs: list[VpcContext] = []
     django_fallback: DjangoContext | None = None
-    django_test: DjangoContext | None = None
 
     @classmethod
     def from_general_settings(

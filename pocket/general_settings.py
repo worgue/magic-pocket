@@ -28,7 +28,6 @@ class GeneralSettings(BaseSettings):
     vpcs: list[Vpc] = []
     s3_fallback_bucket_name: str | None = None
     django_fallback: Django = Django()
-    django_test: Django | None = None
 
     @classmethod
     def from_toml(cls, *, path: str | Path | None = None):

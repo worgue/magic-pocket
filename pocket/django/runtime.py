@@ -11,7 +11,6 @@ from ..runtime import (
     set_envs_from_secretsmanager,
 )
 from ..utils import get_toml_path
-from .utils import check_django_test
 
 
 def set_envs():
@@ -44,17 +43,11 @@ def get_django_settings(
         general_context.django_fallback
     ), "Never happen because of context validation."
     if not stage:
-        if check_django_test() and general_context.django_test:
-            django_context = general_context.django_test
-        else:
-            django_context = general_context.django_fallback
+        django_context = general_context.django_fallback
     else:
         context = get_context(stage=stage, path=path)
         if context.awscontainer and context.awscontainer.django:
             django_context = context.awscontainer.django
         else:
-            if check_django_test() and general_context.django_test:
-                django_context = general_context.django_test
-            else:
-                django_context = general_context.django_fallback
+            django_context = general_context.django_fallback
     return django_context.settings
