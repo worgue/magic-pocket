@@ -5,6 +5,7 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "magic-pocket"
 authors = [{ name = "Masaaki Yasui", email = "yasu@worgue.com" }]
+readme = "README.md"
 license = { file = "LICENSE" }
 classifiers = ["License :: OSI Approved :: MIT License"]
 dynamic = ["version", "description"]
@@ -24,6 +25,10 @@ dependencies = [
     "apig_wsgi>=2.18.0",
     "django-storages>=1.14.2,!=1.14.3",
 ]
+
+[project.urls]
+Documentation = "https://worgue.github.io/magic-pocket/"
+Source = "https://github.com/worgue/magic-pocket"
 
 [project.optional-dependencies]
 django = ["django>=4.2.0"]
