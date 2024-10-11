@@ -18,7 +18,7 @@
         - Queue, Dead letter queue, EventSourceMappingの作成
 - :material-console: `pocket remove`でデプロイした環境を出来る限り削除し、削除できないものは表示
 
-## [0.1.0](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - unreleased
+## [0.1.0](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - 2024-10-11
 
 ### Dependencies
 - click>=8.1.7
