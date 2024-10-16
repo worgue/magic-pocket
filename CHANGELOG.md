@@ -18,6 +18,13 @@
         - Queue, Dead letter queue, EventSourceMappingの作成
 - :material-console: `pocket remove`でデプロイした環境を出来る限り削除し、削除できないものは表示
 
+## [0.1.1](https://github.com/worgue/magic-pocket/releases/tag/0.1.1) - 2024-10-16
+
+**Full Changelog**: https://github.com/worgue/magic-pocket/compare/0.1.0...0.1.1
+
+### Bug Fixes
+- spa用のリソース作成時にリダイレクトするためのリソースが作られないバグを修正
+
 ## [0.1.0](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - 2024-10-11
 
 ### Dependencies
