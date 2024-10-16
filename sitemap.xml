@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/changelog/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/get_started/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/features/cli/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/features/outline/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/features/runtime/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+    <url>
+         <loc>https://worgue.github.io/magic-pocket/tutorial/simple/</loc>
+         <lastmod>2024-10-16</lastmod>
+    </url>
+</urlset>
