@@ -166,7 +166,7 @@ class SpaStack(Stack):
     template_filename = "spa"
 
     def get_client(self):
-        return boto3.client("cloudformation", region_name="us-east-1")
+        return boto3.client("cloudformation", region_name=self.context.region)
 
     @property
     def name(self):

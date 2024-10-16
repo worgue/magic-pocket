@@ -211,6 +211,22 @@ class S3Context(settings.S3):
 
 
 class RedirectFromContext(settings.RedirectFrom):
+    region: Literal["us-east-1"] = "us-east-1"  # us-east-1 is required. See SpaContext
+
+    @computed_field
+    @property
+    def yaml_key(self) -> str:
+        return "".join([s.capitalize() for s in self.domain.split(".")])
+
+    @computed_field
+    @cached_property
+    def bucket_website_domain(self) -> str:
+        if self.region != "us-east-1":
+            raise Exception("Never reach here because of context validation")
+        # https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteEndpoints.html
+        # https://docs.aws.amazon.com/general/latest/gr/s3.html#s3_website_region_endpoints
+        return f"{self.domain}.s3-website-us-east-1.amazonaws.com"
+
     @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
