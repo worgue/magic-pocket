@@ -6,6 +6,7 @@ nav:
   - Intro: index.md
   - Features:
       - 概要: features/outline.md
+      - pocket.toml: features/pocket-toml.md
       - コマンドライン: features/cli.md
       - 実行環境: features/runtime.md
   - "get_started.md"
@@ -29,6 +30,8 @@ markdown_extensions:
   - pymdownx.details
   - attr_list
   - md_in_html
+  - toc:
+      permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
