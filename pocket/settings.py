@@ -166,7 +166,7 @@ class RedirectFrom(BaseSettings):
 class Spa(BaseSettings):
     domain: str
     bucket_name_format: FormatStr = "{prefix}{stage}-{project}-spa"
-    origin_path_format: str = ""
+    origin_path_format: str = "/{stage}"
     fallback_html: str = "index.html"
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
