@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings
 
 
 class DjangoStorage(BaseSettings):
-    store: Literal["s3", "filesystem"]
+    store: Literal["s3", "cloudfront", "filesystem"]
     location: str | None = None
     static: bool = False
     manifest: bool = False
@@ -23,6 +23,19 @@ class DjangoStorage(BaseSettings):
     def check_location(self):
         if self.store == "s3" and self.location is None:
             raise ValueError("location is required for s3 storage")
+        return self
+
+    @model_validator(mode="after")
+    def check_cloudfront(self):
+        if self.store == "cloudfront":
+            if self.static or self.manifest:
+                raise ValueError("cloudfront can't be used with static")
+            if self.location:
+                raise ValueError(
+                    "location can't be used with cloudfront. use options.clodfront_ref"
+                )
+            if "cloudfront_ref" not in self.options:
+                raise ValueError("cloudfront_ref is required for cloudfront storage")
         return self
 
 

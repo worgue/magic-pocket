@@ -182,6 +182,7 @@ class Route(BaseSettings):
     is_versioned: bool = False
     spa_fallback_html: str = "index.html"
     versioned_max_age: int = 60 * 60 * 24 * 365
+    ref: str = ""
 
     @model_validator(mode="after")
     def check_flags(self):
