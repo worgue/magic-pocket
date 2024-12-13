@@ -298,6 +298,12 @@ class CloudFrontContext(settings.CloudFront):
                 return route
         raise Exception("default route should be defined")
 
+    def get_route(self, ref: str) -> RouteContext:
+        for route in self.routes:
+            if route.ref == ref:
+                return route
+        raise ValueError(f"route ref [{ref}] not found")
+
     @computed_field
     @property
     def extra_routes(self) -> list[RouteContext]:

@@ -46,6 +46,21 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 "bucket_name": bucket_name,
                 "location": storage.location,
             }
+        elif storage.store == "cloudfront":
+            if context:
+                assert context.cloudfront, "Never happen because of context validation."
+                bucket_name = context.cloudfront.bucket_name
+                route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
+                location = context.cloudfront.origin_prefix + route.relpath
+                domain = context.cloudfront.domain
+                storages[key]["OPTIONS"] = {
+                    "bucket_name": bucket_name,
+                    "location": location,
+                    "querystring_auth": False,
+                    "custom_domain": domain,
+                }
+            else:
+                raise ValueError("context is required for cloudfront storage")
         elif storage.store == "filesystem":
             if storage.location is not None:
                 storages[key]["OPTIONS"] = {"location": storage.location}
