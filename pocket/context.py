@@ -13,9 +13,9 @@ from .general_context import GeneralContext, VpcContext
 from .general_settings import context_general_settings
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
+from .resources.cloudfront import CloudFront
 from .resources.neon import Neon
 from .resources.s3 import S3
-from .resources.spa import Spa
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
 context_settings = settings.context_settings
@@ -237,7 +237,37 @@ class RedirectFromContext(settings.RedirectFrom):
         return get_hosted_zone_id_from_domain(self.domain)
 
 
-class SpaContext(settings.Spa):
+class RouteContext(settings.Route):
+    @computed_field
+    @property
+    def name(self) -> str:
+        return self.relpath.strip("/").replace("/", "-") or "root"
+
+    @computed_field
+    @property
+    def url_fallback_function_indent8(self) -> str:
+        lines = []
+        for i, line in enumerate(self._url_fallback_function.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * 8 + line)
+        return "\n".join(lines)
+
+    @property
+    def _url_fallback_function(self):
+        return """function handler(event) {
+    var request = event.request;
+    var lastItem = request.uri.split('/').pop();
+    if (!lastItem.includes('.')) {
+        request.uri = '%s/%s';
+    }
+    return request;
+}
+""" % (self.relpath, self.spa_fallback_html)
+
+
+class CloudFrontContext(settings.CloudFront):
     # Although the following guide says that s3 buckets can be created in any region,
     # access from cloudfront fails, so fixed to us-east-1
     # In any case, cloudfront is only us-east-1
@@ -245,15 +275,33 @@ class SpaContext(settings.Spa):
     region: Literal["us-east-1"] = "us-east-1"
     slug: str
     bucket_name: str
-    origin_path: str
-    origin_id: str
-    oac_config_name: str
+    origin_prefix: str
+    name_prefix_for_cloudformation: str
     object_prefix: str
     redirect_from: list[RedirectFromContext] = []
+    routes: list[RouteContext] = []
 
     @cached_property
     def resource(self):
-        return Spa(self)
+        return CloudFront(self)
+
+    @computed_field
+    @property
+    def yaml_key(self) -> str:
+        return "".join([s.capitalize() for s in self.domain.split(".")])
+
+    @computed_field
+    @property
+    def default_route(self) -> RouteContext:
+        for route in self.routes:
+            if route.relpath == "":
+                return route
+        raise Exception("default route should be defined")
+
+    @computed_field
+    @property
+    def extra_routes(self) -> list[RouteContext]:
+        return [route for route in self.routes if route.relpath != ""]
 
     @computed_field
     @cached_property
@@ -276,10 +324,10 @@ class SpaContext(settings.Spa):
             "project": settings.project_name,
         }
         data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
-        data["origin_path"] = data["origin_path_format"].format(**format_vars)
-        origin_slug = "{prefix}{stage}-{project}".format(**format_vars)
-        data["origin_id"] = origin_slug + "-origin"
-        data["oac_config_name"] = origin_slug + "-oac"
+        data["origin_prefix"] = data["origin_prefix_format"].format(**format_vars)
+        data["name_prefix_for_cloudformation"] = "{prefix}{stage}-{project}-".format(
+            **format_vars
+        )
         return data
 
 
@@ -288,7 +336,7 @@ class Context(settings.Settings):
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
-    spa: SpaContext | None = None
+    cloudfront: CloudFrontContext | None = None
 
     model_config = SettingsConfigDict(extra="ignore")
 
