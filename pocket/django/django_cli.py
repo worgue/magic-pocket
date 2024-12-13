@@ -154,8 +154,9 @@ def _check_upload_backends(from_storage, to_storage):
 @storage.command()
 @click.option("--stage", prompt=True)
 @click.option("--delete", is_flag=True, default=False)
+@click.option("--dryrun", is_flag=True, default=False)
 @click.argument("storage")
-def upload(storage, stage, delete):
+def upload(storage, stage, delete, dryrun):
     from_storage = get_storages()[storage]
     to_storage = get_storages(stage=stage)[storage]
     _check_upload_backends(from_storage, to_storage)
@@ -166,5 +167,7 @@ def upload(storage, stage, delete):
     cmd += ' --exclude ".*" --exclude "*/.*"'
     if delete:
         cmd += " --delete"
+    if dryrun:
+        cmd += " --dryrun"
     print(cmd)
     run(cmd, shell=True, check=True)

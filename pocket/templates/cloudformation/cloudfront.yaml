@@ -6,7 +6,7 @@ Resources:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: "{{ oac_config_name }}"
+        Name: "{{ name_prefix_for_cloudformation }}oac"
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -20,48 +20,98 @@ Resources:
           HostedZoneId: "{{ hosted_zone_id }}"
       Tags:
         - Key: Name
-          Value: "{{ object_prefix }}{{ slug }}-spa-cert"
+          Value: "{{ object_prefix }}{{ slug }}-cloudfront-cert"
       ValidationMethod: DNS
 
-  UrlFallbackFunction:
+  # {% for route in routes %}
+  # {% if route.is_spa %}
+  UrlFallbackFunction{{ route.name|capitalize }}:
     Type: AWS::CloudFront::Function
     Properties:
-      Name: "{{ object_prefix }}{{ slug }}-spa-url-fallback"
+      Name: "{{ object_prefix }}{{ slug }}-cloudfront-{{ route.name }}-fallback"
       AutoPublish: true
       FunctionCode: |
-        {{ resource.url_fallback_function_indent8 }}
+        {{ route.url_fallback_function_indent8 }}
       FunctionConfig:
         Comment: "Function to handle SPA url fallback"
         Runtime: cloudfront-js-2.0
+  # {% endif %}
+  # {% if route.is_versioned %}
+  ResponseHeadersPolicy{{ route.name|capitalize }}:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: "{{ name_prefix_for_cloudformation }}{{ route.name }}"
+        CustomHeadersConfig:
+          Items:
+            - Header: "cache-control"
+              Value: "max-age={{ route.versioned_max_age }}"
+              Override: true
+  # {% endif %}
+  # {% endfor %}
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     DependsOn:
       - OriginAccessControl
       - Certificate
-      - UrlFallbackFunction
+      # {% for route in routes %}
+      # {% if route.is_spa %}
+      - UrlFallbackFunction{{ route.name|capitalize }}
+      # {% endif %}
+      # {% if route.is_versioned %}
+      - ResponseHeadersPolicy{{ route.name|capitalize }}
+      # {% endif %}
+      # {% endfor %}
     Properties:
       DistributionConfig:
         Aliases:
           - "{{ domain }}"
         Enabled: true
         Origins:
-          - Id: "{{ origin_id }}"
+          # {% for route in routes %}
+          - Id: "{{ name_prefix_for_cloudformation }}{{ route.name }}"
             DomainName:
               Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
-            OriginPath: "{{ origin_path }}"
+            OriginPath: "{{ origin_prefix }}{{ route.relpath }}"
             OriginAccessControlId:
               Fn::GetAtt: OriginAccessControl.Id
             S3OriginConfig:
               OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          # {% endfor %}
         DefaultCacheBehavior:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
-          TargetOriginId: "{{ origin_id }}"
+          TargetOriginId: "{{ name_prefix_for_cloudformation }}{{ default_route.name }}"
           ViewerProtocolPolicy: "redirect-to-https"
+          # {% if default_route.is_spa %}
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN:
-                Fn::GetAtt: UrlFallbackFunction.FunctionMetadata.FunctionARN
+                Fn::GetAtt: UrlFallbackFunction{{ default_route.name|capitalize }}.FunctionMetadata.FunctionARN
+          # {% endif %}
+          # {% if default_route.is_versioned %}
+          ResponseHeadersPolicyId:
+            Ref: ResponseHeadersPolicy{{ default_route.name|capitalize }}
+          # {% endif %}
+        # {% if extra_routes %}
+        CacheBehaviors:
+          # {% for route in extra_routes %}
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "{{ name_prefix_for_cloudformation }}{{ route.name }}"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "{{ route.relpath }}/*"
+            # {% if route.is_spa %}
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: UrlFallbackFunction{{ route.name|capitalize }}.FunctionMetadata.FunctionARN
+            # {% endif %}
+            # {% if route.is_versioned %}
+            ResponseHeadersPolicyId:
+              Ref: ResponseHeadersPolicy{{ route.name|capitalize }}
+            # {% endif %}
+          # {% endfor %}
+        # {% endif %}
         ViewerCertificate:
           AcmCertificateArn:
             Ref: Certificate
