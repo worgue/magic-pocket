@@ -73,7 +73,7 @@ Resources:
           - Id: "{{ name_prefix_for_cloudformation }}{{ route.name }}"
             DomainName:
               Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
-            OriginPath: "{{ origin_prefix }}{{ route.relpath }}"
+            OriginPath: "{{ origin_prefix }}"
             OriginAccessControlId:
               Fn::GetAtt: OriginAccessControl.Id
             S3OriginConfig:
