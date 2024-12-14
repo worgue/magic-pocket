@@ -177,7 +177,7 @@ class RedirectFrom(BaseSettings):
 
 
 class Route(BaseSettings):
-    relpath: str = ""
+    path_pattern: str = ""
     is_spa: bool = False
     is_versioned: bool = False
     spa_fallback_html: str = "index.html"
@@ -192,13 +192,11 @@ class Route(BaseSettings):
 
     @model_validator(mode="after")
     def check_path(self):
-        if self.relpath:
-            if self.relpath[0] != "/":
-                raise ValueError("relpath must starts with /")
-            if self.relpath[-1] == "/":
-                raise ValueError("relpath must not ends with /")
-            if self.relpath[-1] == "*":
-                raise ValueError("You don't need to add * at the end of relpath")
+        if self.path_pattern:
+            if self.path_pattern[0] != "/":
+                raise ValueError("non default path_pattern must starts with /")
+            if self.path_pattern[-1] == "/":
+                raise ValueError("path_pattern must not ends with /")
         return self
 
 
@@ -236,7 +234,7 @@ class CloudFront(BaseSettings):
     def check_routes(self):
         if len(self.routes) == 0:
             raise ValueError("routes must have at least one route")
-        if len([route for route in self.routes if route.relpath == ""]) != 1:
+        if len([route for route in self.routes if route.path_pattern == ""]) != 1:
             raise ValueError("routes must have one route with empty path for default")
         return self
 

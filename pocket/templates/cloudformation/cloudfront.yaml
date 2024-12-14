@@ -25,7 +25,7 @@ Resources:
 
   # {% for route in routes %}
   # {% if route.is_spa %}
-  UrlFallbackFunction{{ route.name|capitalize }}:
+  UrlFallbackFunction{{ route.yaml_key }}:
     Type: AWS::CloudFront::Function
     Properties:
       Name: "{{ object_prefix }}{{ slug }}-cloudfront-{{ route.name }}-fallback"
@@ -37,7 +37,7 @@ Resources:
         Runtime: cloudfront-js-2.0
   # {% endif %}
   # {% if route.is_versioned %}
-  ResponseHeadersPolicy{{ route.name|capitalize }}:
+  ResponseHeadersPolicy{{ route.yaml_key }}:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
@@ -57,10 +57,10 @@ Resources:
       - Certificate
       # {% for route in routes %}
       # {% if route.is_spa %}
-      - UrlFallbackFunction{{ route.name|capitalize }}
+      - UrlFallbackFunction{{ route.yaml_key }}
       # {% endif %}
       # {% if route.is_versioned %}
-      - ResponseHeadersPolicy{{ route.name|capitalize }}
+      - ResponseHeadersPolicy{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
     Properties:
@@ -87,11 +87,11 @@ Resources:
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN:
-                Fn::GetAtt: UrlFallbackFunction{{ default_route.name|capitalize }}.FunctionMetadata.FunctionARN
+                Fn::GetAtt: UrlFallbackFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
           # {% endif %}
           # {% if default_route.is_versioned %}
           ResponseHeadersPolicyId:
-            Ref: ResponseHeadersPolicy{{ default_route.name|capitalize }}
+            Ref: ResponseHeadersPolicy{{ default_route.yaml_key }}
           # {% endif %}
         # {% if extra_routes %}
         CacheBehaviors:
@@ -99,16 +99,16 @@ Resources:
           - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
             TargetOriginId: "{{ name_prefix_for_cloudformation }}{{ route.name }}"
             ViewerProtocolPolicy: "redirect-to-https"
-            PathPattern: "{{ route.relpath }}/*"
+            PathPattern: "{{ route.path_pattern }}"
             # {% if route.is_spa %}
             FunctionAssociations:
               - EventType: viewer-request
                 FunctionARN:
-                  Fn::GetAtt: UrlFallbackFunction{{ route.name|capitalize }}.FunctionMetadata.FunctionARN
+                  Fn::GetAtt: UrlFallbackFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
             # {% endif %}
             # {% if route.is_versioned %}
             ResponseHeadersPolicyId:
-              Ref: ResponseHeadersPolicy{{ route.name|capitalize }}
+              Ref: ResponseHeadersPolicy{{ route.yaml_key }}
             # {% endif %}
           # {% endfor %}
         # {% endif %}
