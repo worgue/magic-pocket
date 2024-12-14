@@ -51,7 +51,7 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 assert context.cloudfront, "Never happen because of context validation."
                 bucket_name = context.cloudfront.bucket_name
                 route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
-                location = context.cloudfront.origin_prefix + route.relpath
+                location = context.cloudfront.origin_prefix + route.path_pattern
                 assert location[0] == "/"
                 location = location[1:]
                 domain = context.cloudfront.domain

@@ -89,10 +89,10 @@ class CloudFront:
     def warn_contents(self):
         bucket = self.context.bucket_name
         for route in self.context.routes:
-            origin = self.context.origin_prefix + route.relpath
+            origin = self.context.origin_prefix + route.path_pattern
             echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))
             if route.is_spa:
-                echo.info("%s is a spa route." % route.relpath or "default")
+                echo.info("%s is a spa route." % (route.path_pattern or "default"))
                 echo.info("Set proper cahce headers.")
                 eg_cmd = "npx s3-spa-upload build %s --delete --prefix %s" % (
                     bucket,

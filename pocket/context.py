@@ -241,7 +241,20 @@ class RouteContext(settings.Route):
     @computed_field
     @property
     def name(self) -> str:
-        return self.relpath.strip("/").replace("/", "-") or "root"
+        if not self.path_pattern:
+            return "root"
+        assert self.path_pattern[0] == "/", "Should be validated in settings"
+        parts = []
+        for part in self.path_pattern.split("/"):
+            if part and part != "*":
+                alnum_only = "".join(ch for ch in part if ch.isalnum())
+                parts.append(alnum_only)
+        return "-".join(parts)
+
+    @computed_field
+    @property
+    def yaml_key(self) -> str:
+        return "".join([s.capitalize() for s in self.name.split("-")])
 
     @computed_field
     @property
@@ -264,7 +277,7 @@ class RouteContext(settings.Route):
     }
     return request;
 }
-""" % (self.relpath, self.spa_fallback_html)
+""" % (self.path_pattern, self.spa_fallback_html)
 
 
 class CloudFrontContext(settings.CloudFront):
@@ -294,7 +307,7 @@ class CloudFrontContext(settings.CloudFront):
     @property
     def default_route(self) -> RouteContext:
         for route in self.routes:
-            if route.relpath == "":
+            if route.path_pattern == "":
                 return route
         raise Exception("default route should be defined")
 
@@ -307,7 +320,7 @@ class CloudFrontContext(settings.CloudFront):
     @computed_field
     @property
     def extra_routes(self) -> list[RouteContext]:
-        return [route for route in self.routes if route.relpath != ""]
+        return [route for route in self.routes if route.path_pattern != ""]
 
     @computed_field
     @cached_property
