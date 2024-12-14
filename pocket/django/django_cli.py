@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import warnings
 import webbrowser
 from pathlib import Path
@@ -115,6 +116,41 @@ def _get_management_command_handler(context: Context, key: str | None = None):
             return context.awscontainer.resource.handlers[key]
     print("management command handler not found")
     raise Exception("Add management command handler for this stage")
+
+
+@django.command()
+@click.option("--stage", prompt=True)
+@click.option("--skip-collectstatic", is_flag=True, default=False)
+def deploystatic(stage: str, skip_collectstatic: bool):
+    stage_storages = get_storages(stage=stage)
+    if "staticfiles" not in stage_storages:
+        raise Exception("staticfiles storage not found in the stage")
+    storage = stage_storages["staticfiles"]
+    if storage["BACKEND"] == "storages.backends.s3boto3.S3StaticStorage":
+        local_backend = "django.contrib.staticfiles.storage.StaticFilesStorage"
+    elif storage["BACKEND"] == "storages.backends.s3boto3.S3ManifestStaticStorage":
+        local_backend = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+    else:
+        raise Exception("BACKEND configuration error")
+    local_build_static_root = "pocket_cache/static_build/%s" % stage
+    os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"] = local_backend
+    os.environ["POCKET_STATICFILES_LOCATION_OVERRIDE"] = local_build_static_root
+    if not skip_collectstatic:
+        echo.info("collectstatic to %s..." % local_build_static_root)
+        run("python manage.py collectstatic --noinput", shell=True, check=True)
+    else:
+        echo.warning("Skipped collectstatic.")
+    s3_bucket_name = storage["OPTIONS"]["bucket_name"]
+    s3_location = storage["OPTIONS"]["location"]
+    echo.info("Bucket: %s" % s3_bucket_name)
+    echo.info("Location: %s" % s3_location)
+    echo.info("Uploading static files...")
+    run(
+        "aws s3 sync %s s3://%s/%s/ --delete"
+        % (local_build_static_root, s3_bucket_name, s3_location),
+        shell=True,
+        check=True,
+    )
 
 
 @django.command(

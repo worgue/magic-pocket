@@ -32,6 +32,12 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             django_context = context.awscontainer.django
     storages = {}
     for key, storage in django_context.storages.items():
+        if key == "staticfiles":
+            if os.environ.get("POCKET_STATICFILES_BACKEND_OVERRIDE"):
+                backend = os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"]
+                location = os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE")
+                storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
+                continue
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
             if context:
@@ -53,7 +59,8 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
                 location = context.cloudfront.origin_prefix + route.path_pattern
                 assert location[0] == "/"
-                location = location[1:]
+                assert location[:-2] != "/*"
+                location = location[1:-2]
                 domain = context.cloudfront.domain
                 storages[key]["OPTIONS"] = {
                     "bucket_name": bucket_name,

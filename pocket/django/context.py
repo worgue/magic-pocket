@@ -17,9 +17,7 @@ from . import settings
 class DjangoStorageContext(settings.DjangoStorage):
     @property
     def backend(self):
-        if self.store == "cloudfront":
-            return "storages.backends.s3boto3.S3Boto3Storage"
-        if self.store == "s3":
+        if self.store in ["s3", "cloudfront"]:
             if self.static and self.manifest:
                 return "storages.backends.s3boto3.S3ManifestStaticStorage"
             if self.static:

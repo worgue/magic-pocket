@@ -28,8 +28,6 @@ class DjangoStorage(BaseSettings):
     @model_validator(mode="after")
     def check_cloudfront(self):
         if self.store == "cloudfront":
-            if self.static or self.manifest:
-                raise ValueError("cloudfront can't be used with static")
             if self.location:
                 raise ValueError(
                     "location can't be used with cloudfront. use options.clodfront_ref"

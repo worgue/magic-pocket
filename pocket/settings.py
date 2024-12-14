@@ -199,6 +199,13 @@ class Route(BaseSettings):
                 raise ValueError("path_pattern must not ends with /")
         return self
 
+    @model_validator(mode="after")
+    def check_ref(self):
+        if self.ref:
+            if self.path_pattern[-2:] != "/*":
+                raise ValueError("When ref is set, path_pattern must starts with /*")
+        return self
+
 
 class CloudFront(BaseSettings):
     domain: str
