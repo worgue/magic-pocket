@@ -79,6 +79,8 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             if "OPTIONS" not in storages[key]:
                 storages[key]["OPTIONS"] = {}
             storages[key]["OPTIONS"] = {**storages[key]["OPTIONS"], **storage.options}
+            if storage.store == "cloudfront":
+                storages[key]["OPTIONS"].pop("cloudfront_ref")
     return storages
 
 
