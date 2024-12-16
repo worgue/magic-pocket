@@ -128,12 +128,12 @@ def deploystatic(stage: str, skip_collectstatic: bool):
     storage = stage_storages["staticfiles"]
     if storage["BACKEND"] in [
         "storages.backends.s3boto3.S3StaticStorage",
-        "pocket.django.storages.PublicCloudFrontS3StaticStorage",
+        "pocket.django.storages.CloudFrontS3StaticStorage",
     ]:
         local_backend = "django.contrib.staticfiles.storage.StaticFilesStorage"
     elif storage["BACKEND"] in [
         "storages.backends.s3boto3.S3ManifestStaticStorage",
-        "pocket.django.storages.PublicCloudFrontS3ManifestStaticStorage",
+        "pocket.django.storages.CloudFrontS3ManifestStaticStorage",
     ]:
         local_backend = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
     else:
