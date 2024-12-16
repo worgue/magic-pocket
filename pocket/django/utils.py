@@ -64,14 +64,12 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 assert location[-2:] == "/*"
                 location = location[1:-2]
                 domain = context.cloudfront.domain
-                custom_origin_path = route.path_pattern
-                assert custom_origin_path[-2:] == "/*"
                 storages[key]["OPTIONS"] = {
                     "bucket_name": bucket_name,
                     "location": location,
                     "querystring_auth": False,
                     "custom_domain": domain,
-                    "custom_origin_path": custom_origin_path,
+                    "custom_origin_path": context.cloudfront.origin_prefix,
                 }
             else:
                 raise ValueError("context is required for cloudfront storage")
