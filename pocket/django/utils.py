@@ -61,11 +61,11 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
                 location = context.cloudfront.origin_prefix + route.path_pattern
                 assert location[0] == "/"
-                assert location[:-2] != "/*"
+                assert location[-2:] == "/*"
                 location = location[1:-2]
                 domain = context.cloudfront.domain
                 custom_origin_path = route.path_pattern
-                assert custom_origin_path[:-2] == "/*"
+                assert custom_origin_path[-2:] == "/*"
                 storages[key]["OPTIONS"] = {
                     "bucket_name": bucket_name,
                     "location": location,
