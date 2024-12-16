@@ -25,10 +25,10 @@ class DjangoStorageContext(settings.DjangoStorage):
             return "storages.backends.s3boto3.S3Boto3Storage"
         elif self.store == "cloudfront":
             if self.static and self.manifest:
-                return "pocket.django.storages.PublicCloudFrontS3ManifestStaticStorage"
+                return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
             if self.static:
-                return "pocket.django.storages.PublicCloudFrontS3StaticStorage"
-            return "pocket.django.storages.PublicCloudFrontS3Boto3Storage"
+                return "pocket.django.storages.CloudFrontS3StaticStorage"
+            return "pocket.django.storages.CloudFrontS3Boto3Storage"
         elif self.store == "filesystem":
             if self.static and self.manifest:
                 return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
