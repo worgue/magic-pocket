@@ -17,12 +17,18 @@ from . import settings
 class DjangoStorageContext(settings.DjangoStorage):
     @property
     def backend(self):
-        if self.store in ["s3", "cloudfront"]:
+        if self.store == "s3":
             if self.static and self.manifest:
                 return "storages.backends.s3boto3.S3ManifestStaticStorage"
             if self.static:
                 return "storages.backends.s3boto3.S3StaticStorage"
             return "storages.backends.s3boto3.S3Boto3Storage"
+        elif self.store == "cloudfront":
+            if self.static and self.manifest:
+                return "pocket.django.storages.PublicCloudFrontS3ManifestStaticStorage"
+            if self.static:
+                return "pocket.django.storages.PublicCloudFrontS3StaticStorage"
+            return "pocket.django.storages.PublicCloudFrontS3Boto3Storage"
         elif self.store == "filesystem":
             if self.static and self.manifest:
                 return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"

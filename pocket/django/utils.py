@@ -32,12 +32,14 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             django_context = context.awscontainer.django
     storages = {}
     for key, storage in django_context.storages.items():
-        if key == "staticfiles":
-            if os.environ.get("POCKET_STATICFILES_BACKEND_OVERRIDE"):
-                backend = os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"]
-                location = os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE")
-                storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
-                continue
+        if key == "staticfiles" and os.environ.get(
+            "POCKET_STATICFILES_BACKEND_OVERRIDE"
+        ):
+            # Override staticfiles storage backend for deploystatic command
+            backend = os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"]
+            location = os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE")
+            storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
+            continue
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
             if context:
@@ -62,11 +64,14 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 assert location[:-2] != "/*"
                 location = location[1:-2]
                 domain = context.cloudfront.domain
+                custom_origin_path = route.path_pattern
+                assert custom_origin_path[:-2] == "/*"
                 storages[key]["OPTIONS"] = {
                     "bucket_name": bucket_name,
                     "location": location,
                     "querystring_auth": False,
                     "custom_domain": domain,
+                    "custom_origin_path": custom_origin_path,
                 }
             else:
                 raise ValueError("context is required for cloudfront storage")

@@ -191,7 +191,7 @@ class Route(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def check_path(self):
+    def check_path_pattern(self):
         if self.path_pattern:
             if self.path_pattern[0] != "/":
                 raise ValueError("non default path_pattern must starts with /")
