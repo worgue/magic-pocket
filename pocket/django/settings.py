@@ -55,6 +55,15 @@ class Django(BaseSettings):
                 "default": DjangoStorage(store="filesystem"),
                 "staticfiles": DjangoStorage(store="filesystem", static=True),
             }
+        if "staticfiles" not in self.storages:
+            raise ValueError("staticfiles storage is required")
+        if "default" not in self.storages:
+            raise ValueError("default storage is required")
+        if not self.storages["staticfiles"].static:
+            raise ValueError("staticfiles storage must be static")
+        for key, s in self.storages.items():
+            if key != "staticfiles" and s.static:
+                raise ValueError("static can only be used with staticfiles")
         if self.caches is None:
             # https://docs.djangoproject.com/en/5.0/ref/settings/#caches
             self.caches = self.caches or {"default": DjangoCache(store="locmem")}

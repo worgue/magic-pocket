@@ -14,7 +14,7 @@ from ..cli.deploy_cli import deploy_init_resources, deploy_resources
 from ..context import Context
 from ..utils import echo
 from . import django_installed
-from .utils import get_storages
+from .utils import get_static_storage, get_storages
 
 
 @click.group()
@@ -83,12 +83,10 @@ def deploy(stage: str, openpath, force):
     context = Context.from_toml(stage=stage)
     deploy_init_resources(context)
     deploy_resources(context)
+    if force or click.confirm("deploystatic? Or run collectstatic in lambda"):
+        collectstatic_locally(stage)
+        upload_collected_staticfiles(stage)
     handler = _get_management_command_handler(context)
-    if force or click.confirm("collectstatic?"):
-        res = handler.invoke(
-            json.dumps({"command": "collectstatic", "args": ["--noinput"]})
-        )
-        handler.show_logs(res)
     if force or click.confirm("migrate?"):
         res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
         handler.show_logs(res)
@@ -118,13 +116,14 @@ def _get_management_command_handler(context: Context, key: str | None = None):
     raise Exception("Add management command handler for this stage")
 
 
-@django.command()
-@click.option("--stage", prompt=True)
-@click.option("--skip-collectstatic", is_flag=True, default=False)
-def deploystatic(stage: str, skip_collectstatic: bool):
+class DeploystaticConfigError(Exception):
+    pass
+
+
+def get_deploystatic_local_storage(stage: str):
     stage_storages = get_storages(stage=stage)
     if "staticfiles" not in stage_storages:
-        raise Exception("staticfiles storage not found in the stage")
+        raise Exception("staticfiles storage not found in the stage %s" % stage)
     storage = stage_storages["staticfiles"]
     if storage["BACKEND"] in [
         "storages.backends.s3boto3.S3StaticStorage",
@@ -137,15 +136,38 @@ def deploystatic(stage: str, skip_collectstatic: bool):
     ]:
         local_backend = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
     else:
-        raise Exception("BACKEND configuration error")
+        raise DeploystaticConfigError(
+            "BACKEND %s is not supported" % storage["BACKEND"]
+        )
     local_build_static_root = "pocket_cache/static_build/%s" % stage
-    os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"] = local_backend
-    os.environ["POCKET_STATICFILES_LOCATION_OVERRIDE"] = local_build_static_root
-    if not skip_collectstatic:
-        echo.info("collectstatic to %s..." % local_build_static_root)
-        run("python manage.py collectstatic --noinput", shell=True, check=True)
-    else:
-        echo.warning("Skipped collectstatic.")
+    return {"BACKEND": local_backend, "OPTIONS": {"location": local_build_static_root}}
+
+
+def can_deploystatic(stage: str):
+    try:
+        get_deploystatic_local_storage(stage)
+        return True
+    except DeploystaticConfigError:
+        return False
+
+
+def set_staticfiles_override_env(storage):
+    if os.environ.get("POCKET_STATICFILES_BACKEND_OVERRIDE"):
+        raise Exception("POCKET_STATICFILES_BACKEND_OVERRIDE is already set")
+    if os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE"):
+        raise Exception("POCKET_STATICFILES_LOCATION_OVERRIDE is already set")
+    os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"] = storage["BACKEND"]
+    os.environ["POCKET_STATICFILES_LOCATION_OVERRIDE"] = storage["OPTIONS"]["location"]
+
+
+def clear_staticfiles_override_env():
+    os.environ.pop("POCKET_STATICFILES_BACKEND_OVERRIDE", None)
+    os.environ.pop("POCKET_STATICFILES_LOCATION_OVERRIDE", None)
+
+
+def upload_collected_staticfiles(stage: str):
+    storage = get_static_storage(stage=stage)
+    local_storage = get_deploystatic_local_storage(stage)
     s3_bucket_name = storage["OPTIONS"]["bucket_name"]
     s3_location = storage["OPTIONS"]["location"]
     echo.info("Bucket: %s" % s3_bucket_name)
@@ -153,10 +175,27 @@ def deploystatic(stage: str, skip_collectstatic: bool):
     echo.info("Uploading static files...")
     run(
         "aws s3 sync %s s3://%s/%s/ --delete"
-        % (local_build_static_root, s3_bucket_name, s3_location),
+        % (local_storage["OPTIONS"]["location"], s3_bucket_name, s3_location),
         shell=True,
         check=True,
     )
+
+
+def collectstatic_locally(stage: str):
+    local_storage = get_deploystatic_local_storage(stage)
+    echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
+    set_staticfiles_override_env(local_storage)
+    run("python manage.py collectstatic --noinput", shell=True, check=True)
+    clear_staticfiles_override_env()
+
+
+@django.command()
+@click.option("--stage", prompt=True)
+@click.option("--skip-collectstatic", is_flag=True, default=False)
+def deploystatic(stage: str, skip_collectstatic: bool):
+    if not skip_collectstatic:
+        collectstatic_locally(stage)
+    upload_collected_staticfiles(stage)
 
 
 @django.command(
