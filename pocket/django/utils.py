@@ -87,6 +87,11 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
     return storages
 
 
+def get_static_storage(*, stage: str | None = None, path: str | Path | None = None):
+    storages = get_storages(stage=stage, path=path)
+    return storages["staticfiles"]  # must be available
+
+
 def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     path = path or get_toml_path()
