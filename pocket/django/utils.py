@@ -32,6 +32,14 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             django_context = context.awscontainer.django
     storages = {}
     for key, storage in django_context.storages.items():
+        if key == "staticfiles" and os.environ.get(
+            "POCKET_STATICFILES_BACKEND_OVERRIDE"
+        ):
+            # Override staticfiles storage backend for deploystatic command
+            backend = os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"]
+            location = os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE")
+            storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
+            continue
         storages[key] = {"BACKEND": storage.backend}
         if storage.store == "s3":
             if context:
@@ -46,6 +54,25 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
                 "bucket_name": bucket_name,
                 "location": storage.location,
             }
+        elif storage.store == "cloudfront":
+            if context:
+                assert context.cloudfront, "Never happen because of context validation."
+                bucket_name = context.cloudfront.bucket_name
+                route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
+                location = context.cloudfront.origin_prefix + route.path_pattern
+                assert location[0] == "/"
+                assert location[-2:] == "/*"
+                location = location[1:-2]
+                domain = context.cloudfront.domain
+                storages[key]["OPTIONS"] = {
+                    "bucket_name": bucket_name,
+                    "location": location,
+                    "querystring_auth": False,
+                    "custom_domain": domain,
+                    "custom_origin_path": context.cloudfront.origin_prefix,
+                }
+            else:
+                raise ValueError("context is required for cloudfront storage")
         elif storage.store == "filesystem":
             if storage.location is not None:
                 storages[key]["OPTIONS"] = {"location": storage.location}
@@ -55,6 +82,8 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
             if "OPTIONS" not in storages[key]:
                 storages[key]["OPTIONS"] = {}
             storages[key]["OPTIONS"] = {**storages[key]["OPTIONS"], **storage.options}
+            if storage.store == "cloudfront":
+                storages[key]["OPTIONS"].pop("cloudfront_ref")
     return storages
 
 
