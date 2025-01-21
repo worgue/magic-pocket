@@ -13,7 +13,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, SpaContext, VpcContext
+    from pocket.context import AwsContainerContext, CloudFrontContext, VpcContext
 
 
 class Stack:
@@ -21,7 +21,7 @@ class Stack:
     name: str
     export: dict
 
-    def __init__(self, context: AwsContainerContext | VpcContext | SpaContext):
+    def __init__(self, context: AwsContainerContext | VpcContext | CloudFrontContext):
         self.context = context
         self.client = self.get_client()
 
@@ -52,12 +52,23 @@ class Stack:
         if hasattr(self, "uploaded_template"):
             del self.uploaded_template
 
-    def wait_status(self, status: ResourceStatus, timeout=300, interval=3):
+    def wait_status(
+        self,
+        status: ResourceStatus,
+        timeout=300,
+        interval=3,
+        error_statuses: tuple[ResourceStatus] = ("FAILED",),
+    ):
         for i in range(timeout // interval):
             self.clear_status()
             if self.status == status:
                 print("")
                 return
+            if self.status in error_statuses:
+                print(self.description)
+                raise Exception(
+                    f"Stack status is {self.status}. Please check the console."
+                )
             if i == 0:
                 msg = "Waiting for %s stack status to be %s" % (
                     self.template_filename,
@@ -79,7 +90,6 @@ class Stack:
     @property
     def deleted_at(self):
         if self.description:
-            print(self.description)
             return self.description["DeletionTime"].astimezone()
 
     @property
@@ -161,16 +171,16 @@ class Stack:
         return self.client.delete_stack(StackName=self.name)
 
 
-class SpaStack(Stack):
-    context: SpaContext
-    template_filename = "spa"
+class CloudFrontStack(Stack):
+    context: CloudFrontContext
+    template_filename = "cloudfront"
 
     def get_client(self):
         return boto3.client("cloudformation", region_name=self.context.region)
 
     @property
     def name(self):
-        return f"{self.context.slug}-spa"
+        return f"{self.context.slug}-cloudfront"
 
     @property
     def export(self):

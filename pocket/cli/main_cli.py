@@ -4,10 +4,10 @@ from .. import __version__
 from ..django import django_cli
 from . import (
     awscontainer_cli,
+    cloudfront_cli,
     deploy_cli,
     neon_cli,
     s3_cli,
-    spa_cli,
     status_cli,
     vpc_cli,
 )
@@ -38,4 +38,4 @@ resource.add_command(vpc_cli.vpc)
 resource.add_command(awscontainer_cli.awscontainer)
 resource.add_command(neon_cli.neon)
 resource.add_command(s3_cli.s3)
-resource.add_command(spa_cli.spa)
+resource.add_command(cloudfront_cli.cloudfront)
