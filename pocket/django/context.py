@@ -23,6 +23,12 @@ class DjangoStorageContext(settings.DjangoStorage):
             if self.static:
                 return "storages.backends.s3boto3.S3StaticStorage"
             return "storages.backends.s3boto3.S3Boto3Storage"
+        elif self.store == "cloudfront":
+            if self.static and self.manifest:
+                return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
+            if self.static:
+                return "pocket.django.storages.CloudFrontS3StaticStorage"
+            return "pocket.django.storages.CloudFrontS3Boto3Storage"
         elif self.store == "filesystem":
             if self.static and self.manifest:
                 return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
@@ -30,6 +36,18 @@ class DjangoStorageContext(settings.DjangoStorage):
                 return "django.contrib.staticfiles.storage.StaticFilesStorage"
             return "django.core.files.storage.FileSystemStorage"
         raise ValueError("Unknown store")
+
+    @model_validator(mode="before")
+    @classmethod
+    def context(cls, data: dict) -> dict:
+        if data["store"] == "cloudfront":
+            settings = context_settings.get()
+            if not settings.cloudfront:
+                raise ValueError("cloudfront settings required")
+            cloudfront_ref = data["options"]["cloudfront_ref"]
+            if cloudfront_ref not in [r.ref for r in settings.cloudfront.routes]:
+                raise ValueError("cloudfront ref [%s] not found" % cloudfront_ref)
+        return data
 
 
 class DjangoCacheContext(settings.DjangoCache):
