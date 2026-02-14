@@ -18,6 +18,14 @@
         - Queue, Dead letter queue, EventSourceMappingの作成
 - :material-console: `pocket remove`でデプロイした環境を出来る限り削除し、削除できないものは表示
 
+## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - Unreleased
+### Breaking Changes
+- pocket.tomlの`[spa.origin_path_format]`のデフォルト値が変更されました。空文字から`/{stage}`に変更されました。
+
+### Documentation
+- Features/pocket.tomlを追加
+- Features/コマンドライン、Tutorial/Simple Projectの説明を改善
+
 ## [0.1.0](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - 2024-10-11
 
 ### Dependencies
