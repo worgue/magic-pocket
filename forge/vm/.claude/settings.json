@@ -1,0 +1,34 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(rm:*)",
+            "Bash(mkdir:*)",
+            "Bash(grep:*)",
+            "Bash(ls:*)",
+            "Bash(tree:*)",
+            "Bash(find:*)",
+            "Bash(cp:*)",
+            "Bash(mv:*)",
+            "Bash(sed:*)",
+            "Bash(wc:*)",
+            "Bash(docker:*)",
+            "Bash(git:*)",
+            "Bash(curl:*)",
+            "Bash(python:*)",
+            "Bash(uv:*)",
+            "Bash(ruff:*)",
+            "Bash(bun:*)",
+            "Bash(aws:*)",
+            "Bash(vmgit:*)",
+            "WebSearch",
+            "Edit",
+            "Write"
+        ],
+        "deny": [
+            "Edit(.claude/settings.json)",
+            "Write(.claude/settings.json)",
+            "Bash(umount:*)",
+            "Bash(mount:*)"
+        ]
+    }
+}

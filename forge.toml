@@ -1,0 +1,21 @@
+kits = ["core", "git", "uv", "just", "postgres", "redis", "docker", "infra", "claude"]
+[[mounts]]
+type = "overlay"
+path = ".git"
+is_file = "auto"
+kit_managed = "core"
+
+[[mounts]]
+type = "overlay"
+path = ".forge"
+kit_managed = "core"
+[[mounts]]
+type = "overlay"
+path = ".venv"
+kit_managed = "uv"
+[[mounts]]
+type = "inject"
+source = "forge/vm/.claude/settings.json"
+target = ".claude/settings.json"
+is_file = true
+kit_managed = "claude"

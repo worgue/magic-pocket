@@ -15,3 +15,8 @@ wheels/
 # local env
 .envrc
 .env
+
+# Forge
+.forge/
+.envrc.local
+.envrc.forge
