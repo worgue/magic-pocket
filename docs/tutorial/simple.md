@@ -27,13 +27,18 @@ rye, AWS, Neon
     チュートリアルに沿えば、`.env`で設定できます。
 
 ## Djangoプロジェクトの作成
-!!! warning annotate "プロジェクト名"
-    自分の名前などを入れて、他のmagic-pocketプロジェクトと、コンフリクトしないプロジェクト名にしてください。
-    プロジェクト名から自動生成させるS3バケット名(1)がコンフリクトしてエラーになります。
-    `pocket`などの名前は動かないかもしれません(2)。
+!!! warning annotate "プロジェクト名について"
+    `pocket`をプロジェクト名に含めない
+    :    `pocket`というprefixをつけてリソースを作成するため、prefixかプロジェクト名か分からず、混乱します。
 
-1. `pocket`という文字列や環境名がプレフィックスとなるので、通常はコンフリクトしません。`pocket.toml`内で直接指定することも可能ですが、stageごとに異なる値にしたり、`stage`を変数としたり、チュートリアルの範囲を超えるため、プロジェクト名で対応してください。
-2. magic-pocketをまだ誰も使っていなくて、動く可能性もあります。
+    他のmagic-pocketプロジェクトとコンフリクトさせない
+    :   自分の名前などを入れてください。
+        プロジェクト名から自動生成させるS3バケット名(1)がコンフリクトしてエラーになります。
+        `pocket`などの名前は動かないかもしれません(2)。
+
+
+1. `pocket`というプレフィックスが付くので、通常はコンフリクトしません。この値は、`pocket.toml`で直接指定も可能ですが、チュートリアルでは、プロジェクト名で対応してください。
+2. 実際は、`pocket`という名称はS3の問題ではなく動きません。magic-pocketのpocketディレクトリよりも、プロジェクトディレクトリがimportで優先されるためです。
 
 ```bash
 # global django (1)
@@ -72,32 +77,38 @@ rye add django-environ psycopg
 rye add magic-pocket
 ```
 
-## pocket django init
-以下のコマンドは、シンプルなデプロイ設定を作成します。
-
-```bash
-rye run pocket django init
-```
-
-具体的には以下を行います。
-
-- `pocket.toml`, `pocket.Dockerfile`, `.env`を作成します。
-- `settings.py`を修正します。
+## pocket django initの実行
+以下のコマンドは、シンプルなデプロイ設定を生成します。
 
 !!! info annotate "実行前のコミットをお勧めします"
     `settings.py`の差分確認(1)のため、git commitをしておくことをお勧めします。
     チュートリアル通りに進めていれば、`.gitignore`には`db.sqlite3`を追加してください。
 
+    コマンド実行時に生成される`.env`も、ついでに`.gitignore`に追加しておくと良いでしょう。
+
 1. 以下に差分は記載しますが、手元で確認できたほうが安心かと思います。
+
+```bash
+rye run pocket django init
+```
+
+このコマンドにより、以下のファイルが生成されます。
+
+- `pocket.toml`, `pocket.Dockerfile`, `.env`が生成され、新規保存されます。
+- `settings.py`が生成され、上書きされます。
 
 ??? warning "チュートリアル通りに実行していない場合の注意点"
     **djagno-environ**
 
     :   django-environがない場合、`.env`と`settings.py`は作成されません。
-        環境変数としてしか取得できない変数があるので、まずは、django-environを利用した`settings.py`を作成することをお勧めします。
+        環境変数としてしか取得できないデータがあるので、チュートリアルでは、django-environを利用した`settings.py`を作成することをお勧めします。
 
 ### pocket.toml
-以下の内容で`pocket.toml`を作成します。
+ap-southeast-1リージョン(1)で、devとprdの2つのステージを持つプロジェクトの設定ファイルです。
+{.annotate}
+
+1. Neonが存在するリージョンを設定してください。
+
 
 ```toml
 [general]
@@ -133,7 +144,7 @@ default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
 
-1.  :man_raising_hand: `ap-southeast-1`リージョンでリソースは作成されます。
+1.  :man_raising_hand: `ap-southeast-1`リージョンでリソースは作成されます。Neonが使えるリージョンを指定してください。
 2.  `dev`と`prd`の2つのステージが指定可能です。
 3.  S3バケットを作成します。名前は指定されていないので、プロジェクト名とステージ名から自動生成されます。
 4.  作成されたバケットの`static`ディレクトリは公開されます
@@ -147,8 +158,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 12. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
 
 ### pocket.Dockerfile
-`awscontainer.dockerfile_path`で指定した先に、Lambda対応のDockerfileを作成します。
-`requirements.lock`を持つDjangoプロジェクトの場合、以下の設定で動作します(1)。
+Lambda対応のDockerfileを生成します(1)。
 {.annotate}
 
 1. どういうライブラリが動かないのか、良く分かっていません。動かないライブラリがあれば、issueに投げてください。
@@ -191,11 +201,12 @@ ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]
 1. gitレポジトリからモジュールをダウンロードする必要がある場合に必要です。なければ不要です。
 
 ### .env
-以下の内容で`.env`を作成します。
-
 !!! tip "ローカル環境用の設定ファイルです"
     このファイルは、ローカルでDjangoを動かすための設定ファイルです。
-    デプロイ時には、これらの変数は`secretsmanager`経由で取得されるため、デプロイ環境を動かすには、`.env`は不要です。
+    デプロイ時には、これらの変数は`secretsmanager`経由で取得されるため、デプロイ環境を動かすだけなら、`.env`は不要です。
+
+以下の内容で生成されます。
+
 
 ```bash
 DEBUG=true
@@ -207,9 +218,9 @@ DATABASE_URL=sqlite:///db.sqlite3
 1. Djangoの`SECRET_KEY`生成の仕組みを利用して、毎回異なる値が出力されます。
 
 ### settings.py
-`settings.py`に必要な修正は以下の通りです。
+以下の修正が適用された`settings.py`が生成されます。
 
-- `SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `DATABASES`を削除します。これらは、`SecretsManager`経由で環境変数から読み込まれます。
+- `SECRET_KEY`, `ALLOWED_HOSTS`, `DATABASES`, `DEBUG`を環境変数から読み込ませるように修正します。デプロイ時には`SecretsManager`経由、ローカルでは`.env`経由で取得します。
 - `STORAGES`, `CACHES`を`pocket.toml`から読み込む形に修正します。
 
 追加されるコードは以下になります。
@@ -251,7 +262,7 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 1. Lambda環境では不要です。magic-pocketはデプロイ時にNEONのデータベース情報を読み込み、SecretsManagerに登録します。Lambda環境では、その値を環境変数として接続情報を取得できます。
 
 ### dev
-以下のコマンドでdev環境をデプロイと、djangoの初期設定を行います。
+以下のコマンドでdev環境へのデプロイと、djangoの初期設定を行います。
 
 ```bash
 pocket deploy --stage=dev
@@ -260,16 +271,17 @@ pocket django manage collectstatic --noinput --stage=dev
 pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=dev
 ```
 
-ここまでの設定では、`SECRET_KEY`、`DJANGO_SUPERUSER_PASSWORD`、`DATABASE_URL` は、SecretsManagerに保存され`settings.py`から読み込まれます。
+`SECRET_KEY`、`DJANGO_SUPERUSER_PASSWORD`、`DATABASE_URL` は、自動生成されSecretsManagerに保存されます。その値は`settings.py`で取得されます。
 
-`DJANGO_SUPERUSER_PASSWORD`を含む自動生成された内容は、以下で取得できます。
+自動生成されたシークレットは、以下で確認できます。
 
 ```bash
 pocket resource awscontainer secretsmanager list --stage dev --show-values
 ```
 
 ### prd
-devをprdに変えるだけです。環境がコンフリクトすることはありません。
+devをprdに変えるだけです。環境やシークレットは全て別になります。
+
 ```bash
 pocket deploy --stage=prd
 pocket django manage migrate --stage=prd
