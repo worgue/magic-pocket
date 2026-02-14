@@ -9,11 +9,11 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from ..utils import echo
-from .aws.cloudformation import SpaStack
+from .aws.cloudformation import CloudFrontStack
 from .base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import SpaContext
+    from pocket.context import CloudFrontContext
 
 
 class OriginAccessControl(BaseModel):
@@ -35,10 +35,10 @@ class BucketOwnershipException(Exception):
     pass
 
 
-class Spa:
-    context: SpaContext
+class CloudFront:
+    context: CloudFrontContext
 
-    def __init__(self, context: SpaContext) -> None:
+    def __init__(self, context: CloudFrontContext) -> None:
         self.context = context
         self.s3_client = boto3.client("s3", region_name=context.region)
         self.cf_client = boto3.client("cloudfront", region_name=context.region)
@@ -61,7 +61,7 @@ class Spa:
 
     @property
     def stack(self):
-        return SpaStack(self.context)
+        return CloudFrontStack(self.context)
 
     def create(self):
         self.update()
@@ -79,28 +79,40 @@ class Spa:
         log("Waiting for cloudformation stack to be completed ...")
         log("This may take a few minutes.")
         log("Because cloudfront distribution id is required to set s3 bucket policy.")
-        info("If you want to come back later, you can safely cancel this process.")
-        info("In that case, run `pocket resource spa update` later.")
+        info("If you want to exit, you can safely kill this process.")
+        info("In that case, run `pocket resource cloudfront update` later.")
         self.stack.wait_status("COMPLETED", timeout=600, interval=10)
         self._ensure_bucket_policy()
-        log("Bucket for spa is ready.")
+        log("Bucket for cloudfront is ready.")
         self.warn_contents()
 
     def warn_contents(self):
         bucket = self.context.bucket_name
-        origin = self.context.origin_path
-        echo.warning("Upload spa files manually to s3://%s%s" % (bucket, origin))
-        eg_cmd = "npx s3-spa-upload build %s --delete" % bucket
-        if origin:
-            eg_cmd += " --prefix %s" % origin[1:]
-        echo.info("e.g) " + eg_cmd)
+        for route in self.context.routes:
+            origin = self.context.origin_prefix + route.path_pattern
+            echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))
+            if route.is_spa:
+                echo.info("%s is a spa route." % (route.path_pattern or "default"))
+                echo.info("Set proper cahce headers.")
+                eg_cmd = "npx s3-spa-upload build %s --delete --prefix %s" % (
+                    bucket,
+                    origin[1:],
+                )
+                echo.info("e.g) " + eg_cmd)
+            elif route.is_versioned:
+                echo.info("This is a versioned route.")
+                echo.info(
+                    "Just upload your files. CloudFront will set cache-control headers."
+                )
+                eg_cmd = "aws s3 sync data s3://%s%s" % (bucket, origin)
+                echo.info("e.g) " + eg_cmd)
 
     def delete(self):
         self._delete_redirect_from()
         self._delete_bucket_policy()
         self.stack.delete()
-        echo.info("Deleting cloudformation stack for spa ...")
-        echo.warning("Please delete the bucket resources manually.")
+        echo.info("Deleting cloudformation stack for cloudfront ...")
+        echo.warning("Please delete the bucket resources manually if needed.")
         echo.warning("The bucket name: " + self.context.bucket_name)
 
     def _bucket_exists(self, bucket_name):
@@ -269,12 +281,12 @@ class Spa:
     @property
     def bucket_policy_statement_should_contain(self):
         return {
-            "Sid": "AllowCloudFrontReadOnly%s" % self.context.origin_path,
+            "Sid": "AllowCloudFrontReadOnly%s" % self.context.yaml_key,
             "Effect": "Allow",
             "Principal": {"Service": "cloudfront.amazonaws.com"},
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::%s%s/*"
-            % (self.context.bucket_name, self.context.origin_path),
+            % (self.context.bucket_name, self.context.origin_prefix),
             "Condition": {
                 "StringEquals": {
                     "AWS:SourceArn": "arn:aws:cloudfront::%s:distribution/%s"
@@ -282,28 +294,3 @@ class Spa:
                 }
             },
         }
-
-    @property
-    def url_fallback_function_indent8(self):
-        lines = []
-        for i, line in enumerate(self._url_fallback_function.splitlines()):
-            if i == 0:
-                lines.append(line)
-            else:
-                lines.append(" " * 8 + line)
-        return "\n".join(lines)
-
-    @property
-    def _url_fallback_function(self):
-        return (
-            """function handler(event) {
-    var request = event.request;
-    var lastItem = request.uri.split('/').pop();
-    if (!lastItem.includes('.')) {
-        request.uri = '/%s';
-    }
-    return request;
-}
-"""
-            % self.context.fallback_html
-        )

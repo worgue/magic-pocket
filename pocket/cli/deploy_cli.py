@@ -18,8 +18,8 @@ def get_resources(context: Context):
         if context.awscontainer.vpc:
             resources.append(context.awscontainer.vpc.resource)
         resources.append(context.awscontainer.resource)
-    if context.spa:
-        resources.append(context.spa.resource)
+    if context.cloudfront:
+        resources.append(context.cloudfront.resource)
     return resources
 
 

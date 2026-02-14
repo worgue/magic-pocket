@@ -40,6 +40,19 @@ FormatStr = Annotated[
     ),
 ]
 
+FormatPath = Annotated[
+    str,
+    Field(
+        pattern=r"^[/a-z0-9{][/{}a-z0-9._-]*$",
+        max_length=128,
+        description=(
+            "Formatted string for path. You can use variables: "
+            "prefix, project, stage(for containers), and ref(for vpc)\n"
+            "e.g) {prefix}{stage}-{project}"
+        ),
+    ),
+]
+
 
 class AwsContainer(BaseModel):
     vpc: Vpc | None = None
@@ -163,34 +176,73 @@ class RedirectFrom(BaseSettings):
     hosted_zone_id_override: str | None = None
 
 
-class Spa(BaseSettings):
-    domain: str
-    bucket_name_format: FormatStr = "{prefix}{stage}-{project}-spa"
-    origin_path_format: str = ""
-    fallback_html: str = "index.html"
-    hosted_zone_id_override: str | None = None
-    redirect_from: list[RedirectFrom] = []
+class Route(BaseSettings):
+    path_pattern: str = ""
+    is_spa: bool = False
+    is_versioned: bool = False
+    spa_fallback_html: str = "index.html"
+    versioned_max_age: int = 60 * 60 * 24 * 365
+    ref: str = ""
 
     @model_validator(mode="after")
-    def check_origin_path(self):
-        if self.origin_path_format:
-            if self.origin_path_format[0] != "/":
-                raise ValueError("origin_path_format must starts with /")
-            if self.origin_path_format[-1] == "/":
-                raise ValueError("origin_path_format must not ends with /")
+    def check_flags(self):
+        if self.is_spa and self.is_versioned:
+            raise ValueError("is_spa and is_versioned cannot be True at the same time")
         return self
 
     @model_validator(mode="after")
-    def check_path(self):
-        path = self.bucket_name_format + self.origin_path_format
-        if "{stage}" not in path:
+    def check_path_pattern(self):
+        if self.path_pattern:
+            if self.path_pattern[0] != "/":
+                raise ValueError("non default path_pattern must starts with /")
+            if self.path_pattern[-1] == "/":
+                raise ValueError("path_pattern must not ends with /")
+        return self
+
+    @model_validator(mode="after")
+    def check_ref(self):
+        if self.ref:
+            if self.path_pattern[-2:] != "/*":
+                raise ValueError("When ref is set, path_pattern must starts with /*")
+        return self
+
+
+class CloudFront(BaseSettings):
+    domain: str
+    bucket_name_format: FormatStr = "{prefix}{project}-cloudfront"
+    origin_prefix_format: FormatPath = "/{stage}"
+    hosted_zone_id_override: str | None = None
+    redirect_from: list[RedirectFrom] = []
+    routes: list[Route] = []
+
+    @model_validator(mode="after")
+    def check_origin_prefix_format(self):
+        if self.origin_prefix_format:
+            if self.origin_prefix_format[0] != "/":
+                raise ValueError("origin_prefix_format must starts with /")
+            if self.origin_prefix_format[-1] == "/":
+                raise ValueError("origin_prefix_format must not ends with /")
+        return self
+
+    @model_validator(mode="after")
+    def check_origin_fomat(self):
+        origin_format = self.bucket_name_format + self.origin_prefix_format
+        if "{stage}" not in origin_format:
             raise ValueError(
-                "{stage} must exists in origin_path_format or bucket_name_format"
+                "{stage} must exists in origin_prefix_format or bucket_name_format"
             )
-        if "{project}" not in path:
+        if "{project}" not in origin_format:
             raise ValueError(
-                "{project} must exists in origin_path_format or bucket_name_format"
+                "{project} must exists in origin_prefix_format or bucket_name_format"
             )
+        return self
+
+    @model_validator(mode="after")
+    def check_routes(self):
+        if len(self.routes) == 0:
+            raise ValueError("routes must have at least one route")
+        if len([route for route in self.routes if route.path_pattern == ""]) != 1:
+            raise ValueError("routes must have one route with empty path for default")
         return self
 
 
@@ -200,7 +252,7 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     s3: S3 | None = None
-    spa: Spa | None = None
+    cloudfront: CloudFront | None = None
 
     @property
     def project_name(self):
@@ -248,13 +300,9 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = ["general", "awscontainer", "neon", "s3"]
+        valid_keys = ["general", "awscontainer", "neon", "s3", "cloudfront"]
         valid_keys += data["general"]["stages"]
         for key in data:
-            if key == "spa":
-                raise ValueError(
-                    "Currently spa is not supported for top level. Use it under stage."
-                )
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
