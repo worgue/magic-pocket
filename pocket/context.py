@@ -4,24 +4,25 @@ from functools import cached_property
 from pathlib import Path
 from typing import Literal
 
-from pydantic import computed_field, model_validator
-from pydantic_settings import SettingsConfigDict
+from pydantic import BaseModel, computed_field, model_validator
 
 from . import settings
 from .django.context import DjangoContext
-from .general_context import GeneralContext, VpcContext
-from .general_settings import context_general_settings
+from .general_context import EfsContext, GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.cloudfront import CloudFront
 from .resources.neon import Neon
 from .resources.s3 import S3
+from .settings import PocketSecretSpec
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
-context_settings = settings.context_settings
 
+class ApiGatewayContext(BaseModel):
+    domain: str | None = None
+    create_records: bool = True
+    hosted_zone_id_override: str | None = None
 
-class ApiGatewayContext(settings.ApiGateway):
     @computed_field
     def disable_execute_api_endpoint(self) -> bool:
         return bool(self.domain)
@@ -35,13 +36,46 @@ class ApiGatewayContext(settings.ApiGateway):
             return get_hosted_zone_id_from_domain(self.domain)
         return None
 
+    @classmethod
+    def from_settings(cls, apigw: settings.ApiGateway) -> ApiGatewayContext:
+        return cls(
+            domain=apigw.domain,
+            create_records=apigw.create_records,
+            hosted_zone_id_override=apigw.hosted_zone_id_override,
+        )
 
-class SqsContext(settings.Sqs):
+
+class SqsContext(BaseModel):
+    batch_size: int = 10
+    message_retention_period: int = 345600
+    maximum_concurrency: int = 2
+    dead_letter_max_receive_count: int = 5
+    dead_letter_message_retention_period: int = 1209600
+    report_batch_item_failures: bool = True
     name: str
     visibility_timeout: int
 
+    @classmethod
+    def from_settings(
+        cls, sqs: settings.Sqs, *, slug: str, key: str, timeout: int
+    ) -> SqsContext:
+        return cls(
+            batch_size=sqs.batch_size,
+            message_retention_period=sqs.message_retention_period,
+            maximum_concurrency=sqs.maximum_concurrency,
+            dead_letter_max_receive_count=sqs.dead_letter_max_receive_count,
+            dead_letter_message_retention_period=sqs.dead_letter_message_retention_period,
+            report_batch_item_failures=sqs.report_batch_item_failures,
+            name=f"{slug}-{key}",
+            visibility_timeout=timeout * 6,
+        )
 
-class LambdaHandlerContext(settings.LambdaHandler):
+
+class LambdaHandlerContext(BaseModel):
+    command: str
+    timeout: int = 30
+    memory_size: int = 512
+    reserved_concurrency: int | None = None
     region: str
     apigateway: ApiGatewayContext | None = None
     sqs: SqsContext | None = None
@@ -54,20 +88,42 @@ class LambdaHandlerContext(settings.LambdaHandler):
     def cloudformation_cert_ref_name(self) -> str:
         return self.key.capitalize() + "Certificate"
 
-    @model_validator(mode="before")
     @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["region"] = settings.region
-        data["function_name"] = f"{settings.object_prefix}{settings.slug}-{data['key']}"
-        data["log_group_name"] = f"/aws/lambda/{data['function_name']}"
-        if data["sqs"]:
-            data["sqs"]["name"] = f"{settings.slug}-{data['key']}"
-            data["sqs"]["visibility_timeout"] = data["timeout"] * 6
-        return data
+    def from_settings(
+        cls,
+        handler: settings.LambdaHandler,
+        *,
+        key: str,
+        root: settings.Settings,
+    ) -> LambdaHandlerContext:
+        apigw_ctx = None
+        if handler.apigateway:
+            apigw_ctx = ApiGatewayContext.from_settings(handler.apigateway)
+        sqs_ctx = None
+        if handler.sqs:
+            sqs_ctx = SqsContext.from_settings(
+                handler.sqs, slug=root.slug, key=key, timeout=handler.timeout
+            )
+        function_name = f"{root.object_prefix}{root.slug}-{key}"
+        return cls(
+            command=handler.command,
+            timeout=handler.timeout,
+            memory_size=handler.memory_size,
+            reserved_concurrency=handler.reserved_concurrency,
+            region=root.region,
+            apigateway=apigw_ctx,
+            sqs=sqs_ctx,
+            key=key,
+            function_name=function_name,
+            log_group_name=f"/aws/lambda/{function_name}",
+        )
 
 
-class SecretsManagerContext(settings.SecretsManager):
+class SecretsManagerContext(BaseModel):
+    pocket_secrets: dict[str, PocketSecretSpec] = {}
+    secrets: dict[str, str] = {}
+    extra_resources: list[str] = []
+    require_list_secrets: bool = False
     region: str
     pocket_key: str
     stage: str
@@ -100,21 +156,6 @@ class SecretsManagerContext(settings.SecretsManager):
         resources += self.extra_resources
         return [self._ensure_arn(resource) for resource in resources if resource]
 
-    @model_validator(mode="before")
-    @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["region"] = settings.region
-        format_vars = {
-            "prefix": settings.object_prefix,
-            "stage": settings.stage,
-            "project": settings.project_name,
-        }
-        data["pocket_key"] = data["pocket_key_format"].format(**format_vars)
-        data["stage"] = settings.stage
-        data["project_name"] = settings.project_name
-        return data
-
     @model_validator(mode="after")
     def check_entry(self):
         if (not self.require_list_secrets) and (not self.allowed_resources):
@@ -124,10 +165,34 @@ class SecretsManagerContext(settings.SecretsManager):
             )
         return self
 
+    @classmethod
+    def from_settings(
+        cls, sm: settings.SecretsManager, root: settings.Settings
+    ) -> SecretsManagerContext:
+        format_vars = {
+            "prefix": root.object_prefix,
+            "stage": root.stage,
+            "project": root.project_name,
+        }
+        return cls(
+            pocket_secrets=sm.pocket_secrets,
+            secrets=sm.secrets,
+            extra_resources=sm.extra_resources,
+            require_list_secrets=sm.require_list_secrets,
+            region=root.region,
+            pocket_key=sm.pocket_key_format.format(**format_vars),
+            stage=root.stage,
+            project_name=root.project_name,
+        )
 
-class AwsContainerContext(settings.AwsContainer):
+
+class AwsContainerContext(BaseModel):
     vpc: VpcContext | None = None
     secretsmanager: SecretsManagerContext | None = None
+    dockerfile_path: str
+    envs: dict[str, str] = {}
+    platform: str = "linux/amd64"
+    django: DjangoContext | None = None
     region: str
     slug: str
     stage: str
@@ -138,34 +203,68 @@ class AwsContainerContext(settings.AwsContainer):
     use_sqs: bool = False
     use_efs: bool = False
     efs_local_mount_path: str = ""
-    django: DjangoContext | None = None
 
     @cached_property
     def resource(self):
         return AwsContainer(self)
 
-    @model_validator(mode="before")
     @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["region"] = settings.region
-        data["slug"] = settings.slug
-        data["stage"] = settings.stage
-        data["ecr_name"] = settings.object_prefix + settings.project_name + "-lambda"
-        data["use_s3"] = settings.s3 is not None
-        if data["vpc"] and (data["vpc"]["efs"] is not None):
-            data["use_efs"] = True
-            data["efs_local_mount_path"] = data["vpc"]["efs"]["local_mount_path"]
-        for key, handler in data["handlers"].items():
-            handler["key"] = key
-            if handler["apigateway"]:
-                data["use_route53"] = True
-            if handler["sqs"]:
-                data["use_sqs"] = True
-        return data
+    def from_settings(
+        cls, ac: settings.AwsContainer, root: settings.Settings
+    ) -> AwsContainerContext:
+        vpc_ctx = None
+        if ac.vpc:
+            vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
+
+        sm_ctx = None
+        if ac.secretsmanager:
+            sm_ctx = SecretsManagerContext.from_settings(ac.secretsmanager, root)
+
+        handlers = {}
+        use_route53 = False
+        use_sqs = False
+        for key, handler in ac.handlers.items():
+            handlers[key] = LambdaHandlerContext.from_settings(
+                handler, key=key, root=root
+            )
+            if handler.apigateway:
+                use_route53 = True
+            if handler.sqs:
+                use_sqs = True
+
+        use_efs = False
+        efs_local_mount_path = ""
+        if ac.vpc and ac.vpc.efs:
+            use_efs = True
+            efs_local_mount_path = ac.vpc.efs.local_mount_path
+
+        django_ctx = None
+        if ac.django:
+            django_ctx = DjangoContext.from_settings(ac.django, root=root)
+
+        return cls(
+            vpc=vpc_ctx,
+            secretsmanager=sm_ctx,
+            dockerfile_path=ac.dockerfile_path,
+            envs=ac.envs,
+            platform=ac.platform,
+            django=django_ctx,
+            region=root.region,
+            slug=root.slug,
+            stage=root.stage,
+            handlers=handlers,
+            ecr_name=root.object_prefix + root.project_name + "-lambda",
+            use_s3=root.s3 is not None,
+            use_route53=use_route53,
+            use_sqs=use_sqs,
+            use_efs=use_efs,
+            efs_local_mount_path=efs_local_mount_path,
+        )
 
 
-class NeonContext(settings.Neon):
+class NeonContext(BaseModel):
+    pg_version: int = 15
+    api_key: str | None = None
     project_name: str
     branch_name: str
     name: str
@@ -176,42 +275,46 @@ class NeonContext(settings.Neon):
     def resource(self):
         return Neon(self)
 
-    @model_validator(mode="before")
     @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["project_name"] = settings.project_name
-        data["branch_name"] = settings.stage
-        data["name"] = settings.project_name
-        data["role_name"] = settings.project_name
-        data["region_id"] = "aws-" + settings.region
-        return data
+    def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
+        return cls(
+            pg_version=neon.pg_version,
+            api_key=neon.api_key,
+            project_name=root.project_name,
+            branch_name=root.stage,
+            name=root.project_name,
+            role_name=root.project_name,
+            region_id="aws-" + root.region,
+        )
 
 
-class S3Context(settings.S3):
+class S3Context(BaseModel):
     region: str
     bucket_name: str
+    public_dirs: list[str] = []
 
     @cached_property
     def resource(self):
         return S3(self)
 
-    @model_validator(mode="before")
     @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["region"] = settings.region
+    def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
         format_vars = {
-            "prefix": settings.object_prefix,
-            "stage": settings.stage,
-            "project": settings.project_name,
+            "prefix": root.object_prefix,
+            "stage": root.stage,
+            "project": root.project_name,
         }
-        data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
-        return data
+        return cls(
+            region=root.region,
+            bucket_name=s3.bucket_name_format.format(**format_vars),
+            public_dirs=s3.public_dirs,
+        )
 
 
-class RedirectFromContext(settings.RedirectFrom):
-    region: Literal["us-east-1"] = "us-east-1"  # us-east-1 is required. See SpaContext
+class RedirectFromContext(BaseModel):
+    domain: str
+    hosted_zone_id_override: str | None = None
+    region: Literal["us-east-1"] = "us-east-1"
 
     @computed_field
     @property
@@ -223,8 +326,6 @@ class RedirectFromContext(settings.RedirectFrom):
     def bucket_website_domain(self) -> str:
         if self.region != "us-east-1":
             raise Exception("Never reach here because of context validation")
-        # https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteEndpoints.html
-        # https://docs.aws.amazon.com/general/latest/gr/s3.html#s3_website_region_endpoints
         return f"{self.domain}.s3-website-us-east-1.amazonaws.com"
 
     @computed_field
@@ -236,8 +337,22 @@ class RedirectFromContext(settings.RedirectFrom):
             return None
         return get_hosted_zone_id_from_domain(self.domain)
 
+    @classmethod
+    def from_settings(cls, rf: settings.RedirectFrom) -> RedirectFromContext:
+        return cls(
+            domain=rf.domain,
+            hosted_zone_id_override=rf.hosted_zone_id_override,
+        )
 
-class RouteContext(settings.Route):
+
+class RouteContext(BaseModel):
+    path_pattern: str = ""
+    is_spa: bool = False
+    is_versioned: bool = False
+    spa_fallback_html: str = "index.html"
+    versioned_max_age: int = 60 * 60 * 24 * 365
+    ref: str = ""
+
     @computed_field
     @property
     def name(self) -> str:
@@ -279,13 +394,22 @@ class RouteContext(settings.Route):
 }
 """ % (self.path_pattern, self.spa_fallback_html)
 
+    @classmethod
+    def from_settings(cls, route: settings.Route) -> RouteContext:
+        return cls(
+            path_pattern=route.path_pattern,
+            is_spa=route.is_spa,
+            is_versioned=route.is_versioned,
+            spa_fallback_html=route.spa_fallback_html,
+            versioned_max_age=route.versioned_max_age,
+            ref=route.ref,
+        )
 
-class CloudFrontContext(settings.CloudFront):
-    # Although the following guide says that s3 buckets can be created in any region,
-    # access from cloudfront fails, so fixed to us-east-1
-    # In any case, cloudfront is only us-east-1
-    # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html#private-content-oac-permission-to-access-s3
+
+class CloudFrontContext(BaseModel):
     region: Literal["us-east-1"] = "us-east-1"
+    domain: str
+    hosted_zone_id_override: str | None = None
     slug: str
     bucket_name: str
     origin_prefix: str
@@ -331,44 +455,68 @@ class CloudFrontContext(settings.CloudFront):
             return None
         return get_hosted_zone_id_from_domain(self.domain)
 
-    @model_validator(mode="before")
     @classmethod
-    def context(cls, data: dict) -> dict:
-        settings = context_settings.get()
-        data["object_prefix"] = settings.object_prefix
-        data["slug"] = settings.slug
+    def from_settings(
+        cls, cf: settings.CloudFront, root: settings.Settings
+    ) -> CloudFrontContext:
         format_vars = {
-            "prefix": settings.object_prefix,
-            "stage": settings.stage,
-            "project": settings.project_name,
+            "prefix": root.object_prefix,
+            "stage": root.stage,
+            "project": root.project_name,
         }
-        data["bucket_name"] = data["bucket_name_format"].format(**format_vars)
-        data["origin_prefix"] = data["origin_prefix_format"].format(**format_vars)
-        data["name_prefix_for_cloudformation"] = "{prefix}{stage}-{project}-".format(
-            **format_vars
+        return cls(
+            domain=cf.domain,
+            hosted_zone_id_override=cf.hosted_zone_id_override,
+            slug=root.slug,
+            bucket_name=cf.bucket_name_format.format(**format_vars),
+            origin_prefix=cf.origin_prefix_format.format(**format_vars),
+            name_prefix_for_cloudformation="{prefix}{stage}-{project}-".format(
+                **format_vars
+            ),
+            object_prefix=root.object_prefix,
+            redirect_from=[
+                RedirectFromContext.from_settings(rf) for rf in cf.redirect_from
+            ],
+            routes=[RouteContext.from_settings(r) for r in cf.routes],
         )
-        return data
 
 
-class Context(settings.Settings):
+class Context(BaseModel):
     general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     s3: S3Context | None = None
     cloudfront: CloudFrontContext | None = None
-
-    model_config = SettingsConfigDict(extra="ignore")
+    project_name: str
 
     @classmethod
-    def from_settings(cls, settings: settings.Settings) -> Context:
-        token = context_settings.set(settings)
-        general_token = context_general_settings.set(settings.general)
-        try:
-            data = settings.model_dump(by_alias=True)
-            return cls.model_validate(data)
-        finally:
-            context_settings.reset(token)
-            context_general_settings.reset(general_token)
+    def from_settings(cls, s: settings.Settings) -> Context:
+        general_ctx = GeneralContext.from_general_settings(s.general)
+
+        awscontainer_ctx = None
+        if s.awscontainer:
+            awscontainer_ctx = AwsContainerContext.from_settings(s.awscontainer, s)
+
+        neon_ctx = None
+        if s.neon:
+            neon_ctx = NeonContext.from_settings(s.neon, s)
+
+        s3_ctx = None
+        if s.s3:
+            s3_ctx = S3Context.from_settings(s.s3, s)
+
+        cloudfront_ctx = None
+        if s.cloudfront:
+            cloudfront_ctx = CloudFrontContext.from_settings(s.cloudfront, s)
+
+        return cls(
+            general=general_ctx,
+            awscontainer=awscontainer_ctx,
+            neon=neon_ctx,
+            s3=s3_ctx,
+            cloudfront=cloudfront_ctx,
+            project_name=s.project_name,
+        )
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
