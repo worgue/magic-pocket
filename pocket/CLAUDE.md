@@ -35,7 +35,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 1. **フォーマット**: `uv run ruff format` でコードを整形
 2. **リントチェック**: `uv run ruff check` でエラーを検出
-3. **typeチェック**: `uv run pyright .` で型エラーを検出
+3. **typeチェック**: `uv run pyright` で型エラーを検出
 4. **エラー修正**: エラーが検出された場合は、エラー内容を報告し、修正すること
 
 **重要**:
@@ -55,7 +55,7 @@ uv run ruff check .
 uv run ruff check <file_path>
 
 # 3. typeチェック（型エラー検出）
-uv run pyright .
+uv run pyright
 ```
 
 ### 型チェックのガイドライン

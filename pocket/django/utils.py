@@ -11,73 +11,86 @@ from ..runtime import get_context
 from ..utils import get_toml_path
 
 
+def _get_django_context_for_storages(
+    stage: str | None, path: str | Path
+) -> tuple[GeneralContext, Context | None]:
+    general_context = GeneralContext.from_toml(path=path)
+    context: Context | None = None
+    if stage:
+        context = get_context(stage=stage, path=path)
+    return general_context, context
+
+
+def _resolve_storage_django_context(
+    general_context: GeneralContext, context: Context | None
+):
+    if not context:
+        django_context = general_context.django_fallback
+        assert django_context, "Never happen because of context validation."
+        return django_context
+    if (
+        context.awscontainer
+        and context.awscontainer.django
+        and context.awscontainer.django.storages
+    ):
+        return context.awscontainer.django
+    django_context = general_context.django_fallback
+    assert django_context, "Never happen because of context validation."
+    return django_context
+
+
+def _build_storage_options(
+    storage, context: Context | None, general_context: GeneralContext
+) -> dict | None:
+    if storage.store == "s3":
+        if context:
+            assert context.s3, "Never happen because of context validation."
+            bucket_name = context.s3.bucket_name
+        else:
+            assert general_context.s3_fallback_bucket_name, "use context validation."
+            bucket_name = general_context.s3_fallback_bucket_name
+        return {"bucket_name": bucket_name, "location": storage.location}
+    elif storage.store == "cloudfront":
+        if not context:
+            raise ValueError("context is required for cloudfront storage")
+        assert context.cloudfront, "Never happen because of context validation."
+        route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
+        location = context.cloudfront.origin_prefix + route.path_pattern
+        assert location[0] == "/"
+        assert location[-2:] == "/*"
+        location = location[1:-2]
+        return {
+            "bucket_name": context.cloudfront.bucket_name,
+            "location": location,
+            "querystring_auth": False,
+            "custom_domain": context.cloudfront.domain,
+            "custom_origin_path": context.cloudfront.origin_prefix,
+        }
+    elif storage.store == "filesystem":
+        if storage.location is not None:
+            return {"location": storage.location}
+        return None
+    raise ValueError("Unknown store")
+
+
 def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     path = path or get_toml_path()
-    general_context = GeneralContext.from_toml(path=path)
-    context: Context | None = None
-    if not stage:
-        django_context = general_context.django_fallback
-        assert django_context, "Never happen because of context validation."
-    else:
-        context = get_context(stage=stage, path=path)
-        if not (
-            context.awscontainer
-            and context.awscontainer.django
-            and context.awscontainer.django.storages
-        ):
-            django_context = general_context.django_fallback
-            assert django_context, "Never happen because of context validation."
-        else:
-            django_context = context.awscontainer.django
+    general_context, context = _get_django_context_for_storages(stage, path)
+    django_context = _resolve_storage_django_context(general_context, context)
     storages = {}
     for key, storage in django_context.storages.items():
         if key == "staticfiles" and os.environ.get(
             "POCKET_STATICFILES_BACKEND_OVERRIDE"
         ):
-            # Override staticfiles storage backend for deploystatic command
             backend = os.environ["POCKET_STATICFILES_BACKEND_OVERRIDE"]
             location = os.environ.get("POCKET_STATICFILES_LOCATION_OVERRIDE")
             storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
             continue
         storages[key] = {"BACKEND": storage.backend}
-        if storage.store == "s3":
-            if context:
-                assert context.s3, "Never happen because of context validation."
-                bucket_name = context.s3.bucket_name
-            else:
-                assert (
-                    general_context.s3_fallback_bucket_name
-                ), "use context validation."
-                bucket_name = general_context.s3_fallback_bucket_name
-            storages[key]["OPTIONS"] = {
-                "bucket_name": bucket_name,
-                "location": storage.location,
-            }
-        elif storage.store == "cloudfront":
-            if context:
-                assert context.cloudfront, "Never happen because of context validation."
-                bucket_name = context.cloudfront.bucket_name
-                route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
-                location = context.cloudfront.origin_prefix + route.path_pattern
-                assert location[0] == "/"
-                assert location[-2:] == "/*"
-                location = location[1:-2]
-                domain = context.cloudfront.domain
-                storages[key]["OPTIONS"] = {
-                    "bucket_name": bucket_name,
-                    "location": location,
-                    "querystring_auth": False,
-                    "custom_domain": domain,
-                    "custom_origin_path": context.cloudfront.origin_prefix,
-                }
-            else:
-                raise ValueError("context is required for cloudfront storage")
-        elif storage.store == "filesystem":
-            if storage.location is not None:
-                storages[key]["OPTIONS"] = {"location": storage.location}
-        else:
-            raise ValueError("Unknown store")
+        options = _build_storage_options(storage, context, general_context)
+        if options is not None:
+            storages[key]["OPTIONS"] = options
         if storage.options:
             if "OPTIONS" not in storages[key]:
                 storages[key]["OPTIONS"] = {}
@@ -96,9 +109,9 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
     stage = stage or os.environ.get("POCKET_STAGE")
     path = path or get_toml_path()
     general_context = GeneralContext.from_toml(path=path)
-    assert (
-        general_context.django_fallback
-    ), "Never happen because of context validation."
+    assert general_context.django_fallback, (
+        "Never happen because of context validation."
+    )
     if not stage:
         django_context = general_context.django_fallback
     else:

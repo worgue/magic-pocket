@@ -84,7 +84,7 @@ class AwsContainer:
 
     @property
     def description(self):
-        msg = "Create aws cloudformation stack: %s\n" "Create ecr repository: %s" % (
+        msg = "Create aws cloudformation stack: %s\nCreate ecr repository: %s" % (
             self.stack.name,
             self.ecr.name,
         )

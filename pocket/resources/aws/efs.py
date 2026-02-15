@@ -10,7 +10,7 @@ import boto3
 from ..base import ResourceStatus
 
 if TYPE_CHECKING:
-    from ...context import EfsContext
+    from ...general_context import EfsContext
 
 
 class Efs:
