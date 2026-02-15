@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from contextvars import ContextVar
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -17,8 +16,6 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
-
-context_settings: ContextVar[Settings] = ContextVar("context_settings")
 
 # Restrict string to a valid environment variable name
 EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
