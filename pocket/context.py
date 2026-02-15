@@ -8,7 +8,7 @@ from pydantic import BaseModel, computed_field, model_validator
 
 from . import settings
 from .django.context import DjangoContext
-from .general_context import EfsContext, GeneralContext, VpcContext
+from .general_context import GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.awscontainer import AwsContainer
 from .resources.cloudfront import CloudFront

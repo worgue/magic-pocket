@@ -1,9 +1,5 @@
-import pytest
-
-from pocket import settings
 from pocket.context import Context
 from pocket.general_context import GeneralContext
-from pocket.general_settings import GeneralSettings
 
 
 def test_context_from_settings(base_settings):

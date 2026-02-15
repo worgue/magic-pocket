@@ -18,8 +18,14 @@ if TYPE_CHECKING:
 
 class Stack:
     template_filename: str
-    name: str
-    export: dict
+
+    @property
+    def name(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def export(self) -> dict:
+        raise NotImplementedError
 
     def __init__(self, context: AwsContainerContext | VpcContext | CloudFrontContext):
         self.context = context
