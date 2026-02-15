@@ -1,29 +1,59 @@
 site_name: Magic Pocket
+site_description: magic-pocketは、DjangoプロジェクトをAWS Lambdaにデプロイするためのツールです。
 site_url: https://worgue.github.io/magic-pocket
 repo_url: https://github.com/worgue/magic-pocket
 
 nav:
-  - Intro: index.md
-  - Features:
-      - 概要: features/outline.md
-      - pocket.toml: features/pocket-toml.md
-      - コマンドライン: features/cli.md
-      - 実行環境: features/runtime.md
-  - "get_started.md"
-  - Tutorial:
-      - "Simple Project": tutorial/simple.md
-  - "changelog.md"
+  - Home: index.md
+  - はじめに: getting-started.md
+  - ガイド:
+      - 設定ファイル (pocket.toml): guide/configuration.md
+      - コマンドライン (CLI): guide/cli.md
+      - 実行環境とDjango連携: guide/runtime.md
+  - Changelog: changelog.md
+  - 旧ドキュメント:
+      - Intro: old/index.md
+      - 概要: old/features/outline.md
+      - pocket.toml: old/features/pocket-toml.md
+      - コマンドライン: old/features/cli.md
+      - 実行環境: old/features/runtime.md
+      - Get Started: old/get_started.md
+      - Tutorial - Simple Project: old/tutorial/simple.md
 
 theme:
   name: material
+  language: ja
   icon:
     repo: fontawesome/brands/github
   features:
     - navigation.instant
+    - navigation.instant.reload
     - navigation.top
     - navigation.footer
+    - navigation.expand
+    - navigation.sections
     - content.code.annotate
     - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: ダークモードに切り替え
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: ライトモードに切り替え
+
+plugins:
+  - search:
+      lang: ja
+  - git-revision-date-localized:
+      type: timeago
+      fallback_to_build_date: true
 
 markdown_extensions:
   - admonition
@@ -32,16 +62,23 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - def_list
   - pymdownx.tasklist:
       custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
