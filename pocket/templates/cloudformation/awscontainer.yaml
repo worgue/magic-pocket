@@ -17,7 +17,9 @@ Resources:
             Action: "sts:AssumeRole"
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        # {% if vpc %}
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        # {% endif %}
         - arn:aws:iam::aws:policy/AmazonSESFullAccess
         # {% if use_s3 %}
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
