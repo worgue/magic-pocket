@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from ..utils import echo
 from .aws.cloudformation import CloudFrontStack
+from .aws.s3_utils import bucket_exists, create_bucket
 from .base import ResourceStatus
 
 if TYPE_CHECKING:
@@ -49,6 +50,9 @@ class CloudFront:
             "Create cloudformation(for cloudfront) and s3 bucket: %s"
             % self.context.bucket_name
         )
+
+    def state_info(self):
+        return {"cloudfront_s3": {"bucket_name": self.context.bucket_name}}
 
     def deploy_init(self):
         self.warn_contents()
@@ -117,15 +121,12 @@ class CloudFront:
 
     def _bucket_exists(self, bucket_name):
         try:
-            self.s3_client.head_bucket(Bucket=bucket_name)
-            return True
+            return bucket_exists(self.s3_client, bucket_name)
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "404":
-                return False
-        raise BucketOwnershipException(
-            "Bucket might be already used by other account. "
-            "You may need to change the domain."
-        )
+            raise BucketOwnershipException(
+                "Bucket might be already used by other account. "
+                "You may need to change the domain."
+            ) from e
 
     def _bucket_assert_empty(self, bucket_name):
         res = self.s3_client.list_objects_v2(Bucket=bucket_name)
@@ -134,13 +135,7 @@ class CloudFront:
             raise Exception("Redirect from bucket is not empty.")
 
     def _create_bucket(self, bucket_name, region):
-        if region == "us-east-1":
-            self.s3_client.create_bucket(Bucket=bucket_name)
-        else:
-            self.s3_client.create_bucket(
-                Bucket=bucket_name,
-                CreateBucketConfiguration={"LocationConstraint": region},
-            )
+        create_bucket(self.s3_client, bucket_name, region)
 
     def _ensure_redirect_from(self):
         self._ensure_redirect_from_exists()

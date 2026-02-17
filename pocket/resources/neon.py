@@ -232,6 +232,14 @@ class Neon:
         self.create()
         self.reset_database()
 
+    def state_info(self):
+        return {
+            "neon": {
+                "project_name": self.context.project_name,
+                "branch_name": self.context.branch_name,
+            }
+        }
+
     def deploy_init(self):
         pass
 
