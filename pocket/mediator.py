@@ -5,6 +5,7 @@ import secrets
 from typing import TYPE_CHECKING, Literal
 
 from pocket.resources.neon import NeonResourceIsNotReady
+from pocket.resources.tidb import TiDbResourceIsNotReady
 
 from .utils import echo
 
@@ -70,6 +71,8 @@ class Mediator:
             return self._generate_password(spec.options)
         elif spec.type == "neon_database_url":
             return self._get_neon_database_url()
+        elif spec.type == "tidb_database_url":
+            return self._get_tidb_database_url()
         elif spec.type == "rsa_pem_base64":
             return self._generate_rsa_pem()
         else:
@@ -119,4 +122,13 @@ class Mediator:
             return self.context.neon.resource.database_url
         except NeonResourceIsNotReady:
             echo.warning("neon database is not ready")
+            return None
+
+    def _get_tidb_database_url(self):
+        if not self.context.tidb:
+            raise Exception("tidb is not configured. Please set tidb in pocket.toml")
+        try:
+            return self.context.tidb.resource.database_url
+        except TiDbResourceIsNotReady:
+            echo.warning("tidb database is not ready")
             return None

@@ -15,6 +15,7 @@ from .resources.awscontainer import AwsContainer
 from .resources.cloudfront import CloudFront
 from .resources.neon import Neon
 from .resources.s3 import S3
+from .resources.tidb import TiDb as TiDbResource
 from .settings import ManagedSecretSpec, StoreType, UserSecretSpec
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
@@ -335,6 +336,34 @@ class NeonContext(BaseModel):
         )
 
 
+class TiDbContext(BaseModel):
+    public_key: str | None = None
+    private_key: str | None = None
+    tidb_project: str | None = None
+    cluster_name: str
+    database_name: str
+    region: str
+    project_name: str
+
+    @cached_property
+    def resource(self):
+        return TiDbResource(self)
+
+    @classmethod
+    def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
+        cluster_name = tidb.cluster or root.project_name
+        database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
+        return cls(
+            public_key=tidb.public_key,
+            private_key=tidb.private_key,
+            tidb_project=tidb.project,
+            cluster_name=cluster_name,
+            database_name=database_name,
+            region=tidb.region,
+            project_name=root.project_name,
+        )
+
+
 class S3Context(BaseModel):
     region: str
     bucket_name: str
@@ -532,6 +561,7 @@ class Context(BaseModel):
     general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
+    tidb: TiDbContext | None = None
     s3: S3Context | None = None
     cloudfront: CloudFrontContext | None = None
     project_name: str
@@ -549,6 +579,10 @@ class Context(BaseModel):
         if s.neon:
             neon_ctx = NeonContext.from_settings(s.neon, s)
 
+        tidb_ctx = None
+        if s.tidb:
+            tidb_ctx = TiDbContext.from_settings(s.tidb, s)
+
         s3_ctx = None
         if s.s3:
             s3_ctx = S3Context.from_settings(s.s3, s)
@@ -561,6 +595,7 @@ class Context(BaseModel):
             general=general_ctx,
             awscontainer=awscontainer_ctx,
             neon=neon_ctx,
+            tidb=tidb_ctx,
             s3=s3_ctx,
             cloudfront=cloudfront_ctx,
             project_name=s.project_name,
