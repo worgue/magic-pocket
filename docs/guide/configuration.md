@@ -146,6 +146,15 @@ dockerfile_path = "pocket.Dockerfile"
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
 | `vpc_ref` | str \| None | None | general.vpcsのrefを指定してVPCに接続 |
 
+!!! info "VPCなしデプロイ"
+    `vpc_ref` を省略するとLambdaはVPCの外（パブリック）で実行されます。
+    VPC、NAT Gateway、EFSが不要な開発環境では、VPCなしの方がコスト効率が良く、コールドスタートも高速です。
+
+!!! info "VPCと固定IP"
+    `vpc_ref` を指定すると、Lambdaはプライベートサブネットに配置され、外部通信はNAT Gateway経由になります。
+    `zone_suffixes` で定義したゾーンごとに1つのNAT Gateway（Elastic IP）が作成されるため、Lambdaの送信元IPはゾーンごとに固定されます。
+    例えば `zone_suffixes = ["a"]`（デフォルト）なら固定IP 1つ、`zone_suffixes = ["a", "c"]` なら固定IP 2つです。
+
 ### awscontainer.handlers
 
 Lambda関数の設定を記述します。キー名がハンドラー名になります。
