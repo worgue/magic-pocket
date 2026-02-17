@@ -55,7 +55,9 @@ StoreType = Literal["sm", "ssm"]
 
 
 class ManagedSecretSpec(BaseModel):
-    type: Literal["password", "neon_database_url", "rsa_pem_base64"]
+    type: Literal[
+        "password", "neon_database_url", "tidb_database_url", "rsa_pem_base64"
+    ]
     options: dict[str, str | int] = {}
     # Used in mediator
     # PasswordOptions:
@@ -173,6 +175,16 @@ class Neon(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+class TiDb(BaseSettings):
+    public_key: str | None = Field(alias="tidb_public_key", default=None)
+    private_key: str | None = Field(alias="tidb_private_key", default=None)
+    project: str | None = None
+    cluster: str | None = None
+    region: str = "ap-northeast-1"
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
 class S3(BaseSettings):
     public_dirs: list[str] = []
     bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
@@ -258,6 +270,7 @@ class Settings(BaseSettings):
     stage: TagStr
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
+    tidb: TiDb | None = None
     s3: S3 | None = None
     cloudfront: CloudFront | None = None
 
@@ -307,7 +320,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = ["general", "awscontainer", "neon", "s3", "cloudfront"]
+        valid_keys = ["general", "awscontainer", "neon", "tidb", "s3", "cloudfront"]
         valid_keys += data["general"]["stages"]
         for key in data:
             if key not in valid_keys:

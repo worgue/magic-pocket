@@ -1,5 +1,6 @@
 import json
 import os
+import urllib.parse
 from pathlib import Path
 
 import boto3
@@ -130,6 +131,50 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
         if cache.location is not None:
             caches[key]["LOCATION"] = cache.location
     return caches
+
+
+def get_databases(*, stage: str | None = None, path: str | Path | None = None) -> dict:
+    stage = stage or os.environ.get("POCKET_STAGE")
+    path = path or get_toml_path()
+
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return {
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": os.path.join(os.path.dirname(str(path)), "db.sqlite3"),
+            }
+        }
+
+    parsed = urllib.parse.urlparse(database_url)
+    engine = _detect_engine(stage, path, parsed.scheme)
+
+    db: dict = {
+        "ENGINE": engine,
+        "NAME": parsed.path.lstrip("/"),
+        "USER": urllib.parse.unquote(parsed.username or ""),
+        "PASSWORD": urllib.parse.unquote(parsed.password or ""),
+        "HOST": parsed.hostname or "",
+        "PORT": str(parsed.port or ""),
+    }
+    if engine == "django_tidb":
+        db["OPTIONS"] = {"ssl_verify_cert": True, "ssl_verify_identity": True}
+
+    return {"default": db}
+
+
+def _detect_engine(stage: str | None, path: str | Path | None, scheme: str) -> str:
+    if stage:
+        context = get_context(stage=stage, path=path)
+        if context.tidb:
+            return "django_tidb"
+        if context.neon:
+            return "django.db.backends.postgresql"
+    if scheme in ("postgres", "postgresql"):
+        return "django.db.backends.postgresql"
+    if scheme == "mysql":
+        return "django.db.backends.mysql"
+    return "django.db.backends.sqlite3"
 
 
 sqs_client = boto3.client("sqs")

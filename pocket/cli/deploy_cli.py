@@ -13,6 +13,8 @@ def get_resources(context: Context):
     resources = []
     if context.neon:
         resources.append(context.neon.resource)
+    if context.tidb:
+        resources.append(context.tidb.resource)
     if context.s3:
         resources.append(context.s3.resource)
     if context.awscontainer:

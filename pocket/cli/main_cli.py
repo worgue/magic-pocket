@@ -9,6 +9,7 @@ from . import (
     neon_cli,
     s3_cli,
     status_cli,
+    tidb_cli,
     vpc_cli,
 )
 
@@ -37,5 +38,6 @@ def resource():
 resource.add_command(vpc_cli.vpc)
 resource.add_command(awscontainer_cli.awscontainer)
 resource.add_command(neon_cli.neon)
+resource.add_command(tidb_cli.tidb)
 resource.add_command(s3_cli.s3)
 resource.add_command(cloudfront_cli.cloudfront)
