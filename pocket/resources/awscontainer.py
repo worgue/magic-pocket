@@ -88,10 +88,10 @@ class AwsContainer:
             self.stack.name,
             self.ecr.name,
         )
-        if self.context.secretsmanager and self.context.secretsmanager.pocket_secrets:
-            msg += (
-                "\nCreate secretsmanager pocket managed secrets: %s"
-                % self.context.secretsmanager.pocket_key
+        if self.context.secrets and self.context.secrets.managed:
+            msg += "\nCreate pocket managed secrets (%s): %s" % (
+                self.context.secrets.store,
+                self.context.secrets.pocket_key,
             )
         return msg
 

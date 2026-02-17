@@ -51,25 +51,10 @@ FormatPath = Annotated[
 ]
 
 
-class AwsContainer(BaseModel):
-    vpc: Vpc | None = None
-    secretsmanager: SecretsManager | None = None
-    handlers: dict[str, LambdaHandler] = {}
-    dockerfile_path: str
-    envs: dict[str, str] = {}
-    platform: str = "linux/amd64"
-    django: Django | None = None
-
-    @model_validator(mode="after")
-    def check_handlers(self):
-        check_command = "pocket.django.lambda_handlers.management_command_handler"
-        commend_list = [h for h in self.handlers.values() if h.command == check_command]
-        if 1 < len(commend_list):
-            raise ValueError("Only one management command handler is allowed.")
-        return self
+StoreType = Literal["sm", "ssm"]
 
 
-class PocketSecretSpec(BaseModel):
+class ManagedSecretSpec(BaseModel):
     type: Literal["password", "neon_database_url", "rsa_pem_base64"]
     options: dict[str, str | int] = {}
     # Used in mediator
@@ -81,7 +66,13 @@ class PocketSecretSpec(BaseModel):
     #     pub_base64_environ_suffix: str = "_PUB_BASE64"
 
 
-class SecretsManager(BaseSettings):
+class UserSecretSpec(BaseModel):
+    name: str  # SM: ARN or secret name, SSM: parameter name/path
+    store: StoreType | None = None  # Noneの場合Secrets.storeを継承
+
+
+class Secrets(BaseModel):
+    store: StoreType = "sm"
     pocket_key_format: Annotated[
         FormatStr,
         Field(
@@ -97,8 +88,8 @@ class SecretsManager(BaseSettings):
             )
         ),
     ] = "{prefix}{stage}-{project}"
-    pocket_secrets: Annotated[
-        dict[EnvStr, PocketSecretSpec],
+    managed: Annotated[
+        dict[EnvStr, ManagedSecretSpec],
         Field(
             description=(
                 "These secrets are managed by magic-pocket, "
@@ -106,13 +97,13 @@ class SecretsManager(BaseSettings):
             )
         ),
     ] = {}
-    secrets: Annotated[
-        dict[EnvStr, str],
+    user: Annotated[
+        dict[EnvStr, UserSecretSpec],
         Field(
             description=(
-                "These secres got GetSecretValue permissions automatically, "
-                "so does not need to be explicitly defined in resources.\n"
-                "But, you still need to create it by yourself."
+                "These secrets get GetSecretValue/GetParameter permissions "
+                "automatically based on their store type.\n"
+                "You still need to create them by yourself."
             )
         ),
     ] = {}
@@ -120,12 +111,31 @@ class SecretsManager(BaseSettings):
         list[str],
         Field(
             description=(
-                "List secret names or regexp to allow GetSecretValue, "
-                "if you want to access them from your own lambda functions."
+                "List secret ARNs to allow GetSecretValue/GetParameter, "
+                "if you want to access them from your own lambda functions.\n"
+                "Supports both SM and SSM ARNs."
             )
         ),
     ] = []
     require_list_secrets: bool = False
+
+
+class AwsContainer(BaseModel):
+    vpc: Vpc | None = None
+    secrets: Secrets | None = None
+    handlers: dict[str, LambdaHandler] = {}
+    dockerfile_path: str
+    envs: dict[str, str] = {}
+    platform: str = "linux/amd64"
+    django: Django | None = None
+
+    @model_validator(mode="after")
+    def check_handlers(self):
+        check_command = "pocket.django.lambda_handlers.management_command_handler"
+        commend_list = [h for h in self.handlers.values() if h.command == check_command]
+        if 1 < len(commend_list):
+            raise ValueError("Only one management command handler is allowed.")
+        return self
 
 
 class LambdaHandler(BaseModel):

@@ -32,27 +32,40 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
         # {% endif %}
       Policies:
-        # {% if secretsmanager %}
+        # {% if secrets and secrets.allowed_sm_resources %}
         - PolicyName: "{{ slug }}-access-secretsmanager"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              # {% if secretsmanager.allowed_resources %}
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:GetSecretValue"
                 Resource:
-                  # {% for value in secretsmanager.allowed_resources %}
+                  # {% for value in secrets.allowed_sm_resources %}
                   - Fn::Sub: "{{ value }}"
                   # {% endfor %}
-              # {% endif %}
-              # {% if secretsmanager.require_list_secrets %}
+              # {% if secrets.require_list_secrets %}
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:ListSecrets"
                 Resource:
                   - "*"
               # {% endif %}
+        # {% endif %}
+        # {% if secrets and secrets.allowed_ssm_resources %}
+        - PolicyName: "{{ slug }}-access-ssm"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "ssm:GetParameter"
+                  - "ssm:GetParameters"
+                  - "ssm:GetParametersByPath"
+                Resource:
+                  # {% for value in secrets.allowed_ssm_resources %}
+                  - Fn::Sub: "{{ value }}"
+                  # {% endfor %}
         # {% endif %}
         - PolicyName:
             Fn::Sub: "{{ slug }}-access-cloudformation"

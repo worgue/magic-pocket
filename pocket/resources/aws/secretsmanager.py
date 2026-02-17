@@ -9,7 +9,7 @@ import boto3
 from pocket.utils import echo
 
 if TYPE_CHECKING:
-    from pocket.context import SecretsManagerContext
+    from pocket.context import SecretsContext
 
 
 class PocketSecretIsNotReady(Exception):
@@ -17,13 +17,13 @@ class PocketSecretIsNotReady(Exception):
 
 
 class SecretsManager:
-    context: SecretsManagerContext
+    context: SecretsContext
 
-    def __init__(self, context: SecretsManagerContext) -> None:
+    def __init__(self, context: SecretsContext) -> None:
         self.context = context
         self.client = boto3.client("secretsmanager", region_name=context.region)
 
-    def delete_pocket_secrets(self):
+    def delete_secrets(self):
         echo.log("Deleting pocket secrets %s ..." % self.context.pocket_key)
         res = self._pocket_secrets_response
         if res is None:
@@ -43,7 +43,7 @@ class SecretsManager:
             self.client.delete_secret(SecretId=res["ARN"], RecoveryWindowInDays=30)
         del self._pocket_secrets_response
 
-    def update_pocket_secrets(self, secrets: dict[str, str | dict[str, str]]):
+    def update_secrets(self, secrets: dict[str, str | dict[str, str]]):
         echo.log("Getting pocket secrets %s ..." % self.context.pocket_key)
         res = self._pocket_secrets_response
         data = json.loads(res["SecretString"]) if res else {}
@@ -75,13 +75,13 @@ class SecretsManager:
             return self.client.get_secret_value(SecretId=self.context.pocket_key)
 
     @property
-    def pocket_secrets_arn(self) -> str:
+    def arn(self) -> str:
         if self._pocket_secrets_response:
             return self._pocket_secrets_response["ARN"]
         raise PocketSecretIsNotReady("Pocket secrets not found")
 
     @property
-    def pocket_secrets(self) -> dict[str, str | dict[str, str]]:
+    def secrets(self) -> dict[str, str | dict[str, str]]:
         if self._pocket_secrets_response is None:
             return {}
         data = json.loads(self._pocket_secrets_response["SecretString"])
@@ -89,16 +89,3 @@ class SecretsManager:
             if self.context.project_name in data[self.context.stage]:
                 return data[self.context.stage][self.context.project_name]
         return {}
-
-    @cached_property
-    def user_secrets(self) -> dict[str, str]:
-        echo.log("Requesting user secrets list...")
-        secrets = {}
-        for key, arn in self.context.secrets.items():
-            res = self.client.get_secret_value(SecretId=arn)
-            secrets[key] = res["SecretString"]
-        return secrets
-
-    def clear_cache(self):
-        if hasattr(self, "resolved_secrets"):
-            del self.user_secrets

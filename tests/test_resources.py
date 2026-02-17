@@ -7,7 +7,7 @@ from pocket import __version__
 from pocket.cli.main_cli import main, version
 from pocket.context import Context
 from pocket.mediator import Mediator
-from pocket.settings import SecretsManager, Settings
+from pocket.settings import Secrets, Settings, UserSecretSpec
 
 
 def test_version():
@@ -34,15 +34,15 @@ def test_secretsmanager():
         SecretString="postgres://localhost:5432",
     )
     assert settings.awscontainer
-    settings.awscontainer.secretsmanager = SecretsManager(
-        secrets={"DATABASE_URL": res["ARN"]}
+    settings.awscontainer.secrets = Secrets(
+        user={"DATABASE_URL": UserSecretSpec(name=res["ARN"], store="sm")}
     )
     context = Context.from_settings(settings)
     assert context.awscontainer
-    assert context.awscontainer.secretsmanager
-    assert context.awscontainer.secretsmanager.resource.user_secrets == {
-        "DATABASE_URL": "postgres://localhost:5432"
-    }
+    assert context.awscontainer.secrets
+    # user secretはSM経由で直接取得できる
+    value = client.get_secret_value(SecretId=res["ARN"])
+    assert value["SecretString"] == "postgres://localhost:5432"
 
 
 @mock_aws
@@ -52,11 +52,42 @@ def test_initial_secretsmanager_policy():
     )
     context = Context.from_settings(settings)
     assert context.awscontainer
-    assert context.awscontainer.secretsmanager
-    assert context.awscontainer.secretsmanager.allowed_resources == []
+    assert context.awscontainer.secrets
+    assert context.awscontainer.secrets.allowed_sm_resources == []
     mediator = Mediator(context)
     mediator.ensure_pocket_managed_secrets()
-    assert context.awscontainer.secretsmanager.allowed_resources != []
+    assert context.awscontainer.secrets.allowed_sm_resources != []
+
+
+@mock_aws
+def test_initial_ssm_policy():
+    settings = Settings.from_toml(
+        stage="prd", path="tests/data/toml/awscontainer_secrets_ssm.toml"
+    )
+    context = Context.from_settings(settings)
+    assert context.awscontainer
+    assert context.awscontainer.secrets
+    assert context.awscontainer.secrets.store == "ssm"
+    # SSMのmanagedなので、allowed_ssm_resourcesにパターンが入る
+    assert context.awscontainer.secrets.allowed_ssm_resources != []
+    # SMリソースはない
+    assert context.awscontainer.secrets.allowed_sm_resources == []
+
+
+@mock_aws
+def test_ssm_pocket_secrets():
+    settings = Settings.from_toml(
+        stage="prd", path="tests/data/toml/awscontainer_secrets_ssm.toml"
+    )
+    context = Context.from_settings(settings)
+    assert context.awscontainer
+    assert context.awscontainer.secrets
+    mediator = Mediator(context)
+    mediator.ensure_pocket_managed_secrets()
+    sc = context.awscontainer.secrets
+    assert sc.pocket_store.secrets != {}
+    assert "SECRET_KEY" in sc.pocket_store.secrets
+    assert "DJANGO_SUPERUSER_PASSWORD" in sc.pocket_store.secrets
 
 
 def get_default_awscontainer():
