@@ -42,6 +42,11 @@ class Vpc:
             description += "\nCreate efs: %s" % self.efs.context.name
         return description
 
+    def state_info(self):
+        if self.context.efs:
+            return {"efs": {"name": self.context.efs.name}}
+        return {}
+
     def deploy_init(self):
         if self.efs:
             self.efs.ensure_exists()

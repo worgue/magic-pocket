@@ -58,7 +58,7 @@ class SqsContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, sqs: settings.Sqs, *, slug: str, key: str, timeout: int
+        cls, sqs: settings.Sqs, *, prefix: str, slug: str, key: str, timeout: int
     ) -> SqsContext:
         return cls(
             batch_size=sqs.batch_size,
@@ -67,7 +67,7 @@ class SqsContext(BaseModel):
             dead_letter_max_receive_count=sqs.dead_letter_max_receive_count,
             dead_letter_message_retention_period=sqs.dead_letter_message_retention_period,
             report_batch_item_failures=sqs.report_batch_item_failures,
-            name=f"{slug}-{key}",
+            name=f"{prefix}{slug}-{key}",
             visibility_timeout=timeout * 6,
         )
 
@@ -103,7 +103,11 @@ class LambdaHandlerContext(BaseModel):
         sqs_ctx = None
         if handler.sqs:
             sqs_ctx = SqsContext.from_settings(
-                handler.sqs, slug=root.slug, key=key, timeout=handler.timeout
+                handler.sqs,
+                prefix=root.object_prefix,
+                slug=root.slug,
+                key=key,
+                timeout=handler.timeout,
             )
         function_name = f"{root.object_prefix}{root.slug}-{key}"
         return cls(
@@ -296,7 +300,7 @@ class AwsContainerContext(BaseModel):
             slug=root.slug,
             stage=root.stage,
             handlers=handlers,
-            ecr_name=root.object_prefix + root.project_name + "-lambda",
+            ecr_name=root.object_prefix + root.slug + "-lambda",
             use_s3=root.s3 is not None,
             use_route53=use_route53,
             use_sqs=use_sqs,
@@ -531,6 +535,7 @@ class Context(BaseModel):
     s3: S3Context | None = None
     cloudfront: CloudFrontContext | None = None
     project_name: str
+    stage: str
 
     @classmethod
     def from_settings(cls, s: settings.Settings) -> Context:
@@ -559,6 +564,7 @@ class Context(BaseModel):
             s3=s3_ctx,
             cloudfront=cloudfront_ctx,
             project_name=s.project_name,
+            stage=s.stage,
         )
 
     @classmethod

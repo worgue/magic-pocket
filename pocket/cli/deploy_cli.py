@@ -5,6 +5,7 @@ import click
 
 from ..context import Context
 from ..mediator import Mediator
+from ..resources.aws.state import StateStore
 from ..utils import echo
 
 
@@ -23,6 +24,14 @@ def get_resources(context: Context):
     return resources
 
 
+def _create_state_store(context: Context) -> StateStore:
+    assert context.general
+    bucket_name = (
+        f"{context.general.object_prefix}{context.stage}-{context.project_name}-state"
+    )
+    return StateStore(bucket_name, context.general.region)
+
+
 def deploy_init_resources(context: Context):
     for resource in get_resources(context):
         target_name = resource.__class__.__name__
@@ -31,6 +40,9 @@ def deploy_init_resources(context: Context):
 
 
 def deploy_resources(context: Context):
+    state_store = _create_state_store(context)
+    state_store.ensure_bucket()
+
     mediator = Mediator(context)
     for resource in get_resources(context):
         target_name = resource.__class__.__name__
@@ -40,12 +52,14 @@ def deploy_resources(context: Context):
                 resource.create(mediator)
             else:
                 resource.create()
+            state_store.record(resource.state_info())
         elif resource.status == "REQUIRE_UPDATE":
             echo.log("Updating %s..." % target_name)
             if "mediator" in inspect.signature(resource.update).parameters:
                 resource.update(mediator)
             else:
                 resource.update()
+            state_store.record(resource.state_info())
         else:
             echo.log("%s is already the latest version." % target_name)
 

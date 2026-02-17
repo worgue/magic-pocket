@@ -123,6 +123,9 @@ class AwsContainer:
             w("See CloudFormation stack log.")
             w("Probably, you need to request dns A record to WsgiRegionalDomainName")
 
+    def state_info(self):
+        return {"ecr": {"repository_name": self.context.ecr_name}}
+
     def deploy_init(self):
         self.ecr.sync()
         if self.context.vpc:

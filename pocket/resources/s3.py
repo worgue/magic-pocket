@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
+from pocket.resources.aws.s3_utils import bucket_exists, create_bucket
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 
@@ -25,19 +26,14 @@ class S3:
     def description(self):
         return "Create bucket: %s" % self.context.bucket_name
 
+    def state_info(self):
+        return {"s3": {"bucket_name": self.context.bucket_name}}
+
     def deploy_init(self):
         pass
 
     def create(self):
-        if self.context.region == "us-east-1":
-            self.client.create_bucket(Bucket=self.context.bucket_name)
-        else:
-            self.client.create_bucket(
-                Bucket=self.context.bucket_name,
-                CreateBucketConfiguration={
-                    "LocationConstraint": self.context.region,
-                },
-            )
+        create_bucket(self.client, self.context.bucket_name, self.context.region)
         self.ensure_public_access_block()
         self.ensure_policy()
 
@@ -54,14 +50,12 @@ class S3:
 
     def exists(self):
         try:
-            self.client.head_bucket(Bucket=self.context.bucket_name)
-            return True
+            return bucket_exists(self.client, self.context.bucket_name)
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") == "404":
-                return False
-        raise Exception(
-            "Bucket might be already used by other account. Try another bucket_prefix."
-        )
+            raise Exception(
+                "Bucket might be already used by other account."
+                " Try another bucket_prefix."
+            ) from e
 
     @property
     def status(self) -> ResourceStatus:
