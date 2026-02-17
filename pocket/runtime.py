@@ -5,7 +5,9 @@ from pathlib import Path
 from pocket.general_context import GeneralContext
 
 from .context import Context
-from .settings import PocketSecretSpec
+from .resources.aws.secretsmanager import SecretsManager
+from .resources.aws.ssm import SsmStore
+from .settings import ManagedSecretSpec
 from .utils import get_stage, get_toml_path
 
 
@@ -15,7 +17,7 @@ def get_context(stage: str, path: str | Path) -> Context:
 
 
 def _pocket_secret_to_envs(
-    key: str, secrets: str | dict[str, str], spec: PocketSecretSpec
+    key: str, secrets: str | dict[str, str], spec: ManagedSecretSpec
 ) -> dict[str, str]:
     if isinstance(secrets, str):
         return {key: secrets}
@@ -29,9 +31,7 @@ def _pocket_secret_to_envs(
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
-def get_secrets_from_secretsmanager(
-    stage: str | None = None, path: str | Path | None = None
-) -> dict:
+def get_secrets(stage: str | None = None, path: str | Path | None = None) -> dict:
     stage = stage or get_stage()
     if stage == "__none__":
         return {}
@@ -39,26 +39,43 @@ def get_secrets_from_secretsmanager(
     context = get_context(stage=stage, path=path)
     if (ac := context.awscontainer) is None:
         return {}
-    if (sm := ac.secretsmanager) is None:
+    if (sc := ac.secrets) is None:
         return {}
     secrets = {}
-    for key, value in sm.resource.user_secrets.items():
-        secrets[key] = value
-    for key, value in sm.resource.pocket_secrets.items():
-        envs = _pocket_secret_to_envs(key, value, sm.pocket_secrets[key])
+    # managed: pocket_store経由で自動ディスパッチ (SM/SSM)
+    for key, value in sc.pocket_store.secrets.items():
+        envs = _pocket_secret_to_envs(key, value, sc.managed[key])
         secrets.update(envs)
+    # user: 各specのstoreに応じてSM/SSMクライアントを使い分け
+    sm_client: SecretsManager | None = None
+    ssm_client: SsmStore | None = None
+    for key, spec in sc.user.items():
+        effective_store = spec.store or sc.store
+        if effective_store == "sm":
+            if sm_client is None:
+                sm_client = SecretsManager(sc)
+            res = sm_client.client.get_secret_value(SecretId=spec.name)
+            secrets[key] = res["SecretString"]
+        else:
+            if ssm_client is None:
+                ssm_client = SsmStore(sc)
+            res = ssm_client.client.get_parameter(Name=spec.name, WithDecryption=True)
+            secrets[key] = res["Parameter"]["Value"]
     return secrets
 
 
-def set_envs_from_secretsmanager(
-    stage: str | None = None, path: str | Path | None = None
-):
-    if os.environ.get("POCKET_ENVS_SECRETSMANAGER_LOADED") == "true":
+def set_envs_from_secrets(stage: str | None = None, path: str | Path | None = None):
+    if os.environ.get("POCKET_ENVS_SECRETS_LOADED") == "true":
         return
-    os.environ["POCKET_ENVS_SECRETSMANAGER_LOADED"] = "true"
-    data = get_secrets_from_secretsmanager(stage, path)
+    os.environ["POCKET_ENVS_SECRETS_LOADED"] = "true"
+    data = get_secrets(stage, path)
     for key, value in data.items():
         os.environ[key] = value
+
+
+# 後方互換エイリアス
+get_secrets_from_secretsmanager = get_secrets
+set_envs_from_secretsmanager = set_envs_from_secrets
 
 
 def set_envs_from_aws_resources(

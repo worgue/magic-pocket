@@ -1,5 +1,6 @@
 import webbrowser
 
+import boto3
 import click
 
 from ..context import Context
@@ -36,29 +37,38 @@ def yaml_diff(stage):
 
 
 @awscontainer.group()
-def secretsmanager():
+def secrets():
     pass
 
 
-@secretsmanager.command()
+@secrets.command()
 @click.option("--stage", prompt=True)
 @click.option("--show-values", is_flag=True, default=False)
 def list(stage, show_values):
     ac = get_awscontainer_resource(stage)
-    sm = ac.context.secretsmanager
-    if not sm:
-        echo.warning("secretsmanager is not configured for this stage")
+    sc = ac.context.secrets
+    if not sc:
+        echo.warning("secrets is not configured for this stage")
         return
-    for key, arn in sm.secrets.items():
-        print("%s: %s" % (key, arn))
+    for key, spec in sc.user.items():
+        effective_store = spec.store or sc.store
+        print("%s: %s (store=%s)" % (key, spec.name, effective_store))
         if show_values:
-            print("  - " + sm.resource.user_secrets[key])
-    for key, pocket_secret in sm.pocket_secrets.items():
-        status = "CREATED" if key in sm.resource.pocket_secrets else "NOEXIST"
+            if effective_store == "sm":
+                client = boto3.client("secretsmanager", region_name=sc.region)
+                value = client.get_secret_value(SecretId=spec.name)["SecretString"]
+            else:
+                client = boto3.client("ssm", region_name=sc.region)
+                value = client.get_parameter(Name=spec.name, WithDecryption=True)[
+                    "Parameter"
+                ]["Value"]
+            print("  - " + value)
+    for key, pocket_secret in sc.managed.items():
+        status = "CREATED" if key in sc.pocket_store.secrets else "NOEXIST"
         print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
         print("  - " + status)
         if (status == "CREATED") and show_values:
-            value = sm.resource.pocket_secrets[key]
+            value = sc.pocket_store.secrets[key]
             if isinstance(value, str):
                 print("  - " + value)
             else:
@@ -66,25 +76,25 @@ def list(stage, show_values):
                     print(f"  - {k}: {v}")
 
 
-@secretsmanager.command()
+@secrets.command()
 @click.option("--stage", prompt=True)
 def create_pocket_managed(stage):
     ac = get_awscontainer_resource(stage)
-    sm = ac.context.secretsmanager
-    if not sm:
-        echo.warning("secretsmanager is not configured for this stage")
+    sc = ac.context.secrets
+    if not sc:
+        echo.warning("secrets is not configured for this stage")
         return
     mediator = Mediator(Context.from_toml(stage=stage))
     mediator.create_pocket_managed_secrets()
 
 
 def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
-    sm = awscontainer.context.secretsmanager
-    if not sm:
-        echo.warning("secretsmanager is not configured")
+    sc = awscontainer.context.secrets
+    if not sc:
+        echo.warning("secrets is not configured")
         return
     existing_secret_keys = [
-        key for key in sm.pocket_secrets.keys() if key in sm.resource.pocket_secrets
+        key for key in sc.managed.keys() if key in sc.pocket_store.secrets
     ]
     if not existing_secret_keys:
         echo.warning("No pocket managed secets are created yet.")
@@ -97,13 +107,13 @@ def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
     click.confirm("Do you realy want to delete pocket managed secrets?", abort=True)
 
 
-@secretsmanager.command()
+@secrets.command()
 @click.option("--stage", prompt=True)
 def delete_pocket_managed(stage):
     ac = get_awscontainer_resource(stage)
     _confirm_delete_pocket_managed_secrets(ac)
-    if ac.context.secretsmanager:
-        ac.context.secretsmanager.resource.delete_pocket_secrets()
+    if ac.context.secrets:
+        ac.context.secrets.pocket_store.delete_secrets()
 
 
 @awscontainer.command()
@@ -130,8 +140,8 @@ def destroy(stage, with_secrets):
         echo.success("Aws lambda container was destroyed.")
     if with_secrets:
         _confirm_delete_pocket_managed_secrets(ac)
-        if ac.context.secretsmanager:
-            ac.context.secretsmanager.resource.delete_pocket_secrets()
+        if ac.context.secrets:
+            ac.context.secrets.pocket_store.delete_secrets()
             echo.success("Pocket managed secrets were deleted.")
     else:
         echo.warning("Pocket managed secrets still exists.")

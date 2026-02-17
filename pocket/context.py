@@ -10,11 +10,12 @@ from . import settings
 from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
+from .resources.aws.ssm import SsmStore
 from .resources.awscontainer import AwsContainer
 from .resources.cloudfront import CloudFront
 from .resources.neon import Neon
 from .resources.s3 import S3
-from .settings import PocketSecretSpec
+from .settings import ManagedSecretSpec, StoreType, UserSecretSpec
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
 
@@ -119,9 +120,10 @@ class LambdaHandlerContext(BaseModel):
         )
 
 
-class SecretsManagerContext(BaseModel):
-    pocket_secrets: dict[str, PocketSecretSpec] = {}
-    secrets: dict[str, str] = {}
+class SecretsContext(BaseModel):
+    store: StoreType = "sm"
+    managed: dict[str, ManagedSecretSpec] = {}
+    user: dict[str, UserSecretSpec] = {}
     extra_resources: list[str] = []
     require_list_secrets: bool = False
     region: str
@@ -130,35 +132,75 @@ class SecretsManagerContext(BaseModel):
     project_name: str
 
     @cached_property
-    def resource(self):
+    def pocket_store(self):
+        """storeに応じたpocket secrets操作クラスを返す"""
+        if self.store == "ssm":
+            return SsmStore(self)
         return SecretsManager(self)
 
-    def _ensure_arn(self, resource: str):
+    def _ensure_sm_arn(self, resource: str):
         if resource.startswith("arn:"):
             return resource
         return (
             "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:" + resource
         )
 
+    def _ensure_ssm_arn(self, resource: str):
+        if resource.startswith("arn:"):
+            return resource
+        return "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter" + resource
+
     @computed_field
     @cached_property
-    def allowed_resources(self) -> list[str]:
-        resources = list(self.secrets.values())
-        if self.pocket_secrets:
+    def allowed_sm_resources(self) -> list[str]:
+        resources: list[str] = []
+        for spec in self.user.values():
+            effective_store = spec.store or self.store
+            if effective_store == "sm":
+                resources.append(spec.name)
+        if self.managed and self.store == "sm":
             try:
-                resources.append(self.resource.pocket_secrets_arn)
+                resources.append(self.pocket_store.arn)
             except PocketSecretIsNotReady:
                 echo.warning(
                     "Pocket managed secrets is not ready. "
                     "The context is not complete data.\n"
                     "Use deploy command or create secrets before create awslambda."
                 )
-        resources += self.extra_resources
-        return [self._ensure_arn(resource) for resource in resources if resource]
+        sm_extras = [
+            r
+            for r in self.extra_resources
+            if ":secretsmanager:" in r or not r.startswith("arn:")
+        ]
+        resources += sm_extras
+        return [self._ensure_sm_arn(r) for r in resources if r]
+
+    @computed_field
+    @cached_property
+    def allowed_ssm_resources(self) -> list[str]:
+        resources: list[str] = []
+        for spec in self.user.values():
+            effective_store = spec.store or self.store
+            if effective_store == "ssm":
+                resources.append(spec.name)
+        if self.managed and self.store == "ssm":
+            resources.append(
+                "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/"
+                + self.pocket_key
+                + "/*"
+            )
+        ssm_extras = [r for r in self.extra_resources if ":ssm:" in r]
+        resources += ssm_extras
+        return [self._ensure_ssm_arn(r) for r in resources if r]
 
     @model_validator(mode="after")
     def check_entry(self):
-        if (not self.require_list_secrets) and (not self.allowed_resources):
+        has_resources = (
+            self.allowed_sm_resources
+            or self.allowed_ssm_resources
+            or self.require_list_secrets
+        )
+        if not has_resources:
             echo.log(
                 "No secret resouces are associated to lambda."
                 "The data is for reference only."
@@ -167,20 +209,21 @@ class SecretsManagerContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, sm: settings.SecretsManager, root: settings.Settings
-    ) -> SecretsManagerContext:
+        cls, secrets: settings.Secrets, root: settings.Settings
+    ) -> SecretsContext:
         format_vars = {
             "prefix": root.object_prefix,
             "stage": root.stage,
             "project": root.project_name,
         }
         return cls(
-            pocket_secrets=sm.pocket_secrets,
-            secrets=sm.secrets,
-            extra_resources=sm.extra_resources,
-            require_list_secrets=sm.require_list_secrets,
+            store=secrets.store,
+            managed=secrets.managed,
+            user=secrets.user,
+            extra_resources=secrets.extra_resources,
+            require_list_secrets=secrets.require_list_secrets,
             region=root.region,
-            pocket_key=sm.pocket_key_format.format(**format_vars),
+            pocket_key=secrets.pocket_key_format.format(**format_vars),
             stage=root.stage,
             project_name=root.project_name,
         )
@@ -188,7 +231,7 @@ class SecretsManagerContext(BaseModel):
 
 class AwsContainerContext(BaseModel):
     vpc: VpcContext | None = None
-    secretsmanager: SecretsManagerContext | None = None
+    secrets: SecretsContext | None = None
     dockerfile_path: str
     envs: dict[str, str] = {}
     platform: str = "linux/amd64"
@@ -216,9 +259,9 @@ class AwsContainerContext(BaseModel):
         if ac.vpc:
             vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
 
-        sm_ctx = None
-        if ac.secretsmanager:
-            sm_ctx = SecretsManagerContext.from_settings(ac.secretsmanager, root)
+        secrets_ctx = None
+        if ac.secrets:
+            secrets_ctx = SecretsContext.from_settings(ac.secrets, root)
 
         handlers = {}
         use_route53 = False
@@ -244,7 +287,7 @@ class AwsContainerContext(BaseModel):
 
         return cls(
             vpc=vpc_ctx,
-            secretsmanager=sm_ctx,
+            secrets=secrets_ctx,
             dockerfile_path=ac.dockerfile_path,
             envs=ac.envs,
             platform=ac.platform,

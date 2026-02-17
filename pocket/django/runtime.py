@@ -8,14 +8,14 @@ from ..general_context import GeneralContext
 from ..runtime import (
     get_context,
     set_envs_from_aws_resources,
-    set_envs_from_secretsmanager,
+    set_envs_from_secrets,
 )
 from ..utils import get_toml_path
 
 
 def set_envs():
     set_envs_from_resources()
-    set_envs_from_secretsmanager()
+    set_envs_from_secrets()
 
 
 def add_or_append_env(key: str, value: str):
@@ -39,9 +39,9 @@ def get_django_settings(
     stage = stage or os.environ.get("POCKET_STAGE")
     path = path or get_toml_path()
     general_context = GeneralContext.from_toml(path=path)
-    assert (
-        general_context.django_fallback
-    ), "Never happen because of context validation."
+    assert general_context.django_fallback, (
+        "Never happen because of context validation."
+    )
     if not stage:
         django_context = general_context.django_fallback
     else:

@@ -21,7 +21,7 @@ apigateway = {}
 [prd.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secretsmanager.pocket_secrets]
+[awscontainer.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }

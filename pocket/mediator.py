@@ -10,7 +10,7 @@ from .utils import echo
 
 if TYPE_CHECKING:
     from pocket.context import Context
-    from pocket.settings import PocketSecretSpec
+    from pocket.settings import ManagedSecretSpec
 
 
 class Mediator:
@@ -35,12 +35,12 @@ class Mediator:
     ):
         if self.context.awscontainer is None:
             return
-        if (sm := self.context.awscontainer.secretsmanager) is None:
+        if (sc := self.context.awscontainer.secrets) is None:
             return
         generated: dict[str, str | dict[str, str]] = {}
-        for key, pocket_secret in sm.pocket_secrets.items():
-            if key not in sm.resource.pocket_secrets:
-                value = self._generate_secret(pocket_secret)
+        for key, managed_secret in sc.managed.items():
+            if key not in sc.pocket_store.secrets:
+                value = self._generate_secret(managed_secret)
                 if value is None:
                     msg = "Secret generation for %s is failed." % key
                     self._conditional_error(failed, msg)
@@ -53,15 +53,19 @@ class Mediator:
                 )
                 self._conditional_error(exists, msg)
         if generated:
-            new_pocket_secrets = sm.resource.pocket_secrets.copy() | generated
-            sm.resource.update_pocket_secrets(new_pocket_secrets)
+            new_pocket_secrets = sc.pocket_store.secrets.copy() | generated
+            sc.pocket_store.update_secrets(new_pocket_secrets)
 
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
-        if self.context.awscontainer and self.context.awscontainer.secretsmanager:
-            del self.context.awscontainer.secretsmanager.allowed_resources
+        if self.context.awscontainer and self.context.awscontainer.secrets:
+            sc = self.context.awscontainer.secrets
+            if hasattr(sc, "allowed_sm_resources"):
+                del sc.allowed_sm_resources
+            if hasattr(sc, "allowed_ssm_resources"):
+                del sc.allowed_ssm_resources
 
-    def _generate_secret(self, spec: PocketSecretSpec):
+    def _generate_secret(self, spec: ManagedSecretSpec):
         if spec.type == "password":
             return self._generate_password(spec.options)
         elif spec.type == "neon_database_url":
