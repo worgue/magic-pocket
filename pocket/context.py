@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import cached_property
 from pathlib import Path
 from typing import Literal
@@ -353,7 +354,9 @@ class TiDbContext(BaseModel):
 
     @classmethod
     def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
-        cluster_name = tidb.cluster or root.project_name
+        cluster_name = tidb.cluster or re.sub(
+            r"-{2,}", "-", re.sub(r"[^a-zA-Z0-9]", "-", root.project_name)
+        ).strip("-")
         database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
         return cls(
             public_key=tidb.public_key,
