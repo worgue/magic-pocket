@@ -30,7 +30,7 @@ graph LR
 
 ```bash
 # インストール
-pip install magic-pocket
+uv add magic-pocket
 
 # Djangoプロジェクトで初期設定を生成
 pocket django init
