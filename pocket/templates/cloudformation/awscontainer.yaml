@@ -79,7 +79,10 @@ Resources:
                   - "cloudformation:DescribeStacks"
                 Resource:
                   - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
-      RoleName: "{{ stack_name }}"
+      RoleName: "lambda-{{ stack_name }}"
+      # {% if permissions_boundary %}
+      PermissionsBoundary: "{{ permissions_boundary }}"
+      # {% endif %}
 
   # {% if vpc %}
   LambdaSecurityGroup:
