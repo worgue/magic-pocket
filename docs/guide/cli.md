@@ -171,20 +171,20 @@ pocket resource awscontainer yaml --stage=dev
 pocket resource awscontainer yaml-diff --stage=dev
 ```
 
-#### secretsmanager サブコマンド
+#### secrets サブコマンド
 
 ```bash
 # シークレットの一覧表示
-pocket resource awscontainer secretsmanager list --stage=dev
+pocket resource awscontainer secrets list --stage=dev
 
 # 値も表示
-pocket resource awscontainer secretsmanager list --stage=dev --show-values
+pocket resource awscontainer secrets list --stage=dev --show-values
 
 # pocket管理シークレットの作成
-pocket resource awscontainer secretsmanager create-pocket-managed --stage=dev
+pocket resource awscontainer secrets create-pocket-managed --stage=dev
 
 # pocket管理シークレットの削除
-pocket resource awscontainer secretsmanager delete-pocket-managed --stage=dev
+pocket resource awscontainer secrets delete-pocket-managed --stage=dev
 ```
 
 ### neon
