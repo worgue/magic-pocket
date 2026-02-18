@@ -168,23 +168,17 @@ ARG PYTHON_VERSION=3.12
 FROM public.ecr.aws/docker/library/python:${PYTHON_VERSION}-slim AS base
 
 FROM base AS builder
-ARG REQUIREMENTS=requirements.lock
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_DEFAULT_TIMEOUT=100 \
     VIRTUAL_ENV=/venv \
+    UV_PROJECT_ENVIRONMENT=/venv \
     PATH="/venv/bin:${PATH}"
 WORKDIR /app
 
-# install git (1)
-RUN apt-get update && apt-get install -y git
-
-RUN python -m venv $VIRTUAL_ENV
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=${REQUIREMENTS},target=${REQUIREMENTS} \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    /venv/bin/pip install -r ${REQUIREMENTS}
+RUN uv venv $VIRTUAL_ENV
+COPY uv.lock pyproject.toml ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 FROM base AS final
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -197,8 +191,6 @@ COPY . .
 
 ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]
 ```
-
-1. gitレポジトリからモジュールをダウンロードする必要がある場合に必要です。なければ不要です。
 
 ### .env
 !!! tip "ローカル環境用の設定ファイルです"
