@@ -1,24 +1,27 @@
 ARG PYTHON_VERSION=3.11
-FROM python:${PYTHON_VERSION}-slim as base
+FROM python:${PYTHON_VERSION}-slim AS base
 
-ARG REQUIREMENTS=tests/sampleprj/requirements.lock
-
+FROM base AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_DEFAULT_TIMEOUT=100 \
     VIRTUAL_ENV=/venv \
+    UV_PROJECT_ENVIRONMENT=/venv \
     PATH="/venv/bin:${PATH}"
-
 WORKDIR /app
 
-RUN python -m venv $VIRTUAL_ENV
-RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=bind,source=${REQUIREMENTS},target=${REQUIREMENTS} \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    --mount=type=bind,source=pocket,target=pocket \
-    /venv/bin/pip install -r ${REQUIREMENTS}
+RUN uv venv $VIRTUAL_ENV
+COPY uv.lock pyproject.toml ./
+COPY pocket/ pocket/
+RUN uv sync --frozen --no-dev
 
+FROM base AS final
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/venv \
+    PATH="/venv/bin:${PATH}"
+WORKDIR /app
+COPY --from=builder /venv /venv
 COPY tests/sampleprj .
 
 ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]
