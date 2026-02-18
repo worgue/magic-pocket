@@ -130,6 +130,7 @@ class AwsContainer(BaseModel):
     envs: dict[str, str] = {}
     platform: str = "linux/amd64"
     django: Django | None = None
+    permissions_boundary: str | None = None
 
     @model_validator(mode="after")
     def check_handlers(self):

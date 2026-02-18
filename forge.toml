@@ -1,4 +1,5 @@
-kits = ["core", "git", "uv", "just", "postgres", "redis", "docker", "infra", "claude"]
+kits = ["core", "git", "uv", "just", "postgres", "docker", "infra", "claude", "mysql", "redis"]
+
 [[mounts]]
 type = "overlay"
 path = ".git"
@@ -9,13 +10,24 @@ kit_managed = "core"
 type = "overlay"
 path = ".forge"
 kit_managed = "core"
+
 [[mounts]]
 type = "overlay"
 path = ".venv"
 kit_managed = "uv"
+
 [[mounts]]
 type = "inject"
 source = "forge/vm/.claude/settings.json"
 target = ".claude/settings.json"
 is_file = true
 kit_managed = "claude"
+
+[[mounts]]
+type = "overlay"
+path = "node_modules"
+kit_managed = "bun"
+
+[[mounts]]
+type = "overlay"
+path = "example/.venv"

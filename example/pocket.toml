@@ -1,0 +1,27 @@
+[general]
+region = "ap-northeast-1"
+stages = ["dev"]
+project_name = "pocket-example"
+
+[tidb]
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+permissions_boundary = "arn:aws:iam::895421295324:policy/dev-magic-pocket-forge-llm-developer-boundary"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[awscontainer.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[dev.awscontainer.handlers.wsgi]
+apigateway = {}
+
+[awscontainer.secrets]
+store = "ssm"
+
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+DATABASE_URL = { type = "tidb_database_url" }

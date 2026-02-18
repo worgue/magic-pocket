@@ -250,6 +250,7 @@ class AwsContainerContext(BaseModel):
     use_route53: bool = False
     use_sqs: bool = False
     use_efs: bool = False
+    permissions_boundary: str | None = None
     efs_local_mount_path: str = ""
 
     @cached_property
@@ -306,6 +307,7 @@ class AwsContainerContext(BaseModel):
             use_route53=use_route53,
             use_sqs=use_sqs,
             use_efs=use_efs,
+            permissions_boundary=ac.permissions_boundary,
             efs_local_mount_path=efs_local_mount_path,
         )
 

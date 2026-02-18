@@ -158,7 +158,10 @@ def get_databases(*, stage: str | None = None, path: str | Path | None = None) -
         "PORT": str(parsed.port or ""),
     }
     if engine == "django_tidb":
-        db["OPTIONS"] = {"ssl_verify_cert": True, "ssl_verify_identity": True}
+        db["OPTIONS"] = {
+            "ssl_mode": "VERIFY_IDENTITY",
+            "ssl": {"ca": "/etc/ssl/certs/ca-certificates.crt"},
+        }
 
     return {"default": db}
 

@@ -79,7 +79,7 @@ class Ecr:
         if not self.info.uri:
             self.create()
 
-    def build(self):
+    def build_and_push(self):
         if self.target is None:
             raise ValueError("target is not defined")
         dockerfile_path = self.dockerfile_path
@@ -88,23 +88,18 @@ class Ecr:
         print("  dockerpath: %s" % dockerfile_path)
         print("  tags: %s" % self.target)
         print("  platforms: %s" % platform)
+        print("Logging in to ecr...")
+        docker.login_ecr(region_name=self.client.meta.config.region_name)
+        print("Pushing docker image...")
         docker.build(
             ".",
             file=str(dockerfile_path),
             tags=self.target,
             platforms=[platform],
+            provenance=False,
+            push=True,
         )
-
-    def push(self):
-        if self.target is None:
-            raise ValueError("target is not defined")
-        self.ensure_exists()
-        print("Logging in to ecr...")
-        docker.login_ecr(region_name=self.client.meta.config.region_name)
-        print("Pushing docker image...")
-        docker.push(self.target)
 
     def sync(self):
         self.ensure_exists()
-        self.build()
-        self.push()
+        self.build_and_push()
