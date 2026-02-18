@@ -10,8 +10,6 @@ Admin画面がLambda上で動くところまでを目標にします。
 ### Python パッケージマネージャー
 
 magic-pocketはPyPIからインストール可能です。
-pip、uv、ryeなど、お好みのツールを使ってください。
-
 以下の例では [uv](https://docs.astral.sh/uv/){:target="_blank"} を使います。他のツールを使う場合は、コマンドを適宜読み替えてください。
 
 ### AWS アカウント
@@ -98,7 +96,7 @@ apigateway = {}
 [prd.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secretsmanager.pocket_secrets] # (9)!
+[awscontainer.secrets.managed] # (9)!
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
@@ -116,7 +114,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 6. WSGIハンドラーのLambda関数を作成。
 7. マネジメントコマンド実行用のLambda関数（timeout 600秒）。
 8. dev/prd各環境にAPI Gatewayを設定。URLはAWSが自動生成。独自ドメインの場合は `apigateway = { domain = "example.com" }` と指定。
-9. SECRET_KEY、DBパスワード、DB接続URLを自動生成しSecrets Managerに保存。
+9. SECRET_KEY、スーパーユーザーパスワード、DB接続URLを自動生成しシークレットストアに保存。
 10. S3上の `media` と `static` ディレクトリをDjangoのSTORAGESとして利用。
 
 ### 生成される .env
@@ -181,7 +179,7 @@ uv run pocket django manage createsuperuser --username=admin --email=admin@examp
 自動生成されたシークレット（superuserのパスワード等）は以下で確認できます。
 
 ```bash
-uv run pocket resource awscontainer secretsmanager list --stage=dev --show-values
+uv run pocket resource awscontainer secrets list --stage=dev --show-values
 ```
 
 ### prd環境

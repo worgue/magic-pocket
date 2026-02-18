@@ -215,27 +215,30 @@ sqs = {}
 | `dead_letter_message_retention_period` | int | `1209600` | DLQメッセージ保持期間（秒） |
 | `report_batch_item_failures` | bool | `true` | バッチアイテム失敗をレポート |
 
-### awscontainer.secretsmanager
+### awscontainer.secrets
 
-AWS Secrets Managerの設定です。
+シークレット管理の設定です。保存先として Secrets Manager (`sm`) と SSM Parameter Store (`ssm`) を選択できます。
 
 ```toml
-[awscontainer.secretsmanager]
+[awscontainer.secrets]
+store = "sm"  # "sm" (Secrets Manager) or "ssm" (SSM Parameter Store)
 pocket_key_format = "{prefix}{stage}-{project}"
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
+| `store` | `"sm"` \| `"ssm"` | `"sm"` | シークレットの保存先 |
 | `pocket_key_format` | str | `"{prefix}{stage}-{project}"` | シークレットキーのフォーマット |
 | `require_list_secrets` | bool | `false` | ListSecrets権限を付与 |
 
-#### secretsmanager.pocket_secrets
+#### secrets.managed
 
 magic-pocketが自動生成・管理するシークレットを定義します。
 
 ```toml
-[awscontainer.secretsmanager.pocket_secrets]
+[awscontainer.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
+DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
@@ -249,6 +252,9 @@ DATABASE_URL = { type = "neon_database_url" }
 **type = "neon_database_url"**
 :   NeonのDB接続URLをAPI経由で取得し保存します。オプションはありません。
 
+**type = "tidb_database_url"**
+:   TiDB ServerlessのDB接続URLを取得し保存します。オプションはありません。
+
 **type = "rsa_pem_base64"**
 :   RSA鍵ペアを生成しbase64で保存します。環境変数はキー名+suffixで2つ登録されます。
 
@@ -258,28 +264,33 @@ DATABASE_URL = { type = "neon_database_url" }
     | `pub_base64_environ_suffix` | str | 公開鍵の環境変数名suffix |
 
     ```toml
-    [awscontainer.secretsmanager.pocket_secrets.JWT_RSA]
+    [awscontainer.secrets.managed.JWT_RSA]
     type = "rsa_pem_base64"
     options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64" }
     ```
     → 環境変数 `JWT_RSA_PEM_BASE64` と `JWT_RSA_PUB_BASE64` が登録されます。
 
-#### secretsmanager.secrets
+#### secrets.user
 
-自分で作成したSecrets Managerのシークレットを参照する場合に使います。
-ARNを指定すると、GetSecretValue権限が自動付与されます。
+自分で作成したシークレットを参照する場合に使います。
+指定すると、GetSecretValue / GetParameter 権限が自動付与されます。
 
 ```toml
-[awscontainer.secretsmanager.secrets]
-MY_API_KEY = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-secret"
+[awscontainer.secrets.user]
+MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-secret" }
 ```
 
-#### secretsmanager.extra_resources
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `name` | str | **必須** | シークレット名またはARN |
+| `store` | `"sm"` \| `"ssm"` \| None | None | 保存先（Noneの場合 `secrets.store` を継承） |
 
-追加のシークレットARN（正規表現可）に対してGetSecretValue権限を付与します。
+#### secrets.extra_resources
+
+追加のシークレットARN（正規表現可）に対してGetSecretValue / GetParameter 権限を付与します。
 
 ```toml
-[awscontainer.secretsmanager]
+[awscontainer.secrets]
 extra_resources = ["arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-prefix-*"]
 ```
 
