@@ -1,0 +1,15 @@
+{% extends "comments/base.html" %}
+{% block content %}
+<h1>コメント一覧</h1>
+{% if user.is_authenticated %}
+  <p><a href="{% url 'comment_create' %}">新しいコメントを投稿</a></p>
+{% endif %}
+{% for comment in comments %}
+  <div class="comment">
+    <p>{{ comment.text }}</p>
+    <div class="meta">{{ comment.user.username }} - {{ comment.created_at }}</div>
+  </div>
+{% empty %}
+  <p>まだコメントはありません。</p>
+{% endfor %}
+{% endblock %}
