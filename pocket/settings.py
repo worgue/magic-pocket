@@ -170,6 +170,7 @@ class Sqs(BaseModel):
 
 
 class Neon(BaseSettings):
+    project_name: str
     pg_version: int = 15
     api_key: str | None = Field(alias="neon_api_key", default=None)
 

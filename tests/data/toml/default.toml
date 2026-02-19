@@ -49,6 +49,7 @@ DJANGO_ENV_PATH = "project/env/env.dev"
 apigateway = { domain = "api.project.com" }
 
 [dev.neon]
+project_name = "dev-testprj"
 
 # [prd.awscontainer.secretsmanager]
 # pocket_key_format = "{prefix}{stage}-{project}"
