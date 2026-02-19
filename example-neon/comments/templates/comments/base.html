@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pocket Example</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    nav { display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding-bottom: .5rem; margin-bottom: 1rem; }
+    .comment { border-bottom: 1px solid #eee; padding: .5rem 0; }
+    .comment .meta { font-size: .85rem; color: #666; }
+    textarea { width: 100%; min-height: 80px; }
+    button, .btn { padding: .4rem 1rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Pocket Example</a>
+    <span>
+      {% if user.is_authenticated %}
+        {{ user.username }} | <form method="post" action="{% url 'logout' %}" style="display:inline">{% csrf_token %}<button type="submit" style="background:none;border:none;color:blue;cursor:pointer;padding:0;text-decoration:underline">ログアウト</button></form>
+      {% else %}
+        <a href="{% url 'login' %}">ログイン</a>
+      {% endif %}
+    </span>
+  </nav>
+  {% block content %}{% endblock %}
+</body>
+</html>
