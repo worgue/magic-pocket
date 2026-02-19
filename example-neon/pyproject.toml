@@ -1,0 +1,17 @@
+[project]
+name = "pocket_example"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "magic-pocket[django]",
+    "psycopg[binary]>=3.1",
+    "boto3>=1.34.28",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.2.1",
+]
+
+[tool.uv.sources]
+magic-pocket = { path = "vendor/magic_pocket-0.1.1-py3-none-any.whl" }

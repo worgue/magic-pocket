@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from functools import cached_property
 from typing import TYPE_CHECKING, Literal
@@ -19,7 +20,7 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(level=os.getenv("POCKET_LOGGER_LEVEL", "WARNING").upper())
 
-ResourceType = Literal["projects", "branches", "databases", "endpoints", "roles"]
+ResourceType = Literal["branches", "databases", "endpoints", "roles"]
 
 
 class NeonResourceIsNotReady(Exception):
@@ -116,14 +117,12 @@ class Neon:
 
     def get_resource_path(self, resource_type: ResourceType) -> str:
         requirements = {
-            "projects": [],
             "branches": ["project"],
             "databases": ["project", "branch"],
             "endpoints": ["project"],
             "roles": ["project", "branch"],
         }
         path_templates = {
-            "projects": "projects",
             "branches": "projects/%(project_id)s/branches",
             "databases": "projects/%(project_id)s/branches/%(branch_id)s/databases",
             "endpoints": "projects/%(project_id)s/endpoints",
@@ -173,10 +172,36 @@ class Neon:
             return Role(**res.json()["role"])
 
     @cached_property
-    def project(self) -> Project | None:
-        for project in self.get("projects").json().get("projects", []):
-            if project["name"] == self.context.project_name:
-                return Project(**project)
+    def project(self) -> Project:
+        """project_nameからNeonプロジェクトを解決する。
+
+        組織キー: GET /projects で一覧取得し name で検索。
+        プロジェクトスコープキー: エラーから project_id を取得し直接アクセス。
+        """
+        res = requests.get(self.api.endpoint + "projects", headers=self.api.header)
+        if 200 <= res.status_code < 300:
+            for p in res.json().get("projects", []):
+                if p["name"] == self.context.project_name:
+                    return Project(**p)
+            raise ValueError(f"Neon project '{self.context.project_name}' not found")
+
+        # プロジェクトスコープキー: エラーから project_id をパース
+        message = res.json().get("message", "")
+        match = re.search(r'subject_project_id:"([^"]+)"', message)
+        if not match:
+            raise ValueError(
+                f"Failed to resolve Neon project: {res.status_code}: {message}"
+            )
+        project_id = match.group(1)
+        project_res = self.api.get(f"projects/{project_id}")
+        project_data = project_res.json()["project"]
+        if project_data["name"] != self.context.project_name:
+            raise ValueError(
+                f"Neon project name mismatch: "
+                f"config='{self.context.project_name}', "
+                f"actual='{project_data['name']}'"
+            )
+        return Project(id=project_data["id"], name=project_data["name"])
 
     @cached_property
     def branch(self) -> Branch | None:
@@ -220,13 +245,13 @@ class Neon:
 
     @property
     def working(self):
-        check = [self.project, self.branch, self.database, self.endpoint, self.role]
+        check = [self.branch, self.database, self.endpoint, self.role]
         logger.info(str(check))
         return all(check)
 
     @property
     def description(self):
-        return "Create Neon project, branch, database, role, and endpoint"
+        return "Create Neon branch, database, role, and endpoint"
 
     def create_new(self):
         self.create()
@@ -244,23 +269,9 @@ class Neon:
         pass
 
     def create(self):
-        self.ensure_project()
         self.create_branch()
         self.ensure_role()
         self.ensure_database()
-
-    def ensure_project(self):
-        if self.project is None:
-            del self.project
-            data = {
-                "project": {
-                    "pg_version": self.context.pg_version,
-                    "name": self.context.project_name,
-                    "region_id": self.context.region_id,
-                }
-            }
-            self.post("projects", data=data)
-        return self.project
 
     def create_branch(self, base_branch: Branch | None = None):
         if self.branch is None:
