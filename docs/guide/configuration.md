@@ -120,13 +120,18 @@ Neon PostgreSQLの設定です。
 
 ```toml
 [neon]
+project_name = "dev-myproject"
+
+[prd.neon]
+project_name = "prd-myproject"
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
+| `project_name` | str | **必須** | Neonプロジェクト名 |
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
 
-`NEON_API_KEY` 環境変数（または `.env`）が必要です。
+`NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
 
 ---
 

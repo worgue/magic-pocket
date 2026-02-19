@@ -81,6 +81,7 @@ stages = ["dev", "prd"] # (2)!
 public_dirs = ["static"]
 
 [neon] # (4)!
+project_name = "dev-your-project-name"
 
 [awscontainer] # (5)!
 dockerfile_path = "pocket.Dockerfile"

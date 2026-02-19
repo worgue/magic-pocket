@@ -331,7 +331,7 @@ class NeonContext(BaseModel):
         return cls(
             pg_version=neon.pg_version,
             api_key=neon.api_key,
-            project_name=root.project_name,
+            project_name=neon.project_name,
             branch_name=root.stage,
             name=root.project_name,
             role_name=root.project_name,
