@@ -30,4 +30,8 @@ kit_managed = "bun"
 
 [[mounts]]
 type = "overlay"
-path = "example/.venv"
+path = "example-tidb/.venv"
+
+[[mounts]]
+type = "overlay"
+path = "example-neon/.venv"

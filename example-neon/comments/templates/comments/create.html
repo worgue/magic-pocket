@@ -1,0 +1,10 @@
+{% extends "comments/base.html" %}
+{% block content %}
+<h1>コメント投稿</h1>
+<form method="post">
+  {% csrf_token %}
+  <p><textarea name="text" required></textarea></p>
+  <button type="submit">投稿</button>
+</form>
+<p><a href="{% url 'comment_list' %}">戻る</a></p>
+{% endblock %}
