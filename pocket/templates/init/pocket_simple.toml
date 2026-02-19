@@ -6,6 +6,7 @@ stages = ["dev", "prd"]
 public_dirs = ["static"]
 
 [neon]
+project_name = "your-neon-project-name"
 
 [awscontainer]
 dockerfile_path = "pocket.Dockerfile"
