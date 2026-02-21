@@ -48,7 +48,10 @@ def _build_storage_options(
             assert context.s3, "Never happen because of context validation."
             bucket_name = context.s3.bucket_name
         else:
-            assert general_context.s3_fallback_bucket_name, "use context validation."
+            assert general_context.s3_fallback_bucket_name, (
+                "S3 storage is configured but s3_fallback_bucket_name is not set "
+                "in [general]. Add it for local development, or set POCKET_STAGE."
+            )
             bucket_name = general_context.s3_fallback_bucket_name
         return {"bucket_name": bucket_name, "location": storage.location}
     elif storage.store == "cloudfront":

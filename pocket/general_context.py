@@ -124,7 +124,10 @@ class GeneralContext(BaseModel):
         for _, storage in self.django_fallback.storages.items():
             if storage.store == "s3" and not self.s3_fallback_bucket_name:
                 raise ValueError(
-                    "s3_fallback_bucket_name is required "
-                    "to use s3 storage is fallback_context."
+                    "S3 storage is configured in [general.django.storages] "
+                    "but s3_fallback_bucket_name is not set in [general]. "
+                    "Either add s3_fallback_bucket_name to [general] for local "
+                    "development, or set POCKET_STAGE environment variable "
+                    "to use a stage-specific S3 bucket."
                 )
         return self
