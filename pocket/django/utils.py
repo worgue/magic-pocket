@@ -180,7 +180,14 @@ def _detect_engine(stage: str | None, path: str | Path | None, scheme: str) -> s
     return "django.db.backends.sqlite3"
 
 
-sqs_client = boto3.client("sqs")
+_sqs_client = None
+
+
+def _get_sqs_client():
+    global _sqs_client
+    if _sqs_client is None:
+        _sqs_client = boto3.client("sqs")
+    return _sqs_client
 
 
 def pocket_call_command(
@@ -207,7 +214,7 @@ def pocket_call_command(
     if use_sqs:
         if queue_url is None:
             raise Exception("POCKET_%s_QUEUEURL is not set." % queue_key.upper())
-        sqs_client.send_message(
+        _get_sqs_client().send_message(
             QueueUrl=queue_url,
             MessageBody=json.dumps(
                 {"command": command, "args": args, "kwargs": kwargs}
@@ -221,7 +228,7 @@ def pocket_delete_sqs_task(receipt_handle: str, queue_key="sqsmanagement"):
     queue_url = os.environ.get("POCKET_%s_QUEUEURL" % queue_key.upper())
     if queue_url is None:
         raise Exception("POCKET_%s_QUEUEURL is not set." % queue_key.upper())
-    sqs_client.delete_message(
+    _get_sqs_client().delete_message(
         QueueUrl=queue_url,
         ReceiptHandle=receipt_handle,
     )
