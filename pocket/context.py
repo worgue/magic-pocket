@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from functools import cached_property
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, computed_field, model_validator
@@ -18,7 +17,7 @@ from .resources.neon import Neon
 from .resources.s3 import S3
 from .resources.tidb import TiDb as TiDbResource
 from .settings import ManagedSecretSpec, StoreType, UserSecretSpec
-from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
+from .utils import echo, get_hosted_zone_id_from_domain
 
 
 class ApiGatewayContext(BaseModel):
@@ -608,9 +607,8 @@ class Context(BaseModel):
         )
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None):
-        path = path or get_toml_path()
-        return cls.from_settings(settings.Settings.from_toml(stage=stage, path=path))
+    def from_toml(cls, *, stage: str):
+        return cls.from_settings(settings.Settings.from_toml(stage=stage))
 
     @model_validator(mode="after")
     def check_django(self):
