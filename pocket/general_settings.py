@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import Annotated
 
 from pydantic import BaseModel, Field, model_validator
@@ -26,9 +25,8 @@ class GeneralSettings(BaseSettings):
     django_fallback: Django = Django()
 
     @classmethod
-    def from_toml(cls, *, path: str | Path | None = None):
-        path = path or get_toml_path()
-        data = tomllib.loads(Path(path).read_text())
+    def from_toml(cls):
+        data = tomllib.loads(get_toml_path().read_text())
         return cls.model_validate(data.get("general", {}))
 
 

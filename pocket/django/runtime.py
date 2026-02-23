@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from typing import Any
 
 from ..general_context import GeneralContext
@@ -10,7 +9,6 @@ from ..runtime import (
     set_envs_from_aws_resources,
     set_envs_from_secrets,
 )
-from ..utils import get_toml_path
 
 
 def set_envs():
@@ -34,18 +32,17 @@ def set_envs_from_resources(stage: str | None = None):
 
 
 def get_django_settings(
-    stage: str | None = None, path: str | Path | None = None
+    stage: str | None = None,
 ) -> dict[str, Any]:
     stage = stage or os.environ.get("POCKET_STAGE")
-    path = path or get_toml_path()
-    general_context = GeneralContext.from_toml(path=path)
+    general_context = GeneralContext.from_toml()
     assert general_context.django_fallback, (
         "Never happen because of context validation."
     )
     if not stage:
         django_context = general_context.django_fallback
     else:
-        context = get_context(stage=stage, path=path)
+        context = get_context(stage=stage)
         if context.awscontainer and context.awscontainer.django:
             django_context = context.awscontainer.django
         else:

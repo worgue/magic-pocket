@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from functools import cached_property
-from pathlib import Path
 
 from pydantic import BaseModel, computed_field, model_validator
 
 from . import general_settings
 from .django.context import DjangoContext
 from .resources.vpc import Vpc as VpcResource
-from .utils import get_toml_path
 
 
 class EfsContext(BaseModel):
@@ -75,9 +73,8 @@ class VpcContext(BaseModel):
         )
 
     @classmethod
-    def from_toml(cls, *, ref: str, path: str | Path | None = None) -> VpcContext:
-        path = path or get_toml_path()
-        gs = general_settings.GeneralSettings.from_toml(path=path)
+    def from_toml(cls, *, ref: str) -> VpcContext:
+        gs = general_settings.GeneralSettings.from_toml()
         for vpc in gs.vpcs:
             if vpc.ref == ref:
                 return cls.from_settings(vpc, gs)
@@ -112,11 +109,8 @@ class GeneralContext(BaseModel):
         )
 
     @classmethod
-    def from_toml(cls, *, path: str | Path | None = None):
-        path = path or get_toml_path()
-        return cls.from_general_settings(
-            general_settings.GeneralSettings.from_toml(path=path)
-        )
+    def from_toml(cls):
+        return cls.from_general_settings(general_settings.GeneralSettings.from_toml())
 
     @model_validator(mode="after")
     def check_django(self):
