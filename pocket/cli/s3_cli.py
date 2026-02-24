@@ -54,6 +54,21 @@ def update_public_dirs(stage):
 
 @s3.command()
 @click.option("--stage", prompt=True)
+def destroy(stage):
+    storage = get_s3_resource(stage)
+    if not storage.exists():
+        echo.warning("No S3 bucket found.")
+        return
+    echo.danger("S3バケットの全データが失われます。")
+    click.confirm(
+        "バケット '%s' を削除しますか？" % storage.context.bucket_name, abort=True
+    )
+    storage.delete()
+    echo.success("S3 bucket was deleted.")
+
+
+@s3.command()
+@click.option("--stage", prompt=True)
 def status(stage):
     storage = get_s3_resource(stage)
     if storage.exists():

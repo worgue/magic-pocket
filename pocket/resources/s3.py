@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
-from pocket.resources.aws.s3_utils import bucket_exists, create_bucket
+from pocket.resources.aws.s3_utils import (
+    bucket_exists,
+    create_bucket,
+    delete_bucket_with_contents,
+)
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 
@@ -43,6 +47,9 @@ class S3:
             self.ensure_policy()
             return
         self.create()
+
+    def delete(self):
+        delete_bucket_with_contents(self.client, self.context.bucket_name)
 
     def update(self):
         self.ensure_public_access_block()

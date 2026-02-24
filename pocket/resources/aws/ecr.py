@@ -100,6 +100,16 @@ class Ecr:
             push=True,
         )
 
+    def exists(self) -> bool:
+        return self.info.uri is not None
+
+    def delete(self):
+        if not self.exists():
+            return
+        self.client.delete_repository(repositoryName=self.name, force=True)
+        if hasattr(self, "info"):
+            del self.info
+
     def sync(self):
         self.ensure_exists()
         self.build_and_push()
