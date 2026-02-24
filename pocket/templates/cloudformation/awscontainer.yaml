@@ -35,7 +35,7 @@ Resources:
         # {% endif %}
       Policies:
         # {% if secrets and secrets.allowed_sm_resources %}
-        - PolicyName: "{{ slug }}-access-secretsmanager"
+        - PolicyName: "{{ resource_prefix }}access-secretsmanager"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -55,7 +55,7 @@ Resources:
               # {% endif %}
         # {% endif %}
         # {% if secrets and secrets.allowed_ssm_resources %}
-        - PolicyName: "{{ slug }}-access-ssm"
+        - PolicyName: "{{ resource_prefix }}access-ssm"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -70,7 +70,7 @@ Resources:
                   # {% endfor %}
         # {% endif %}
         - PolicyName:
-            Fn::Sub: "{{ slug }}-access-cloudformation"
+            Fn::Sub: "{{ resource_prefix }}access-cloudformation"
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
@@ -79,7 +79,7 @@ Resources:
                   - "cloudformation:DescribeStacks"
                 Resource:
                   - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
-      RoleName: "lambda-{{ stack_name }}"
+      RoleName: "lambda-{{ slug }}-{{ namespace }}"
       # {% if permissions_boundary %}
       PermissionsBoundary: "{{ permissions_boundary }}"
       # {% endif %}
@@ -88,15 +88,15 @@ Resources:
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: "{{ slug }}-lambda"
-      GroupName: "{{ slug }}-lambda"
+      GroupDescription: "{{ resource_prefix }}lambda"
+      GroupName: "{{ resource_prefix }}lambda"
       SecurityGroupEgress:
         - CidrIp: 0.0.0.0/0
           Description: Allow all outbound traffic by default
           IpProtocol: "-1"
       Tags:
         - Key: Name
-          Value: "{{ slug }}-lambda"
+          Value: "{{ resource_prefix }}lambda"
       VpcId:
         Fn::ImportValue: "{{ export.vpc_id }}"
   # {% endif %}

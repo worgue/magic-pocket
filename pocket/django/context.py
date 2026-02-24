@@ -84,7 +84,7 @@ class DjangoCacheContext(BaseModel):
                 and root.awscontainer.vpc.efs
             )
             format_vars = {
-                "prefix": root.object_prefix,
+                "namespace": root.namespace,
                 "stage": root.stage,
                 "project": root.project_name,
             }

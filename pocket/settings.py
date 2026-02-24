@@ -31,8 +31,8 @@ FormatStr = Annotated[
         max_length=128,
         description=(
             "Formatted string. You can use variables: "
-            "prefix, project, stage(for containers), and ref(for vpc)\n"
-            "e.g) {prefix}{stage}-{project}"
+            "namespace, project, stage(for containers), and ref(for vpc)\n"
+            "e.g) {stage}-{project}-{namespace}"
         ),
     ),
 ]
@@ -44,8 +44,8 @@ FormatPath = Annotated[
         max_length=128,
         description=(
             "Formatted string for path. You can use variables: "
-            "prefix, project, stage(for containers), and ref(for vpc)\n"
-            "e.g) {prefix}{stage}-{project}"
+            "namespace, project, stage(for containers), and ref(for vpc)\n"
+            "e.g) {stage}-{project}-{namespace}"
         ),
     ),
 ]
@@ -79,8 +79,8 @@ class Secrets(BaseModel):
         FormatStr,
         Field(
             description=(
-                "Format string for pocket key. e.g) {prefix}{stage}-{project}\n"
-                "You can use variables: prefix, project, stage\n"
+                "Format string for pocket key. e.g) {stage}-{project}-{namespace}\n"
+                "You can use variables: namespace, project, stage\n"
                 "Although default value contains stage and project, "
                 "it is not required. Because the secret value is stored "
                 "under the stage and project key in json.\n"
@@ -89,7 +89,7 @@ class Secrets(BaseModel):
                 "It might cause a race condition."
             )
         ),
-    ] = "{prefix}{stage}-{project}"
+    ] = "{stage}-{project}-{namespace}"
     managed: Annotated[
         dict[EnvStr, ManagedSecretSpec],
         Field(
@@ -189,7 +189,7 @@ class TiDb(BaseSettings):
 
 class S3(BaseSettings):
     public_dirs: list[str] = []
-    bucket_name_format: FormatStr = "{prefix}{stage}-{project}"
+    bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
 
 
 class RedirectFrom(BaseSettings):
@@ -229,8 +229,8 @@ class Route(BaseSettings):
 
 
 class CloudFront(BaseSettings):
-    domain: str
-    bucket_name_format: FormatStr = "{prefix}{project}-cloudfront"
+    domain: str | None = None
+    bucket_name_format: FormatStr = "{project}-{namespace}-cloudfront"
     origin_prefix_format: FormatPath = "/{stage}"
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
@@ -256,6 +256,12 @@ class CloudFront(BaseSettings):
             raise ValueError(
                 "{project} must exists in origin_prefix_format or bucket_name_format"
             )
+        return self
+
+    @model_validator(mode="after")
+    def check_domain_redirect_from(self):
+        if self.domain is None and self.redirect_from:
+            raise ValueError("redirect_from requires domain to be set")
         return self
 
     @model_validator(mode="after")
@@ -285,8 +291,12 @@ class Settings(BaseSettings):
         return self.general.region
 
     @property
-    def object_prefix(self):
-        return self.general.object_prefix
+    def namespace(self):
+        return self.general.namespace
+
+    @property
+    def prefix_template(self):
+        return self.general.prefix_template
 
     @computed_field
     @property

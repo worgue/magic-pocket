@@ -143,6 +143,7 @@ class CloudFront:
         self._ensure_redirect_from_website()
 
     def _ensure_redirect_from_website(self):
+        assert self.context.domain, "domain is required when redirect_from is set"
         for redirect_from in self.context.redirect_from:
             self.s3_client.put_bucket_website(
                 Bucket=redirect_from.domain,

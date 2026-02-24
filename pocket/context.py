@@ -60,7 +60,12 @@ class SqsContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, sqs: settings.Sqs, *, prefix: str, slug: str, key: str, timeout: int
+        cls,
+        sqs: settings.Sqs,
+        *,
+        resource_prefix: str,
+        key: str,
+        timeout: int,
     ) -> SqsContext:
         return cls(
             batch_size=sqs.batch_size,
@@ -69,7 +74,7 @@ class SqsContext(BaseModel):
             dead_letter_max_receive_count=sqs.dead_letter_max_receive_count,
             dead_letter_message_retention_period=sqs.dead_letter_message_retention_period,
             report_batch_item_failures=sqs.report_batch_item_failures,
-            name=f"{prefix}{slug}-{key}",
+            name=f"{resource_prefix}{key}",
             visibility_timeout=timeout * 6,
         )
 
@@ -98,6 +103,7 @@ class LambdaHandlerContext(BaseModel):
         *,
         key: str,
         root: settings.Settings,
+        resource_prefix: str,
     ) -> LambdaHandlerContext:
         apigw_ctx = None
         if handler.apigateway:
@@ -106,12 +112,11 @@ class LambdaHandlerContext(BaseModel):
         if handler.sqs:
             sqs_ctx = SqsContext.from_settings(
                 handler.sqs,
-                prefix=root.object_prefix,
-                slug=root.slug,
+                resource_prefix=resource_prefix,
                 key=key,
                 timeout=handler.timeout,
             )
-        function_name = f"{root.object_prefix}{root.slug}-{key}"
+        function_name = f"{resource_prefix}{key}"
         return cls(
             command=handler.command,
             timeout=handler.timeout,
@@ -218,7 +223,7 @@ class SecretsContext(BaseModel):
         cls, secrets: settings.Secrets, root: settings.Settings
     ) -> SecretsContext:
         format_vars = {
-            "prefix": root.object_prefix,
+            "namespace": root.namespace,
             "stage": root.stage,
             "project": root.project_name,
         }
@@ -245,6 +250,8 @@ class AwsContainerContext(BaseModel):
     region: str
     slug: str
     stage: str
+    namespace: str
+    resource_prefix: str
     handlers: dict[str, LambdaHandlerContext] = {}
     ecr_name: str
     use_s3: bool
@@ -262,6 +269,12 @@ class AwsContainerContext(BaseModel):
     def from_settings(
         cls, ac: settings.AwsContainer, root: settings.Settings
     ) -> AwsContainerContext:
+        resource_prefix = root.prefix_template.format(
+            stage=root.stage,
+            project=root.project_name,
+            namespace=root.namespace,
+        )
+
         vpc_ctx = None
         if ac.vpc:
             vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
@@ -275,7 +288,7 @@ class AwsContainerContext(BaseModel):
         use_sqs = False
         for key, handler in ac.handlers.items():
             handlers[key] = LambdaHandlerContext.from_settings(
-                handler, key=key, root=root
+                handler, key=key, root=root, resource_prefix=resource_prefix
             )
             if handler.apigateway:
                 use_route53 = True
@@ -302,8 +315,10 @@ class AwsContainerContext(BaseModel):
             region=root.region,
             slug=root.slug,
             stage=root.stage,
+            namespace=root.namespace,
+            resource_prefix=resource_prefix,
             handlers=handlers,
-            ecr_name=root.object_prefix + root.slug + "-lambda",
+            ecr_name=resource_prefix + "lambda",
             use_s3=root.s3 is not None,
             use_route53=use_route53,
             use_sqs=use_sqs,
@@ -381,7 +396,7 @@ class S3Context(BaseModel):
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
         format_vars = {
-            "prefix": root.object_prefix,
+            "namespace": root.namespace,
             "stage": root.stage,
             "project": root.project_name,
         }
@@ -489,13 +504,12 @@ class RouteContext(BaseModel):
 
 class CloudFrontContext(BaseModel):
     region: Literal["us-east-1"] = "us-east-1"
-    domain: str
+    domain: str | None = None
     hosted_zone_id_override: str | None = None
     slug: str
     bucket_name: str
     origin_prefix: str
-    name_prefix_for_cloudformation: str
-    object_prefix: str
+    resource_prefix: str
     redirect_from: list[RedirectFromContext] = []
     routes: list[RouteContext] = []
 
@@ -506,7 +520,7 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @property
     def yaml_key(self) -> str:
-        return "".join([s.capitalize() for s in self.domain.split(".")])
+        return "".join([s.capitalize() for s in self.slug.split("-")])
 
     @computed_field
     @property
@@ -530,10 +544,10 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
-        if self.hosted_zone_id_override:
-            return self.hosted_zone_id_override
         if not self.domain:
             return None
+        if self.hosted_zone_id_override:
+            return self.hosted_zone_id_override
         return get_hosted_zone_id_from_domain(self.domain)
 
     @classmethod
@@ -541,20 +555,22 @@ class CloudFrontContext(BaseModel):
         cls, cf: settings.CloudFront, root: settings.Settings
     ) -> CloudFrontContext:
         format_vars = {
-            "prefix": root.object_prefix,
+            "namespace": root.namespace,
             "stage": root.stage,
             "project": root.project_name,
         }
+        resource_prefix = root.prefix_template.format(
+            stage=root.stage,
+            project=root.project_name,
+            namespace=root.namespace,
+        )
         return cls(
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,
             slug=root.slug,
             bucket_name=cf.bucket_name_format.format(**format_vars),
             origin_prefix=cf.origin_prefix_format.format(**format_vars),
-            name_prefix_for_cloudformation="{prefix}{stage}-{project}-".format(
-                **format_vars
-            ),
-            object_prefix=root.object_prefix,
+            resource_prefix=resource_prefix,
             redirect_from=[
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from
             ],

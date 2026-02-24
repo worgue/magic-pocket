@@ -86,7 +86,8 @@ def set_envs_from_aws_resources(
         return
     os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
     general_context = GeneralContext.from_toml(path=path)
-    os.environ["POCKET_OBJECT_PREFIX"] = general_context.object_prefix
+    os.environ["POCKET_NAMESPACE"] = general_context.namespace
+    os.environ["POCKET_PREFIX_TEMPLATE"] = general_context.prefix_template
     os.environ["POCKET_PROJECT_NAME"] = general_context.project_name
     os.environ["POCKET_REGION"] = general_context.region
     stage = stage or get_stage()

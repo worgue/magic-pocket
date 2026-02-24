@@ -20,6 +20,8 @@
             "Bash(bun:*)",
             "Bash(aws:*)",
             "Bash(vmgit:*)",
+            "Bash(forge-commit-msg:*)",
+            "Bash(forge-commit-from:*)",
             "WebSearch",
             "Edit",
             "Write"
