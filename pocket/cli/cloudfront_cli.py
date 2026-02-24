@@ -74,8 +74,6 @@ def update(stage):
 @click.option("--stage", prompt=True)
 def status(stage):
     cloudfront = get_cloudfront_resource(stage)
-    if cloudfront._origin_s3_exists():
-        echo.info("s3 for cloudfront exists")
     if cloudfront.status == "COMPLETED":
         echo.success("COMPLETED")
     else:

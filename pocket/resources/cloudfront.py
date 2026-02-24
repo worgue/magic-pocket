@@ -47,20 +47,18 @@ class CloudFront:
     @property
     def description(self):
         return (
-            "Create cloudformation(for cloudfront) and s3 bucket: %s"
+            "Create cloudformation(for cloudfront) using s3 bucket: %s"
             % self.context.bucket_name
         )
 
     def state_info(self):
-        return {"cloudfront_s3": {"bucket_name": self.context.bucket_name}}
+        return {"cloudfront": {"bucket_name": self.context.bucket_name}}
 
     def deploy_init(self):
         self.warn_contents()
 
     @property
     def status(self) -> ResourceStatus:
-        if not self._origin_s3_exists():
-            return "NOEXIST"
         return self.stack.status
 
     @property
@@ -72,8 +70,6 @@ class CloudFront:
 
     def update(self):
         self._ensure_redirect_from()
-        if not self._origin_s3_exists():
-            self._create_origin_bucket()
         if not self.stack.exists:
             self.stack.create()
         elif not self.stack.yaml_synced:
@@ -116,8 +112,9 @@ class CloudFront:
         self._delete_bucket_policy()
         self.stack.delete()
         echo.info("Deleting cloudformation stack for cloudfront ...")
-        echo.warning("Please delete the bucket resources manually if needed.")
-        echo.warning("The bucket name: " + self.context.bucket_name)
+        echo.warning(
+            "S3 bucket is managed by the S3 resource: " + self.context.bucket_name
+        )
 
     def _bucket_exists(self, bucket_name):
         try:
@@ -181,12 +178,6 @@ class CloudFront:
         echo.danger("Delete redirect from bucket policies is implementing ...")
         echo.warning("Please delete the bucket policy manually.")
         echo.info("The bucket name: " + bucket_name)
-
-    def _create_origin_bucket(self):
-        self._create_bucket(self.context.bucket_name, self.context.region)
-
-    def _origin_s3_exists(self):
-        return self._bucket_exists(self.context.bucket_name)
 
     def _update_origin_bucket_policy(self, policy: dict | None):
         if policy is None:

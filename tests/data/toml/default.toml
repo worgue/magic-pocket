@@ -39,6 +39,11 @@ command = "pocket.django.lambda_handlers.sqs_management_command_report_failuers_
 timeout = 60
 sqs = {}
 
+[cloudfront]
+routes = [
+    { is_spa = true },
+]
+
 [dev.awscontainer]
 vpc_ref = "sandbox"
 

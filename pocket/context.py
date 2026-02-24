@@ -554,6 +554,7 @@ class CloudFrontContext(BaseModel):
     def from_settings(
         cls, cf: settings.CloudFront, root: settings.Settings
     ) -> CloudFrontContext:
+        assert root.s3, "s3 is required when cloudfront is configured"
         format_vars = {
             "namespace": root.namespace,
             "stage": root.stage,
@@ -568,8 +569,8 @@ class CloudFrontContext(BaseModel):
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,
             slug=root.slug,
-            bucket_name=cf.bucket_name_format.format(**format_vars),
-            origin_prefix=cf.origin_prefix_format.format(**format_vars),
+            bucket_name=root.s3.bucket_name_format.format(**format_vars),
+            origin_prefix=cf.origin_prefix,
             resource_prefix=resource_prefix,
             redirect_from=[
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from
