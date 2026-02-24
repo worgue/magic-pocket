@@ -142,7 +142,7 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 
 
 @click.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--with-secrets", is_flag=True, default=False)
 @click.option("--with-state-bucket", is_flag=True, default=False)
 def destroy(stage: str, with_secrets: bool, with_state_bucket: bool):

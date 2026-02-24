@@ -21,14 +21,14 @@ def get_tidb_resource(stage):
 
 
 @tidb.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def context(stage):
     resource = get_tidb_resource(stage)
     pprint(resource.context.model_dump())
 
 
 @tidb.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
     resource = get_tidb_resource(stage)
     resource.create()
@@ -36,7 +36,7 @@ def create(stage):
 
 
 @tidb.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def reset_database(stage):
     resource = get_tidb_resource(stage)
     resource.reset_database()
@@ -44,7 +44,7 @@ def reset_database(stage):
 
 
 @tidb.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def delete(stage):
     resource = get_tidb_resource(stage)
     resource.delete_cluster()
@@ -52,7 +52,7 @@ def delete(stage):
 
 
 @tidb.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage):
     resource = get_tidb_resource(stage)
     if resource.project:
