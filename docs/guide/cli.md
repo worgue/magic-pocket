@@ -7,6 +7,36 @@ magic-pocketは `pocket` コマンドを提供します。
 
 ---
 
+## POCKET_STAGE 環境変数
+
+環境変数 `POCKET_STAGE` を設定すると、`--stage` オプションのデフォルト値として使用されます。
+
+```bash
+export POCKET_STAGE=dev
+
+# 以下は全て --stage=dev と同等
+pocket deploy
+pocket status
+pocket resource s3 status
+```
+
+`--stage` を明示的に指定すると、環境変数より優先されます。
+
+```bash
+export POCKET_STAGE=dev
+
+# 環境変数を上書き
+pocket deploy --stage=prd
+```
+
+`POCKET_STAGE` も `--stage` も未指定の場合は、プロンプトで入力を求められます。
+
+!!! note "Lambda ランタイムとの共用"
+    `POCKET_STAGE` はLambda上でランタイム環境の判定にも使用されています（[実行環境とDjango連携](runtime.md) を参照）。
+    CLIのデフォルトステージとしても同じ環境変数を共用しているため、変数名を変える必要はありません。
+
+---
+
 ## 基本コマンド
 
 ### pocket version
@@ -41,6 +71,32 @@ pocket deploy --stage=dev
 ```bash
 pocket status --stage=dev
 ```
+
+### pocket destroy
+
+ステージの全リソースを一括削除します。
+
+```bash
+pocket destroy --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--with-secrets` | pocket管理シークレットも削除 |
+| `--with-state-bucket` | ステートバケットも削除 |
+
+削除は以下の順序（デプロイの逆順）で行われます:
+
+1. CloudFront（CFNスタック + バケットポリシー）
+2. AwsContainer（CFNスタック + ECR + secrets）
+3. VPC（CFNスタック + EFS）
+4. S3 バケット
+5. TiDB クラスタ
+6. Neon ブランチ
+7. ステートバケット（`--with-state-bucket` 指定時のみ）
+
+実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
 
 ---
 
@@ -169,6 +225,12 @@ pocket resource awscontainer yaml --stage=dev
 
 # CloudFormation YAMLの差分を確認
 pocket resource awscontainer yaml-diff --stage=dev
+
+# リソース削除（CFNスタック + ECRリポジトリ）
+pocket resource awscontainer destroy --stage=dev
+
+# シークレットも含めて削除
+pocket resource awscontainer destroy --stage=dev --with-secrets
 ```
 
 #### secrets サブコマンド
@@ -196,7 +258,11 @@ pocket resource neon status --stage=dev
 ### s3
 
 ```bash
+# S3バケットの状態確認
 pocket resource s3 status --stage=dev
+
+# S3バケットを中身ごと削除
+pocket resource s3 destroy --stage=dev
 ```
 
 ### cloudfront
@@ -215,8 +281,12 @@ pocket resource cloudfront yaml-diff --stage=dev
 ### vpc
 
 ```bash
-pocket resource vpc status --ref=main --stage=dev
+# VPCの状態確認
+pocket resource vpc status --ref=main
+
+# VPCを削除（CFNスタック + EFS）
+pocket resource vpc destroy --ref=main
 ```
 
 !!! note "VPCコマンドの `--ref`"
-    VPCコマンドでは `--stage` に加えて、`--ref` オプションで `general.vpcs` の `ref` 名を指定します。
+    VPCコマンドでは `--stage` ではなく、`--ref` オプションで `general.vpcs` の `ref` 名を指定します。

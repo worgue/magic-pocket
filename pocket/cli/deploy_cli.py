@@ -70,7 +70,7 @@ def deploy_resources(context: Context):
 
 
 @click.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--openpath")
 def deploy(stage: str, openpath):
     context = Context.from_toml(stage=stage)

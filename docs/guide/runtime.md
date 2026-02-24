@@ -17,6 +17,12 @@ CACHES = get_caches()
 
 これらの関数は、環境変数 `POCKET_STAGE` を参照して動作を切り替えます。
 
+!!! info "`POCKET_STAGE` の役割"
+    `POCKET_STAGE` は2つの用途で使用されます。
+
+    - **Lambda ランタイム**: Lambda環境ではCloudFormationにより自動設定され、実行環境のステージを判定します
+    - **CLI デフォルトステージ**: `pocket` コマンドの `--stage` オプションのデフォルト値として参照されます（[CLI](cli.md#pocket_stage-環境変数) を参照）
+
 | 環境 | 参照する設定 |
 |------|------------|
 | Lambda（`POCKET_STAGE` あり） | `awscontainer.django.storages` / `awscontainer.django.caches` |

@@ -46,7 +46,7 @@ def show_info_message(resource):
 
 @click.command()
 @click.option("--show-info", is_flag=True, default=False)
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage, show_info):
     context = Context.from_toml(stage=stage)
     resources = get_resources(context)

@@ -21,14 +21,14 @@ def get_s3_resource(stage):
 
 
 @s3.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def context(stage):
     storage = get_s3_resource(stage)
     pprint(storage.context.model_dump())
 
 
 @s3.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
     storage = get_s3_resource(stage)
     if storage.exists():
@@ -43,7 +43,7 @@ def create(stage):
 
 
 @s3.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def update_public_dirs(stage):
     storage = get_s3_resource(stage)
     if not storage.exists():
@@ -53,7 +53,7 @@ def update_public_dirs(stage):
 
 
 @s3.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def destroy(stage):
     storage = get_s3_resource(stage)
     if not storage.exists():
@@ -68,7 +68,7 @@ def destroy(stage):
 
 
 @s3.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage):
     storage = get_s3_resource(stage)
     if storage.exists():

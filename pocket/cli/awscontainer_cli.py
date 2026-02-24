@@ -23,14 +23,14 @@ def get_awscontainer_resource(stage):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def yaml(stage):
     ac = get_awscontainer_resource(stage)
     print(ac.stack.yaml)
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def yaml_diff(stage):
     ac = get_awscontainer_resource(stage)
     print(ac.stack.yaml_diff.to_json(indent=2))
@@ -42,7 +42,7 @@ def secrets():
 
 
 @secrets.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--show-values", is_flag=True, default=False)
 def list(stage, show_values):
     ac = get_awscontainer_resource(stage)
@@ -77,7 +77,7 @@ def list(stage, show_values):
 
 
 @secrets.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create_pocket_managed(stage):
     ac = get_awscontainer_resource(stage)
     sc = ac.context.secrets
@@ -108,7 +108,7 @@ def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
 
 
 @secrets.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def delete_pocket_managed(stage):
     ac = get_awscontainer_resource(stage)
     _confirm_delete_pocket_managed_secrets(ac)
@@ -117,7 +117,7 @@ def delete_pocket_managed(stage):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
     ac = get_awscontainer_resource(stage)
     if not ac.status == "NOEXIST":
@@ -129,7 +129,7 @@ def create(stage):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--with-secrets", is_flag=True, default=False)
 def destroy(stage, with_secrets):
     ac = get_awscontainer_resource(stage)
@@ -153,7 +153,7 @@ def destroy(stage, with_secrets):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def update(stage):
     ac = get_awscontainer_resource(stage)
     if ac.status == "NOEXIST":
@@ -170,7 +170,7 @@ def update(stage):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage):
     ac = get_awscontainer_resource(stage)
     if ac.status == "COMPLETED":
@@ -184,7 +184,7 @@ def status(stage):
 
 
 @awscontainer.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--openpath")
 def url(stage, openpath):
     ac = get_awscontainer_resource(stage)
