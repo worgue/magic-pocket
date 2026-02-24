@@ -138,6 +138,11 @@ def destroy(stage, with_secrets):
     else:
         ac.stack.delete()
         echo.success("Aws lambda container was destroyed.")
+    if ac.ecr.exists():
+        ac.ecr.delete()
+        echo.success("ECR repository was deleted.")
+    else:
+        echo.warning("No ECR repository found.")
     if with_secrets:
         _confirm_delete_pocket_managed_secrets(ac)
         if ac.context.secrets:

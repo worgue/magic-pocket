@@ -6,6 +6,7 @@ from . import (
     awscontainer_cli,
     cloudfront_cli,
     deploy_cli,
+    destroy_cli,
     neon_cli,
     s3_cli,
     status_cli,
@@ -26,6 +27,7 @@ def version():
 
 
 main.add_command(deploy_cli.deploy)
+main.add_command(destroy_cli.destroy)
 main.add_command(status_cli.status)
 main.add_command(django_cli.django)
 

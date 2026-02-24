@@ -6,7 +6,7 @@ import boto3
 import mergedeep
 from botocore.exceptions import ClientError
 
-from .s3_utils import bucket_exists, create_bucket
+from .s3_utils import bucket_exists, create_bucket, delete_bucket_with_contents
 
 
 class StateStore:
@@ -64,3 +64,7 @@ class StateStore:
         state = self.load()
         mergedeep.merge(state["resources"], info)
         self.save()
+
+    def delete_bucket(self):
+        """ステートバケットを中身ごと削除"""
+        delete_bucket_with_contents(self.client, self.bucket_name)
