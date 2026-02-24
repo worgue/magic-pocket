@@ -23,7 +23,7 @@ def test_context():
     assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
     assert handlers["sqsmanagement"].sqs
-    assert handlers["sqsmanagement"].sqs.name == "pocket-dev-testprj-sqsmanagement"
+    assert handlers["sqsmanagement"].sqs.name == "dev-testprj-pocket-sqsmanagement"
 
 
 @mock_aws

@@ -17,7 +17,8 @@ else:
 
 
 class GeneralSettings(BaseSettings):
-    object_prefix: str = "pocket-"
+    namespace: str = "pocket"
+    prefix_template: str = "{stage}-{project}-{namespace}-"
     region: str
     project_name: str = Field(default_factory=get_project_name)
     stages: list[str]
