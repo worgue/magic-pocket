@@ -27,7 +27,7 @@ class EfsContext(BaseModel):
         return cls(
             local_mount_path=efs.local_mount_path,
             access_point_path=efs.access_point_path,
-            name=gs.object_prefix + vpc_ref + "-" + gs.project_name,
+            name=gs.namespace + "-" + vpc_ref + "-" + gs.project_name,
             region=gs.region,
         )
 
@@ -70,7 +70,7 @@ class VpcContext(BaseModel):
             nat_gateway=vpc.nat_gateway,
             internet_gateway=vpc.internet_gateway,
             efs=efs_ctx,
-            name=gs.object_prefix + vpc.ref + "-" + gs.project_name,
+            name=gs.namespace + "-" + vpc.ref + "-" + gs.project_name,
             region=gs.region,
         )
 
@@ -85,7 +85,8 @@ class VpcContext(BaseModel):
 
 
 class GeneralContext(BaseModel):
-    object_prefix: str = "pocket-"
+    namespace: str = "pocket"
+    prefix_template: str = "{stage}-{project}-{namespace}-"
     region: str
     project_name: str
     stages: list[str]
@@ -102,7 +103,8 @@ class GeneralContext(BaseModel):
         if gs.django_fallback:
             django_fallback = DjangoContext.from_settings(gs.django_fallback)
         return cls(
-            object_prefix=gs.object_prefix,
+            namespace=gs.namespace,
+            prefix_template=gs.prefix_template,
             region=gs.region,
             project_name=gs.project_name,
             stages=gs.stages,

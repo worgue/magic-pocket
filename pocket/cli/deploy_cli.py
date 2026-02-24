@@ -28,9 +28,12 @@ def get_resources(context: Context):
 
 def _create_state_store(context: Context) -> StateStore:
     assert context.general
-    bucket_name = (
-        f"{context.general.object_prefix}{context.stage}-{context.project_name}-state"
+    resource_prefix = context.general.prefix_template.format(
+        stage=context.stage,
+        project=context.project_name,
+        namespace=context.general.namespace,
     )
+    bucket_name = f"{resource_prefix}state"
     return StateStore(bucket_name, context.general.region)
 
 

@@ -52,9 +52,9 @@ apigateway = { domain = "api.project.com" }
 project_name = "dev-testprj"
 
 # [prd.awscontainer.secretsmanager]
-# pocket_key_format = "{prefix}{stage}-{project}"
+# pocket_key_format = "{stage}-{project}-{namespace}"
 # [awscontainer.secretsmanager]
-# pocket_key_format = "{prefix}{project}"
+# pocket_key_format = "{project}-{namespace}"
 # [awscontainer.secretsmanager.pocket_secrets]
 # SECRET_KEY = { type = "password", options = { length = 50 } }
 # DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }

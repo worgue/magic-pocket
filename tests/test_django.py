@@ -39,11 +39,11 @@ def test_storages():
     assert storages == {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-            "OPTIONS": {"bucket_name": "pocket-dev-testprj", "location": "media"},
+            "OPTIONS": {"bucket_name": "dev-testprj-pocket", "location": "media"},
         },
         "staticfiles": {
             "BACKEND": "storages.backends.s3boto3.S3ManifestStaticStorage",
-            "OPTIONS": {"bucket_name": "pocket-dev-testprj", "location": "static"},
+            "OPTIONS": {"bucket_name": "dev-testprj-pocket", "location": "static"},
         },
     }
 
