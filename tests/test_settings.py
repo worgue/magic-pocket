@@ -24,6 +24,11 @@ def test_context():
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
     assert handlers["sqsmanagement"].sqs
     assert handlers["sqsmanagement"].sqs.name == "dev-testprj-pocket-sqsmanagement"
+    # CloudFront は S3 バケットを共有
+    assert context.cloudfront
+    assert context.s3
+    assert context.cloudfront.bucket_name == context.s3.bucket_name
+    assert context.cloudfront.origin_prefix == "/spa"
 
 
 @mock_aws
