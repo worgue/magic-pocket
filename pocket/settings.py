@@ -37,20 +37,6 @@ FormatStr = Annotated[
     ),
 ]
 
-FormatPath = Annotated[
-    str,
-    Field(
-        pattern=r"^[/a-z0-9{][/{}a-z0-9._-]*$",
-        max_length=128,
-        description=(
-            "Formatted string for path. You can use variables: "
-            "namespace, project, stage(for containers), and ref(for vpc)\n"
-            "e.g) {stage}-{project}-{namespace}"
-        ),
-    ),
-]
-
-
 StoreType = Literal["sm", "ssm"]
 
 
@@ -230,32 +216,18 @@ class Route(BaseSettings):
 
 class CloudFront(BaseSettings):
     domain: str | None = None
-    bucket_name_format: FormatStr = "{project}-{namespace}-cloudfront"
-    origin_prefix_format: FormatPath = "/{stage}"
+    origin_prefix: str = "/spa"
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
     routes: list[Route] = []
 
     @model_validator(mode="after")
-    def check_origin_prefix_format(self):
-        if self.origin_prefix_format:
-            if self.origin_prefix_format[0] != "/":
-                raise ValueError("origin_prefix_format must starts with /")
-            if self.origin_prefix_format[-1] == "/":
-                raise ValueError("origin_prefix_format must not ends with /")
-        return self
-
-    @model_validator(mode="after")
-    def check_origin_fomat(self):
-        origin_format = self.bucket_name_format + self.origin_prefix_format
-        if "{stage}" not in origin_format:
-            raise ValueError(
-                "{stage} must exists in origin_prefix_format or bucket_name_format"
-            )
-        if "{project}" not in origin_format:
-            raise ValueError(
-                "{project} must exists in origin_prefix_format or bucket_name_format"
-            )
+    def check_origin_prefix(self):
+        if self.origin_prefix:
+            if self.origin_prefix[0] != "/":
+                raise ValueError("origin_prefix must starts with /")
+            if self.origin_prefix[-1] == "/":
+                raise ValueError("origin_prefix must not ends with /")
         return self
 
     @model_validator(mode="after")
@@ -303,6 +275,12 @@ class Settings(BaseSettings):
     def slug(self) -> str:
         """Identify the environment. e.g) dev-myprj"""
         return "%s-%s" % (self.stage, self.general.project_name)
+
+    @model_validator(mode="after")
+    def check_cloudfront_requires_s3(self):
+        if self.cloudfront and not self.s3:
+            raise ValueError("s3 is required when cloudfront is configured")
+        return self
 
     @classmethod
     def from_toml(cls, *, stage: str, path: str | Path | None = None):
