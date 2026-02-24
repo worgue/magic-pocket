@@ -21,14 +21,14 @@ def get_neon_resource(stage):
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def context(stage):
     neon = get_neon_resource(stage)
     pprint(neon.context.model_dump())
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
     neon = get_neon_resource(stage)
     neon.create()
@@ -36,7 +36,7 @@ def create(stage):
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def reset_database(stage):
     neon = get_neon_resource(stage)
     neon.reset_database()
@@ -44,7 +44,7 @@ def reset_database(stage):
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--base-stage", default=None)
 def branch_out(stage, base_stage):
     neon = get_neon_resource(stage)
@@ -59,7 +59,7 @@ def branch_out(stage, base_stage):
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def delete(stage):
     neon = get_neon_resource(stage)
     neon.delete_branch()
@@ -67,7 +67,7 @@ def delete(stage):
 
 
 @neon.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage):
     neon = get_neon_resource(stage)
     if neon.project:

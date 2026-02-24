@@ -18,28 +18,28 @@ def get_cloudfront_resource(stage):
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def yaml(stage):
     cloudfront = get_cloudfront_resource(stage)
     print(cloudfront.stack.yaml)
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def yaml_diff(stage):
     cloudfront = get_cloudfront_resource(stage)
     print(cloudfront.stack.yaml_diff.to_json(indent=2))
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def context(stage):
     cloudfront = get_cloudfront_resource(stage)
     print(cloudfront.context.model_dump_json(indent=2))
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
     cloudfront = get_cloudfront_resource(stage)
     cloudfront.create()
@@ -47,7 +47,7 @@ def create(stage):
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def destroy(stage):
     cloudfront = get_cloudfront_resource(stage)
     cloudfront.delete()
@@ -55,7 +55,7 @@ def destroy(stage):
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def update(stage):
     cloudfront = get_cloudfront_resource(stage)
     if cloudfront.status == "NOEXIST":
@@ -71,7 +71,7 @@ def update(stage):
 
 
 @cloudfront.command()
-@click.option("--stage", prompt=True)
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def status(stage):
     cloudfront = get_cloudfront_resource(stage)
     if cloudfront.status == "COMPLETED":
