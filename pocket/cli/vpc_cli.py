@@ -57,6 +57,20 @@ def update(ref):
 
 @vpc.command()
 @click.option("--ref", prompt=True)
+def destroy(ref):
+    vpc = get_vpc_resource(ref)
+    has_stack = vpc.stack.status != "NOEXIST"
+    has_efs = vpc.efs and vpc.efs.exists()
+    if not has_stack and not has_efs:
+        echo.warning("No VPC resources found.")
+        return
+    click.confirm("VPC を削除しますか？", abort=True)
+    vpc.delete()
+    echo.success("VPC was destroyed.")
+
+
+@vpc.command()
+@click.option("--ref", prompt=True)
 def status(reg):
     vpc = get_vpc_resource(reg)
     if vpc.status == "COMPLETED":

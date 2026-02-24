@@ -55,6 +55,13 @@ class Vpc:
         print("Creating cloudformation stack for vpc ...")
         self.stack.create()
 
+    def delete(self):
+        if self.stack.status != "NOEXIST":
+            self.stack.delete()
+            self.stack.wait_status("NOEXIST", timeout=300, interval=10)
+        if self.efs and self.efs.exists():
+            self.efs.delete()
+
     def update(self):
         if not self.stack.yaml_synced:
             self.stack.update()
