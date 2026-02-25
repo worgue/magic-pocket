@@ -77,8 +77,7 @@ Resources:
         Origins:
           # {% for route in routes %}
           - Id: "{{ resource_prefix }}{{ route.name }}"
-            DomainName:
-              Fn::Sub: "{{ bucket_name }}.s3.${AWS::Region}.amazonaws.com"
+            DomainName: "{{ bucket_name }}.s3.{{ s3_region }}.amazonaws.com"
             OriginPath: "{{ origin_prefix }}"
             OriginAccessControlId:
               Fn::GetAtt: OriginAccessControl.Id
