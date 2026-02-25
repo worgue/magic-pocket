@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal
 import requests
 from pydantic import BaseModel
 
-from .base import ResourceStatus
+from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
     from pocket.context import NeonContext

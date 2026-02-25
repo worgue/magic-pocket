@@ -6,7 +6,11 @@ import boto3
 import mergedeep
 from botocore.exceptions import ClientError
 
-from .s3_utils import bucket_exists, create_bucket, delete_bucket_with_contents
+from pocket_cli.resources.aws.s3_utils import (
+    bucket_exists,
+    create_bucket,
+    delete_bucket_with_contents,
+)
 
 
 class StateStore:

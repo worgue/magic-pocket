@@ -10,11 +10,12 @@ import click
 from django.core.management.utils import get_random_secret_key
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from ..cli.deploy_cli import deploy_init_resources, deploy_resources
-from ..context import Context
-from ..utils import echo
-from . import django_installed
-from .utils import get_static_storage, get_storages
+from pocket.context import Context
+from pocket.django import django_installed
+from pocket.django.utils import get_static_storage, get_storages
+from pocket.utils import echo
+from pocket_cli.cli.deploy_cli import deploy_init_resources, deploy_resources
+from pocket_cli.resources.awscontainer import AwsContainer
 
 
 @click.group()
@@ -25,7 +26,7 @@ def django():
 @django.command()
 def init():
     jinja2_env = Environment(
-        loader=PackageLoader("pocket"),
+        loader=PackageLoader("pocket_cli"),
         autoescape=select_autoescape(),
         keep_trailing_newline=True,
     )
@@ -90,9 +91,9 @@ def deploy(stage: str, openpath, force):
     if force or click.confirm("migrate?"):
         res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
         handler.show_logs(res)
-    if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
-        "wsgi"
-    ):
+    if endpoint := context.awscontainer and AwsContainer(
+        context.awscontainer
+    ).endpoints.get("wsgi"):
         echo.success(f"wsgi url: {endpoint}")
         if openpath:
             webbrowser.open(endpoint + "/" + openpath)
@@ -101,17 +102,18 @@ def deploy(stage: str, openpath, force):
 def _get_management_command_handler(context: Context, key: str | None = None):
     if not context.awscontainer:
         raise Exception("awscontainer is not configured for this stage")
+    ac = AwsContainer(context.awscontainer)
     if key:
         warnings.warn(
             "Do not use key to get management command handler",
             DeprecationWarning,
             stacklevel=2,
         )
-        return context.awscontainer.resource.handlers[key]
+        return ac.handlers[key]
     target_command = "pocket.django.lambda_handlers.management_command_handler"
     for key, handler_context in context.awscontainer.handlers.items():
         if handler_context.command == target_command:
-            return context.awscontainer.resource.handlers[key]
+            return ac.handlers[key]
     print("management command handler not found")
     raise Exception("Add management command handler for this stage")
 

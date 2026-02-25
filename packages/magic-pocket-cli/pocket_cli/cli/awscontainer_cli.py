@@ -3,10 +3,10 @@ import webbrowser
 import boto3
 import click
 
-from ..context import Context
-from ..mediator import Mediator
-from ..resources.awscontainer import AwsContainer
-from ..utils import echo
+from pocket.context import Context
+from pocket.utils import echo
+from pocket_cli.mediator import Mediator
+from pocket_cli.resources.awscontainer import AwsContainer
 
 
 @click.group()

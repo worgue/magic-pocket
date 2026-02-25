@@ -1,8 +1,8 @@
 import click
 
-from .. import __version__
-from ..django import django_cli
-from . import (
+from pocket import __version__
+from pocket_cli import django_cli
+from pocket_cli.cli import (
     awscontainer_cli,
     cloudfront_cli,
     deploy_cli,

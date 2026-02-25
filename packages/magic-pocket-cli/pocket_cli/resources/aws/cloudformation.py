@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import boto3
 import yaml
@@ -13,7 +13,8 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, CloudFrontContext, VpcContext
+    from pocket.context import AwsContainerContext, CloudFrontContext
+    from pocket.general_context import VpcContext
 
 
 class Stack:
@@ -33,6 +34,9 @@ class Stack:
 
     def get_client(self):
         return boto3.client("cloudformation", region_name=self.context.region)
+
+    def _get_resource(self) -> Any:
+        return None
 
     @property
     def capabilities(self):
@@ -132,12 +136,12 @@ class Stack:
     @property
     def yaml(self) -> str:
         template = Environment(
-            loader=PackageLoader("pocket"), autoescape=select_autoescape()
+            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
-            resource=self.context.resource,
+            resource=self._get_resource(),
             **self.context.model_dump(),
         )
         return "\n".join(
@@ -208,13 +212,18 @@ class ContainerStack(Stack):
     @property
     def export(self):
         if self.context.vpc:
-            return self.context.vpc.resource.stack.export
+            return VpcStack(self.context.vpc).export
         return {}
 
 
 class VpcStack(Stack):
     context: VpcContext
     template_filename = "vpc"
+
+    def _get_resource(self):
+        from pocket_cli.resources.vpc import Vpc
+
+        return Vpc(self.context)
 
     @property
     def name(self):

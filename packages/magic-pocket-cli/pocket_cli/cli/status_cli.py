@@ -1,10 +1,10 @@
 import click
 
-from ..context import Context
-from ..resources.aws.secretsmanager import PocketSecretIsNotReady
-from ..resources.awscontainer import AwsContainer
-from ..utils import echo
-from .deploy_cli import get_resources
+from pocket.context import Context
+from pocket.resources.aws.secretsmanager import PocketSecretIsNotReady
+from pocket.utils import echo
+from pocket_cli.cli.deploy_cli import get_resources
+from pocket_cli.resources.awscontainer import AwsContainer
 
 
 def show_status_message(resource):

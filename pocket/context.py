@@ -12,11 +12,6 @@ from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.aws.ssm import SsmStore
-from .resources.awscontainer import AwsContainer
-from .resources.cloudfront import CloudFront
-from .resources.neon import Neon
-from .resources.s3 import S3
-from .resources.tidb import TiDb as TiDbResource
 from .settings import ManagedSecretSpec, StoreType, UserSecretSpec
 from .utils import echo, get_hosted_zone_id_from_domain, get_toml_path
 
@@ -261,10 +256,6 @@ class AwsContainerContext(BaseModel):
     permissions_boundary: str | None = None
     efs_local_mount_path: str = ""
 
-    @cached_property
-    def resource(self):
-        return AwsContainer(self)
-
     @classmethod
     def from_settings(
         cls, ac: settings.AwsContainer, root: settings.Settings
@@ -337,10 +328,6 @@ class NeonContext(BaseModel):
     role_name: str
     region_id: str
 
-    @cached_property
-    def resource(self):
-        return Neon(self)
-
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
         return cls(
@@ -363,10 +350,6 @@ class TiDbContext(BaseModel):
     region: str
     project_name: str
 
-    @cached_property
-    def resource(self):
-        return TiDbResource(self)
-
     @classmethod
     def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
         cluster_name = tidb.cluster or re.sub(
@@ -388,10 +371,6 @@ class S3Context(BaseModel):
     region: str
     bucket_name: str
     public_dirs: list[str] = []
-
-    @cached_property
-    def resource(self):
-        return S3(self)
 
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
@@ -512,10 +491,6 @@ class CloudFrontContext(BaseModel):
     resource_prefix: str
     redirect_from: list[RedirectFromContext] = []
     routes: list[RouteContext] = []
-
-    @cached_property
-    def resource(self):
-        return CloudFront(self)
 
     @computed_field
     @property
