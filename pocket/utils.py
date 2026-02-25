@@ -50,13 +50,27 @@ def get_stage():
     return os.environ.get("POCKET_STAGE") or "__none__"
 
 
-def get_toml_path():
-    pathname = os.environ.get("POCKET_TOML_PATH") or "pocket.toml"
-    return Path(pathname)
+def _find_pyproject_dir() -> Path:
+    """pyproject.toml を CWD から上方向に探索し、見つかったディレクトリを返す。"""
+    current = Path.cwd().resolve()
+    while True:
+        if (current / "pyproject.toml").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return Path.cwd()
+
+
+def get_toml_path() -> Path:
+    """pocket.toml のパスを返す。pyproject.toml と同じディレクトリにある前提。"""
+    return _find_pyproject_dir() / "pocket.toml"
 
 
 def get_project_name():
-    data = tomllib.loads(Path("pyproject.toml").read_text())
+    pyproject = _find_pyproject_dir() / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text())
     if data.get("project", {}).get("name"):
         return data["project"]["name"]
     return Path.cwd().name

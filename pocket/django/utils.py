@@ -1,7 +1,6 @@
 import json
 import os
 import urllib.parse
-from pathlib import Path
 
 import boto3
 from django.core.management import call_command
@@ -9,16 +8,15 @@ from django.core.management import call_command
 from ..context import Context
 from ..general_context import GeneralContext
 from ..runtime import get_context
-from ..utils import get_toml_path
 
 
 def _get_django_context_for_storages(
-    stage: str | None, path: str | Path
+    stage: str | None,
 ) -> tuple[GeneralContext, Context | None]:
-    general_context = GeneralContext.from_toml(path=path)
+    general_context = GeneralContext.from_toml()
     context: Context | None = None
     if stage:
-        context = get_context(stage=stage, path=path)
+        context = get_context(stage=stage)
     return general_context, context
 
 
@@ -48,7 +46,10 @@ def _build_storage_options(
             assert context.s3, "Never happen because of context validation."
             bucket_name = context.s3.bucket_name
         else:
-            assert general_context.s3_fallback_bucket_name, "use context validation."
+            assert general_context.s3_fallback_bucket_name, (
+                "S3 storage is configured but s3_fallback_bucket_name is not set "
+                "in [general]. Add it for local development, or set POCKET_STAGE."
+            )
             bucket_name = general_context.s3_fallback_bucket_name
         return {"bucket_name": bucket_name, "location": storage.location}
     elif storage.store == "cloudfront":
@@ -74,10 +75,9 @@ def _build_storage_options(
     raise ValueError("Unknown store")
 
 
-def get_storages(*, stage: str | None = None, path: str | Path | None = None) -> dict:
+def get_storages(*, stage: str | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
-    path = path or get_toml_path()
-    general_context, context = _get_django_context_for_storages(stage, path)
+    general_context, context = _get_django_context_for_storages(stage)
     django_context = _resolve_storage_django_context(general_context, context)
     storages = {}
     for key, storage in django_context.storages.items():
@@ -101,22 +101,21 @@ def get_storages(*, stage: str | None = None, path: str | Path | None = None) ->
     return storages
 
 
-def get_static_storage(*, stage: str | None = None, path: str | Path | None = None):
-    storages = get_storages(stage=stage, path=path)
+def get_static_storage(*, stage: str | None = None):
+    storages = get_storages(stage=stage)
     return storages["staticfiles"]  # must be available
 
 
-def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> dict:
+def get_caches(*, stage: str | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
-    path = path or get_toml_path()
-    general_context = GeneralContext.from_toml(path=path)
+    general_context = GeneralContext.from_toml()
     assert general_context.django_fallback, (
         "Never happen because of context validation."
     )
     if not stage:
         django_context = general_context.django_fallback
     else:
-        context = get_context(stage=stage, path=path)
+        context = get_context(stage=stage)
         if not (
             context.awscontainer
             and context.awscontainer.django
@@ -133,21 +132,23 @@ def get_caches(*, stage: str | None = None, path: str | Path | None = None) -> d
     return caches
 
 
-def get_databases(*, stage: str | None = None, path: str | Path | None = None) -> dict:
+def get_databases(*, stage: str | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
-    path = path or get_toml_path()
 
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
+        from ..utils import get_toml_path
+
+        toml_dir = os.path.dirname(str(get_toml_path()))
         return {
             "default": {
                 "ENGINE": "django.db.backends.sqlite3",
-                "NAME": os.path.join(os.path.dirname(str(path)), "db.sqlite3"),
+                "NAME": os.path.join(toml_dir, "db.sqlite3"),
             }
         }
 
     parsed = urllib.parse.urlparse(database_url)
-    engine = _detect_engine(stage, path, parsed.scheme)
+    engine = _detect_engine(stage, parsed.scheme)
 
     db: dict = {
         "ENGINE": engine,
@@ -166,9 +167,9 @@ def get_databases(*, stage: str | None = None, path: str | Path | None = None) -
     return {"default": db}
 
 
-def _detect_engine(stage: str | None, path: str | Path | None, scheme: str) -> str:
+def _detect_engine(stage: str | None, scheme: str) -> str:
     if stage:
-        context = get_context(stage=stage, path=path)
+        context = get_context(stage=stage)
         if context.tidb:
             return "django_tidb"
         if context.neon:
@@ -180,7 +181,14 @@ def _detect_engine(stage: str | None, path: str | Path | None, scheme: str) -> s
     return "django.db.backends.sqlite3"
 
 
-sqs_client = boto3.client("sqs")
+_sqs_client = None
+
+
+def _get_sqs_client():
+    global _sqs_client
+    if _sqs_client is None:
+        _sqs_client = boto3.client("sqs")
+    return _sqs_client
 
 
 def pocket_call_command(
@@ -207,7 +215,7 @@ def pocket_call_command(
     if use_sqs:
         if queue_url is None:
             raise Exception("POCKET_%s_QUEUEURL is not set." % queue_key.upper())
-        sqs_client.send_message(
+        _get_sqs_client().send_message(
             QueueUrl=queue_url,
             MessageBody=json.dumps(
                 {"command": command, "args": args, "kwargs": kwargs}
@@ -221,7 +229,7 @@ def pocket_delete_sqs_task(receipt_handle: str, queue_key="sqsmanagement"):
     queue_url = os.environ.get("POCKET_%s_QUEUEURL" % queue_key.upper())
     if queue_url is None:
         raise Exception("POCKET_%s_QUEUEURL is not set." % queue_key.upper())
-    sqs_client.delete_message(
+    _get_sqs_client().delete_message(
         QueueUrl=queue_url,
         ReceiptHandle=receipt_handle,
     )

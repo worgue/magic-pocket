@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel, computed_field, model_validator
 
 from . import general_settings
 from .django.context import DjangoContext
-from .utils import get_toml_path
 
 
 class EfsContext(BaseModel):
@@ -69,9 +66,8 @@ class VpcContext(BaseModel):
         )
 
     @classmethod
-    def from_toml(cls, *, ref: str, path: str | Path | None = None) -> VpcContext:
-        path = path or get_toml_path()
-        gs = general_settings.GeneralSettings.from_toml(path=path)
+    def from_toml(cls, *, ref: str) -> VpcContext:
+        gs = general_settings.GeneralSettings.from_toml()
         for vpc in gs.vpcs:
             if vpc.ref == ref:
                 return cls.from_settings(vpc, gs)
@@ -108,11 +104,8 @@ class GeneralContext(BaseModel):
         )
 
     @classmethod
-    def from_toml(cls, *, path: str | Path | None = None):
-        path = path or get_toml_path()
-        return cls.from_general_settings(
-            general_settings.GeneralSettings.from_toml(path=path)
-        )
+    def from_toml(cls):
+        return cls.from_general_settings(general_settings.GeneralSettings.from_toml())
 
     @model_validator(mode="after")
     def check_django(self):
@@ -120,7 +113,10 @@ class GeneralContext(BaseModel):
         for _, storage in self.django_fallback.storages.items():
             if storage.store == "s3" and not self.s3_fallback_bucket_name:
                 raise ValueError(
-                    "s3_fallback_bucket_name is required "
-                    "to use s3 storage is fallback_context."
+                    "S3 storage is configured in [general.django.storages] "
+                    "but s3_fallback_bucket_name is not set in [general]. "
+                    "Either add s3_fallback_bucket_name to [general] for local "
+                    "development, or set POCKET_STAGE environment variable "
+                    "to use a stage-specific S3 bucket."
                 )
         return self

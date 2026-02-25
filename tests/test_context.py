@@ -10,7 +10,7 @@ def test_context_from_settings(base_settings):
     assert context.general.namespace == base_settings.namespace
 
 
-def test_context_from_toml(tmp_path):
+def test_context_from_toml(use_toml, tmp_path):
     toml_path = tmp_path / "pocket.toml"
     toml_path.write_text(
         """
@@ -21,7 +21,8 @@ stages = ["dev"]
 namespace = "test"
 """
     )
-    context = Context.from_toml(stage="dev", path=str(toml_path))
+    use_toml(str(toml_path))
+    context = Context.from_toml(stage="dev")
     assert context.general
     assert context.general.project_name == "test-project"
     assert context.general.region == "us-east-1"
@@ -35,7 +36,7 @@ def test_general_context_from_settings(base_settings):
     assert context.namespace == base_settings.general.namespace
 
 
-def test_general_context_from_toml(tmp_path):
+def test_general_context_from_toml(use_toml, tmp_path):
     toml_path = tmp_path / "pocket.toml"
     toml_path.write_text(
         """
@@ -46,7 +47,8 @@ stages = ["dev"]
 namespace = "test"
 """
     )
-    context = GeneralContext.from_toml(path=str(toml_path))
+    use_toml(str(toml_path))
+    context = GeneralContext.from_toml()
     assert context.project_name == "test-project"
     assert context.region == "us-east-1"
     assert context.namespace == "test"

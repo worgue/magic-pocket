@@ -22,14 +22,16 @@ def test_version():
     assert result.output == f"{__version__}\n"
 
 
-def test_settings_from_toml():
-    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+def test_settings_from_toml(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    settings = Settings.from_toml(stage="dev")
     assert settings.project_name == "testprj"
 
 
 @mock_aws
-def test_secretsmanager():
-    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+def test_secretsmanager(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    settings = Settings.from_toml(stage="dev")
     client = boto3.client("secretsmanager", region_name=settings.region)
     res = client.create_secret(
         Name="pocket/dev-testprj/DATABASE_URL",
@@ -48,10 +50,9 @@ def test_secretsmanager():
 
 
 @mock_aws
-def test_initial_secretsmanager_policy():
-    settings = Settings.from_toml(
-        stage="prd", path="tests/data/toml/awscontainer_pocket_secrets.toml"
-    )
+def test_initial_secretsmanager_policy(use_toml):
+    use_toml("tests/data/toml/awscontainer_pocket_secrets.toml")
+    settings = Settings.from_toml(stage="prd")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -62,10 +63,9 @@ def test_initial_secretsmanager_policy():
 
 
 @mock_aws
-def test_initial_ssm_policy():
-    settings = Settings.from_toml(
-        stage="prd", path="tests/data/toml/awscontainer_secrets_ssm.toml"
-    )
+def test_initial_ssm_policy(use_toml):
+    use_toml("tests/data/toml/awscontainer_secrets_ssm.toml")
+    settings = Settings.from_toml(stage="prd")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -77,10 +77,9 @@ def test_initial_ssm_policy():
 
 
 @mock_aws
-def test_ssm_pocket_secrets():
-    settings = Settings.from_toml(
-        stage="prd", path="tests/data/toml/awscontainer_secrets_ssm.toml"
-    )
+def test_ssm_pocket_secrets(use_toml):
+    use_toml("tests/data/toml/awscontainer_secrets_ssm.toml")
+    settings = Settings.from_toml(stage="prd")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -92,8 +91,9 @@ def test_ssm_pocket_secrets():
     assert "DJANGO_SUPERUSER_PASSWORD" in sc.pocket_store.secrets
 
 
-def get_default_awscontainer():
-    context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
+def get_default_awscontainer(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
     assert context.awscontainer
     ac = AwsContainer(context.awscontainer)
     assert ac.ecr
@@ -101,15 +101,16 @@ def get_default_awscontainer():
 
 
 @mock_aws
-def test_ecr():
-    ac = get_default_awscontainer()
+def test_ecr(use_toml):
+    ac = get_default_awscontainer(use_toml)
     ac.ecr.ensure_exists()
     assert ac.ecr.uri
 
 
 @mock_aws
-def test_neon_none():
-    settings = Settings.from_toml(stage="prd", path="tests/data/toml/default.toml")
+def test_neon_none(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    settings = Settings.from_toml(stage="prd")
     assert not settings.neon
     context = Context.from_settings(settings)
     assert not context.neon
@@ -117,8 +118,9 @@ def test_neon_none():
 
 @pytest.mark.skip(reason="Requires API key and manual deletion of the resource.")
 @mock_aws
-def test_neon_default():
-    settings = Settings.from_toml(stage="dev", path="tests/data/toml/default.toml")
+def test_neon_default(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    settings = Settings.from_toml(stage="dev")
     assert settings.neon
     context = Context.from_settings(settings)
     assert context.neon
@@ -126,6 +128,6 @@ def test_neon_default():
     assert neon.status == "NOEXIST"
     neon.create()
     assert neon.status == "COMPLETED"
-    context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
     assert context.neon and Neon(context.neon).status == "COMPLETED"
     raise Exception("Test worked well, but you have to delete the resource manually.")

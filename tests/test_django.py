@@ -23,9 +23,9 @@ def test_manage_cli(base_settings, aws_settings):
         settings.Settings.model_validate(s.model_dump())
 
 
-def test_storages():
-    toml_path = "tests/data/toml/default.toml"
-    context = Context.from_toml(stage="dev", path=toml_path)
+def test_storages(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
     assert context.awscontainer and context.awscontainer.django
     assert context.awscontainer.django.storages == {
         "default": DjangoStorageContext(
@@ -35,7 +35,7 @@ def test_storages():
             store="s3", location="static", static=True, manifest=True
         ),
     }
-    storages = get_storages(stage="dev", path=toml_path)
+    storages = get_storages(stage="dev")
     assert storages == {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
@@ -48,9 +48,9 @@ def test_storages():
     }
 
 
-def test_cache():
-    toml_path = "tests/data/toml/default.toml"
-    context = Context.from_toml(stage="dev", path=toml_path)
+def test_cache(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
     assert (
         context.awscontainer
         and context.awscontainer.django
@@ -64,7 +64,7 @@ def test_cache():
         "location_subdir": "{stage}",
         "location": "/mnt/efs/dev",
     }
-    caches = get_caches(stage="dev", path=toml_path)
+    caches = get_caches(stage="dev")
     assert caches == {
         "default": {
             "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
