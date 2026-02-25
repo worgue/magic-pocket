@@ -26,8 +26,8 @@
 `stages`: list[str]
 :   **(required)** ステージのリストを指定します。
 
-`object_prefix`: str = "pocket-"
-:   作成されるリソースのprefixとして、幅広く利用されます。
+`namespace`: str = "pocket"
+:   作成されるリソースの名前空間として、幅広く利用されます。
 
 ### general.django_fallback
 ローカル環境で利用する、Djangoのsettings.pyに設定する内容を記述します。
@@ -57,21 +57,21 @@ S3バケットの設定を記述します。
 `public_dirs`: list[str] = []
 :   ここで指定したディレクトリは、公開されます。
 
-`bucket_name_format`: str = "{prefix}{stage}-{project}"
+`bucket_name_format`: str = "{stage}-{project}-{namespace}"
 :   バケット名のフォーマットを指定します。
     デプロイ環境では、この名称のS3を利用しようとします。
 
-    `{prefix}`は、`general_settings`の`object_prefix`で指定した文字列に置き換えられます。
+    `{namespace}`は、`general_settings`の`namespace`で指定した文字列に置き換えられます。
     `{stage}`は、ステージ名に、`{project}`はプロジェクト名に置き換えられます。
 
-    大量にステージを作成する場合、`{prefix}-{project}`などと`{stage}`を削除する事で、バケットが増えすぎるのを防ぐことができます。
+    大量にステージを作成する場合、`{project}-{namespace}`などと`{stage}`を削除する事で、バケットが増えすぎるのを防ぐことができます。
     以下は、`prd`ステージのみバケットを分ける例です。
 
     ```toml
     [s3]
-    bucket_name_format = "{prefix}-{project}"
+    bucket_name_format = "{project}-{namespace}"
     [prd.s3]
-    bucket_name_format = "{prefix}{stage}-{project}"
+    bucket_name_format = "{stage}-{project}-{namespace}"
     ```
 
 ### neon
@@ -205,9 +205,9 @@ domain = "www.example.com"
 ```toml
 # prd以外は同じバケットを利用する設定
 [spa]
-bucket_name_format = "{prefix}{project}-spa"
+bucket_name_format = "{project}-{namespace}-spa"
 [prd.spa]
-bucket_name_format = "{prefix}{stage}-{project}-spa"
+bucket_name_format = "{stage}-{project}-{namespace}-spa"
 ```
 
 ```toml
@@ -219,11 +219,11 @@ redirect_from = [{ domain = "example.com" }]
 `domain`: str
 :   **(required)** SPAのドメインを指定します。
 
-`bucket_name_format`: str = "{prefix}{stage}-{project}-spa"
+`bucket_name_format`: str = "{stage}-{project}-{namespace}-spa"
 :   バケット名のフォーマットを指定します。
     デプロイ環境では、この名称のS3を利用しようとします。
 
-    `{prefix}`は、`general_settings`の`object_prefix`で指定した文字列に置き換えられます。
+    `{namespace}`は、`general_settings`の`namespace`で指定した文字列に置き換えられます。
     `{stage}`は、ステージ名に、`{project}`はプロジェクト名に置き換えられます。
 
 `origin_path_format`: str = "/{stage}"

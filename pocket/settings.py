@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 from typing import Annotated, Literal
 
 import mergedeep
@@ -283,9 +282,8 @@ class Settings(BaseSettings):
         return self
 
     @classmethod
-    def from_toml(cls, *, stage: str, path: str | Path | None = None):
-        path = path or get_toml_path()
-        data = tomllib.loads(Path(path).read_text())
+    def from_toml(cls, *, stage: str):
+        data = tomllib.loads(get_toml_path().read_text())
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)

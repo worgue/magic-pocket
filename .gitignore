@@ -17,5 +17,6 @@ wheels/
 
 # Forge
 .forge/
+forge.local.toml
 .envrc.local
 .envrc.forge

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from functools import cache
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import boto3
@@ -13,15 +12,15 @@ from .context import Context
 from .resources.aws.secretsmanager import SecretsManager
 from .resources.aws.ssm import SsmStore
 from .settings import ManagedSecretSpec
-from .utils import get_stage, get_toml_path
+from .utils import get_stage
 
 if TYPE_CHECKING:
     from .context import AwsContainerContext
 
 
 @cache
-def get_context(stage: str, path: str | Path) -> Context:
-    return Context.from_toml(stage=stage, path=Path(path))
+def get_context(stage: str) -> Context:
+    return Context.from_toml(stage=stage)
 
 
 def _pocket_secret_to_envs(
@@ -39,12 +38,11 @@ def _pocket_secret_to_envs(
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
-def get_secrets(stage: str | None = None, path: str | Path | None = None) -> dict:
+def get_secrets(stage: str | None = None) -> dict:
     stage = stage or get_stage()
     if stage == "__none__":
         return {}
-    path = path or get_toml_path()
-    context = get_context(stage=stage, path=path)
+    context = get_context(stage=stage)
     if (ac := context.awscontainer) is None:
         return {}
     if (sc := ac.secrets) is None:
@@ -72,11 +70,11 @@ def get_secrets(stage: str | None = None, path: str | Path | None = None) -> dic
     return secrets
 
 
-def set_envs_from_secrets(stage: str | None = None, path: str | Path | None = None):
+def set_envs_from_secrets(stage: str | None = None):
     if os.environ.get("POCKET_ENVS_SECRETS_LOADED") == "true":
         return
     os.environ["POCKET_ENVS_SECRETS_LOADED"] = "true"
-    data = get_secrets(stage, path)
+    data = get_secrets(stage)
     for key, value in data.items():
         os.environ[key] = value
 
@@ -133,21 +131,17 @@ def _get_queueurls(ac_context: AwsContainerContext) -> dict[str, str | None]:
 
 def set_envs_from_aws_resources(
     stage: str | None = None,
-    path: str | Path | None = None,
 ):
     if os.environ.get("POCKET_ENVS_AWS_RESOURCES_LOADED") == "true":
         return
     os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
-    general_context = GeneralContext.from_toml(path=path)
-    os.environ["POCKET_NAMESPACE"] = general_context.namespace
-    os.environ["POCKET_PREFIX_TEMPLATE"] = general_context.prefix_template
+    general_context = GeneralContext.from_toml()
     os.environ["POCKET_PROJECT_NAME"] = general_context.project_name
     os.environ["POCKET_REGION"] = general_context.region
     stage = stage or get_stage()
     if stage == "__none__":
         return {}
-    path = path or get_toml_path()
-    context = get_context(stage=stage, path=path)
+    context = get_context(stage=stage)
     if context.awscontainer:
         hosts_map = _get_hosts(context.awscontainer)
         hosts = []
