@@ -206,10 +206,20 @@ class CloudFront:
                 }
             )
         elif self.bucket_policy["Version"] != self.bucket_policy_version_should_be:
-            raise Exception(
-                "Bucket policy version is not supported. "
-                "Please update the policy manually."
+            echo.warning(
+                "Bucket policy version %s will be upgraded to %s."
+                % (self.bucket_policy["Version"], self.bucket_policy_version_should_be)
             )
+            bucket_policy_should_be = self.bucket_policy.copy()
+            bucket_policy_should_be["Version"] = self.bucket_policy_version_should_be
+            if (
+                self.bucket_policy_statement_should_contain
+                not in bucket_policy_should_be["Statement"]
+            ):
+                bucket_policy_should_be["Statement"].append(
+                    self.bucket_policy_statement_should_contain
+                )
+            self._update_origin_bucket_policy(bucket_policy_should_be)
         elif self.bucket_policy_require_update:
             bucket_policy_should_be = self.bucket_policy.copy()
             bucket_policy_should_be["Statement"].append(
