@@ -2,11 +2,13 @@ import boto3
 import pytest
 from click.testing import CliRunner
 from moto import mock_aws
+from pocket_cli.cli.main_cli import main, version
+from pocket_cli.mediator import Mediator
+from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.neon import Neon
 
 from pocket import __version__
-from pocket.cli.main_cli import main, version
 from pocket.context import Context
-from pocket.mediator import Mediator
 from pocket.settings import Secrets, Settings, UserSecretSpec
 
 
@@ -93,8 +95,9 @@ def test_ssm_pocket_secrets():
 def get_default_awscontainer():
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
     assert context.awscontainer
-    assert context.awscontainer.resource.ecr
-    return context.awscontainer.resource
+    ac = AwsContainer(context.awscontainer)
+    assert ac.ecr
+    return ac
 
 
 @mock_aws
@@ -119,9 +122,10 @@ def test_neon_default():
     assert settings.neon
     context = Context.from_settings(settings)
     assert context.neon
-    assert context.neon.resource.status == "NOEXIST"
-    context.neon.resource.create()
-    assert context.neon.resource.status == "COMPLETED"
+    neon = Neon(context.neon)
+    assert neon.status == "NOEXIST"
+    neon.create()
+    assert neon.status == "COMPLETED"
     context = Context.from_toml(stage="dev", path="tests/data/toml/default.toml")
-    assert context.neon and context.neon.resource.status == "COMPLETED"
+    assert context.neon and Neon(context.neon).status == "COMPLETED"
     raise Exception("Test worked well, but you have to delete the resource manually.")

@@ -8,10 +8,10 @@ import boto3
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
-from ..utils import echo
-from .aws.cloudformation import CloudFrontStack
-from .aws.s3_utils import bucket_exists, create_bucket
-from .base import ResourceStatus
+from pocket.resources.base import ResourceStatus
+from pocket.utils import echo
+from pocket_cli.resources.aws.cloudformation import CloudFrontStack
+from pocket_cli.resources.aws.s3_utils import bucket_exists, create_bucket
 
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext

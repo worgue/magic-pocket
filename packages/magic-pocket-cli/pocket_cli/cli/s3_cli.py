@@ -2,9 +2,9 @@ from pprint import pprint
 
 import click
 
-from ..context import Context
-from ..resources.s3 import S3
-from ..utils import echo
+from pocket.context import Context
+from pocket.utils import echo
+from pocket_cli.resources.s3 import S3
 
 
 @click.group()

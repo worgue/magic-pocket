@@ -1,14 +1,13 @@
 import boto3
 from moto import mock_aws
-
-from pocket.resources.aws.ecr import Ecr
-from pocket.resources.aws.s3_utils import (
+from pocket_cli.resources.aws.ecr import Ecr
+from pocket_cli.resources.aws.s3_utils import (
     bucket_exists,
     create_bucket,
     delete_bucket_with_contents,
     empty_bucket,
 )
-from pocket.resources.aws.state import StateStore
+from pocket_cli.resources.aws.state import StateStore
 
 REGION = "ap-southeast-1"
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .aws.cloudformation import VpcStack
-from .aws.efs import Efs
-from .base import ResourceStatus
+from pocket.resources.base import ResourceStatus
+from pocket_cli.resources.aws.cloudformation import VpcStack
+from pocket_cli.resources.aws.efs import Efs
 
 if TYPE_CHECKING:
-    from ..context import VpcContext
+    from pocket.general_context import VpcContext
 
 
 class Vpc:

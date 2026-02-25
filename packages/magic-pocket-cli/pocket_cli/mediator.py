@@ -4,10 +4,9 @@ import base64
 import secrets
 from typing import TYPE_CHECKING, Literal
 
-from pocket.resources.neon import NeonResourceIsNotReady
-from pocket.resources.tidb import TiDbResourceIsNotReady
-
-from .utils import echo
+from pocket.utils import echo
+from pocket_cli.resources.neon import Neon, NeonResourceIsNotReady
+from pocket_cli.resources.tidb import TiDb, TiDbResourceIsNotReady
 
 if TYPE_CHECKING:
     from pocket.context import Context
@@ -119,7 +118,7 @@ class Mediator:
         if not self.context.neon:
             raise Exception("neon is not configured. Please set neon in pocket.toml")
         try:
-            return self.context.neon.resource.database_url
+            return Neon(self.context.neon).database_url
         except NeonResourceIsNotReady:
             echo.warning("neon database is not ready")
             return None
@@ -128,7 +127,7 @@ class Mediator:
         if not self.context.tidb:
             raise Exception("tidb is not configured. Please set tidb in pocket.toml")
         try:
-            return self.context.tidb.resource.database_url
+            return TiDb(self.context.tidb).database_url
         except TiDbResourceIsNotReady:
             echo.warning("tidb database is not ready")
             return None

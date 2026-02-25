@@ -3,26 +3,32 @@ import webbrowser
 
 import click
 
-from ..context import Context
-from ..mediator import Mediator
-from ..resources.aws.state import StateStore
-from ..utils import echo
+from pocket.context import Context
+from pocket.utils import echo
+from pocket_cli.mediator import Mediator
+from pocket_cli.resources.aws.state import StateStore
+from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.neon import Neon
+from pocket_cli.resources.s3 import S3
+from pocket_cli.resources.tidb import TiDb
+from pocket_cli.resources.vpc import Vpc
 
 
 def get_resources(context: Context):
     resources = []
     if context.neon:
-        resources.append(context.neon.resource)
+        resources.append(Neon(context.neon))
     if context.tidb:
-        resources.append(context.tidb.resource)
+        resources.append(TiDb(context.tidb))
     if context.s3:
-        resources.append(context.s3.resource)
+        resources.append(S3(context.s3))
     if context.awscontainer:
         if context.awscontainer.vpc:
-            resources.append(context.awscontainer.vpc.resource)
-        resources.append(context.awscontainer.resource)
+            resources.append(Vpc(context.awscontainer.vpc))
+        resources.append(AwsContainer(context.awscontainer))
     if context.cloudfront:
-        resources.append(context.cloudfront.resource)
+        resources.append(CloudFront(context.cloudfront))
     return resources
 
 
@@ -76,9 +82,9 @@ def deploy(stage: str, openpath):
     context = Context.from_toml(stage=stage)
     deploy_init_resources(context)
     deploy_resources(context)
-    if endpoint := context.awscontainer and context.awscontainer.resource.endpoints.get(
-        "wsgi"
-    ):
+    if endpoint := context.awscontainer and AwsContainer(
+        context.awscontainer
+    ).endpoints.get("wsgi"):
         if endpoint is None:
             echo.warning("wsgi endpoint is not created yet.")
             echo.warning("You can check the endpoint later by resource command.")

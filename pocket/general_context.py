@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from functools import cached_property
 from pathlib import Path
 
 from pydantic import BaseModel, computed_field, model_validator
 
 from . import general_settings
 from .django.context import DjangoContext
-from .resources.vpc import Vpc as VpcResource
 from .utils import get_toml_path
 
 
@@ -50,10 +48,6 @@ class VpcContext(BaseModel):
     @property
     def zones(self) -> list[str]:
         return [f"{self.region}{suffix}" for suffix in self.zone_suffixes]
-
-    @cached_property
-    def resource(self):
-        return VpcResource(self)
 
     @classmethod
     def from_settings(

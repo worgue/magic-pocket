@@ -10,10 +10,10 @@ import boto3
 from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field
 
-from ..base import ResourceStatus
+from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from ...context import LambdaHandlerContext
+    from pocket.context import LambdaHandlerContext
 
 
 class Configuration(BaseModel):

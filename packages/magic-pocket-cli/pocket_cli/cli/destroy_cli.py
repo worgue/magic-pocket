@@ -1,8 +1,14 @@
 import click
 
-from ..context import Context
-from ..resources.aws.state import StateStore
-from ..utils import echo
+from pocket.context import Context
+from pocket.utils import echo
+from pocket_cli.resources.aws.state import StateStore
+from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.neon import Neon
+from pocket_cli.resources.s3 import S3
+from pocket_cli.resources.tidb import TiDb
+from pocket_cli.resources.vpc import Vpc
 
 
 def _create_state_store(context: Context) -> StateStore:
@@ -22,7 +28,7 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     if not context.awscontainer:
         return targets
 
-    ac = context.awscontainer.resource
+    ac = AwsContainer(context.awscontainer)
     parts = ["CFNスタック"]
     if ac.ecr.exists():
         parts.append("ECR")
@@ -31,7 +37,7 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     targets.append("AwsContainer (%s)" % " + ".join(parts))
 
     if context.awscontainer.vpc:
-        vpc = context.awscontainer.vpc.resource
+        vpc = Vpc(context.awscontainer.vpc)
         vpc_parts = []
         if vpc.stack.status != "NOEXIST":
             vpc_parts.append("CFNスタック")
@@ -52,7 +58,7 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
 
-    if context.s3 and context.s3.resource.exists():
+    if context.s3 and S3(context.s3).exists():
         targets.append("S3 バケット: %s" % context.s3.bucket_name)
 
     if context.tidb:
@@ -72,7 +78,7 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
     if not context.awscontainer:
         return
 
-    ac = context.awscontainer.resource
+    ac = AwsContainer(context.awscontainer)
     if ac.stack.status != "NOEXIST":
         echo.log("Destroying AwsContainer stack...")
         ac.stack.delete()
@@ -95,7 +101,7 @@ def _destroy_vpc(context: Context):
     """VPC 関連リソースを削除"""
     if not context.awscontainer or not context.awscontainer.vpc:
         return
-    vpc = context.awscontainer.vpc.resource
+    vpc = Vpc(context.awscontainer.vpc)
     has_stack = vpc.stack.status != "NOEXIST"
     has_efs = vpc.efs and vpc.efs.exists()
     if has_stack or has_efs:
@@ -107,30 +113,30 @@ def _destroy_vpc(context: Context):
 def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: bool):
     """リソースをデプロイの逆順で削除"""
     # 1. CloudFront
-    if context.cloudfront and context.cloudfront.resource.stack.status != "NOEXIST":
+    if context.cloudfront and CloudFront(context.cloudfront).stack.status != "NOEXIST":
         echo.log("Destroying CloudFront...")
-        context.cloudfront.resource.delete()
+        CloudFront(context.cloudfront).delete()
         echo.success("CloudFront was destroyed.")
 
     # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
     _destroy_awscontainer(context, with_secrets)
 
     # 4. S3 バケット
-    if context.s3 and context.s3.resource.exists():
+    if context.s3 and S3(context.s3).exists():
         echo.log("Destroying S3 bucket...")
-        context.s3.resource.delete()
+        S3(context.s3).delete()
         echo.success("S3 bucket was deleted.")
 
     # 5. TiDB クラスタ
-    if context.tidb and context.tidb.resource.cluster:
+    if context.tidb and TiDb(context.tidb).cluster:
         echo.log("Destroying TiDB cluster...")
-        context.tidb.resource.delete_cluster()
+        TiDb(context.tidb).delete_cluster()
         echo.success("TiDB cluster was deleted.")
 
     # 6. Neon ブランチ
-    if context.neon and context.neon.resource.branch:
+    if context.neon and Neon(context.neon).branch:
         echo.log("Destroying Neon branch...")
-        context.neon.resource.delete_branch()
+        Neon(context.neon).delete_branch()
         echo.success("Neon branch was deleted.")
 
     # 7. ステートバケット

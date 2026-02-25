@@ -1,9 +1,9 @@
 import pytest
+from pocket_cli.django_cli import _get_management_command_handler
 
 from pocket import settings
 from pocket.context import Context
 from pocket.django.context import DjangoStorageContext
-from pocket.django.django_cli import _get_management_command_handler
 from pocket.django.utils import get_caches, get_storages
 
 

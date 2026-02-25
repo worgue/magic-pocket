@@ -1,7 +1,8 @@
 import click
 
-from ..context import VpcContext
-from ..utils import echo
+from pocket.general_context import VpcContext
+from pocket.utils import echo
+from pocket_cli.resources.vpc import Vpc
 
 
 @click.group()
@@ -11,7 +12,7 @@ def vpc():
 
 def get_vpc_resource(ref):
     vpc_context = VpcContext.from_toml(ref=ref)
-    return vpc_context.resource
+    return Vpc(vpc_context)
 
 
 @vpc.command()

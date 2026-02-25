@@ -4,17 +4,17 @@ from typing import TYPE_CHECKING
 
 import boto3
 
-from pocket.mediator import Mediator
-
-from .. import context
-from ..utils import echo
-from .aws.cloudformation import ContainerStack
-from .aws.ecr import Ecr
-from .aws.lambdahandler import LambdaHandler
-from .base import ResourceStatus
+from pocket import context
+from pocket.resources.base import ResourceStatus
+from pocket.utils import echo
+from pocket_cli.mediator import Mediator
+from pocket_cli.resources.aws.cloudformation import ContainerStack
+from pocket_cli.resources.aws.ecr import Ecr
+from pocket_cli.resources.aws.lambdahandler import LambdaHandler
+from pocket_cli.resources.vpc import Vpc
 
 if TYPE_CHECKING:
-    from ..context import AwsContainerContext
+    from pocket.context import AwsContainerContext
 
 
 class NotCreatedYetError(Exception):
@@ -129,7 +129,7 @@ class AwsContainer:
     def deploy_init(self):
         self.ecr.sync()
         if self.context.vpc:
-            self.context.vpc.resource.stack.wait_status("COMPLETED")
+            Vpc(self.context.vpc).stack.wait_status("COMPLETED")
 
     def create(self, mediator: Mediator):
         print("Creating secrets ...")

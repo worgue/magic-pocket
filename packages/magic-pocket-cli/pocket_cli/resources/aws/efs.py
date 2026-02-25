@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING
 
 import boto3
 
-from ..base import ResourceStatus
+from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from ...general_context import EfsContext
+    from pocket.general_context import EfsContext
 
 
 class Efs:

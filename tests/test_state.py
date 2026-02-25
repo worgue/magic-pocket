@@ -2,8 +2,7 @@ import json
 
 import boto3
 from moto import mock_aws
-
-from pocket.resources.aws.state import StateStore
+from pocket_cli.resources.aws.state import StateStore
 
 
 @mock_aws
