@@ -1,7 +1,8 @@
 import click
 
-from ..context import Context
-from ..utils import echo
+from pocket.context import Context
+from pocket.utils import echo
+from pocket_cli.resources.cloudfront import CloudFront
 
 
 @click.group()
@@ -14,7 +15,7 @@ def get_cloudfront_resource(stage):
     if not context.cloudfront:
         echo.danger("cloudfront is not configured for this stage")
         raise Exception("cloudfront is not configured for this stage")
-    return context.cloudfront.resource
+    return CloudFront(context.cloudfront)
 
 
 @cloudfront.command()

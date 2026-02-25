@@ -14,7 +14,7 @@ import requests
 from pydantic import BaseModel
 from requests.auth import HTTPDigestAuth
 
-from .base import ResourceStatus
+from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
     from pocket.context import TiDbContext

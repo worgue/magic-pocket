@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
-from pocket.resources.aws.s3_utils import (
+from pocket.resources.base import ResourceStatus
+from pocket.utils import echo
+from pocket_cli.resources.aws.s3_utils import (
     bucket_exists,
     create_bucket,
     delete_bucket_with_contents,
 )
-from pocket.resources.base import ResourceStatus
-from pocket.utils import echo
 
 if TYPE_CHECKING:
     from pocket.context import S3Context
