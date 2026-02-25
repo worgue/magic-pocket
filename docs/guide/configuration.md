@@ -37,7 +37,7 @@ stages = ["dev", "prd"]
 |-----------|------|----------|------|
 | `region` | str | **必須** | AWSリージョン |
 | `stages` | list[str] | **必須** | ステージ名のリスト |
-| `object_prefix` | str | `"pocket-"` | リソース名のプレフィックス |
+| `namespace` | str | `"pocket"` | リソース名の名前空間 |
 | `project_name` | str | ディレクトリ名 | プロジェクト名（通常は自動取得） |
 | `s3_fallback_bucket_name` | str \| None | None | ローカルでS3ストレージを使う場合のバケット名 |
 
@@ -96,20 +96,20 @@ public_dirs = ["static"]
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `public_dirs` | list[str] | `[]` | 公開するディレクトリ |
-| `bucket_name_format` | str | `"{prefix}{stage}-{project}"` | バケット名のフォーマット |
+| `bucket_name_format` | str | `"{stage}-{project}-{namespace}"` | バケット名のフォーマット |
 
 `bucket_name_format` で使える変数:
 
-- `{prefix}` — `object_prefix` の値
+- `{namespace}` — 名前空間
 - `{stage}` — ステージ名
 - `{project}` — プロジェクト名
 
 ??? example "prdのみバケットを分ける例"
     ```toml
     [s3]
-    bucket_name_format = "{prefix}{project}"
+    bucket_name_format = "{project}-{namespace}"
     [prd.s3]
-    bucket_name_format = "{prefix}{stage}-{project}"
+    bucket_name_format = "{stage}-{project}-{namespace}"
     ```
 
 ---
@@ -227,13 +227,13 @@ sqs = {}
 ```toml
 [awscontainer.secrets]
 store = "sm"  # "sm" (Secrets Manager) or "ssm" (SSM Parameter Store)
-pocket_key_format = "{prefix}{stage}-{project}"
+pocket_key_format = "{stage}-{project}-{namespace}"
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `store` | `"sm"` \| `"ssm"` | `"sm"` | シークレットの保存先 |
-| `pocket_key_format` | str | `"{prefix}{stage}-{project}"` | シークレットキーのフォーマット |
+| `pocket_key_format` | str | `"{stage}-{project}-{namespace}"` | シークレットキーのフォーマット |
 | `require_list_secrets` | bool | `false` | ListSecrets権限を付与 |
 
 #### secrets.managed
@@ -401,7 +401,7 @@ routes = [{ is_spa = true }]
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `domain` | str | **必須** | 配信ドメイン |
-| `bucket_name_format` | str | `"{prefix}{project}-cloudfront"` | バケット名フォーマット |
+| `bucket_name_format` | str | `"{project}-{namespace}-cloudfront"` | バケット名フォーマット |
 | `origin_prefix_format` | str | `"/{stage}"` | オリジンパスのフォーマット |
 | `hosted_zone_id_override` | str \| None | None | ホストゾーンIDを明示指定 |
 | `redirect_from` | list[RedirectFrom] | `[]` | リダイレクト元ドメイン |
