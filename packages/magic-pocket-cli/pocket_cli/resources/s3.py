@@ -91,7 +91,7 @@ class S3:
             public_resource = public_resource[0]
         if public_resource:
             return {
-                "Version": "2008-10-17",
+                "Version": "2012-10-17",
                 "Statement": [
                     {
                         "Sid": "PublicRead",
