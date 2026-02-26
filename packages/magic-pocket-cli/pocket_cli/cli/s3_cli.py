@@ -44,16 +44,6 @@ def create(stage):
 
 @s3.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
-def update_public_dirs(stage):
-    storage = get_s3_resource(stage)
-    if not storage.exists():
-        echo.warning("No bucket found.")
-    storage.ensure_public_access_block()
-    storage.ensure_policy()
-
-
-@s3.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def destroy(stage):
     storage = get_s3_resource(stage)
     if not storage.exists():

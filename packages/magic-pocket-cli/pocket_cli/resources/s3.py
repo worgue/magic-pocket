@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -39,12 +38,10 @@ class S3:
     def create(self):
         create_bucket(self.client, self.context.bucket_name, self.context.region)
         self.ensure_public_access_block()
-        self.ensure_policy()
 
     def ensure_exists(self):
         if self.exists():
             self.ensure_public_access_block()
-            self.ensure_policy()
             return
         self.create()
 
@@ -53,7 +50,6 @@ class S3:
 
     def update(self):
         self.ensure_public_access_block()
-        self.ensure_policy()
 
     def exists(self):
         try:
@@ -68,56 +64,9 @@ class S3:
     def status(self) -> ResourceStatus:
         if not self.exists():
             return "NOEXIST"
-        if self.public_access_block_require_update or self.bucket_policy_require_update:
+        if self.public_access_block_require_update:
             return "REQUIRE_UPDATE"
         return "COMPLETED"
-
-    @cached_property
-    def bucket_policy(self):
-        try:
-            return json.loads(
-                self.client.get_bucket_policy(Bucket=self.context.bucket_name)["Policy"]
-            )
-        except ClientError:
-            return None
-
-    @property
-    def bucket_policy_should_be(self):
-        public_resource = [
-            "arn:aws:s3:::%s/%s/*" % (self.context.bucket_name, dirname)
-            for dirname in self.context.public_dirs
-        ]
-        if len(public_resource) == 1:
-            public_resource = public_resource[0]
-        if public_resource:
-            return {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "PublicRead",
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "*"},
-                        "Action": "s3:GetObject",
-                        "Resource": public_resource,
-                    }
-                ],
-            }
-        return None
-
-    @property
-    def bucket_policy_require_update(self):
-        should_be = self.bucket_policy_should_be
-        current = self.bucket_policy
-        if should_be is None:
-            return current is not None
-        if current is None:
-            return True
-        # S3が必要とするステートメントが現在のポリシーに含まれているかを確認
-        # 他のステートメント（CloudFront OAC等）は保持する
-        for stmt in should_be["Statement"]:
-            if stmt not in current.get("Statement", []):
-                return True
-        return False
 
     @cached_property
     def public_access_block(self):
@@ -131,8 +80,8 @@ class S3:
         return {
             "BlockPublicAcls": True,
             "IgnorePublicAcls": True,
-            "BlockPublicPolicy": not bool(self.context.public_dirs),
-            "RestrictPublicBuckets": not bool(self.context.public_dirs),
+            "BlockPublicPolicy": True,
+            "RestrictPublicBuckets": True,
         }
 
     @property
@@ -151,30 +100,3 @@ class S3:
             echo.info("Updated to: %s" % self.public_access_block_should_be)
         else:
             echo.info("Public access block is already configured properly.")
-
-    def ensure_policy(self):
-        if self.bucket_policy_require_update:
-            echo.info("Update bucket policy required.")
-            echo.info("Current policy: %s" % self.bucket_policy)
-            if self.bucket_policy_should_be is None:
-                self.client.delete_bucket_policy(Bucket=self.context.bucket_name)
-                echo.info("Deleted bucket policy")
-            else:
-                # 既存ポリシーがある場合、S3のステートメントをマージして
-                # 他のステートメント（CloudFront OAC等）を保持する
-                if self.bucket_policy is not None:
-                    merged = self.bucket_policy.copy()
-                    merged["Version"] = self.bucket_policy_should_be["Version"]
-                    for stmt in self.bucket_policy_should_be["Statement"]:
-                        if stmt not in merged["Statement"]:
-                            merged["Statement"].append(stmt)
-                else:
-                    merged = self.bucket_policy_should_be
-                self.client.put_bucket_policy(
-                    Bucket=self.context.bucket_name,
-                    Policy=json.dumps(merged),
-                )
-                echo.info("Updated policy: %s" % merged)
-            del self.bucket_policy
-        else:
-            echo.info("Bucket policy is already configured properly.")

@@ -78,7 +78,6 @@ region = "ap-southeast-1" # (1)!
 stages = ["dev", "prd"] # (2)!
 
 [s3] # (3)!
-public_dirs = ["static"]
 
 [neon] # (4)!
 project_name = "dev-your-project-name"

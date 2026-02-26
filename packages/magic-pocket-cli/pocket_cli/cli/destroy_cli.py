@@ -5,6 +5,7 @@ from pocket.utils import echo
 from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
@@ -53,10 +54,14 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
     """削除対象のリソース一覧を収集"""
     targets: list[str] = []
 
-    if context.cloudfront:
-        targets.append("CloudFront (CFNスタック + バケットポリシー)")
+    for name in context.cloudfront:
+        targets.append("CloudFront '%s' (CFNスタック + バケットポリシー)" % name)
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
+
+    for name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.signing_key:
+            targets.append("CloudFrontKeys '%s' (CFNスタック)" % name)
 
     if context.s3 and S3(context.s3).exists():
         targets.append("S3 バケット: %s" % context.s3.bucket_name)
@@ -113,13 +118,24 @@ def _destroy_vpc(context: Context):
 def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: bool):
     """リソースをデプロイの逆順で削除"""
     # 1. CloudFront
-    if context.cloudfront and CloudFront(context.cloudfront).stack.status != "NOEXIST":
-        echo.log("Destroying CloudFront...")
-        CloudFront(context.cloudfront).delete()
-        echo.success("CloudFront was destroyed.")
+    for name, cf_ctx in context.cloudfront.items():
+        cf = CloudFront(cf_ctx)
+        if cf.stack.status != "NOEXIST":
+            echo.log("Destroying CloudFront '%s'..." % name)
+            cf.delete()
+            echo.success("CloudFront '%s' was destroyed." % name)
 
     # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
     _destroy_awscontainer(context, with_secrets)
+
+    # 3.5. CloudFrontKeys（AwsContainer の後、S3 の前）
+    for name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.signing_key:
+            cfk = CloudFrontKeys(cf_ctx)
+            if cfk.stack.status != "NOEXIST":
+                echo.log("Destroying CloudFrontKeys '%s'..." % name)
+                cfk.delete()
+                echo.success("CloudFrontKeys '%s' was destroyed." % name)
 
     # 4. S3 バケット
     if context.s3 and S3(context.s3).exists():

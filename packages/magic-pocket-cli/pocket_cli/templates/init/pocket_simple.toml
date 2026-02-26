@@ -3,7 +3,6 @@ region = "ap-southeast-1"
 stages = ["dev", "prd"]
 
 [s3]
-public_dirs = ["static"]
 
 [neon]
 project_name = "your-neon-project-name"

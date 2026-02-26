@@ -181,6 +181,55 @@ class Stack:
         return self.client.delete_stack(StackName=self.name)
 
 
+class CloudFrontKeysStack(Stack):
+    context: CloudFrontContext
+    template_filename = "cloudfront_keys"
+
+    def __init__(
+        self,
+        context: CloudFrontContext,
+        signing_public_key_pem: str = "",
+    ):
+        self._signing_public_key_pem = signing_public_key_pem
+        super().__init__(context)
+
+    def get_client(self):
+        return boto3.client("cloudformation", region_name=self.context.region)
+
+    @property
+    def name(self):
+        return f"{self.context.slug}-cloudfront-keys"
+
+    @property
+    def export(self):
+        return {
+            "public_key_id": f"{self.context.slug}-public-key-id",
+            "key_group_id": f"{self.context.slug}-key-group-id",
+        }
+
+    @property
+    def yaml(self) -> str:
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
+        template = Environment(
+            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
+        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
+        original_yaml = template.render(
+            stack_name=self.name,
+            export=self.export,
+            resource=self._get_resource(),
+            signing_public_key_pem=self._signing_public_key_pem,
+            **self.context.model_dump(),
+        )
+        return "\n".join(
+            [
+                line
+                for line in original_yaml.splitlines()
+                if line.strip() not in ["#", "# prettier-ignore"]
+            ]
+        )
+
+
 class CloudFrontStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront"
@@ -194,7 +243,31 @@ class CloudFrontStack(Stack):
 
     @property
     def export(self):
+        if self.context.signing_key:
+            return {"key_group_id": f"{self.context.slug}-key-group-id"}
         return {}
+
+    @property
+    def yaml(self) -> str:
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
+        template = Environment(
+            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
+        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
+        original_yaml = template.render(
+            stack_name=self.name,
+            export=self.export,
+            resource=self._get_resource(),
+            signing_key=bool(self.context.signing_key),
+            **self.context.model_dump(),
+        )
+        return "\n".join(
+            [
+                line
+                for line in original_yaml.splitlines()
+                if line.strip() not in ["#", "# prettier-ignore"]
+            ]
+        )
 
 
 class ContainerStack(Stack):

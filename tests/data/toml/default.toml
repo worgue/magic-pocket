@@ -14,7 +14,6 @@ management = { store = "filesystem", location = "management" }
 staticfiles = { store = "filesystem", static = true }
 
 [s3]
-public_dirs = ["static"]
 
 [awscontainer]
 dockerfile_path = "tests/sampleprj/Dockerfile"
@@ -39,9 +38,9 @@ command = "pocket.django.lambda_handlers.sqs_management_command_report_failuers_
 timeout = 60
 sqs = {}
 
-[cloudfront]
+[cloudfront.main]
 routes = [
-    { is_spa = true },
+    { is_default = true, is_spa = true },
 ]
 
 [dev.awscontainer]

@@ -54,9 +54,6 @@ S3バケットの設定を記述します。
 [s3]
 ```
 
-`public_dirs`: list[str] = []
-:   ここで指定したディレクトリは、公開されます。
-
 `bucket_name_format`: str = "{stage}-{project}-{namespace}"
 :   バケット名のフォーマットを指定します。
     デプロイ環境では、この名称のS3を利用しようとします。

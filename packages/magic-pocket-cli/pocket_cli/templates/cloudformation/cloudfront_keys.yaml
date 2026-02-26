@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFront signing key resources
+
+Resources:
+  PublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        Name: "{{ resource_prefix }}publickey"
+        CallerReference: "{{ resource_prefix }}publickey"
+        EncodedKey: "{{ signing_public_key_pem }}"
+
+  KeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    DependsOn:
+      - PublicKey
+    Properties:
+      KeyGroupConfig:
+        Name: "{{ resource_prefix }}keygroup"
+        Items:
+          - !Ref PublicKey
+
+Outputs:
+  PublicKeyId:
+    Value: !Ref PublicKey
+    Export:
+      Name: "{{ export.public_key_id }}"
+  KeyGroupId:
+    Value: !Ref KeyGroup
+    Export:
+      Name: "{{ export.key_group_id }}"

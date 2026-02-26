@@ -9,26 +9,29 @@ from . import settings
 
 
 class DjangoStorageContext(BaseModel):
-    store: Literal["s3", "cloudfront", "filesystem"]
+    store: Literal["s3", "filesystem"]
     location: str | None = None
     static: bool = False
     manifest: bool = False
     options: dict[str, Any] = {}
+    distribution: str | None = None
+    route: str | None = None
 
     @property
     def backend(self):
         if self.store == "s3":
-            if self.static and self.manifest:
-                return "storages.backends.s3boto3.S3ManifestStaticStorage"
-            if self.static:
-                return "storages.backends.s3boto3.S3StaticStorage"
-            return "storages.backends.s3boto3.S3Boto3Storage"
-        elif self.store == "cloudfront":
-            if self.static and self.manifest:
-                return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
-            if self.static:
-                return "pocket.django.storages.CloudFrontS3StaticStorage"
-            return "pocket.django.storages.CloudFrontS3Boto3Storage"
+            if self.distribution:
+                if self.static and self.manifest:
+                    return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
+                if self.static:
+                    return "pocket.django.storages.CloudFrontS3StaticStorage"
+                return "pocket.django.storages.CloudFrontS3Boto3Storage"
+            else:
+                if self.static and self.manifest:
+                    return "storages.backends.s3boto3.S3ManifestStaticStorage"
+                if self.static:
+                    return "storages.backends.s3boto3.S3StaticStorage"
+                return "storages.backends.s3boto3.S3Boto3Storage"
         elif self.store == "filesystem":
             if self.static and self.manifest:
                 return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
@@ -39,20 +42,32 @@ class DjangoStorageContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, storage: settings.DjangoStorage, *, cloudfront_routes=None
+        cls,
+        storage: settings.DjangoStorage,
+        *,
+        cloudfront_distributions: dict | None = None,
     ) -> DjangoStorageContext:
-        if storage.store == "cloudfront":
-            if cloudfront_routes is None:
-                raise ValueError("cloudfront settings required")
-            cloudfront_ref = storage.options["cloudfront_ref"]
-            if cloudfront_ref not in [r.ref for r in cloudfront_routes]:
-                raise ValueError("cloudfront ref [%s] not found" % cloudfront_ref)
+        if storage.distribution and cloudfront_distributions:
+            if storage.distribution not in cloudfront_distributions:
+                raise ValueError(
+                    "distribution '%s' not found in cloudfront" % storage.distribution
+                )
+            cf = cloudfront_distributions[storage.distribution]
+            if storage.route:
+                route_refs = [r.ref for r in cf.routes]
+                if storage.route not in route_refs:
+                    raise ValueError(
+                        "route ref '%s' not found in cloudfront.%s"
+                        % (storage.route, storage.distribution)
+                    )
         return cls(
             store=storage.store,
             location=storage.location,
             static=storage.static,
             manifest=storage.manifest,
             options=storage.options,
+            distribution=storage.distribution,
+            route=storage.route,
         )
 
 
@@ -104,14 +119,14 @@ class DjangoContext(BaseModel):
 
     @classmethod
     def from_settings(cls, django: settings.Django, *, root=None) -> DjangoContext:
-        cloudfront_routes = None
+        cloudfront_distributions = None
         if root and root.cloudfront:
-            cloudfront_routes = root.cloudfront.routes
+            cloudfront_distributions = root.cloudfront
 
         storages = {}
         for key, storage in (django.storages or {}).items():
             storages[key] = DjangoStorageContext.from_settings(
-                storage, cloudfront_routes=cloudfront_routes
+                storage, cloudfront_distributions=cloudfront_distributions
             )
 
         caches = {}

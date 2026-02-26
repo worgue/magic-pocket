@@ -41,7 +41,11 @@ StoreType = Literal["sm", "ssm"]
 
 class ManagedSecretSpec(BaseModel):
     type: Literal[
-        "password", "neon_database_url", "tidb_database_url", "rsa_pem_base64"
+        "password",
+        "neon_database_url",
+        "tidb_database_url",
+        "rsa_pem_base64",
+        "cloudfront_signing_key",
     ]
     options: dict[str, str | int] = {}
     # Used in mediator
@@ -51,6 +55,10 @@ class ManagedSecretSpec(BaseModel):
     # RsaPemBase64Options:
     #     pem_base64_environ_suffix: str = "_PEM_BASE64"
     #     pub_base64_environ_suffix: str = "_PUB_BASE64"
+    # CloudFrontSigningKeyOptions:
+    #     pem_base64_environ_suffix: str = "_PEM_BASE64"
+    #     pub_base64_environ_suffix: str = "_PUB_BASE64"
+    #     id_environ_suffix: str = "_ID"
 
 
 class UserSecretSpec(BaseModel):
@@ -173,7 +181,6 @@ class TiDb(BaseSettings):
 
 
 class S3(BaseSettings):
-    public_dirs: list[str] = []
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
 
 
@@ -183,17 +190,47 @@ class RedirectFrom(BaseSettings):
 
 
 class Route(BaseSettings):
+    type: Literal["s3", "api"] = "s3"
+    handler: str | None = None
     path_pattern: str = ""
+    is_default: bool = False
     is_spa: bool = False
     is_versioned: bool = False
     spa_fallback_html: str = "index.html"
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
+    signed: bool = False
+
+    @model_validator(mode="after")
+    def check_api_route(self):
+        if self.type == "api":
+            if not self.handler:
+                raise ValueError("handler is required when type = 'api'")
+            if self.is_spa or self.is_versioned or self.signed or self.is_default:
+                raise ValueError(
+                    "type = 'api' cannot use "
+                    "is_spa, is_versioned, signed, or is_default"
+                )
+        if self.handler and self.type != "api":
+            raise ValueError("handler requires type = 'api'")
+        return self
 
     @model_validator(mode="after")
     def check_flags(self):
         if self.is_spa and self.is_versioned:
             raise ValueError("is_spa and is_versioned cannot be True at the same time")
+        return self
+
+    @model_validator(mode="after")
+    def check_is_default(self):
+        if self.type == "api":
+            return self
+        if self.is_default and self.path_pattern:
+            raise ValueError("is_default route must have empty path_pattern")
+        if not self.is_default and not self.path_pattern:
+            raise ValueError(
+                "route with empty path_pattern must have is_default = true"
+            )
         return self
 
     @model_validator(mode="after")
@@ -219,6 +256,7 @@ class CloudFront(BaseSettings):
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
     routes: list[Route] = []
+    signing_key: str | None = None
 
     @model_validator(mode="after")
     def check_origin_prefix(self):
@@ -239,8 +277,9 @@ class CloudFront(BaseSettings):
     def check_routes(self):
         if len(self.routes) == 0:
             raise ValueError("routes must have at least one route")
-        if len([route for route in self.routes if route.path_pattern == ""]) != 1:
-            raise ValueError("routes must have one route with empty path for default")
+        defaults = [r for r in self.routes if r.is_default]
+        if len(defaults) != 1:
+            raise ValueError("routes must have exactly one is_default = true route")
         return self
 
 
@@ -251,7 +290,7 @@ class Settings(BaseSettings):
     neon: Neon | None = None
     tidb: TiDb | None = None
     s3: S3 | None = None
-    cloudfront: CloudFront | None = None
+    cloudfront: dict[str, CloudFront] = {}
 
     @property
     def project_name(self):
@@ -279,6 +318,31 @@ class Settings(BaseSettings):
     def check_cloudfront_requires_s3(self):
         if self.cloudfront and not self.s3:
             raise ValueError("s3 is required when cloudfront is configured")
+        for name, cf in self.cloudfront.items():
+            for route in cf.routes:
+                if route.signed and not cf.signing_key:
+                    raise ValueError(
+                        f"cloudfront.{name}: signing_key is required "
+                        f"when route has signed=true"
+                    )
+                if route.type == "api":
+                    assert route.handler
+                    if not self.awscontainer:
+                        raise ValueError(
+                            f"cloudfront.{name}: awscontainer is required "
+                            f"when route has type='api'"
+                        )
+                    if route.handler not in self.awscontainer.handlers:
+                        raise ValueError(
+                            f"cloudfront.{name}: handler '{route.handler}' "
+                            f"not found in awscontainer.handlers"
+                        )
+                    handler = self.awscontainer.handlers[route.handler]
+                    if not handler.apigateway:
+                        raise ValueError(
+                            f"cloudfront.{name}: handler '{route.handler}' "
+                            f"must have apigateway configured for api route"
+                        )
         return self
 
     @classmethod
@@ -315,6 +379,13 @@ class Settings(BaseSettings):
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
                 raise ValueError(error)
+        # cloudfront はサブテーブル形式 [cloudfront.xxx]
+        # TOML パース結果が dict of dict であることを確認
+        if "cloudfront" in data:
+            if isinstance(data["cloudfront"], dict):
+                for v in data["cloudfront"].values():
+                    if not isinstance(v, dict):
+                        break
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):

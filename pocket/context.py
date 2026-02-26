@@ -84,6 +84,7 @@ class LambdaHandlerContext(BaseModel):
     key: str
     function_name: str
     log_group_name: str
+    export_api_domain: str | None = None
 
     @computed_field
     @property
@@ -239,6 +240,7 @@ class AwsContainerContext(BaseModel):
     secrets: SecretsContext | None = None
     dockerfile_path: str
     envs: dict[str, str] = {}
+    signing_key_imports: dict[str, str] = {}
     platform: str = "linux/amd64"
     django: DjangoContext | None = None
     region: str
@@ -369,7 +371,6 @@ class TiDbContext(BaseModel):
 class S3Context(BaseModel):
     region: str
     bucket_name: str
-    public_dirs: list[str] = []
 
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
@@ -381,7 +382,6 @@ class S3Context(BaseModel):
         return cls(
             region=root.region,
             bucket_name=s3.bucket_name_format.format(**format_vars),
-            public_dirs=s3.public_dirs,
         )
 
 
@@ -420,12 +420,21 @@ class RedirectFromContext(BaseModel):
 
 
 class RouteContext(BaseModel):
+    type: Literal["s3", "api"] = "s3"
+    handler: str | None = None
     path_pattern: str = ""
+    is_default: bool = False
     is_spa: bool = False
     is_versioned: bool = False
     spa_fallback_html: str = "index.html"
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
+    signed: bool = False
+
+    @computed_field
+    @property
+    def is_api(self) -> bool:
+        return self.type == "api"
 
     @computed_field
     @property
@@ -471,16 +480,21 @@ class RouteContext(BaseModel):
     @classmethod
     def from_settings(cls, route: settings.Route) -> RouteContext:
         return cls(
+            type=route.type,
+            handler=route.handler,
             path_pattern=route.path_pattern,
+            is_default=route.is_default,
             is_spa=route.is_spa,
             is_versioned=route.is_versioned,
             spa_fallback_html=route.spa_fallback_html,
             versioned_max_age=route.versioned_max_age,
             ref=route.ref,
+            signed=route.signed,
         )
 
 
 class CloudFrontContext(BaseModel):
+    name: str
     region: Literal["us-east-1"] = "us-east-1"
     s3_region: str
     domain: str | None = None
@@ -491,6 +505,8 @@ class CloudFrontContext(BaseModel):
     resource_prefix: str
     redirect_from: list[RedirectFromContext] = []
     routes: list[RouteContext] = []
+    signing_key: str | None = None
+    api_origins: dict[str, str] = {}
 
     @computed_field
     @property
@@ -501,7 +517,7 @@ class CloudFrontContext(BaseModel):
     @property
     def default_route(self) -> RouteContext:
         for route in self.routes:
-            if route.path_pattern == "":
+            if route.is_default:
                 return route
         raise Exception("default route should be defined")
 
@@ -514,7 +530,14 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @property
     def extra_routes(self) -> list[RouteContext]:
-        return [route for route in self.routes if route.path_pattern != ""]
+        return [
+            route for route in self.routes if not route.is_default and not route.is_api
+        ]
+
+    @computed_field
+    @property
+    def api_routes(self) -> list[RouteContext]:
+        return [route for route in self.routes if route.is_api]
 
     @computed_field
     @cached_property
@@ -527,7 +550,7 @@ class CloudFrontContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, cf: settings.CloudFront, root: settings.Settings
+        cls, cf: settings.CloudFront, root: settings.Settings, *, name: str
     ) -> CloudFrontContext:
         assert root.s3, "s3 is required when cloudfront is configured"
         format_vars = {
@@ -541,10 +564,11 @@ class CloudFrontContext(BaseModel):
             namespace=root.namespace,
         )
         return cls(
+            name=name,
             s3_region=root.region,
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,
-            slug=root.slug,
+            slug=f"{root.slug}-{name}",
             bucket_name=root.s3.bucket_name_format.format(**format_vars),
             origin_prefix=cf.origin_prefix,
             resource_prefix=resource_prefix,
@@ -552,6 +576,7 @@ class CloudFrontContext(BaseModel):
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from
             ],
             routes=[RouteContext.from_settings(r) for r in cf.routes],
+            signing_key=cf.signing_key,
         )
 
 
@@ -561,9 +586,63 @@ class Context(BaseModel):
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
     s3: S3Context | None = None
-    cloudfront: CloudFrontContext | None = None
+    cloudfront: dict[str, CloudFrontContext] = {}
     project_name: str
     stage: str
+
+    @staticmethod
+    def _build_api_origins(
+        slug: str,
+        awscontainer_ctx: AwsContainerContext,
+        cloudfront_ctx: dict[str, CloudFrontContext],
+    ) -> None:
+        """API route の handler → CFn Export名 のマッピングを構築する"""
+        for cf_name, cf_ctx in cloudfront_ctx.items():
+            api_origins: dict[str, str] = {}
+            for route in cf_ctx.routes:
+                if not (route.is_api and route.handler):
+                    continue
+                export_name = f"{slug}-{route.handler}-api-domain"
+                api_origins[route.handler] = export_name
+                if route.handler in awscontainer_ctx.handlers:
+                    handler_ctx = awscontainer_ctx.handlers[route.handler]
+                    if not handler_ctx.export_api_domain:
+                        awscontainer_ctx.handlers[route.handler] = (
+                            handler_ctx.model_copy(
+                                update={"export_api_domain": export_name}
+                            )
+                        )
+            if api_origins:
+                cloudfront_ctx[cf_name] = cf_ctx.model_copy(
+                    update={"api_origins": api_origins}
+                )
+
+    @classmethod
+    def _apply_cloudfront_cross_refs(
+        cls,
+        s: settings.Settings,
+        awscontainer_ctx: AwsContainerContext,
+        cloudfront_ctx: dict[str, CloudFrontContext],
+    ) -> AwsContainerContext:
+        """CloudFront ↔ AwsContainer のクロススタック参照を構築する"""
+        cls._build_api_origins(s.slug, awscontainer_ctx, cloudfront_ctx)
+
+        # signing_key_imports: CloudFrontKeys の Export を Lambda 環境変数に
+        if s.awscontainer and s.awscontainer.secrets:
+            signing_key_imports: dict[str, str] = {}
+            managed = s.awscontainer.secrets.managed
+            for _cf_name, cf_ctx in cloudfront_ctx.items():
+                if cf_ctx.signing_key and cf_ctx.signing_key in managed:
+                    spec = managed[cf_ctx.signing_key]
+                    id_suffix = spec.options.get("id_environ_suffix", "_ID")
+                    env_var_name = cf_ctx.signing_key + str(id_suffix)
+                    export_name = f"{cf_ctx.slug}-public-key-id"
+                    signing_key_imports[env_var_name] = export_name
+            if signing_key_imports:
+                awscontainer_ctx = awscontainer_ctx.model_copy(
+                    update={"signing_key_imports": signing_key_imports}
+                )
+        return awscontainer_ctx
 
     @classmethod
     def from_settings(cls, s: settings.Settings) -> Context:
@@ -585,9 +664,14 @@ class Context(BaseModel):
         if s.s3:
             s3_ctx = S3Context.from_settings(s.s3, s)
 
-        cloudfront_ctx = None
-        if s.cloudfront:
-            cloudfront_ctx = CloudFrontContext.from_settings(s.cloudfront, s)
+        cloudfront_ctx: dict[str, CloudFrontContext] = {}
+        for name, cf in s.cloudfront.items():
+            cloudfront_ctx[name] = CloudFrontContext.from_settings(cf, s, name=name)
+
+        if awscontainer_ctx:
+            awscontainer_ctx = cls._apply_cloudfront_cross_refs(
+                s, awscontainer_ctx, cloudfront_ctx
+            )
 
         return cls(
             general=general_ctx,
@@ -607,9 +691,14 @@ class Context(BaseModel):
     @model_validator(mode="after")
     def check_django(self):
         if self.awscontainer and self.awscontainer.django:
-            for _, storage in self.awscontainer.django.storages.items():
+            for key, storage in self.awscontainer.django.storages.items():
                 if storage.store == "s3" and not self.s3:
                     raise ValueError("s3 is required for s3 storage")
+                if storage.distribution and storage.distribution not in self.cloudfront:
+                    raise ValueError(
+                        f"storage '{key}': distribution '{storage.distribution}' "
+                        f"not found in cloudfront"
+                    )
             for _, cache in self.awscontainer.django.caches.items():
                 if cache.store == "efs" and not (
                     self.awscontainer.vpc and self.awscontainer.vpc.efs
