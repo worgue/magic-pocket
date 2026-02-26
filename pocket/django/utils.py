@@ -38,36 +38,83 @@ def _resolve_storage_django_context(
     return django_context
 
 
+def _resolve_route(cf, storage):
+    """distribution 内のルートを解決する"""
+    if storage.route:
+        return cf.get_route(storage.route)
+    if len(cf.routes) == 1:
+        return cf.routes[0]
+    # location からの自動マッチ
+    target_pattern = f"/{storage.location}/*" if storage.location else ""
+    for route in cf.routes:
+        if route.path_pattern == target_pattern:
+            return route
+    if not storage.location:
+        return cf.default_route
+    return None
+
+
+def _create_cloudfront_signer(signing_key_name: str):
+    """環境変数からCloudFrontSignerを生成。キーが未設定の場合は None を返す"""
+    import base64
+    import os
+
+    from botocore.signers import CloudFrontSigner
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+
+    key_id = os.environ.get(f"{signing_key_name}_ID")
+    pem_b64 = os.environ.get(f"{signing_key_name}_PEM_BASE64")
+    if not key_id or not pem_b64:
+        return None
+    pem = base64.b64decode(pem_b64)
+    private_key = serialization.load_pem_private_key(pem, password=None)
+
+    def rsa_signer(message):
+        return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())  # type: ignore
+
+    return CloudFrontSigner(key_id, rsa_signer)
+
+
 def _build_storage_options(
     storage, context: Context | None, general_context: GeneralContext
 ) -> dict | None:
     if storage.store == "s3":
-        if context:
-            assert context.s3, "Never happen because of context validation."
-            bucket_name = context.s3.bucket_name
+        if storage.distribution:
+            # CloudFront 経由
+            if not context:
+                raise ValueError("context is required for distribution storage")
+            cf = context.cloudfront[storage.distribution]
+            # S3 location 計算: origin_prefix + location
+            s3_location = cf.origin_prefix.lstrip("/")
+            if storage.location:
+                s3_location += "/" + storage.location
+            # route 解決
+            route = _resolve_route(cf, storage)
+            options: dict = {
+                "bucket_name": cf.bucket_name,
+                "location": s3_location,
+                "custom_domain": cf.domain,
+                "custom_origin_path": cf.origin_prefix,
+                "querystring_auth": route.signed if route else False,
+            }
+            if route and route.signed and cf.signing_key:
+                signer = _create_cloudfront_signer(cf.signing_key)
+                if signer:
+                    options["cloudfront_signer"] = signer
+            return options
         else:
-            assert general_context.s3_fallback_bucket_name, (
-                "S3 storage is configured but s3_fallback_bucket_name is not set "
-                "in [general]. Add it for local development, or set POCKET_STAGE."
-            )
-            bucket_name = general_context.s3_fallback_bucket_name
-        return {"bucket_name": bucket_name, "location": storage.location}
-    elif storage.store == "cloudfront":
-        if not context:
-            raise ValueError("context is required for cloudfront storage")
-        assert context.cloudfront, "Never happen because of context validation."
-        route = context.cloudfront.get_route(storage.options["cloudfront_ref"])
-        location = context.cloudfront.origin_prefix + route.path_pattern
-        assert location[0] == "/"
-        assert location[-2:] == "/*"
-        location = location[1:-2]
-        return {
-            "bucket_name": context.cloudfront.bucket_name,
-            "location": location,
-            "querystring_auth": False,
-            "custom_domain": context.cloudfront.domain,
-            "custom_origin_path": context.cloudfront.origin_prefix,
-        }
+            # S3 直接（ローカル開発用）
+            if context:
+                assert context.s3, "Never happen because of context validation."
+                bucket_name = context.s3.bucket_name
+            else:
+                assert general_context.s3_fallback_bucket_name, (
+                    "S3 storage is configured but s3_fallback_bucket_name is not set "
+                    "in [general]. Add it for local development, or set POCKET_STAGE."
+                )
+                bucket_name = general_context.s3_fallback_bucket_name
+            return {"bucket_name": bucket_name, "location": storage.location}
     elif storage.store == "filesystem":
         if storage.location is not None:
             return {"location": storage.location}
@@ -96,8 +143,6 @@ def get_storages(*, stage: str | None = None) -> dict:
             if "OPTIONS" not in storages[key]:
                 storages[key]["OPTIONS"] = {}
             storages[key]["OPTIONS"] = {**storages[key]["OPTIONS"], **storage.options}
-            if storage.store == "cloudfront":
-                storages[key]["OPTIONS"].pop("cloudfront_ref")
     return storages
 
 

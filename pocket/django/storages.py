@@ -39,13 +39,6 @@ class CloudFrontOriginPathMixin:
 
 
 class CloudFrontOriginPathStaticMixin(CloudFrontOriginPathMixin):
-    def __init__(self, **settings):
-        super().__init__(**settings)
-        if self.cloudfront_signer:
-            raise PocketStorageConfigurationError(
-                "cloudfront_signer can not used with static files"
-            )
-
     def url(self, *args, **kwargs):
         url = super().url(*args, **kwargs)  # type: ignore
         if self.custom_domain and self.custom_origin_path:

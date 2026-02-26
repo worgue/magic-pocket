@@ -9,6 +9,7 @@ from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
@@ -26,9 +27,14 @@ def get_resources(context: Context):
     if context.awscontainer:
         if context.awscontainer.vpc:
             resources.append(Vpc(context.awscontainer.vpc))
+    # CloudFrontKeys は AwsContainer より前（PublicKeyId Export が必要）
+    for _name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.signing_key:
+            resources.append(CloudFrontKeys(cf_ctx))
+    if context.awscontainer:
         resources.append(AwsContainer(context.awscontainer))
-    if context.cloudfront:
-        resources.append(CloudFront(context.cloudfront))
+    for _name, cf_ctx in context.cloudfront.items():
+        resources.append(CloudFront(cf_ctx))
     return resources
 
 

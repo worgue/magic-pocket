@@ -29,10 +29,20 @@ def test_storages(use_toml):
     assert context.awscontainer and context.awscontainer.django
     assert context.awscontainer.django.storages == {
         "default": DjangoStorageContext(
-            store="s3", location="media", static=False, manifest=False
+            store="s3",
+            location="media",
+            static=False,
+            manifest=False,
+            distribution=None,
+            route=None,
         ),
         "staticfiles": DjangoStorageContext(
-            store="s3", location="static", static=True, manifest=True
+            store="s3",
+            location="static",
+            static=True,
+            manifest=True,
+            distribution=None,
+            route=None,
         ),
     }
     storages = get_storages(stage="dev")

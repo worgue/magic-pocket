@@ -5,6 +5,7 @@ from pocket_cli import django_cli
 from pocket_cli.cli import (
     awscontainer_cli,
     cloudfront_cli,
+    cloudfront_keys_cli,
     deploy_cli,
     destroy_cli,
     neon_cli,
@@ -43,3 +44,4 @@ resource.add_command(neon_cli.neon)
 resource.add_command(tidb_cli.tidb)
 resource.add_command(s3_cli.s3)
 resource.add_command(cloudfront_cli.cloudfront)
+resource.add_command(cloudfront_keys_cli.cloudfront_keys)

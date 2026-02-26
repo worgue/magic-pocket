@@ -90,12 +90,10 @@ S3バケットの設定です。
 
 ```toml
 [s3]
-public_dirs = ["static"]
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `public_dirs` | list[str] | `[]` | 公開するディレクトリ |
 | `bucket_name_format` | str | `"{stage}-{project}-{namespace}"` | バケット名のフォーマット |
 
 `bucket_name_format` で使える変数:
@@ -275,6 +273,24 @@ DATABASE_URL = { type = "neon_database_url" }
     ```
     → 環境変数 `JWT_RSA_PEM_BASE64` と `JWT_RSA_PUB_BASE64` が登録されます。
 
+**type = "cloudfront_signing_key"**
+:   CloudFront 署名付き URL 用の RSA 鍵ペアを生成しbase64で保存します。
+    秘密鍵と公開鍵は Secrets Manager/SSM 経由で環境変数として登録されます。
+    CloudFront PublicKey の ID は CloudFormation のクロススタック参照（`Fn::ImportValue`）で Lambda 環境変数に自動設定されるため、書き戻しは不要です。
+
+    | オプション | 型 | 説明 |
+    |-----------|------|------|
+    | `pem_base64_environ_suffix` | str | 秘密鍵の環境変数名suffix |
+    | `pub_base64_environ_suffix` | str | 公開鍵の環境変数名suffix |
+    | `id_environ_suffix` | str | CloudFront PublicKey ID の環境変数名suffix |
+
+    ```toml
+    [awscontainer.secrets.managed.CF_MEDIA_KEY]
+    type = "cloudfront_signing_key"
+    options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64", id_environ_suffix = "_ID" }
+    ```
+    → 環境変数 `CF_MEDIA_KEY_PEM_BASE64`, `CF_MEDIA_KEY_PUB_BASE64` が secrets 経由で、`CF_MEDIA_KEY_ID` が CloudFormation ImportValue 経由で登録されます。
+
 #### secrets.user
 
 自分で作成したシークレットを参照する場合に使います。
@@ -315,33 +331,36 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `store` | `"s3"` \| `"cloudfront"` \| `"filesystem"` | **必須** | ストレージの種類 |
-| `location` | str \| None | None | ファイル保存先（s3では必須、cloudfrontでは使用不可） |
+| `store` | `"s3"` \| `"filesystem"` | **必須** | ストレージの種類 |
+| `location` | str \| None | None | ファイル保存先（s3では必須） |
 | `static` | bool | `false` | StaticFileストレージを使用 |
 | `manifest` | bool | `false` | ManifestStaticFilesStorageを使用（`static=true` 時のみ） |
+| `distribution` | str \| None | None | CloudFront distribution 名（`[cloudfront.xxx]` のキー名） |
+| `route` | str \| None | None | CloudFront route の ref（省略時は自動解決） |
 | `options` | dict | `{}` | 追加オプション（Djangoの `STORAGES[key]["OPTIONS"]` にそのまま渡される） |
 
-`store`, `static`, `manifest` の組み合わせで以下のバックエンドが選択されます。
+`store`, `static`, `manifest`, `distribution` の組み合わせで以下のバックエンドが選択されます。
 
-| store | static | manifest | バックエンド |
-|-------|--------|----------|------------|
-| s3 | false | — | `storages.backends.s3boto3.S3Boto3Storage` |
-| s3 | true | false | `storages.backends.s3boto3.S3StaticStorage` |
-| s3 | true | true | `storages.backends.s3boto3.S3ManifestStaticStorage` |
-| cloudfront | false | — | `pocket.django.storages.CloudFrontS3Boto3Storage` |
-| cloudfront | true | false | `pocket.django.storages.CloudFrontS3StaticStorage` |
-| cloudfront | true | true | `pocket.django.storages.CloudFrontS3ManifestStaticStorage` |
-| filesystem | false | — | `django.core.files.storage.FileSystemStorage` |
-| filesystem | true | false | `django.contrib.staticfiles.storage.StaticFilesStorage` |
-| filesystem | true | true | `django.contrib.staticfiles.storage.ManifestStaticFilesStorage` |
+| store | distribution | static | manifest | バックエンド |
+|-------|-------------|--------|----------|------------|
+| s3 | なし | false | — | `storages.backends.s3boto3.S3Boto3Storage` |
+| s3 | なし | true | false | `storages.backends.s3boto3.S3StaticStorage` |
+| s3 | なし | true | true | `storages.backends.s3boto3.S3ManifestStaticStorage` |
+| s3 | あり | false | — | `pocket.django.storages.CloudFrontS3Boto3Storage` |
+| s3 | あり | true | false | `pocket.django.storages.CloudFrontS3StaticStorage` |
+| s3 | あり | true | true | `pocket.django.storages.CloudFrontS3ManifestStaticStorage` |
+| filesystem | — | false | — | `django.core.files.storage.FileSystemStorage` |
+| filesystem | — | true | false | `django.contrib.staticfiles.storage.StaticFilesStorage` |
+| filesystem | — | true | true | `django.contrib.staticfiles.storage.ManifestStaticFilesStorage` |
 
-!!! note "cloudfront ストレージについて"
-    `store = "cloudfront"` を使う場合、`location` は使用できません。
-    代わりに `options` に `cloudfront_ref` を指定して、CloudFrontのルートと紐付けます。
+!!! note "CloudFront 経由の配信"
+    `distribution` を指定すると、S3 に保存しつつ CloudFront 経由で配信します。
+    `location` は `origin_prefix` からの相対パスになります。
 
     ```toml
     [awscontainer.django.storages]
-    staticfiles = { store = "cloudfront", static = true, manifest = true, options = { cloudfront_ref = "static" } }
+    default = { store = "s3", location = "", distribution = "media" }
+    staticfiles = { store = "s3", location = "static", static = true, manifest = true, distribution = "main" }
     ```
 
 #### caches
@@ -381,39 +400,44 @@ CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 
 ## cloudfront
 
-CloudFrontディストリビューションとコンテンツ配信用S3バケットを作成します。
-主にSPAのフロントエンド配信に使用します。
+CloudFrontディストリビューションの設定です。名前付きサブテーブル `[cloudfront.xxx]` で複数のディストリビューションを定義できます。
+S3バケットは `[s3]` で定義したものを共有し、`origin_prefix` でパスを分離します。
 
 !!! info "この機能について"
-    証明書、DNS設定、CloudFront設定、リダイレクト設定、コンテンツ保存用S3バケット作成を行います。
+    証明書、DNS設定、CloudFront設定、リダイレクト設定を行います。
     SPAのビルドやバケットへのアップロードは別途必要です。
 
 ```toml
-[dev.cloudfront]
-domain = "dev.example.com"
-routes = [{ is_spa = true }]
-
-[prd.cloudfront]
+[cloudfront.main]
 domain = "www.example.com"
-routes = [{ is_spa = true }]
+origin_prefix = "/spa"
+routes = [
+    { is_default = true, is_spa = true },
+    { path_pattern = "/static/*", ref = "static", is_versioned = true },
+]
+
+[cloudfront.media]
+domain = "media.example.com"
+origin_prefix = "/media"
+signing_key = "CF_MEDIA_KEY"
+routes = [
+    { is_default = true, signed = true },
+]
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `domain` | str | **必須** | 配信ドメイン |
-| `bucket_name_format` | str | `"{project}-{namespace}-cloudfront"` | バケット名フォーマット |
-| `origin_prefix_format` | str | `"/{stage}"` | オリジンパスのフォーマット |
+| `domain` | str \| None | None | 配信ドメイン（省略時は `xxx.cloudfront.net`） |
+| `origin_prefix` | str | `"/spa"` | S3 オリジンパス |
 | `hosted_zone_id_override` | str \| None | None | ホストゾーンIDを明示指定 |
 | `redirect_from` | list[RedirectFrom] | `[]` | リダイレクト元ドメイン |
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |
-
-!!! warning "フォーマットに関する制限"
-    `bucket_name_format` と `origin_prefix_format` を合わせて、`{stage}` と `{project}` の両方が含まれている必要があります。
+| `signing_key` | str \| None | None | 署名付きURL用のmanaged secret名 |
 
 ### redirect_from
 
 ```toml
-[prd.cloudfront]
+[prd.cloudfront.main]
 domain = "www.example.com"
 redirect_from = [{ domain = "example.com" }]
 ```
@@ -428,24 +452,75 @@ redirect_from = [{ domain = "example.com" }]
 CloudFrontのキャッシュ動作ルーティングを定義します。
 
 ```toml
-[prd.cloudfront]
+[prd.cloudfront.main]
 domain = "www.example.com"
 routes = [
-    { is_spa = true },
+    { is_default = true, is_spa = true },
     { path_pattern = "/assets/*", is_versioned = true },
 ]
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `path_pattern` | str | `""` | パスパターン（空文字列がデフォルトルート） |
+| `type` | `"s3"` \| `"api"` | `"s3"` | ルートの種類 |
+| `handler` | str \| None | None | API Gateway の handler 名（`type = "api"` 時必須） |
+| `path_pattern` | str | `""` | パスパターン |
+| `is_default` | bool | `false` | CloudFront の DefaultCacheBehavior として使用 |
 | `is_spa` | bool | `false` | SPA用の設定（フォールバックHTML対応） |
 | `is_versioned` | bool | `false` | バージョン付きアセット用（長期キャッシュ） |
 | `spa_fallback_html` | str | `"index.html"` | SPAフォールバック先のHTML |
 | `versioned_max_age` | int | `31536000` | バージョン付きアセットのmax-age（秒、デフォルト1年） |
-| `ref` | str | `""` | ルートの参照名（cloudfront storageで使用） |
+| `ref` | str | `""` | ルートの参照名（Django storage の route で参照） |
+| `signed` | bool | `false` | 署名付きURL（distribution に `signing_key` が必要） |
 
 !!! note "制約"
+    - `routes` には `is_default = true` のルートが1つ必要です。
+    - `is_default = true` のルートは `path_pattern` を空にする必要があります。
     - `is_spa` と `is_versioned` は同時に `true` にできません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
-    - `routes` には `path_pattern` が空のデフォルトルートが1つ必要です。
+    - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
+    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default` は使用できません。
+    - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
+
+### CloudFront 経由の API Gateway（Cookie 認証）
+
+SPA と API を同一ドメインで配信し、Cookie（session + CSRF）認証を使う構成です。
+`/api/*` → API Gateway、`/*` → S3（SPA）というルーティングを実現します。
+
+```
+Browser → CloudFront (example.com)
+             ├─ /*       → S3 (SPA)
+             └─ /api/*   → API Gateway → Lambda (Django)
+```
+
+```toml
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[cloudfront.main]
+domain = "example.com"
+routes = [
+    { is_default = true, is_spa = true },
+    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+]
+```
+
+`type = "api"` のルートでは以下が自動設定されます:
+
+- **CachePolicyId**: CachingDisabled（API レスポンスはキャッシュしない）
+- **OriginRequestPolicy**: Cookie 全転送、allViewerExceptHostHeader、QueryString 全転送
+- **AllowedMethods**: 全7メソッド（GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE）
+- **Origin**: API Gateway（https-only、CloudFormation のクロススタック参照で接続）
+
+!!! tip "Django CSRF の設定"
+    CloudFront 経由の場合、`CSRF_COOKIE_DOMAIN` と `CSRF_TRUSTED_ORIGINS` を設定してください。
+
+    ```python
+    CSRF_COOKIE_DOMAIN = ".example.com"
+    CSRF_TRUSTED_ORIGINS = ["https://example.com"]
+    ```
+
+!!! note "API Gateway のドメイン設定"
+    `handler` の `apigateway` には独自ドメインを設定しないでください（`apigateway = {}` のみ）。
+    CloudFront がフロントとなるため、API Gateway の execute-api エンドポイントがそのまま使われます。

@@ -25,6 +25,20 @@ Resources:
       ValidationMethod: DNS
   # {% endif %}
 
+  # {% if api_origins %}
+  ApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: "{{ resource_prefix }}api-origin-request"
+        CookiesConfig:
+          CookieBehavior: all
+        HeadersConfig:
+          HeaderBehavior: allViewerExceptHostHeader
+        QueryStringsConfig:
+          QueryStringBehavior: all
+  # {% endif %}
+
   # {% for route in routes %}
   # {% if route.is_spa %}
   UrlFallbackFunction{{ route.yaml_key }}:
@@ -59,6 +73,9 @@ Resources:
       # {% if domain %}
       - Certificate
       # {% endif %}
+      # {% if api_origins %}
+      - ApiOriginRequestPolicy
+      # {% endif %}
       # {% for route in routes %}
       # {% if route.is_spa %}
       - UrlFallbackFunction{{ route.yaml_key }}
@@ -76,6 +93,7 @@ Resources:
         Enabled: true
         Origins:
           # {% for route in routes %}
+          # {% if not route.is_api %}
           - Id: "{{ resource_prefix }}{{ route.name }}"
             DomainName: "{{ bucket_name }}.s3.{{ s3_region }}.amazonaws.com"
             OriginPath: "{{ origin_prefix }}"
@@ -83,6 +101,15 @@ Resources:
               Fn::GetAtt: OriginAccessControl.Id
             S3OriginConfig:
               OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          # {% endif %}
+          # {% endfor %}
+          # {% for handler_key, import_name in api_origins.items() %}
+          - Id: "{{ resource_prefix }}api-{{ handler_key }}"
+            DomainName:
+              Fn::ImportValue: "{{ import_name }}"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPSPort: 443
           # {% endfor %}
         DefaultCacheBehavior:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
@@ -98,7 +125,11 @@ Resources:
           ResponseHeadersPolicyId:
             Ref: ResponseHeadersPolicy{{ default_route.yaml_key }}
           # {% endif %}
-        # {% if extra_routes %}
+          # {% if default_route.signed and signing_key %}
+          TrustedKeyGroups:
+            - Fn::ImportValue: "{{ export.key_group_id }}"
+          # {% endif %}
+        # {% if extra_routes or api_routes %}
         CacheBehaviors:
           # {% for route in extra_routes %}
           - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
@@ -115,6 +146,26 @@ Resources:
             ResponseHeadersPolicyId:
               Ref: ResponseHeadersPolicy{{ route.yaml_key }}
             # {% endif %}
+            # {% if route.signed and signing_key %}
+            TrustedKeyGroups:
+              - Fn::ImportValue: "{{ export.key_group_id }}"
+            # {% endif %}
+          # {% endfor %}
+          # {% for route in api_routes %}
+          - CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+            OriginRequestPolicyId:
+              Ref: ApiOriginRequestPolicy
+            TargetOriginId: "{{ resource_prefix }}api-{{ route.handler }}"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "{{ route.path_pattern }}"
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
           # {% endfor %}
         # {% endif %}
         ViewerCertificate:

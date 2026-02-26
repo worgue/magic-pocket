@@ -1,0 +1,23 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+CF_MEDIA_KEY = { type = "cloudfront_signing_key", options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64", id_environ_suffix = "_ID" } }
+
+[cloudfront.media]
+origin_prefix = "/media"
+signing_key = "CF_MEDIA_KEY"
+routes = [
+    { is_default = true, signed = true },
+]
