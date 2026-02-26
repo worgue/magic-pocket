@@ -106,7 +106,18 @@ class S3:
 
     @property
     def bucket_policy_require_update(self):
-        return self.bucket_policy_should_be != self.bucket_policy
+        should_be = self.bucket_policy_should_be
+        current = self.bucket_policy
+        if should_be is None:
+            return current is not None
+        if current is None:
+            return True
+        # S3が必要とするステートメントが現在のポリシーに含まれているかを確認
+        # 他のステートメント（CloudFront OAC等）は保持する
+        for stmt in should_be["Statement"]:
+            if stmt not in current.get("Statement", []):
+                return True
+        return False
 
     @cached_property
     def public_access_block(self):
@@ -149,11 +160,21 @@ class S3:
                 self.client.delete_bucket_policy(Bucket=self.context.bucket_name)
                 echo.info("Deleted bucket policy")
             else:
+                # 既存ポリシーがある場合、S3のステートメントをマージして
+                # 他のステートメント（CloudFront OAC等）を保持する
+                if self.bucket_policy is not None:
+                    merged = self.bucket_policy.copy()
+                    merged["Version"] = self.bucket_policy_should_be["Version"]
+                    for stmt in self.bucket_policy_should_be["Statement"]:
+                        if stmt not in merged["Statement"]:
+                            merged["Statement"].append(stmt)
+                else:
+                    merged = self.bucket_policy_should_be
                 self.client.put_bucket_policy(
                     Bucket=self.context.bucket_name,
-                    Policy=json.dumps(self.bucket_policy_should_be),
+                    Policy=json.dumps(merged),
                 )
-                echo.info("Updated policy: %s" % self.bucket_policy_should_be)
+                echo.info("Updated policy: %s" % merged)
             del self.bucket_policy
         else:
             echo.info("Bucket policy is already configured properly.")
