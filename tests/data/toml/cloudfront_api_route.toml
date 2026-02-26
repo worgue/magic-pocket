@@ -13,8 +13,7 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
 apigateway = {}
 
 [cloudfront.main]
-origin_prefix = "/spa"
 routes = [
-    { is_default = true, is_spa = true },
+    { is_default = true, is_spa = true, origin_path = "/main" },
     { path_pattern = "/api/*", type = "api", handler = "wsgi" },
 ]

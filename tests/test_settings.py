@@ -3,6 +3,7 @@ import pytest
 from moto import mock_aws
 
 from pocket.context import Context
+from pocket.django.settings import DjangoStorage
 from pocket.settings import CloudFront, Route, Settings
 
 
@@ -32,7 +33,7 @@ def test_context(use_toml):
     assert "main" in context.cloudfront
     assert context.s3
     assert context.cloudfront["main"].bucket_name == context.s3.bucket_name
-    assert context.cloudfront["main"].origin_prefix == "/spa"
+    assert context.cloudfront["main"].default_route.origin_path == "/main"
 
 
 @mock_aws
@@ -92,19 +93,24 @@ def test_yaml(use_toml):
 def test_route_build_dir(use_toml):
     use_toml("tests/data/toml/cloudfront_spa_build.toml")
     context = Context.from_toml(stage="dev")
-    cf = context.cloudfront["main"]
+    cf = context.cloudfront["web"]
     default_route = cf.default_route
     assert default_route.build == "just frontend-build"
     assert default_route.build_dir == "frontend/dist"
+    assert default_route.origin_path == "/web/app"
 
 
 def test_route_build_without_build_dir_fails():
     with pytest.raises(ValueError, match="build_dir is required when build is set"):
         CloudFront.model_validate(
             {
-                "origin_prefix": "/spa",
                 "routes": [
-                    {"is_default": True, "is_spa": True, "build": "npm run build"},
+                    {
+                        "is_default": True,
+                        "is_spa": True,
+                        "build": "npm run build",
+                        "origin_path": "/spa",
+                    },
                 ],
             }
         )
@@ -126,6 +132,60 @@ def test_api_route_with_build_fails():
 def test_uploadable_routes(use_toml):
     use_toml("tests/data/toml/cloudfront_spa_build.toml")
     context = Context.from_toml(stage="dev")
-    cf = context.cloudfront["main"]
+    cf = context.cloudfront["web"]
     assert len(cf.uploadable_routes) == 1
     assert cf.uploadable_routes[0].build_dir == "frontend/dist"
+
+
+def test_route_origin_path():
+    """S3 route に origin_path 必須、API route に禁止"""
+    # S3 route: origin_path 必須
+    with pytest.raises(ValueError, match="origin_path is required for S3 routes"):
+        Route.model_validate({"is_default": True, "is_spa": True})
+    # API route: origin_path 指定禁止
+    with pytest.raises(ValueError, match="type = 'api' cannot use origin_path"):
+        Route.model_validate(
+            {
+                "type": "api",
+                "handler": "wsgi",
+                "path_pattern": "/api/*",
+                "origin_path": "/api",
+            }
+        )
+    # origin_path のフォーマット
+    with pytest.raises(ValueError, match="origin_path must starts with /"):
+        Route.model_validate(
+            {"is_default": True, "is_spa": True, "origin_path": "noslash"}
+        )
+    with pytest.raises(ValueError, match="origin_path must not ends with /"):
+        Route.model_validate(
+            {"is_default": True, "is_spa": True, "origin_path": "/trailing/"}
+        )
+
+
+@mock_aws
+def test_route_build_dir_origin_path(use_toml):
+    """build_dir route の origin_path が正しく設定される"""
+    use_toml("tests/data/toml/cloudfront_spa_build.toml")
+    context = Context.from_toml(stage="dev")
+    cf = context.cloudfront["web"]
+    default_route = cf.default_route
+    assert default_route.origin_path == "/web/app"
+    static_route = [r for r in cf.routes if r.path_pattern == "/static/*"][0]
+    assert static_route.origin_path == "/web"
+
+
+def test_storage_location_forbidden_with_distribution():
+    """distribution 使用時に location は指定不可"""
+    with pytest.raises(ValueError, match="location cannot be used with distribution"):
+        DjangoStorage.model_validate(
+            {"store": "s3", "location": "static", "distribution": "web"}
+        )
+
+
+def test_storage_route_requires_distribution():
+    """route は distribution なしでは使用不可"""
+    with pytest.raises(ValueError, match="route requires distribution"):
+        DjangoStorage.model_validate(
+            {"store": "s3", "location": "media", "route": "static"}
+        )

@@ -101,9 +101,7 @@ class CloudFront:
             self._invalidate()
 
     def _upload_route(self, route: RouteContext):
-        s3_prefix = (
-            self.context.origin_prefix + route.path_pattern.rstrip("/*")
-        ).lstrip("/")
+        s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
         assert route.build_dir
         local_dir = Path(route.build_dir)
         uploaded_keys: set[str] = set()
@@ -164,7 +162,7 @@ class CloudFront:
         for route in self.context.routes:
             if route.build_dir:
                 continue
-            origin = self.context.origin_prefix + route.path_pattern
+            origin = route.origin_path + route.path_pattern
             echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))
             if route.is_spa:
                 echo.info("%s is a spa route." % (route.path_pattern or "default"))
@@ -360,7 +358,7 @@ class CloudFront:
             "Principal": {"Service": "cloudfront.amazonaws.com"},
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::%s%s/*"
-            % (self.context.bucket_name, self.context.origin_prefix),
+            % (self.context.bucket_name, self.context.bucket_policy_prefix),
             "Condition": {
                 "StringEquals": {
                     "AWS:SourceArn": "arn:aws:cloudfront::%s:distribution/%s"

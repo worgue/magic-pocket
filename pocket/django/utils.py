@@ -42,16 +42,7 @@ def _resolve_route(cf, storage):
     """distribution 内のルートを解決する"""
     if storage.route:
         return cf.get_route(storage.route)
-    if len(cf.routes) == 1:
-        return cf.routes[0]
-    # location からの自動マッチ
-    target_pattern = f"/{storage.location}/*" if storage.location else ""
-    for route in cf.routes:
-        if route.path_pattern == target_pattern:
-            return route
-    if not storage.location:
-        return cf.default_route
-    return None
+    return cf.default_route
 
 
 def _create_cloudfront_signer(signing_key_name: str):
@@ -85,20 +76,19 @@ def _build_storage_options(
             if not context:
                 raise ValueError("context is required for distribution storage")
             cf = context.cloudfront[storage.distribution]
-            # S3 location 計算: origin_prefix + location
-            s3_location = cf.origin_prefix.lstrip("/")
-            if storage.location:
-                s3_location += "/" + storage.location
-            # route 解決
             route = _resolve_route(cf, storage)
+            # S3 location = origin_path + path_pattern から自動計算
+            s3_location = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip(
+                "/"
+            )
             options: dict = {
                 "bucket_name": cf.bucket_name,
                 "location": s3_location,
                 "custom_domain": cf.domain,
-                "custom_origin_path": cf.origin_prefix,
-                "querystring_auth": route.signed if route else False,
+                "custom_origin_path": route.origin_path,
+                "querystring_auth": route.signed,
             }
-            if route and route.signed and cf.signing_key:
+            if route.signed and cf.signing_key:
                 signer = _create_cloudfront_signer(cf.signing_key)
                 if signer:
                     options["cloudfront_signer"] = signer

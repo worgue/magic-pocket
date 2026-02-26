@@ -63,6 +63,13 @@ pocket deploy --stage=dev
 - コンテナイメージの作成とECRへのアップロード
 - CloudFormationによるLambda関連リソースの作成・更新
 - CloudFormationによるCloudFront関連リソースの作成・更新
+- フロントエンドのビルドとS3アップロード（`build_dir` が設定されたルートがある場合）
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--openpath` | デプロイ後にブラウザで開くパス |
+| `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 
 ### pocket status
 
@@ -276,7 +283,19 @@ pocket resource cloudfront yaml --stage=dev
 
 # CloudFormation YAMLの差分を確認
 pocket resource cloudfront yaml-diff --stage=dev
+
+# フロントエンドのビルド・S3アップロード・キャッシュ無効化
+pocket resource cloudfront upload --stage=dev
+
+# ビルドをスキップしてアップロードのみ
+pocket resource cloudfront upload --stage=dev --skip-build
+
+# 特定のディストリビューションのみ
+pocket resource cloudfront upload --stage=dev --name=main
 ```
+
+`upload` は `build_dir` が設定されたルートに対して、ビルド → S3アップロード → CloudFrontキャッシュ無効化を実行します。
+`pocket deploy` 実行時にも自動的に呼ばれます（`--skip-frontend` で抑制可能）。
 
 ### vpc
 
