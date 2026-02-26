@@ -96,7 +96,7 @@ Resources:
           # {% if not route.is_api %}
           - Id: "{{ resource_prefix }}{{ route.name }}"
             DomainName: "{{ bucket_name }}.s3.{{ s3_region }}.amazonaws.com"
-            OriginPath: "{{ origin_prefix }}"
+            OriginPath: "{{ route.origin_path }}"
             OriginAccessControlId:
               Fn::GetAtt: OriginAccessControl.Id
             S3OriginConfig:

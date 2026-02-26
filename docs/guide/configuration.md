@@ -355,7 +355,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 
 !!! note "CloudFront 経由の配信"
     `distribution` を指定すると、S3 に保存しつつ CloudFront 経由で配信します。
-    `location` は `origin_prefix` からの相対パスになります。
+    `location` は `origin_path` からの相対パスになります。
 
     ```toml
     [awscontainer.django.storages]
@@ -401,7 +401,7 @@ CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ## cloudfront
 
 CloudFrontディストリビューションの設定です。名前付きサブテーブル `[cloudfront.xxx]` で複数のディストリビューションを定義できます。
-S3バケットは `[s3]` で定義したものを共有し、`origin_prefix` でパスを分離します。
+S3バケットは `[s3]` で定義したものを共有し、`origin_path` でパスを分離します。
 
 !!! info "この機能について"
     証明書、DNS設定、CloudFront設定、リダイレクト設定を行います。
@@ -410,7 +410,7 @@ S3バケットは `[s3]` で定義したものを共有し、`origin_prefix` で
 ```toml
 [cloudfront.main]
 domain = "www.example.com"
-origin_prefix = "/spa"
+origin_path = "/spa"
 routes = [
     { is_default = true, is_spa = true },
     { path_pattern = "/static/*", ref = "static", is_versioned = true },
@@ -418,7 +418,7 @@ routes = [
 
 [cloudfront.media]
 domain = "media.example.com"
-origin_prefix = "/media"
+origin_path = "/media"
 signing_key = "CF_MEDIA_KEY"
 routes = [
     { is_default = true, signed = true },
@@ -428,7 +428,7 @@ routes = [
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `domain` | str \| None | None | 配信ドメイン（省略時は `xxx.cloudfront.net`） |
-| `origin_prefix` | str | `"/spa"` | S3 オリジンパス |
+| `origin_path` | str | `"/spa"` | S3 オリジンパス |
 | `hosted_zone_id_override` | str \| None | None | ホストゾーンIDを明示指定 |
 | `redirect_from` | list[RedirectFrom] | `[]` | リダイレクト元ドメイン |
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |

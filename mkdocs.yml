@@ -10,6 +10,7 @@ nav:
       - 設定ファイル (pocket.toml): guide/configuration.md
       - コマンドライン (CLI): guide/cli.md
       - 実行環境とDjango連携: guide/runtime.md
+      - ベストプラクティス: guide/best-practices.md
       - コールドスタート: guide/cold-start.md
   - Changelog: changelog.md
   - 旧ドキュメント:

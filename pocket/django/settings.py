@@ -23,8 +23,19 @@ class DjangoStorage(BaseSettings):
 
     @model_validator(mode="after")
     def check_location(self):
-        if self.store == "s3" and self.location is None:
-            raise ValueError("location is required for s3 storage")
+        if self.store == "s3" and self.location is None and not self.distribution:
+            raise ValueError("location is required for s3 storage without distribution")
+        if self.distribution and self.location is not None:
+            raise ValueError(
+                "location cannot be used with distribution "
+                "(S3 location is computed from the route's origin_path)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def check_route(self):
+        if self.route and not self.distribution:
+            raise ValueError("route requires distribution")
         return self
 
     @model_validator(mode="after")

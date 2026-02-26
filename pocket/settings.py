@@ -202,6 +202,21 @@ class Route(BaseSettings):
     signed: bool = False
     build: str | None = None
     build_dir: str | None = None
+    origin_path: str | None = None
+
+    @model_validator(mode="after")
+    def check_origin_path(self):
+        if self.type == "api":
+            if self.origin_path is not None:
+                raise ValueError("type = 'api' cannot use origin_path")
+        else:
+            if self.origin_path is None:
+                raise ValueError("origin_path is required for S3 routes")
+            if self.origin_path[0] != "/":
+                raise ValueError("origin_path must starts with /")
+            if self.origin_path[-1] == "/":
+                raise ValueError("origin_path must not ends with /")
+        return self
 
     @model_validator(mode="after")
     def check_api_route(self):
@@ -262,20 +277,10 @@ class Route(BaseSettings):
 
 class CloudFront(BaseSettings):
     domain: str | None = None
-    origin_prefix: str = "/spa"
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
     routes: list[Route] = []
     signing_key: str | None = None
-
-    @model_validator(mode="after")
-    def check_origin_prefix(self):
-        if self.origin_prefix:
-            if self.origin_prefix[0] != "/":
-                raise ValueError("origin_prefix must starts with /")
-            if self.origin_prefix[-1] == "/":
-                raise ValueError("origin_prefix must not ends with /")
-        return self
 
     @model_validator(mode="after")
     def check_domain_redirect_from(self):
