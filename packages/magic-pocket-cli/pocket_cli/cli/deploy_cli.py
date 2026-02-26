@@ -56,6 +56,17 @@ def deploy_init_resources(context: Context):
         resource.deploy_init()
 
 
+def deploy_frontend(context: Context, *, skip_build: bool = False):
+    for _name, cf_ctx in context.cloudfront.items():
+        cf = CloudFront(cf_ctx)
+        if not cf_ctx.uploadable_routes:
+            continue
+        if cf.status == "NOEXIST":
+            echo.warning("CloudFront '%s' が未作成です。スキップします。" % cf_ctx.name)
+            continue
+        cf.upload(skip_build=skip_build)
+
+
 def deploy_resources(context: Context):
     state_store = _create_state_store(context)
     state_store.ensure_bucket()
@@ -84,10 +95,13 @@ def deploy_resources(context: Context):
 @click.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--openpath")
-def deploy(stage: str, openpath):
+@click.option("--skip-frontend", is_flag=True, default=False)
+def deploy(stage: str, openpath, skip_frontend):
     context = Context.from_toml(stage=stage)
     deploy_init_resources(context)
     deploy_resources(context)
+    if not skip_frontend:
+        deploy_frontend(context)
     if endpoint := context.awscontainer and AwsContainer(
         context.awscontainer
     ).endpoints.get("wsgi"):

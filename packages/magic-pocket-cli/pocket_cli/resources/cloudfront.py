@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import subprocess
+import time
 from functools import cached_property
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import boto3
@@ -14,7 +18,7 @@ from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 from pocket_cli.resources.aws.s3_utils import bucket_exists, create_bucket
 
 if TYPE_CHECKING:
-    from pocket.context import CloudFrontContext
+    from pocket.context import CloudFrontContext, RouteContext
 
 
 class OriginAccessControl(BaseModel):
@@ -87,9 +91,79 @@ class CloudFront:
         log("Bucket for cloudfront is ready.")
         self.warn_contents()
 
+    def upload(self, *, skip_build: bool = False):
+        for route in self.context.uploadable_routes:
+            if route.build and not skip_build:
+                echo.info("ビルド実行: %s" % route.build)
+                subprocess.run(route.build, shell=True, check=True)
+            self._upload_route(route)
+        if self.context.uploadable_routes:
+            self._invalidate()
+
+    def _upload_route(self, route: RouteContext):
+        s3_prefix = (
+            self.context.origin_prefix + route.path_pattern.rstrip("/*")
+        ).lstrip("/")
+        assert route.build_dir
+        local_dir = Path(route.build_dir)
+        uploaded_keys: set[str] = set()
+        for file in local_dir.rglob("*"):
+            if file.is_dir():
+                continue
+            relative = file.relative_to(local_dir)
+            s3_key = s3_prefix + "/" + str(relative)
+            uploaded_keys.add(s3_key)
+            extra_args: dict[str, str] = {
+                "ContentType": mimetypes.guess_type(str(file))[0]
+                or "application/octet-stream"
+            }
+            if route.is_spa:
+                if file.suffix in (".html", ".htm"):
+                    extra_args["CacheControl"] = "no-cache, no-store"
+                else:
+                    extra_args["CacheControl"] = "max-age=31536000"
+            self.s3_client.upload_file(
+                str(file),
+                self.context.bucket_name,
+                s3_key,
+                ExtraArgs=extra_args,
+            )
+            echo.log("アップロード: s3://%s/%s" % (self.context.bucket_name, s3_key))
+        self._delete_stale_objects(s3_prefix, uploaded_keys)
+        echo.info(
+            "%d ファイルをアップロードしました (prefix: %s)"
+            % (len(uploaded_keys), s3_prefix)
+        )
+
+    def _delete_stale_objects(self, prefix: str, uploaded_keys: set[str]):
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(
+            Bucket=self.context.bucket_name, Prefix=prefix + "/"
+        ):
+            for obj in page.get("Contents", []):
+                if obj["Key"] not in uploaded_keys:
+                    self.s3_client.delete_object(
+                        Bucket=self.context.bucket_name, Key=obj["Key"]
+                    )
+                    echo.log(
+                        "削除: s3://%s/%s" % (self.context.bucket_name, obj["Key"])
+                    )
+
+    def _invalidate(self):
+        self.cf_client.create_invalidation(
+            DistributionId=self.distribution_id,
+            InvalidationBatch={
+                "Paths": {"Quantity": 1, "Items": ["/*"]},
+                "CallerReference": str(int(time.time())),
+            },
+        )
+        echo.info("CloudFront キャッシュ無効化をリクエストしました")
+
     def warn_contents(self):
         bucket = self.context.bucket_name
         for route in self.context.routes:
+            if route.build_dir:
+                continue
             origin = self.context.origin_prefix + route.path_pattern
             echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))
             if route.is_spa:

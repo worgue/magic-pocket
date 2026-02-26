@@ -200,6 +200,8 @@ class Route(BaseSettings):
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
     signed: bool = False
+    build: str | None = None
+    build_dir: str | None = None
 
     @model_validator(mode="after")
     def check_api_route(self):
@@ -211,8 +213,16 @@ class Route(BaseSettings):
                     "type = 'api' cannot use "
                     "is_spa, is_versioned, signed, or is_default"
                 )
+            if self.build or self.build_dir:
+                raise ValueError("type = 'api' cannot use build or build_dir")
         if self.handler and self.type != "api":
             raise ValueError("handler requires type = 'api'")
+        return self
+
+    @model_validator(mode="after")
+    def check_build(self):
+        if self.build and not self.build_dir:
+            raise ValueError("build_dir is required when build is set")
         return self
 
     @model_validator(mode="after")
