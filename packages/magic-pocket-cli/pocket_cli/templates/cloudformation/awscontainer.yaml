@@ -126,6 +126,10 @@ Resources:
           # {% for env_key, value in envs.items() %}
           "{{ env_key }}": "{{ value }}"
           # {% endfor %}
+          # {% for env_key, import_name in signing_key_imports.items() %}
+          "{{ env_key }}":
+            Fn::ImportValue: "{{ import_name }}"
+          # {% endfor %}
       # {% if vpc %}
       VpcConfig:
         SecurityGroupIds:
@@ -356,6 +360,16 @@ Outputs:
   "{{ handler.key|capitalize }}LambdaFunction":
     Value:
       Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
+  # {% if handler.export_api_domain %}
+  "{{ handler.key|capitalize }}ApiDomain":
+    Value:
+      Fn::Sub:
+        - "${ApiId}.execute-api.${AWS::Region}.amazonaws.com"
+        - ApiId:
+            Ref: "{{ handler.key|capitalize }}Api"
+    Export:
+      Name: "{{ handler.export_api_domain }}"
+  # {% endif %}
   # {% if handler.apigateway %}
   "{{ handler.key|capitalize }}ApiEndpoint":
     Value:

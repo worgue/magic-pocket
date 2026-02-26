@@ -116,30 +116,29 @@ region = "ap-southeast-1" # (1)!
 stages = ["dev", "prd"] # (2)!
 
 [s3] # (3)!
-public_dirs = ["static"] # (4)!
 
-[neon] # (5)!
+[neon] # (4)!
 
-[awscontainer] # (6)!
-dockerfile_path = "pocket.Dockerfile" # (7)!
+[awscontainer] # (5)!
+dockerfile_path = "pocket.Dockerfile" # (6)!
 
-[awscontainer.handlers.wsgi] # (8)!
+[awscontainer.handlers.wsgi] # (7)!
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management] # (9)!
+[awscontainer.handlers.management] # (8)!
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
-[dev.awscontainer.handlers.wsgi] # (10)!
+[dev.awscontainer.handlers.wsgi] # (9)!
 apigateway = {}
 [prd.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secretsmanager.pocket_secrets] # (11)!
+[awscontainer.secretsmanager.pocket_secrets] # (10)!
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 
-[awscontainer.django.storages] # (12)!
+[awscontainer.django.storages] # (11)!
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
@@ -147,15 +146,14 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 1.  :man_raising_hand: `ap-southeast-1`リージョンでリソースは作成されます。Neonが使えるリージョンを指定してください。
 2.  `dev`と`prd`の2つのステージが指定可能です。
 3.  S3バケットを作成します。名前は指定されていないので、プロジェクト名とステージ名から自動生成されます。
-4.  作成されたバケットの`static`ディレクトリは公開されます
-5.  Neonデータベースが作成されます。名前はプロジェクト名とステージ名から自動生成されます。
-6.  Lambdaコンテナイメージを作成します。ECRリポジトリ名はプロジェクト名とステージ名から自動生成されます。
-7.  Lambdaコンテナを作成する、Dockerfileのパスを指定します。
-8.  `wsgi`という名前で、wsgiを実行するLambda関数が作成されます。
-9.  `management`という名前で、マネジメントコマンドを実行するLambda関数が作成されます。timeoutは600秒です。
-10. `dev`と`prd`のwsgiにapigatewayが設定されます。URLはAWS側で自動生成されます。項目を分けているのは、`apigateway = { domain = "example.com" }`のように、ドメインを指定をするためです。Route53のホストゾーンがあれば、自動設定可能です。外部の設定を用いる場合、CloudFomationがDNSレコードの認証待ちになります。
-11. SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL が自動生成され secretsmanager に保存されます
-12. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
+4.  Neonデータベースが作成されます。名前はプロジェクト名とステージ名から自動生成されます。
+5.  Lambdaコンテナイメージを作成します。ECRリポジトリ名はプロジェクト名とステージ名から自動生成されます。
+6.  Lambdaコンテナを作成する、Dockerfileのパスを指定します。
+7.  `wsgi`という名前で、wsgiを実行するLambda関数が作成されます。
+8.  `management`という名前で、マネジメントコマンドを実行するLambda関数が作成されます。timeoutは600秒です。
+9.  `dev`と`prd`のwsgiにapigatewayが設定されます。URLはAWS側で自動生成されます。項目を分けているのは、`apigateway = { domain = "example.com" }`のように、ドメインを指定をするためです。Route53のホストゾーンがあれば、自動設定可能です。外部の設定を用いる場合、CloudFomationがDNSレコードの認証待ちになります。
+10. SECRET_KEY、DJANGO_SUPERUSER_PASSWORD、DATABASE_URL が自動生成され secretsmanager に保存されます
+11. S3 に default と static のディレクトリが作成され、settings.py を通じて簡単に、django の settings.STORAGES 形式で読み込めます。
 
 ### pocket.Dockerfile
 Lambda対応のDockerfileを生成します(1)。

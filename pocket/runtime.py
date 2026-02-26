@@ -35,6 +35,14 @@ def _pocket_secret_to_envs(
             f"{key}{pem_suffix}": secrets["pem"],
             f"{key}{pub_suffix}": secrets["pub"],
         }
+    elif spec.type == "cloudfront_signing_key":
+        pem_suffix = spec.options["pem_base64_environ_suffix"]
+        pub_suffix = spec.options["pub_base64_environ_suffix"]
+        # key_id は CFn ImportValue で Lambda 環境変数に設定されるため不要
+        return {
+            f"{key}{pem_suffix}": secrets["pem"],
+            f"{key}{pub_suffix}": secrets["pub"],
+        }
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 

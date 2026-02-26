@@ -25,6 +25,7 @@ Source = "https://github.com/worgue/magic-pocket"
 
 [project.optional-dependencies]
 django = ["django>=4.2.0"]
+signing = ["cryptography>=41.0.0"]
 
 [build-system]
 requires = ["hatchling"]

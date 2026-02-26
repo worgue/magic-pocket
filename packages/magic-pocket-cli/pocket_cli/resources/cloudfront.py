@@ -52,7 +52,8 @@ class CloudFront:
         )
 
     def state_info(self):
-        return {"cloudfront": {"bucket_name": self.context.bucket_name}}
+        key = "cloudfront-%s" % self.context.name
+        return {key: {"bucket_name": self.context.bucket_name}}
 
     def deploy_init(self):
         self.warn_contents()

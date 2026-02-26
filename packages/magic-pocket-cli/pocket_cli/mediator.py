@@ -74,6 +74,8 @@ class Mediator:
             return self._get_tidb_database_url()
         elif spec.type == "rsa_pem_base64":
             return self._generate_rsa_pem()
+        elif spec.type == "cloudfront_signing_key":
+            return self._generate_rsa_pem()
         else:
             raise Exception("Unknown secret type: %s" % spec.type)
 

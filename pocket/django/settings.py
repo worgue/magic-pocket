@@ -7,11 +7,13 @@ from pydantic_settings import BaseSettings
 
 
 class DjangoStorage(BaseSettings):
-    store: Literal["s3", "cloudfront", "filesystem"]
+    store: Literal["s3", "filesystem"]
     location: str | None = None
     static: bool = False
     manifest: bool = False
     options: dict[str, Any] = {}
+    distribution: str | None = None
+    route: str | None = None
 
     @model_validator(mode="after")
     def check_manifest(self):
@@ -26,14 +28,9 @@ class DjangoStorage(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def check_cloudfront(self):
-        if self.store == "cloudfront":
-            if self.location:
-                raise ValueError(
-                    "location can't be used with cloudfront. use options.clodfront_ref"
-                )
-            if "cloudfront_ref" not in self.options:
-                raise ValueError("cloudfront_ref is required for cloudfront storage")
+    def check_distribution(self):
+        if self.distribution and self.store != "s3":
+            raise ValueError("distribution can only be used with s3 store")
         return self
 
 
