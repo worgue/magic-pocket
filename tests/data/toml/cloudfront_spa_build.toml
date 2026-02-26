@@ -1,0 +1,13 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[cloudfront.main]
+origin_prefix = "/spa"
+routes = [
+    { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist" },
+    { path_pattern = "/static/*", is_versioned = true },
+]
