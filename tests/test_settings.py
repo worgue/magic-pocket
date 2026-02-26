@@ -1,8 +1,9 @@
 import boto3
+import pytest
 from moto import mock_aws
 
 from pocket.context import Context
-from pocket.settings import Settings
+from pocket.settings import CloudFront, Route, Settings
 
 
 def test_settings_from_toml(use_toml):
@@ -85,3 +86,46 @@ def test_yaml(use_toml):
     handlers = context.awscontainer.handlers
     assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
+
+
+@mock_aws
+def test_route_build_dir(use_toml):
+    use_toml("tests/data/toml/cloudfront_spa_build.toml")
+    context = Context.from_toml(stage="dev")
+    cf = context.cloudfront["main"]
+    default_route = cf.default_route
+    assert default_route.build == "just frontend-build"
+    assert default_route.build_dir == "frontend/dist"
+
+
+def test_route_build_without_build_dir_fails():
+    with pytest.raises(ValueError, match="build_dir is required when build is set"):
+        CloudFront.model_validate(
+            {
+                "origin_prefix": "/spa",
+                "routes": [
+                    {"is_default": True, "is_spa": True, "build": "npm run build"},
+                ],
+            }
+        )
+
+
+def test_api_route_with_build_fails():
+    with pytest.raises(ValueError, match="type = 'api' cannot use build or build_dir"):
+        Route.model_validate(
+            {
+                "type": "api",
+                "handler": "wsgi",
+                "path_pattern": "/api/*",
+                "build_dir": "dist",
+            }
+        )
+
+
+@mock_aws
+def test_uploadable_routes(use_toml):
+    use_toml("tests/data/toml/cloudfront_spa_build.toml")
+    context = Context.from_toml(stage="dev")
+    cf = context.cloudfront["main"]
+    assert len(cf.uploadable_routes) == 1
+    assert cf.uploadable_routes[0].build_dir == "frontend/dist"

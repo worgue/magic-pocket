@@ -430,6 +430,8 @@ class RouteContext(BaseModel):
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
     signed: bool = False
+    build: str | None = None
+    build_dir: str | None = None
 
     @computed_field
     @property
@@ -490,6 +492,8 @@ class RouteContext(BaseModel):
             versioned_max_age=route.versioned_max_age,
             ref=route.ref,
             signed=route.signed,
+            build=route.build,
+            build_dir=route.build_dir,
         )
 
 
@@ -526,6 +530,11 @@ class CloudFrontContext(BaseModel):
             if route.ref == ref:
                 return route
         raise ValueError(f"route ref [{ref}] not found")
+
+    @computed_field
+    @property
+    def uploadable_routes(self) -> list[RouteContext]:
+        return [r for r in self.routes if r.build_dir]
 
     @computed_field
     @property

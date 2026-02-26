@@ -93,6 +93,20 @@ def update(stage, name):
 @cloudfront.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--name", default=None)
+@click.option("--skip-build", is_flag=True, default=False)
+def upload(stage, name, skip_build):
+    for cf in get_cloudfront_resources(stage, name):
+        if not cf.context.uploadable_routes:
+            echo.info("[%s] アップロード対象のルートがありません" % cf.context.name)
+            continue
+        echo.info("[%s] アップロード開始" % cf.context.name)
+        cf.upload(skip_build=skip_build)
+    echo.success("アップロード完了")
+
+
+@cloudfront.command()
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--name", default=None)
 def status(stage, name):
     for cf in get_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)

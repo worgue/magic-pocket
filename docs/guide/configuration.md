@@ -472,6 +472,8 @@ routes = [
 | `versioned_max_age` | int | `31536000` | バージョン付きアセットのmax-age（秒、デフォルト1年） |
 | `ref` | str | `""` | ルートの参照名（Django storage の route で参照） |
 | `signed` | bool | `false` | 署名付きURL（distribution に `signing_key` が必要） |
+| `build` | str \| None | None | ビルドコマンド（省略時はビルドスキップ） |
+| `build_dir` | str \| None | None | ビルド成果物ディレクトリ（設定時に自動アップロード対象） |
 
 !!! note "制約"
     - `routes` には `is_default = true` のルートが1つ必要です。
@@ -479,8 +481,9 @@ routes = [
     - `is_spa` と `is_versioned` は同時に `true` にできません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default` は使用できません。
+    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default`, `build`, `build_dir` は使用できません。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
+    - `build` を指定する場合は `build_dir` が必須です。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 
