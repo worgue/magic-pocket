@@ -40,7 +40,7 @@ sqs = {}
 
 [cloudfront.main]
 routes = [
-    { is_default = true, is_spa = true },
+    { is_default = true, is_spa = true, origin_path = "/main" },
 ]
 
 [dev.awscontainer]

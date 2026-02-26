@@ -432,6 +432,7 @@ class RouteContext(BaseModel):
     signed: bool = False
     build: str | None = None
     build_dir: str | None = None
+    origin_path: str = ""
 
     @computed_field
     @property
@@ -494,6 +495,7 @@ class RouteContext(BaseModel):
             signed=route.signed,
             build=route.build,
             build_dir=route.build_dir,
+            origin_path=route.origin_path or "",
         )
 
 
@@ -505,7 +507,6 @@ class CloudFrontContext(BaseModel):
     hosted_zone_id_override: str | None = None
     slug: str
     bucket_name: str
-    origin_prefix: str
     resource_prefix: str
     redirect_from: list[RedirectFromContext] = []
     routes: list[RouteContext] = []
@@ -516,6 +517,23 @@ class CloudFrontContext(BaseModel):
     @property
     def yaml_key(self) -> str:
         return "".join([s.capitalize() for s in self.slug.split("-")])
+
+    @computed_field
+    @property
+    def bucket_policy_prefix(self) -> str:
+        prefixes = [
+            r.origin_path for r in self.routes if not r.is_api and r.origin_path
+        ]
+        if not prefixes:
+            return ""
+        parts_list = [p.split("/") for p in prefixes]
+        common: list[str] = []
+        for segments in zip(*parts_list, strict=False):
+            if len(set(segments)) == 1:
+                common.append(segments[0])
+            else:
+                break
+        return "/".join(common)
 
     @computed_field
     @property
@@ -579,7 +597,6 @@ class CloudFrontContext(BaseModel):
             hosted_zone_id_override=cf.hosted_zone_id_override,
             slug=f"{root.slug}-{name}",
             bucket_name=root.s3.bucket_name_format.format(**format_vars),
-            origin_prefix=cf.origin_prefix,
             resource_prefix=resource_prefix,
             redirect_from=[
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from

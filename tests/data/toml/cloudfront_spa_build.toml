@@ -5,9 +5,8 @@ stages = ["dev"]
 
 [s3]
 
-[cloudfront.main]
-origin_prefix = "/spa"
+[cloudfront.web]
 routes = [
-    { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist" },
-    { path_pattern = "/static/*", is_versioned = true },
+    { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
+    { path_pattern = "/static/*", is_versioned = true, origin_path = "/web" },
 ]
