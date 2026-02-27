@@ -60,6 +60,8 @@ class Mediator:
         self.create_pocket_managed_secrets(exists="ignore")
         if self.context.awscontainer and self.context.awscontainer.secrets:
             sc = self.context.awscontainer.secrets
+            if hasattr(sc, "pocket_store"):
+                del sc.pocket_store
             if hasattr(sc, "allowed_sm_resources"):
                 del sc.allowed_sm_resources
             if hasattr(sc, "allowed_ssm_resources"):

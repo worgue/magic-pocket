@@ -6,7 +6,7 @@ Resources:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
-        Name: "{{ resource_prefix }}oac"
+        Name: "{{ slug }}-oac"
         OriginAccessControlOriginType: s3
         SigningBehavior: always
         SigningProtocol: sigv4
@@ -30,7 +30,7 @@ Resources:
     Type: AWS::CloudFront::OriginRequestPolicy
     Properties:
       OriginRequestPolicyConfig:
-        Name: "{{ resource_prefix }}api-origin-request"
+        Name: "{{ slug }}-api-origin-request"
         CookiesConfig:
           CookieBehavior: all
         HeadersConfig:
@@ -44,7 +44,7 @@ Resources:
   UrlFallbackFunction{{ route.yaml_key }}:
     Type: AWS::CloudFront::Function
     Properties:
-      Name: "{{ resource_prefix }}cloudfront-{{ route.name }}-fallback"
+      Name: "{{ slug }}-{{ route.name }}-fallback"
       AutoPublish: true
       FunctionCode: |
         {{ route.url_fallback_function_indent8 }}
@@ -57,7 +57,7 @@ Resources:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
-        Name: "{{ resource_prefix }}{{ route.name }}"
+        Name: "{{ slug }}-{{ route.name }}-headers"
         CustomHeadersConfig:
           Items:
             - Header: "cache-control"
@@ -103,10 +103,9 @@ Resources:
               OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
           # {% endif %}
           # {% endfor %}
-          # {% for handler_key, import_name in api_origins.items() %}
+          # {% for handler_key, domain_name in api_origins.items() %}
           - Id: "{{ resource_prefix }}api-{{ handler_key }}"
-            DomainName:
-              Fn::ImportValue: "{{ import_name }}"
+            DomainName: "{{ domain_name }}"
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               HTTPSPort: 443
