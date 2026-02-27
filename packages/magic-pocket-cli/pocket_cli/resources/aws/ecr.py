@@ -5,10 +5,9 @@ from typing import TYPE_CHECKING
 
 import boto3
 from pydantic import BaseModel, Field, computed_field
-from python_on_whales import docker
 
 if TYPE_CHECKING:
-    pass
+    from pocket_cli.resources.aws.builders import Builder
 
 
 class RepositoryDetail(BaseModel):
@@ -30,13 +29,20 @@ class ImageDetail(BaseModel):
 
 class Ecr:
     def __init__(
-        self, region_name: str, name: str, tag: str, dockerfile_path: str, platform: str
+        self,
+        region_name: str,
+        name: str,
+        tag: str,
+        dockerfile_path: str,
+        platform: str,
+        builder: Builder | None = None,
     ):
         self.client = boto3.client("ecr", region_name=region_name)
         self.name = name
         self.tag = tag
         self.dockerfile_path = dockerfile_path
         self.platform = platform
+        self._builder = builder
 
     @cached_property
     def info(self) -> RepositoryDetail:
@@ -82,22 +88,12 @@ class Ecr:
     def build_and_push(self):
         if self.target is None:
             raise ValueError("target is not defined")
-        dockerfile_path = self.dockerfile_path
-        platform = self.platform
-        print("Building docker image...")
-        print("  dockerpath: %s" % dockerfile_path)
-        print("  tags: %s" % self.target)
-        print("  platforms: %s" % platform)
-        print("Logging in to ecr...")
-        docker.login_ecr(region_name=self.client.meta.config.region_name)
-        print("Pushing docker image...")
-        docker.build(
-            ".",
-            file=str(dockerfile_path),
-            tags=self.target,
-            platforms=[platform],
-            provenance=False,
-            push=True,
+        if self._builder is None:
+            raise ValueError("builder is not configured")
+        self._builder.build_and_push(
+            target=self.target,
+            dockerfile_path=self.dockerfile_path,
+            platform=self.platform,
         )
 
     def exists(self) -> bool:

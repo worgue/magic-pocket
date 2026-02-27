@@ -11,7 +11,13 @@ from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.aws.ssm import SsmStore
-from .settings import ManagedSecretSpec, StoreType, UserSecretSpec
+from .settings import (
+    BuildBackend,
+    BuildConfig,
+    ManagedSecretSpec,
+    StoreType,
+    UserSecretSpec,
+)
 from .utils import echo, get_hosted_zone_id_from_domain
 
 
@@ -235,6 +241,20 @@ class SecretsContext(BaseModel):
         )
 
 
+class BuildContext(BaseModel):
+    backend: BuildBackend = "codebuild"
+    compute_type: str = "BUILD_GENERAL1_MEDIUM"
+    depot_project_id: str | None = None
+
+    @classmethod
+    def from_settings(cls, build: BuildConfig) -> BuildContext:
+        return cls(
+            backend=build.backend,
+            compute_type=build.compute_type,
+            depot_project_id=build.depot_project_id,
+        )
+
+
 class AwsContainerContext(BaseModel):
     vpc: VpcContext | None = None
     secrets: SecretsContext | None = None
@@ -256,6 +276,7 @@ class AwsContainerContext(BaseModel):
     use_efs: bool = False
     permissions_boundary: str | None = None
     efs_local_mount_path: str = ""
+    build: BuildContext = BuildContext()
 
     @classmethod
     def from_settings(
@@ -317,6 +338,7 @@ class AwsContainerContext(BaseModel):
             use_efs=use_efs,
             permissions_boundary=ac.permissions_boundary,
             efs_local_mount_path=efs_local_mount_path,
+            build=BuildContext.from_settings(ac.build),
         )
 
 

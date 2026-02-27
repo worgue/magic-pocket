@@ -16,7 +16,7 @@ from pocket_cli.resources.tidb import TiDb
 from pocket_cli.resources.vpc import Vpc
 
 
-def get_resources(context: Context):
+def get_resources(context: Context, *, state_bucket: str = ""):
     resources = []
     if context.neon:
         resources.append(Neon(context.neon))
@@ -32,7 +32,7 @@ def get_resources(context: Context):
         if cf_ctx.signing_key:
             resources.append(CloudFrontKeys(cf_ctx))
     if context.awscontainer:
-        resources.append(AwsContainer(context.awscontainer))
+        resources.append(AwsContainer(context.awscontainer, state_bucket=state_bucket))
     for _name, cf_ctx in context.cloudfront.items():
         resources.append(CloudFront(cf_ctx))
     return resources
@@ -49,8 +49,8 @@ def _create_state_store(context: Context) -> StateStore:
     return StateStore(bucket_name, context.general.region)
 
 
-def deploy_init_resources(context: Context):
-    for resource in get_resources(context):
+def deploy_init_resources(context: Context, *, state_bucket: str = ""):
+    for resource in get_resources(context, state_bucket=state_bucket):
         target_name = resource.__class__.__name__
         echo.log("Deploy init %s..." % target_name)
         resource.deploy_init()
@@ -67,12 +67,14 @@ def deploy_frontend(context: Context, *, skip_build: bool = False):
         cf.upload(skip_build=skip_build)
 
 
-def deploy_resources(context: Context):
+def deploy_resources(context: Context, *, state_bucket: str = ""):
     state_store = _create_state_store(context)
+    # state bucket は deploy_init_resources の前に作成済み
+    # ここでは念のため再確認
     state_store.ensure_bucket()
 
     mediator = Mediator(context)
-    for resource in get_resources(context):
+    for resource in get_resources(context, state_bucket=state_bucket):
         target_name = resource.__class__.__name__
         if resource.status == "NOEXIST":
             echo.log("Creating %s..." % target_name)
@@ -98,8 +100,12 @@ def deploy_resources(context: Context):
 @click.option("--skip-frontend", is_flag=True, default=False)
 def deploy(stage: str, openpath, skip_frontend):
     context = Context.from_toml(stage=stage)
-    deploy_init_resources(context)
-    deploy_resources(context)
+    # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
+    state_store = _create_state_store(context)
+    state_store.ensure_bucket()
+    state_bucket = state_store.bucket_name
+    deploy_init_resources(context, state_bucket=state_bucket)
+    deploy_resources(context, state_bucket=state_bucket)
     if not skip_frontend:
         deploy_frontend(context)
     if endpoint := context.awscontainer and AwsContainer(
