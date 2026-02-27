@@ -8,6 +8,7 @@ from pocket import context
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 from pocket_cli.mediator import Mediator
+from pocket_cli.resources.aws.builders import Builder, create_builder
 from pocket_cli.resources.aws.cloudformation import ContainerStack
 from pocket_cli.resources.aws.ecr import Ecr
 from pocket_cli.resources.aws.lambdahandler import LambdaHandler
@@ -32,9 +33,25 @@ class AwsContainer:
 
     context: AwsContainerContext
 
-    def __init__(self, context: context.AwsContainerContext) -> None:
+    def __init__(
+        self,
+        context: context.AwsContainerContext,
+        *,
+        state_bucket: str = "",
+    ) -> None:
         self.context = context
         self.client = boto3.client("lambda", region_name=context.region)
+        self._state_bucket = state_bucket
+
+    @property
+    def builder(self) -> Builder:
+        return create_builder(
+            self.context.build,
+            region=self.context.region,
+            resource_prefix=self.context.resource_prefix,
+            state_bucket=self._state_bucket,
+            permissions_boundary=self.context.permissions_boundary,
+        )
 
     @property
     def image_uri(self):
@@ -49,6 +66,7 @@ class AwsContainer:
             self.context.stage,
             self.context.dockerfile_path,
             self.context.platform,
+            builder=self.builder,
         )
 
     @property

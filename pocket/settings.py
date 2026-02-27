@@ -38,6 +38,21 @@ FormatStr = Annotated[
 
 StoreType = Literal["sm", "ssm"]
 
+BuildBackend = Literal["codebuild", "docker", "depot"]
+
+
+class BuildConfig(BaseModel):
+    backend: BuildBackend = "codebuild"
+    compute_type: str = "BUILD_GENERAL1_MEDIUM"
+    depot_project_id: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_string(cls, data):
+        if isinstance(data, str):
+            return {"backend": data}
+        return data
+
 
 class ManagedSecretSpec(BaseModel):
     type: Literal[
@@ -124,6 +139,7 @@ class AwsContainer(BaseModel):
     platform: str = "linux/amd64"
     django: Django | None = None
     permissions_boundary: str | None = None
+    build: BuildConfig = BuildConfig()
 
     @model_validator(mode="after")
     def check_handlers(self):
