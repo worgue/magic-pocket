@@ -2,6 +2,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.resources.aws.builders.codebuild import CodeBuildBuilder
 from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
@@ -23,6 +24,24 @@ def _create_state_store(context: Context) -> StateStore:
     return StateStore(bucket_name, context.general.region)
 
 
+def _create_codebuild_builder(context: Context) -> CodeBuildBuilder | None:
+    """CodeBuildBuilder インスタンスを作成（リソース確認用）"""
+    if not context.awscontainer or not context.general:
+        return None
+    resource_prefix = context.general.prefix_template.format(
+        stage=context.stage,
+        project=context.project_name,
+        namespace=context.general.namespace,
+    )
+    state_bucket = f"{resource_prefix}state"
+    return CodeBuildBuilder(
+        region=context.general.region,
+        resource_prefix=resource_prefix,
+        state_bucket=state_bucket,
+        permissions_boundary=context.awscontainer.permissions_boundary,
+    )
+
+
 def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     """AwsContainer 関連の削除対象を収集"""
     targets: list[str] = []
@@ -35,6 +54,12 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
         parts.append("ECR")
     if with_secrets and context.awscontainer.secrets:
         parts.append("secrets")
+
+    # CodeBuildリソースの存在チェック（設定に関わらず）
+    cb = _create_codebuild_builder(context)
+    if cb and (cb.project_exists() or cb.role_exists()):
+        parts.append("CodeBuild")
+
     targets.append("AwsContainer (%s)" % " + ".join(parts))
 
     if context.awscontainer.vpc:
@@ -78,6 +103,17 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
     return targets
 
 
+def _destroy_codebuild(context: Context) -> None:
+    """CodeBuildプロジェクト + IAMロールを削除（設定に関わらず存在すれば削除）"""
+    cb = _create_codebuild_builder(context)
+    if cb is None:
+        return
+    if cb.project_exists() or cb.role_exists():
+        echo.log("Destroying CodeBuild resources...")
+        cb.delete()
+        echo.success("CodeBuild resources were deleted.")
+
+
 def _destroy_awscontainer(context: Context, with_secrets: bool):
     """AwsContainer 関連リソースを削除"""
     if not context.awscontainer:
@@ -93,6 +129,8 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
         echo.log("Destroying ECR repository...")
         ac.ecr.delete()
         echo.success("ECR repository was deleted.")
+
+    _destroy_codebuild(context)
 
     if with_secrets and context.awscontainer.secrets:
         echo.log("Destroying pocket managed secrets...")
