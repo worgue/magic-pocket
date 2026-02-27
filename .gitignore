@@ -15,6 +15,9 @@ wheels/
 # local env
 .env
 
+# Rust
+/target/
+
 # Forge
 .forge/
 forge.local.toml

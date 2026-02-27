@@ -1,4 +1,5 @@
 kits = ["core", "git", "uv", "just", "postgres", "docker", "infra", "claude", "mysql", "redis"]
+aws_region = "ap-northeast-1"
 
 [[mounts]]
 type = "overlay"
