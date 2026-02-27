@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import sys
 import warnings
 import webbrowser
 from pathlib import Path
@@ -187,7 +188,10 @@ def collectstatic_locally(stage: str):
     local_storage = get_deploystatic_local_storage(stage)
     echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
     set_staticfiles_override_env(local_storage)
-    run("python manage.py collectstatic --noinput", shell=True, check=True)
+    run(
+        [sys.executable, "manage.py", "collectstatic", "--noinput"],
+        check=True,
+    )
     clear_staticfiles_override_env()
 
 
