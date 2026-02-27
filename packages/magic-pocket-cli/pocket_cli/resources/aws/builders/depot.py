@@ -14,6 +14,14 @@ class DepotBuilder:
         self.region = region
         self.project_id = project_id or os.environ.get("DEPOT_PROJECT_ID")
 
+    def _get_token(self) -> str:
+        token = os.environ.get("DEPOT_TOKEN") or os.environ.get("DEPOT_API_KEY")
+        if not token:
+            raise RuntimeError(
+                "DEPOT_TOKEN または DEPOT_API_KEY 環境変数が設定されていません"
+            )
+        return token
+
     def build_and_push(
         self,
         *,
@@ -21,21 +29,12 @@ class DepotBuilder:
         dockerfile_path: str,
         platform: str,
     ) -> None:
-        token = os.environ.get("DEPOT_TOKEN")
-        if not token:
-            raise RuntimeError("DEPOT_TOKEN 環境変数が設定されていません")
-        if not self.project_id:
-            raise RuntimeError(
-                "Depot project ID が未設定です。"
-                "pocket.toml の [awscontainer.build] depot_project_id か "
-                "DEPOT_PROJECT_ID 環境変数を設定してください"
-            )
+        token = self._get_token()
 
         print("Depot でイメージをビルドします...")
         print("  target: %s" % target)
         print("  dockerfile: %s" % dockerfile_path)
         print("  platform: %s" % platform)
-        print("  project: %s" % self.project_id)
 
         cmd = [
             "depot",
@@ -48,11 +47,14 @@ class DepotBuilder:
             "--platform",
             platform,
             "--push",
-            "--project",
-            self.project_id,
         ]
 
-        subprocess.run(cmd, check=True)
+        if self.project_id:
+            cmd.extend(["--project", self.project_id])
+            print("  project: %s" % self.project_id)
+
+        env = {**os.environ, "DEPOT_TOKEN": token}
+        subprocess.run(cmd, check=True, env=env)
         print("Depot ビルド完了")
 
     def delete(self) -> None:

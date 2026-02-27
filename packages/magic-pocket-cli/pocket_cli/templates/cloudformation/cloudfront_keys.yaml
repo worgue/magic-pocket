@@ -8,7 +8,8 @@ Resources:
       PublicKeyConfig:
         Name: "{{ resource_prefix }}publickey"
         CallerReference: "{{ resource_prefix }}publickey"
-        EncodedKey: "{{ signing_public_key_pem }}"
+        EncodedKey: |
+          {{ signing_public_key_pem | indent(10, first=False) }}
 
   KeyGroup:
     Type: AWS::CloudFront::KeyGroup

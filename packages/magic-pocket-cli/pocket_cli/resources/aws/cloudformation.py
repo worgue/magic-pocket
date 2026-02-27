@@ -247,19 +247,50 @@ class CloudFrontStack(Stack):
             return {"key_group_id": f"{self.context.slug}-key-group-id"}
         return {}
 
+    def _resolve_api_origins(self) -> dict[str, str]:
+        """Resolve cross-region CloudFormation exports for API origins.
+
+        CloudFormation Fn::ImportValue only works within the same region.
+        Since CloudFront stacks run in us-east-1 but Container stacks may be
+        in another region, we resolve the exports at render time and embed
+        the domain names as literal values.
+        """
+        if not self.context.api_origins:
+            return {}
+
+        cf = boto3.client("cloudformation", region_name=self.context.s3_region)
+        exports: dict[str, str] = {}
+        paginator = cf.get_paginator("list_exports")
+        for page in paginator.paginate():
+            for export in page["Exports"]:
+                exports[export["Name"]] = export["Value"]
+
+        resolved: dict[str, str] = {}
+        for handler_key, export_name in self.context.api_origins.items():
+            if export_name not in exports:
+                raise RuntimeError(
+                    f"CloudFormation export '{export_name}' not found in region "
+                    f"'{self.context.s3_region}'. Deploy the Container stack first."
+                )
+            resolved[handler_key] = exports[export_name]
+        return resolved
+
     @property
     def yaml(self) -> str:
         from jinja2 import Environment, PackageLoader, select_autoescape
 
+        resolved_api_origins = self._resolve_api_origins()
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
+        context_data = self.context.model_dump(exclude={"signing_key", "api_origins"})
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
             resource=self._get_resource(),
             signing_key=bool(self.context.signing_key),
-            **self.context.model_dump(),
+            api_origins=resolved_api_origins,
+            **context_data,
         )
         return "\n".join(
             [
