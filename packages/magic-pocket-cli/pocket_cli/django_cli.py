@@ -1,7 +1,7 @@
 import importlib.util
 import json
 import os
-import sys
+import shutil
 import warnings
 import webbrowser
 from pathlib import Path
@@ -184,14 +184,28 @@ def upload_collected_staticfiles(stage: str):
     )
 
 
+def _build_python_command(args: list[str]) -> list[str]:
+    """プロジェクトのPythonでコマンドを実行するためのコマンドリストを構築する。
+
+    uv があれば uv run python を使い、
+    なければ python3 / python にフォールバック。
+    """
+    if shutil.which("uv"):
+        return ["uv", "run", "python", *args]
+    for name in ("python3", "python"):
+        if shutil.which(name):
+            return [name, *args]
+    raise FileNotFoundError(
+        "pythonが見つかりません。uvまたはpythonをインストールしてください。"
+    )
+
+
 def collectstatic_locally(stage: str):
     local_storage = get_deploystatic_local_storage(stage)
     echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
     set_staticfiles_override_env(local_storage)
-    run(
-        [sys.executable, "manage.py", "collectstatic", "--noinput"],
-        check=True,
-    )
+    cmd = _build_python_command(["manage.py", "collectstatic", "--noinput"])
+    run(cmd, check=True)
     clear_staticfiles_override_env()
 
 
