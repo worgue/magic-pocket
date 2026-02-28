@@ -291,6 +291,17 @@ DATABASE_URL = { type = "neon_database_url" }
     ```
     → 環境変数 `CF_MEDIA_KEY_PEM_BASE64`, `CF_MEDIA_KEY_PUB_BASE64` が secrets 経由で、`CF_MEDIA_KEY_ID` が CloudFormation ImportValue 経由で登録されます。
 
+**type = "spa_token_secret"**
+:   SPA トークン認証用の HMAC-SHA256 シークレット（256-bit hex 文字列）を自動生成します。
+    CloudFront の `token_secret` で参照し、`require_token` ルートのトークン検証に使用されます。
+    オプションはありません。
+
+    ```toml
+    [awscontainer.secrets.managed]
+    SPA_TOKEN_SECRET = { type = "spa_token_secret" }
+    ```
+    → 環境変数 `SPA_TOKEN_SECRET` が secrets 経由で登録されます。Django 側で `pocket.django.spa_auth` を使ってトークン生成・検証が可能です。
+
 #### secrets.user
 
 自分で作成したシークレットを参照する場合に使います。
@@ -433,6 +444,7 @@ routes = [
 | `redirect_from` | list[RedirectFrom] | `[]` | リダイレクト元ドメイン |
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |
 | `signing_key` | str \| None | None | 署名付きURL用のmanaged secret名 |
+| `token_secret` | str \| None | None | SPA トークン認証用の managed secret 名（`type = "spa_token_secret"`） |
 
 ### redirect_from
 
@@ -474,6 +486,8 @@ routes = [
 | `signed` | bool | `false` | 署名付きURL（distribution に `signing_key` が必要） |
 | `build` | str \| None | None | ビルドコマンド（省略時はビルドスキップ） |
 | `build_dir` | str \| None | None | ビルド成果物ディレクトリ（設定時に自動アップロード対象） |
+| `require_token` | bool | `false` | SPA トークン認証を有効化（`is_spa = true` 必須） |
+| `login_path` | str | `"/api/auth/login"` | 未認証時のリダイレクト先パス |
 
 !!! note "制約"
     - `routes` には `is_default = true` のルートが1つ必要です。
@@ -481,9 +495,10 @@ routes = [
     - `is_spa` と `is_versioned` は同時に `true` にできません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default`, `build`, `build_dir` は使用できません。
+    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default`, `require_token`, `build`, `build_dir` は使用できません。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` を指定する場合は `build_dir` が必須です。
+    - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 
@@ -527,3 +542,40 @@ routes = [
 !!! note "API Gateway のドメイン設定"
     `handler` の `apigateway` には独自ドメインを設定しないでください（`apigateway = {}` のみ）。
     CloudFront がフロントとなるため、API Gateway の execute-api エンドポイントがそのまま使われます。
+
+### SPA トークン認証
+
+SPA に HMAC-SHA256 トークンによるログイン必須機能を追加できます。
+未認証ユーザーは CloudFront Function（viewer-request）でログインページにリダイレクトされます。
+シークレットは CloudFront KeyValueStore (KVS) に格納され、Function コードには埋め込まれません。
+
+```
+未認証ユーザー → CloudFront
+  → viewer-request: CloudFront Function (async)
+    → SPA fallback（URI 書き換え）
+    → KVS からシークレット取得
+    → Cookie 'pocket-spa-token' の HMAC-SHA256 検証
+    → 失敗 → 302 リダイレクト → login_path
+  → 成功 → S3 オリジンへ
+```
+
+```toml
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+SPA_TOKEN_SECRET = { type = "spa_token_secret" }
+
+[cloudfront.main]
+token_secret = "SPA_TOKEN_SECRET"
+routes = [
+    { is_default = true, is_spa = true, require_token = true, origin_path = "/app" },
+    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+]
+```
+
+トークンの形式は `{user_id}:{expiry_unix}:{hmac_hex}` です。
+Django 側では `pocket.django.spa_auth` モジュールでトークンの生成・検証・Cookie 設定が可能です。
+詳細は「[実行環境とDjango連携 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
+
+!!! warning "login_path の除外"
+    `login_path`（デフォルト: `/api/auth/login`）はトークン検証の対象外にする必要があります。
+    `type = "api"` ルートで `/api/*` を API Gateway にルーティングしている場合、ログインエンドポイントは API 側で処理されるためトークン検証は行われません。

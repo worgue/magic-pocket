@@ -140,6 +140,83 @@ pocket_call_command("my_command", force_sqs=True)
 
 ---
 
+## SPA トークン認証 {: #spa-トークン認証 }
+
+CloudFront 配信の SPA にログイン必須機能を追加する場合、`pocket.django.spa_auth` モジュールを使用します。
+HMAC-SHA256 トークンを Cookie にセットし、CloudFront Function で検証します。
+
+### トークンの生成と検証
+
+```python
+from pocket.django.spa_auth import generate_token, verify_token
+
+# トークン生成（ログイン時）
+token = generate_token("user123")  # デフォルト有効期限: 7日
+
+# トークン検証（任意のバックエンド処理で）
+user_id = verify_token(token)  # 有効なら user_id、無効なら None
+```
+
+シークレットは環境変数 `SPA_TOKEN_SECRET` から自動取得されます。
+テスト時は `secret` パラメータで明示指定できます。
+
+### ログイン・ログアウト
+
+Django の View でレスポンスに Cookie をセットします。
+
+```python
+from django.http import HttpResponseRedirect
+from pocket.django.spa_auth import spa_login, spa_logout
+
+def login_view(request):
+    # Django 認証でユーザーを検証後...
+    response = HttpResponseRedirect(request.GET.get("next", "/"))
+    spa_login(response, str(request.user.id))
+    return response
+
+def logout_view(request):
+    response = HttpResponseRedirect("/")
+    spa_logout(response)
+    return response
+```
+
+### API リファレンス
+
+| 関数 | 引数 | 戻り値 | 説明 |
+|------|------|--------|------|
+| `generate_token(user_id)` | `user_id: str`, `secret: str\|None`, `max_age: int` | `str` | HMAC-SHA256 トークンを生成 |
+| `verify_token(token)` | `token: str`, `secret: str\|None` | `str\|None` | トークンを検証し、有効なら user_id を返す |
+| `spa_login(response, user_id)` | `response`, `user_id: str`, `secret: str\|None`, `max_age: int` | — | レスポンスにトークン Cookie をセット |
+| `spa_logout(response)` | `response` | — | レスポンスからトークン Cookie を削除 |
+
+- `secret` を省略すると `os.environ["SPA_TOKEN_SECRET"]` を使用します
+- `max_age` のデフォルトは `604800`（7日間）です
+- Cookie 名は `pocket-spa-token` で、`HttpOnly`, `Secure`, `SameSite=Lax` が設定されます
+
+### Rust (Loco) での利用
+
+Rust アプリケーションでは `pocket-spa-auth` crate を使用できます。
+
+```rust
+use pocket_spa_auth::{generate_token, verify_token, login_cookie_value, logout_cookie_value};
+
+let secret = std::env::var("SPA_TOKEN_SECRET").unwrap();
+
+// トークン生成
+let token = generate_token("user123", &secret, 604800);
+
+// トークン検証
+if let Some(user_id) = verify_token(&token, &secret) {
+    println!("認証成功: {}", user_id);
+}
+
+// Cookie 値の生成
+let set_cookie = login_cookie_value(&token, 604800);
+let delete_cookie = logout_cookie_value();
+```
+
+---
+
 ## settings.py の完全な例
 
 以下は `django-environ` を利用した `settings.py` の典型的な構成です。

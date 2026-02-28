@@ -1,0 +1,22 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+SPA_TOKEN_SECRET = { type = "spa_token_secret" }
+
+[cloudfront.main]
+token_secret = "SPA_TOKEN_SECRET"
+routes = [
+    { is_default = true, is_spa = true, require_token = true, origin_path = "/main" },
+]

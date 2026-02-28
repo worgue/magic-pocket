@@ -455,6 +455,8 @@ class RouteContext(BaseModel):
     build: str | None = None
     build_dir: str | None = None
     origin_path: str = ""
+    require_token: bool = False
+    login_path: str = "/api/auth/login"
 
     @computed_field
     @property
@@ -518,6 +520,8 @@ class RouteContext(BaseModel):
             build=route.build,
             build_dir=route.build_dir,
             origin_path=route.origin_path or "",
+            require_token=route.require_token,
+            login_path=route.login_path,
         )
 
 
@@ -533,6 +537,7 @@ class CloudFrontContext(BaseModel):
     redirect_from: list[RedirectFromContext] = []
     routes: list[RouteContext] = []
     signing_key: str | None = None
+    token_secret: str | None = None
     api_origins: dict[str, str] = {}
 
     @computed_field
@@ -625,6 +630,7 @@ class CloudFrontContext(BaseModel):
             ],
             routes=[RouteContext.from_settings(r) for r in cf.routes],
             signing_key=cf.signing_key,
+            token_secret=cf.token_secret,
         )
 
 

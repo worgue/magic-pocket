@@ -25,6 +25,14 @@ Resources:
       ValidationMethod: DNS
   # {% endif %}
 
+  # {% if has_token_kvs %}
+  TokenKvs:
+    Type: AWS::CloudFront::KeyValueStore
+    Properties:
+      Name: "{{ slug }}-token-kvs"
+      Comment: "KVS for SPA token secret"
+  # {% endif %}
+
   # {% for route in routes %}
   # {% if route.is_spa %}
   UrlFallbackFunction{{ route.yaml_key }}:
@@ -32,11 +40,22 @@ Resources:
     Properties:
       Name: "{{ slug }}-{{ route.name }}-fallback"
       AutoPublish: true
+      # {% if route.require_token %}
+      FunctionCode:
+        Fn::Sub: |
+          {{ function_codes[route.yaml_key] }}
+      # {% else %}
       FunctionCode: |
-        {{ route.url_fallback_function_indent8 }}
+        {{ function_codes[route.yaml_key] }}
+      # {% endif %}
       FunctionConfig:
-        Comment: "Function to handle SPA url fallback"
+        Comment: "CloudFront function for {{ route.name }}"
         Runtime: cloudfront-js-2.0
+        # {% if route.require_token %}
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+        # {% endif %}
   # {% endif %}
   # {% if route.is_versioned %}
   ResponseHeadersPolicy{{ route.yaml_key }}:
@@ -229,3 +248,10 @@ Outputs:
   DistributionDomainName:
     Value:
       Fn::GetAtt: CloudFrontDistribution.DomainName
+  # {% if has_token_kvs %}
+  TokenKvsArn:
+    Value:
+      Fn::GetAtt: TokenKvs.Arn
+    Export:
+      Name: "{{ export.kvs_arn }}"
+  # {% endif %}
