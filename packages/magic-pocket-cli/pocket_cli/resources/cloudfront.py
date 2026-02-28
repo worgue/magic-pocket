@@ -19,6 +19,7 @@ from pocket_cli.resources.aws.s3_utils import bucket_exists, create_bucket
 
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext, RouteContext
+    from pocket_cli.mediator import Mediator
 
 
 class OriginAccessControl(BaseModel):
@@ -47,6 +48,7 @@ class CloudFront:
         self.context = context
         self.s3_client = boto3.client("s3", region_name=context.region)
         self.cf_client = boto3.client("cloudfront", region_name=context.region)
+        self._token_secret_value: str = ""
 
     @property
     def description(self):
@@ -68,12 +70,15 @@ class CloudFront:
 
     @property
     def stack(self):
-        return CloudFrontStack(self.context)
+        return CloudFrontStack(
+            self.context, token_secret_value=self._token_secret_value
+        )
 
-    def create(self):
-        self.update()
+    def create(self, mediator: Mediator | None = None):
+        self.update(mediator=mediator)
 
-    def update(self):
+    def update(self, mediator: Mediator | None = None):
+        self._prepare_token_secret(mediator)
         self._ensure_redirect_from()
         if not self.stack.exists:
             self.stack.create()
@@ -88,8 +93,57 @@ class CloudFront:
         info("In that case, run `pocket resource cloudfront update` later.")
         self.stack.wait_status("COMPLETED", timeout=600, interval=10)
         self._ensure_bucket_policy()
+        self._write_token_secret_to_kvs()
         log("Bucket for cloudfront is ready.")
         self.warn_contents()
+
+    def _prepare_token_secret(self, mediator: Mediator | None):
+        if not self.context.token_secret:
+            return
+        if not mediator:
+            return
+        ac = mediator.context.awscontainer
+        if not ac or not ac.secrets:
+            return
+        pocket_store = ac.secrets.pocket_store
+        secrets = pocket_store.secrets
+        if self.context.token_secret in secrets:
+            value = secrets[self.context.token_secret]
+            if isinstance(value, str):
+                self._token_secret_value = value
+            else:
+                echo.warning(
+                    "token_secret の値が文字列ではありません: %s"
+                    % self.context.token_secret
+                )
+        else:
+            echo.warning(
+                "token_secret '%s' が managed secrets に見つかりません"
+                % self.context.token_secret
+            )
+
+    def _write_token_secret_to_kvs(self):
+        if not self._token_secret_value:
+            return
+        if not self.stack.output:
+            echo.warning("スタック出力が取得できません。KVS 書き込みをスキップします。")
+            return
+        kvs_arn = self.stack.output.get("TokenKvsArn")
+        if not kvs_arn:
+            echo.warning("TokenKvsArn が出力に見つかりません。")
+            return
+        kvs_client = boto3.client(
+            "cloudfront-keyvaluestore", region_name=self.context.region
+        )
+        desc = kvs_client.describe_key_value_store(KvsARN=kvs_arn)
+        etag = desc["ETag"]
+        kvs_client.put_key(
+            KvsARN=kvs_arn,
+            Key="token_secret",
+            Value=self._token_secret_value,
+            IfMatch=etag,
+        )
+        echo.info("KVS にトークンシークレットを書き込みました")
 
     def upload(self, *, skip_build: bool = False):
         for route in self.context.uploadable_routes:

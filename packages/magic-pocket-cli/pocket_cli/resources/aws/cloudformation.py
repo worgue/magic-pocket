@@ -234,6 +234,14 @@ class CloudFrontStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront"
 
+    def __init__(
+        self,
+        context: CloudFrontContext,
+        token_secret_value: str = "",
+    ):
+        self._token_secret_value = token_secret_value
+        super().__init__(context)
+
     def get_client(self):
         return boto3.client("cloudformation", region_name=self.context.region)
 
@@ -242,10 +250,17 @@ class CloudFrontStack(Stack):
         return f"{self.context.slug}-cloudfront"
 
     @property
+    def _has_token_kvs(self) -> bool:
+        return any(r.require_token for r in self.context.routes)
+
+    @property
     def export(self):
+        exports: dict[str, str] = {}
         if self.context.signing_key:
-            return {"key_group_id": f"{self.context.slug}-key-group-id"}
-        return {}
+            exports["key_group_id"] = f"{self.context.slug}-key-group-id"
+        if self._has_token_kvs:
+            exports["kvs_arn"] = f"{self.context.slug}-token-kvs-arn"
+        return exports
 
     def _resolve_api_origins(self) -> dict[str, str]:
         """Resolve cross-region CloudFormation exports for API origins.
@@ -275,21 +290,97 @@ class CloudFrontStack(Stack):
             resolved[handler_key] = exports[export_name]
         return resolved
 
+    def _build_function_codes(self) -> dict[str, str]:
+        """ルートごとに CloudFront Function コードを生成する"""
+        codes: dict[str, str] = {}
+        for route in self.context.routes:
+            if not route.is_spa:
+                continue
+            if route.require_token:
+                codes[route.yaml_key] = self._generate_spa_auth_function(route)
+            else:
+                codes[route.yaml_key] = route.url_fallback_function_indent8
+        return codes
+
+    def _generate_spa_auth_function(self, route) -> str:  # type: ignore
+        """KVS + HMAC 検証付き async CloudFront Function コードを生成する"""
+        fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
+        if not route.path_pattern:
+            fallback_uri = "/" + route.spa_fallback_html
+        login_path = route.login_path
+        # ${TokenKvs} は Fn::Sub で CFn が KVS ID に解決する
+        code = """\
+import cf from 'cloudfront';
+const kvsHandle = cf.kvs('${{TokenKvs}}');
+async function handler(event) {{
+    var request = event.request;
+    var lastItem = request.uri.split('/').pop();
+    if (!lastItem.includes('.')) {{ request.uri = '{fallback_uri}'; }}
+    var cookie = request.cookies['pocket-spa-token'];
+    if (!cookie) {{ return _redirect(request); }}
+    var parts = cookie.value.split(':');
+    if (parts.length !== 3) {{ return _redirect(request); }}
+    var expiry = parseInt(parts[1], 10);
+    if (Math.floor(Date.now() / 1000) > expiry) {{ return _redirect(request); }}
+    var secret;
+    try {{ secret = await kvsHandle.get('token_secret'); }}
+    catch (e) {{ return _redirect(request); }}
+    var msg = parts[0] + ':' + parts[1];
+    var key = await crypto.subtle.importKey('raw', _hexToBytes(secret),
+        {{name:'HMAC',hash:'SHA-256'}}, false, ['sign']);
+    var sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
+    if (_bytesToHex(new Uint8Array(sig)) !== parts[2]) {{ return _redirect(request); }}
+    return request;
+}}
+function _redirect(request) {{
+    var next = encodeURIComponent(request.uri);
+    return {{ statusCode: 302, statusDescription: 'Found',
+        headers: {{ location: {{ value: '{login_path}?next=' + next }} }} }};
+}}
+function _hexToBytes(hex) {{
+    var bytes = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < hex.length; i += 2) {{
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }}
+    return bytes;
+}}
+function _bytesToHex(bytes) {{
+    var hex = '';
+    for (var i = 0; i < bytes.length; i++) {{
+        hex += bytes[i].toString(16).padStart(2, '0');
+    }}
+    return hex;
+}}
+""".format(fallback_uri=fallback_uri, login_path=login_path)
+        # indent 8 spaces for YAML embedding (skip first line)
+        lines = []
+        for i, line in enumerate(code.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * 8 + line)
+        return "\n".join(lines)
+
     @property
     def yaml(self) -> str:
         from jinja2 import Environment, PackageLoader, select_autoescape
 
         resolved_api_origins = self._resolve_api_origins()
+        function_codes = self._build_function_codes()
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        context_data = self.context.model_dump(exclude={"signing_key", "api_origins"})
+        context_data = self.context.model_dump(
+            exclude={"signing_key", "api_origins", "token_secret"}
+        )
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
             resource=self._get_resource(),
             signing_key=bool(self.context.signing_key),
             api_origins=resolved_api_origins,
+            function_codes=function_codes,
+            has_token_kvs=self._has_token_kvs,
             **context_data,
         )
         return "\n".join(
