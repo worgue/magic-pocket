@@ -61,6 +61,7 @@ class ManagedSecretSpec(BaseModel):
         "tidb_database_url",
         "rsa_pem_base64",
         "cloudfront_signing_key",
+        "spa_token_secret",
     ]
     options: dict[str, str | int] = {}
     # Used in mediator
@@ -219,6 +220,8 @@ class Route(BaseSettings):
     build: str | None = None
     build_dir: str | None = None
     origin_path: str | None = None
+    require_token: bool = False
+    login_path: str = "/api/auth/login"
 
     @model_validator(mode="after")
     def check_origin_path(self):
@@ -235,14 +238,26 @@ class Route(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def check_require_token(self):
+        if self.require_token and not self.is_spa:
+            raise ValueError("require_token=True requires is_spa=True")
+        return self
+
+    @model_validator(mode="after")
     def check_api_route(self):
         if self.type == "api":
             if not self.handler:
                 raise ValueError("handler is required when type = 'api'")
-            if self.is_spa or self.is_versioned or self.signed or self.is_default:
+            if (
+                self.is_spa
+                or self.is_versioned
+                or self.signed
+                or self.is_default
+                or self.require_token
+            ):
                 raise ValueError(
                     "type = 'api' cannot use "
-                    "is_spa, is_versioned, signed, or is_default"
+                    "is_spa, is_versioned, signed, is_default, or require_token"
                 )
             if self.build or self.build_dir:
                 raise ValueError("type = 'api' cannot use build or build_dir")
@@ -297,11 +312,21 @@ class CloudFront(BaseSettings):
     redirect_from: list[RedirectFrom] = []
     routes: list[Route] = []
     signing_key: str | None = None
+    token_secret: str | None = None
 
     @model_validator(mode="after")
     def check_domain_redirect_from(self):
         if self.domain is None and self.redirect_from:
             raise ValueError("redirect_from requires domain to be set")
+        return self
+
+    @model_validator(mode="after")
+    def check_token_secret(self):
+        has_require_token = any(r.require_token for r in self.routes)
+        if has_require_token and not self.token_secret:
+            raise ValueError(
+                "token_secret is required when route has require_token=true"
+            )
         return self
 
     @model_validator(mode="after")
@@ -345,35 +370,57 @@ class Settings(BaseSettings):
         """Identify the environment. e.g) dev-myprj"""
         return "%s-%s" % (self.stage, self.general.project_name)
 
+    def _check_cloudfront_token_secret(self, name: str, cf: CloudFront):
+        if not cf.token_secret:
+            return
+        if not self.awscontainer:
+            raise ValueError(
+                f"cloudfront.{name}: awscontainer is required when token_secret is set"
+            )
+        if not self.awscontainer.secrets:
+            raise ValueError(
+                f"cloudfront.{name}: awscontainer.secrets is required "
+                f"when token_secret is set"
+            )
+        if cf.token_secret not in self.awscontainer.secrets.managed:
+            raise ValueError(
+                f"cloudfront.{name}: token_secret '{cf.token_secret}' "
+                f"not found in awscontainer.secrets.managed"
+            )
+
+    def _check_cloudfront_entry(self, name: str, cf: CloudFront):
+        for route in cf.routes:
+            if route.signed and not cf.signing_key:
+                raise ValueError(
+                    f"cloudfront.{name}: signing_key is required "
+                    f"when route has signed=true"
+                )
+            if route.type == "api":
+                assert route.handler
+                if not self.awscontainer:
+                    raise ValueError(
+                        f"cloudfront.{name}: awscontainer is required "
+                        f"when route has type='api'"
+                    )
+                if route.handler not in self.awscontainer.handlers:
+                    raise ValueError(
+                        f"cloudfront.{name}: handler '{route.handler}' "
+                        f"not found in awscontainer.handlers"
+                    )
+                handler = self.awscontainer.handlers[route.handler]
+                if not handler.apigateway:
+                    raise ValueError(
+                        f"cloudfront.{name}: handler '{route.handler}' "
+                        f"must have apigateway configured for api route"
+                    )
+        self._check_cloudfront_token_secret(name, cf)
+
     @model_validator(mode="after")
     def check_cloudfront_requires_s3(self):
         if self.cloudfront and not self.s3:
             raise ValueError("s3 is required when cloudfront is configured")
         for name, cf in self.cloudfront.items():
-            for route in cf.routes:
-                if route.signed and not cf.signing_key:
-                    raise ValueError(
-                        f"cloudfront.{name}: signing_key is required "
-                        f"when route has signed=true"
-                    )
-                if route.type == "api":
-                    assert route.handler
-                    if not self.awscontainer:
-                        raise ValueError(
-                            f"cloudfront.{name}: awscontainer is required "
-                            f"when route has type='api'"
-                        )
-                    if route.handler not in self.awscontainer.handlers:
-                        raise ValueError(
-                            f"cloudfront.{name}: handler '{route.handler}' "
-                            f"not found in awscontainer.handlers"
-                        )
-                    handler = self.awscontainer.handlers[route.handler]
-                    if not handler.apigateway:
-                        raise ValueError(
-                            f"cloudfront.{name}: handler '{route.handler}' "
-                            f"must have apigateway configured for api route"
-                        )
+            self._check_cloudfront_entry(name, cf)
         return self
 
     @classmethod

@@ -118,6 +118,50 @@ domain = "media.example.com"
 **Neon のプロジェクトをステージで分離**
 :   dev と prd で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
 
+## SPA トークン認証
+
+SPA にログイン必須機能を追加する場合、`require_token` を設定します。
+CloudFront Function が Cookie 内の HMAC-SHA256 トークンを検証し、未認証ユーザーをログインページにリダイレクトします。
+
+```toml
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+DATABASE_URL = { type = "neon_database_url" }
+SPA_TOKEN_SECRET = { type = "spa_token_secret" }
+
+[cloudfront.web]
+token_secret = "SPA_TOKEN_SECRET"
+routes = [
+    { is_default = true, is_spa = true, require_token = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
+    { path_pattern = "/static/*", ref = "static", is_versioned = true, origin_path = "/web" },
+    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+]
+```
+
+**仕組み**
+
+1. CloudFront Function（viewer-request）が全リクエストを検証
+2. Cookie `pocket-spa-token` に含まれるトークン（`{user_id}:{expiry}:{hmac}`）を HMAC-SHA256 で検証
+3. シークレットは CloudFront KeyValueStore (KVS) に格納（Function コードには埋め込まない）
+4. 未認証・期限切れの場合、`login_path`（デフォルト `/api/auth/login`）に 302 リダイレクト
+5. `/api/*` は API Gateway にルーティングされるため、トークン検証の対象外
+
+**Django 側の実装**
+
+```python
+from django.http import HttpResponseRedirect
+from pocket.django.spa_auth import spa_login, spa_logout
+
+# ログインビュー（/api/auth/login）
+def login_view(request):
+    # Django 認証でユーザーを検証...
+    response = HttpResponseRedirect(request.GET.get("next", "/"))
+    spa_login(response, str(request.user.id))
+    return response
+```
+
+詳細は「[実行環境とDjango連携 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
+
 ## デプロイ手順
 
 ```bash
