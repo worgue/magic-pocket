@@ -25,20 +25,6 @@ Resources:
       ValidationMethod: DNS
   # {% endif %}
 
-  # {% if api_origins %}
-  ApiOriginRequestPolicy:
-    Type: AWS::CloudFront::OriginRequestPolicy
-    Properties:
-      OriginRequestPolicyConfig:
-        Name: "{{ slug }}-api-origin-request"
-        CookiesConfig:
-          CookieBehavior: all
-        HeadersConfig:
-          HeaderBehavior: allViewerExceptHostHeader
-        QueryStringsConfig:
-          QueryStringBehavior: all
-  # {% endif %}
-
   # {% for route in routes %}
   # {% if route.is_spa %}
   UrlFallbackFunction{{ route.yaml_key }}:
@@ -72,9 +58,6 @@ Resources:
       - OriginAccessControl
       # {% if domain %}
       - Certificate
-      # {% endif %}
-      # {% if api_origins %}
-      - ApiOriginRequestPolicy
       # {% endif %}
       # {% for route in routes %}
       # {% if route.is_spa %}
@@ -152,8 +135,7 @@ Resources:
           # {% endfor %}
           # {% for route in api_routes %}
           - CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
-            OriginRequestPolicyId:
-              Ref: ApiOriginRequestPolicy
+            OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
             TargetOriginId: "{{ resource_prefix }}api-{{ route.handler }}"
             ViewerProtocolPolicy: "redirect-to-https"
             PathPattern: "{{ route.path_pattern }}"
