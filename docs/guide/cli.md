@@ -284,6 +284,12 @@ pocket resource cloudfront yaml --stage=dev
 # CloudFormation YAMLの差分を確認
 pocket resource cloudfront yaml-diff --stage=dev
 
+# コンテキスト（テンプレートに渡される変数）を表示
+pocket resource cloudfront context --stage=dev
+
+# 特定のディストリビューションのみ
+pocket resource cloudfront yaml --stage=dev --name=main
+
 # フロントエンドのビルド・S3アップロード・キャッシュ無効化
 pocket resource cloudfront upload --stage=dev
 
@@ -297,11 +303,35 @@ pocket resource cloudfront upload --stage=dev --name=main
 `upload` は `build_dir` が設定されたルートに対して、ビルド → S3アップロード → CloudFrontキャッシュ無効化を実行します。
 `pocket deploy` 実行時にも自動的に呼ばれます（`--skip-frontend` で抑制可能）。
 
+### cloudfront_keys
+
+CloudFront 署名付き URL 用の鍵リソースを管理します。`signing_key` が設定されたディストリビューションのみ対象です。
+
+```bash
+# CloudFormation YAMLを表示
+pocket resource cloudfront-keys yaml --stage=dev
+
+# CloudFormation YAMLの差分を確認
+pocket resource cloudfront-keys yaml-diff --stage=dev
+
+# 状態確認
+pocket resource cloudfront-keys status --stage=dev
+
+# 特定のディストリビューションのみ
+pocket resource cloudfront-keys yaml --stage=dev --name=media
+```
+
 ### vpc
 
 ```bash
 # VPCの状態確認
 pocket resource vpc status --ref=main
+
+# CloudFormation YAMLを表示
+pocket resource vpc yaml --ref=main
+
+# CloudFormation YAMLの差分を確認
+pocket resource vpc yaml-diff --ref=main
 
 # VPCを削除（CFNスタック + EFS）
 pocket resource vpc destroy --ref=main
@@ -309,3 +339,31 @@ pocket resource vpc destroy --ref=main
 
 !!! note "VPCコマンドの `--ref`"
     VPCコマンドでは `--stage` ではなく、`--ref` オプションで `general.vpcs` の `ref` 名を指定します。
+
+---
+
+## CloudFormation テンプレートの確認
+
+各リソースの `yaml` サブコマンドで、デプロイ時に使われる CloudFormation テンプレートを標準出力で確認できます。
+AWS にアクセスせずにテンプレートの内容を確認したい場合に便利です。
+
+```bash
+# awscontainer（Lambda関連）
+pocket resource awscontainer yaml --stage=dev
+
+# cloudfront
+pocket resource cloudfront yaml --stage=dev
+
+# cloudfront_keys（署名付きURL用鍵）
+pocket resource cloudfront-keys yaml --stage=dev
+
+# vpc
+pocket resource vpc yaml --ref=main
+```
+
+`yaml-diff` サブコマンドでは、デプロイ済みのテンプレートとの差分を JSON で表示します。
+デプロイ前に変更内容を確認する際に使います。
+
+```bash
+pocket resource cloudfront yaml-diff --stage=dev
+```
