@@ -21,7 +21,6 @@ class GeneralSettings(BaseSettings):
     region: str
     project_name: str = Field(default_factory=get_project_name)
     stages: list[str]
-    vpcs: list[Vpc] = []
     s3_fallback_bucket_name: str | None = None
     django_fallback: Django = Django()
 
@@ -38,19 +37,35 @@ class Efs(BaseModel):
 
 class Vpc(BaseSettings):
     ref: str
-    zone_suffixes: list[Annotated[str, Field(max_length=1)]] = ["a"]
+    zone_suffixes: list[Annotated[str, Field(max_length=1)]] = []
     nat_gateway: bool = True
     internet_gateway: bool = True
     efs: Efs | None = None
+    manage: bool = True
+    sharable: bool = False
 
     @model_validator(mode="after")
-    def check_nat_gateway(self):
-        if self.nat_gateway and not self.internet_gateway:
-            raise ValueError("nat_gateway without internet_gateway is not supported.")
-        if self.internet_gateway and not self.nat_gateway:
-            raise ValueError(
-                "lambda runs in private subnet, internet_gateway without nat_gateway is"
-                " not supported yet.\nWe should support it in the future if we want to "
-                "support fargate."
-            )
+    def check_managed(self):
+        if self.manage:
+            if not self.zone_suffixes:
+                raise ValueError("zone_suffixes is required when manage=true")
+            if self.nat_gateway and not self.internet_gateway:
+                raise ValueError(
+                    "nat_gateway without internet_gateway is not supported."
+                )
+            if self.internet_gateway and not self.nat_gateway:
+                raise ValueError(
+                    "lambda runs in private subnet, internet_gateway without"
+                    " nat_gateway is not supported yet.\nWe should support it"
+                    " in the future if we want to support fargate."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_unmanaged(self):
+        if not self.manage:
+            if self.sharable:
+                raise ValueError("sharable requires manage=true")
+            if self.efs:
+                raise ValueError("efs requires manage=true")
         return self

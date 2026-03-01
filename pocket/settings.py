@@ -198,7 +198,7 @@ class TiDb(BaseSettings):
 
 
 class Rds(BaseModel):
-    vpc: Vpc | None = None  # process_vpc_ref で vpc_ref から解決
+    vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
     max_capacity: float = 2.0
 
@@ -348,6 +348,7 @@ class CloudFront(BaseSettings):
 class Settings(BaseSettings):
     general: GeneralSettings
     stage: TagStr
+    vpc: Vpc | None = None
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     tidb: TiDb | None = None
@@ -425,7 +426,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def check_rds_vpc(self):
         if self.rds and self.rds.vpc:
-            if len(self.rds.vpc.zone_suffixes) < 2:
+            if self.rds.vpc.manage and len(self.rds.vpc.zone_suffixes) < 2:
                 raise ValueError(
                     "rds requires vpc with at least 2 zone_suffixes "
                     "(DB Subnet Group needs 2+ AZs)"
@@ -434,17 +435,9 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def check_rds_requires_awscontainer_vpc(self):
-        if self.rds:
+        if self.rds and self.rds.vpc:
             if not self.awscontainer or not self.awscontainer.vpc:
-                raise ValueError(
-                    "rds requires awscontainer with vpc_ref pointing to the same vpc"
-                )
-            if self.rds.vpc and self.awscontainer.vpc:
-                if self.rds.vpc.ref != self.awscontainer.vpc.ref:
-                    raise ValueError(
-                        "rds.vpc_ref must reference the same vpc"
-                        " as awscontainer.vpc_ref"
-                    )
+                raise ValueError("rds requires awscontainer with VPC")
         return self
 
     @model_validator(mode="after")
@@ -463,32 +456,34 @@ class Settings(BaseSettings):
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
         data["stage"] = stage
-        cls.process_vpc_ref(data)
+        cls.resolve_vpc(data)
         return cls.model_validate(data)
 
     @classmethod
-    def process_vpc_ref(cls, data: dict):
-        if "awscontainer" in data and "vpc_ref" in data["awscontainer"]:
-            vpc_ref = data["awscontainer"].pop("vpc_ref")
-            for vpc_data in data["general"]["vpcs"]:
-                if vpc_data["ref"] == vpc_ref:
-                    data["awscontainer"]["vpc"] = vpc_data
-                    break
-            else:
-                raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
-        if "rds" in data and "vpc_ref" in data["rds"]:
-            vpc_ref = data["rds"].pop("vpc_ref")
-            for vpc_data in data["general"]["vpcs"]:
-                if vpc_data["ref"] == vpc_ref:
-                    data["rds"]["vpc"] = vpc_data
-                    break
-            else:
-                raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
+    def resolve_vpc(cls, data: dict):
+        """use_vpc に基づいて awscontainer.vpc と rds.vpc を解決"""
+        vpc_data = data.get("vpc")
+
+        for section in ("awscontainer", "rds"):
+            if section not in data:
+                continue
+            use_vpc = data[section].pop("use_vpc", None)
+            if use_vpc is None:  # auto
+                if vpc_data:
+                    data[section]["vpc"] = vpc_data
+            elif use_vpc is True:
+                if not vpc_data:
+                    raise ValueError(
+                        f"{section}.use_vpc=true ですが [vpc] が定義されていません"
+                    )
+                data[section]["vpc"] = vpc_data
+            # use_vpc = False: VPC を使わない
 
     @classmethod
     def check_keys(cls, data: dict):
         valid_keys = [
             "general",
+            "vpc",
             "awscontainer",
             "neon",
             "tidb",

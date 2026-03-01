@@ -28,6 +28,10 @@ class Stack:
     def export(self) -> dict:
         raise NotImplementedError
 
+    @property
+    def stack_tags(self) -> list[dict]:
+        return []
+
     def __init__(self, context: AwsContainerContext | VpcContext | CloudFrontContext):
         self.context = context
         self.client = self.get_client()
@@ -167,9 +171,14 @@ class Stack:
         )
 
     def create(self):
-        return self.client.create_stack(
-            StackName=self.name, TemplateBody=self.yaml, Capabilities=self.capabilities
-        )
+        kwargs: dict[str, Any] = {
+            "StackName": self.name,
+            "TemplateBody": self.yaml,
+            "Capabilities": self.capabilities,
+        }
+        if self.stack_tags:
+            kwargs["Tags"] = self.stack_tags
+        return self.client.create_stack(**kwargs)
 
     def update(self):
         print("Update stack")
@@ -428,9 +437,32 @@ class ContainerStack(Stack):
             return VpcStack(self.context.vpc).export
         return {}
 
+    def _resolve_vpc_zone_count(self) -> int:
+        assert self.context.vpc, "VPC context is required"
+        vpc_stack = VpcStack(self.context.vpc)
+        output = vpc_stack.output
+        assert output, f"VPC stack '{vpc_stack.name}' の output が取得できません"
+        prefix = vpc_stack.export["private_subnet_"]
+        count = 0
+        for i in range(1, 20):
+            if f"{prefix}{i}" in output:
+                count += 1
+            else:
+                break
+        return count
+
     @property
     def yaml(self) -> str:
         rds_sg_id, rds_secret_arn = self._resolve_rds()
+        context_dump = self.context.model_dump()
+
+        # 外部 VPC: zones を動的取得
+        if self.context.vpc and not self.context.vpc.manage:
+            zone_count = self._resolve_vpc_zone_count()
+            context_dump["vpc"]["zones"] = [
+                f"{self.context.vpc.region}{chr(97 + i)}" for i in range(zone_count)
+            ]
+
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
@@ -441,7 +473,7 @@ class ContainerStack(Stack):
             rds_security_group_id=rds_sg_id,
             rds_secret_arn=rds_secret_arn,
             use_rds=rds_sg_id is not None,
-            **self.context.model_dump(),
+            **context_dump,
         )
         return "\n".join(
             [
@@ -473,3 +505,62 @@ class VpcStack(Stack):
             "efs_access_point_arn": self.context.name + "-efs-access-point",
             "efs_security_group": self.context.name + "-efs-security-group",
         }
+
+    @property
+    def stack_tags(self) -> list[dict]:
+        tags: list[dict[str, str]] = []
+        if self.context.sharable:
+            tags.append({"Key": "pocket:sharable", "Value": "true"})
+        return tags
+
+    @cached_property
+    def tags(self) -> list[dict]:
+        if self.description:
+            return self.description.get("Tags", [])
+        return []
+
+    @cached_property
+    def stack_arn(self) -> str | None:
+        if self.description:
+            return self.description["StackId"]  # type: ignore
+        return None
+
+    def get_tag(self, key: str) -> str | None:
+        for tag in self.tags:
+            if tag["Key"] == key:
+                return tag["Value"]  # type: ignore
+        return None
+
+    @property
+    def is_sharable(self) -> bool:
+        return self.get_tag("pocket:sharable") == "true"
+
+    @property
+    def consumers(self) -> list[str]:
+        return [
+            t["Key"].removeprefix("pocket:consumer:")
+            for t in self.tags
+            if t["Key"].startswith("pocket:consumer:")
+        ]
+
+    def add_consumer_tag(self, slug: str):
+        if not self.stack_arn:
+            return
+        tagging = boto3.client(
+            "resourcegroupstaggingapi", region_name=self.context.region
+        )
+        tagging.tag_resources(
+            ResourceARNList=[self.stack_arn],
+            Tags={f"pocket:consumer:{slug}": "deployed"},
+        )
+
+    def remove_consumer_tag(self, slug: str):
+        if not self.stack_arn:
+            return
+        tagging = boto3.client(
+            "resourcegroupstaggingapi", region_name=self.context.region
+        )
+        tagging.untag_resources(
+            ResourceARNList=[self.stack_arn],
+            TagKeys=[f"pocket:consumer:{slug}"],
+        )

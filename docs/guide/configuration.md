@@ -6,6 +6,7 @@
 
 ```toml
 [general]           # 全ステージ共通の設定
+[vpc]               # VPC設定（単一、トップレベル）
 [s3]                # S3設定（全ステージ共通）
 [neon]              # Neon設定（全ステージ共通）
 [rds]               # RDS Aurora設定（全ステージ共通）
@@ -52,29 +53,29 @@ default = { store = "filesystem" }
 staticfiles = { store = "filesystem", static = true }
 ```
 
-### general.vpcs
+---
 
-VPC設定をリストで定義します。`awscontainer` から `vpc_ref` で参照します。
+## vpc
+
+VPC設定をトップレベルで定義します。`[vpc]` を定義すると、`awscontainer` と `rds` は自動的に VPC 内に配置されます。
+
+VPC名は `{ref}-{namespace}` 形式（例: `main-pocket`）になります。
 
 ```toml
-[[general.vpcs]]
+[vpc]
 ref = "main"
-zone_suffixes = ["a"]
-nat_gateway = true
-internet_gateway = true
-
-[general.vpcs.efs]
-local_mount_path = "/mnt/efs"
-access_point_path = "/lambda"
+zone_suffixes = ["a", "c"]
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `ref` | str | **必須** | 参照名 |
-| `zone_suffixes` | list[str] | `["a"]` | AZサフィックス |
+| `ref` | str | **必須** | 参照名（VPC名の一部になる） |
+| `zone_suffixes` | list[str] | `[]` | AZサフィックス（`manage=true` 時は必須） |
 | `nat_gateway` | bool | `true` | NAT Gatewayを作成 |
 | `internet_gateway` | bool | `true` | Internet Gatewayを作成 |
-| `efs` | Efs \| None | None | EFS設定（下表参照） |
+| `efs` | Efs \| None | None | EFS設定（下表参照、`manage=true` 時のみ） |
+| `manage` | bool | `true` | VPCスタックを自分で管理する。`false` の場合は既存VPCを参照 |
+| `sharable` | bool | `false` | 他プロジェクトからの共有を許可（`manage=true` 時のみ） |
 
 **EFS設定**
 
@@ -82,6 +83,56 @@ access_point_path = "/lambda"
 |-----------|------|----------|------|
 | `local_mount_path` | str | `"/mnt/efs"` | Lambda内のマウントパス（`/mnt/` で始まる必要あり） |
 | `access_point_path` | str | `"/lambda"` | EFSアクセスポイントのパス |
+
+### VPC の共有（外部 VPC）
+
+別プロジェクトが管理する VPC を利用する場合、`manage = false` を指定します。
+
+**VPC 所有者（Project A）:**
+```toml
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+sharable = true  # 共有を許可
+```
+
+**VPC 利用者（Project B）:**
+```toml
+[vpc]
+ref = "main"        # 同じ ref → 同じ VPC
+manage = false       # zone_suffixes 不要（自動取得）
+```
+
+!!! info "タグによる共有管理"
+    VPC スタックの CloudFormation タグで共有状態を管理します。
+
+    - `pocket:sharable = true` — 共有許可（所有者が設定）
+    - `pocket:consumer:{slug} = deployed` — 利用者の登録（デプロイ時に自動追加、削除時に自動除去）
+
+!!! warning "制約事項"
+    - `manage=false` では `sharable`、`efs` は設定できません。
+    - `manage=false` では `zone_suffixes` は不要です（VPC スタックから自動取得）。
+    - consumer がいる VPC は削除できません。
+
+### use_vpc（awscontainer / rds）
+
+`awscontainer` や `rds` セクションで `use_vpc` を指定すると、VPC の利用を明示的に制御できます。
+
+| 値 | 動作 |
+|---|------|
+| 未指定 | auto: `[vpc]` があれば VPC 内に配置 |
+| `true` | 必須: `[vpc]` がなければエラー |
+| `false` | VPC を使わない |
+
+```toml
+[vpc]
+ref = "main"
+zone_suffixes = ["a"]
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+use_vpc = false  # VPC を使わない
+```
 
 ---
 
@@ -136,24 +187,21 @@ project_name = "prd-myproject"
 
 ## rds
 
-RDS Aurora PostgreSQL Serverless v2 の設定です。`vpc_ref` を指定するだけでクラスターが自動作成されます。
+RDS Aurora PostgreSQL Serverless v2 の設定です。`[vpc]` と組み合わせてクラスターが自動作成されます。
 
 ```toml
-[[general.vpcs]]
+[vpc]
 ref = "main"
-zone_suffixes = ["a", "c"]  # RDS は 2AZ 以上必須
+zone_suffixes = ["a", "c"]  # managed VPC では RDS に 2AZ 以上必須
 
 [rds]
-vpc_ref = "main"
 
 [awscontainer]
 dockerfile_path = "pocket.Dockerfile"
-vpc_ref = "main"
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `vpc_ref` | str | **必須** | `general.vpcs` の `ref` を指定 |
 | `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU） |
 | `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU） |
 
@@ -163,14 +211,14 @@ vpc_ref = "main"
     `[awscontainer.secrets.managed]` に `DATABASE_URL` を定義する必要はありません。
 
 !!! warning "制約事項"
-    - VPC の `zone_suffixes` は 2 つ以上必要です（DB Subnet Group に最低 2AZ 必要）。
-    - `awscontainer.vpc_ref` が同じ VPC を参照している必要があります。
+    - managed VPC（`manage=true`）では `zone_suffixes` が 2 つ以上必要です（DB Subnet Group に最低 2AZ 必要）。
+    - 外部 VPC（`manage=false`）ではサブネット数は自動検出されます。
+    - `awscontainer` も同じ VPC に配置されている必要があります。
     - CloudFormation ではなく boto3 で直接管理されます（データ保持リソースのため）。
 
 ??? example "カスタムキャパシティの例"
     ```toml
     [rds]
-    vpc_ref = "main"
     min_capacity = 1.0
     max_capacity = 8.0
     ```
@@ -191,16 +239,16 @@ dockerfile_path = "pocket.Dockerfile"
 | `dockerfile_path` | str | **必須** | Dockerfileのパス |
 | `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム |
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
-| `vpc_ref` | str \| None | None | general.vpcsのrefを指定してVPCに接続 |
+| `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
 
 !!! info "VPCなしデプロイ"
-    `vpc_ref` を省略するとLambdaはVPCの外（パブリック）で実行されます。
+    `[vpc]` セクションがない場合（または `use_vpc = false`）、LambdaはVPCの外（パブリック）で実行されます。
     VPC、NAT Gateway、EFSが不要な開発環境では、VPCなしの方がコスト効率が良く、コールドスタートも高速です。
 
 !!! info "VPCと固定IP"
-    `vpc_ref` を指定すると、Lambdaはプライベートサブネットに配置され、外部通信はNAT Gateway経由になります。
+    `[vpc]` セクションがあると、Lambdaはプライベートサブネットに配置され、外部通信はNAT Gateway経由になります。
     `zone_suffixes` で定義したゾーンごとに1つのNAT Gateway（Elastic IP）が作成されるため、Lambdaの送信元IPはゾーンごとに固定されます。
-    例えば `zone_suffixes = ["a"]`（デフォルト）なら固定IP 1つ、`zone_suffixes = ["a", "c"]` なら固定IP 2つです。
+    例えば `zone_suffixes = ["a"]` なら固定IP 1つ、`zone_suffixes = ["a", "c"]` なら固定IP 2つです。
 
 ### awscontainer.handlers
 

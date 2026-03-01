@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import sys
+
 from pydantic import BaseModel, computed_field, model_validator
 
 from . import general_settings
 from .django.context import DjangoContext
+from .utils import get_toml_path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 class EfsContext(BaseModel):
@@ -22,19 +30,21 @@ class EfsContext(BaseModel):
         return cls(
             local_mount_path=efs.local_mount_path,
             access_point_path=efs.access_point_path,
-            name=gs.namespace + "-" + vpc_ref + "-" + gs.project_name,
+            name=vpc_ref + "-" + gs.namespace,
             region=gs.region,
         )
 
 
 class VpcContext(BaseModel):
     ref: str
-    zone_suffixes: list[str] = ["a"]
+    zone_suffixes: list[str] = []
     nat_gateway: bool = True
     internet_gateway: bool = True
     efs: EfsContext | None = None
     name: str
     region: str
+    manage: bool = True
+    sharable: bool = False
 
     @computed_field
     @property
@@ -61,17 +71,21 @@ class VpcContext(BaseModel):
             nat_gateway=vpc.nat_gateway,
             internet_gateway=vpc.internet_gateway,
             efs=efs_ctx,
-            name=gs.namespace + "-" + vpc.ref + "-" + gs.project_name,
+            name=vpc.ref + "-" + gs.namespace,
             region=gs.region,
+            manage=vpc.manage,
+            sharable=vpc.sharable,
         )
 
     @classmethod
-    def from_toml(cls, *, ref: str) -> VpcContext:
+    def from_toml(cls) -> VpcContext:
         gs = general_settings.GeneralSettings.from_toml()
-        for vpc in gs.vpcs:
-            if vpc.ref == ref:
-                return cls.from_settings(vpc, gs)
-        raise ValueError(f"vpc ref [{ref}] not found")
+        data = tomllib.loads(get_toml_path().read_text())
+        vpc_data = data.get("vpc")
+        if not vpc_data:
+            raise ValueError("[vpc] が定義されていません")
+        vpc = general_settings.Vpc.model_validate(vpc_data)
+        return cls.from_settings(vpc, gs)
 
 
 class GeneralContext(BaseModel):
@@ -80,7 +94,6 @@ class GeneralContext(BaseModel):
     region: str
     project_name: str
     stages: list[str]
-    vpcs: list[VpcContext] = []
     s3_fallback_bucket_name: str | None = None
     django_fallback: DjangoContext | None = None
 
@@ -88,7 +101,6 @@ class GeneralContext(BaseModel):
     def from_general_settings(
         cls, gs: general_settings.GeneralSettings
     ) -> GeneralContext:
-        vpcs = [VpcContext.from_settings(vpc, gs) for vpc in gs.vpcs]
         django_fallback = None
         if gs.django_fallback:
             django_fallback = DjangoContext.from_settings(gs.django_fallback)
@@ -98,7 +110,6 @@ class GeneralContext(BaseModel):
             region=gs.region,
             project_name=gs.project_name,
             stages=gs.stages,
-            vpcs=vpcs,
             s3_fallback_bucket_name=gs.s3_fallback_bucket_name,
             django_fallback=django_fallback,
         )

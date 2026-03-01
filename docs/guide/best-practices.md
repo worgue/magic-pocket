@@ -119,19 +119,17 @@ domain = "media.example.com"
 :   dev と prd で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
 
 ??? tip "RDS Aurora を使う場合"
-    Neon の代わりに RDS Aurora PostgreSQL Serverless v2 を使う場合は、`[neon]` と `DATABASE_URL` managed secret の代わりに `[rds]` を設定します。VPC 設定が必須です。
+    Neon の代わりに RDS Aurora PostgreSQL Serverless v2 を使う場合は、`[neon]` と `DATABASE_URL` managed secret の代わりに `[rds]` と `[vpc]` を設定します。
 
     ```toml
-    [[general.vpcs]]
+    [vpc]
     ref = "main"
     zone_suffixes = ["a", "c"]
 
     [rds]
-    vpc_ref = "main"
 
     [awscontainer]
     dockerfile_path = "pocket.Dockerfile"
-    vpc_ref = "main"
 
     [awscontainer.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }

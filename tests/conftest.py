@@ -15,6 +15,7 @@ def use_toml(monkeypatch):
         p = Path(path)
         monkeypatch.setattr("pocket.settings.get_toml_path", lambda: p)
         monkeypatch.setattr("pocket.general_settings.get_toml_path", lambda: p)
+        monkeypatch.setattr("pocket.general_context.get_toml_path", lambda: p)
 
     return _use
 

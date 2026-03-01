@@ -10,29 +10,29 @@ def vpc():
     pass
 
 
-def get_vpc_resource(ref):
-    vpc_context = VpcContext.from_toml(ref=ref)
+def get_vpc_resource():
+    vpc_context = VpcContext.from_toml()
     return Vpc(vpc_context)
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def yaml(ref):
-    vpc = get_vpc_resource(ref)
+def yaml():
+    vpc = get_vpc_resource()
     print(vpc.stack.yaml)
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def yaml_diff(ref):
-    vpc = get_vpc_resource(ref)
+def yaml_diff():
+    vpc = get_vpc_resource()
     print(vpc.stack.yaml_diff.to_json(indent=2))
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def create(ref):
-    vpc = get_vpc_resource(ref)
+def create():
+    vpc = get_vpc_resource()
+    if not vpc.context.manage:
+        echo.danger("外部 VPC は他で管理されています。")
+        return
     if not vpc.status == "NOEXIST":
         echo.warning("AWS vpc is already created.")
     else:
@@ -41,9 +41,11 @@ def create(ref):
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def update(ref):
-    vpc = get_vpc_resource(ref)
+def update():
+    vpc = get_vpc_resource()
+    if not vpc.context.manage:
+        echo.danger("外部 VPC は他で管理されています。")
+        return
     if vpc.status == "NOEXIST":
         echo.warning("vpc has not created yet.")
         return
@@ -57,9 +59,16 @@ def update(ref):
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def destroy(ref):
-    vpc = get_vpc_resource(ref)
+def destroy():
+    vpc = get_vpc_resource()
+    if not vpc.context.manage:
+        echo.danger("外部 VPC は他で管理されています。")
+        return
+    if vpc.stack.consumers:
+        echo.danger("VPC に consumer がいるため削除できません:")
+        for c in vpc.stack.consumers:
+            echo.info("  - %s" % c)
+        return
     has_stack = vpc.stack.status != "NOEXIST"
     has_efs = vpc.efs and vpc.efs.exists()
     if not has_stack and not has_efs:
@@ -71,9 +80,8 @@ def destroy(ref):
 
 
 @vpc.command()
-@click.option("--ref", prompt=True)
-def status(reg):
-    vpc = get_vpc_resource(reg)
+def status():
+    vpc = get_vpc_resource()
     if vpc.status == "COMPLETED":
         echo.success("Vpc has been created.")
     elif vpc.status == "NOEXIST":

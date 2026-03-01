@@ -405,7 +405,7 @@ class RdsContext(BaseModel):
 
     @classmethod
     def from_settings(cls, rds: settings.Rds, root: settings.Settings) -> RdsContext:
-        assert rds.vpc, "rds.vpc must be resolved by process_vpc_ref"
+        assert rds.vpc, "rds.vpc must be resolved by resolve_vpc"
         vpc_ctx = VpcContext.from_settings(rds.vpc, root.general)
         resource_prefix = root.prefix_template.format(
             stage=root.stage,

@@ -120,10 +120,15 @@ class Rds:
         output = vpc_stack.output
         export = vpc_stack.export
         assert output, "VPC stack output is not available"
+        prefix = export["private_subnet_"]
         subnet_ids = []
-        for i in range(len(self.context.vpc.zone_suffixes)):
-            key = f"{export['private_subnet_']}{i + 1}"
-            subnet_ids.append(output[key])
+        for i in range(1, 20):
+            key = f"{prefix}{i}"
+            if key in output:
+                subnet_ids.append(output[key])
+            else:
+                break
+        assert subnet_ids, "No private subnets found in VPC stack"
         return subnet_ids
 
     def _get_vpc_id(self) -> str:
@@ -142,7 +147,14 @@ class Rds:
         }
 
     def deploy_init(self):
-        Vpc(self.context.vpc).stack.wait_status("COMPLETED")
+        vpc_stack = Vpc(self.context.vpc).stack
+        if not self.context.vpc.manage:
+            if vpc_stack.status == "NOEXIST":
+                raise ValueError(
+                    f"外部 VPC スタック '{vpc_stack.name}' が見つかりません。"
+                )
+        else:
+            vpc_stack.wait_status("COMPLETED")
 
     def create(self):
         subnet_ids = self._get_vpc_subnet_ids()
