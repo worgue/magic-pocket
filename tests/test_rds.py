@@ -29,8 +29,8 @@ def test_rds_context(use_toml):
     assert len(context.rds.vpc.zone_suffixes) == 2
 
 
-def test_rds_requires_2_azs(use_toml):
-    """RDS は VPC に最低 2 AZ 必要"""
+def test_rds_requires_2_azs_when_managed():
+    """managed VPC では RDS に最低 2 AZ 必要"""
     with pytest.raises(ValueError, match="at least 2 zone_suffixes"):
         Settings.model_validate(
             {
@@ -39,8 +39,8 @@ def test_rds_requires_2_azs(use_toml):
                     "region": "ap-northeast-1",
                     "project_name": "testprj",
                     "stages": ["dev"],
-                    "vpcs": [{"ref": "main", "zone_suffixes": ["a"]}],
                 },
+                "vpc": {"ref": "main", "zone_suffixes": ["a"]},
                 "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a"]}},
                 "awscontainer": {
                     "dockerfile_path": "Dockerfile",
@@ -52,7 +52,7 @@ def test_rds_requires_2_azs(use_toml):
 
 def test_rds_requires_awscontainer_vpc():
     """RDS には awscontainer + vpc が必須"""
-    with pytest.raises(ValueError, match="rds requires awscontainer with vpc_ref"):
+    with pytest.raises(ValueError, match="rds requires awscontainer with VPC"):
         Settings.model_validate(
             {
                 "stage": "dev",
@@ -60,33 +60,9 @@ def test_rds_requires_awscontainer_vpc():
                     "region": "ap-northeast-1",
                     "project_name": "testprj",
                     "stages": ["dev"],
-                    "vpcs": [{"ref": "main", "zone_suffixes": ["a", "c"]}],
                 },
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
                 "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}},
-            }
-        )
-
-
-def test_rds_vpc_ref_must_match_awscontainer():
-    """RDS と awscontainer の vpc_ref は同じでなければならない"""
-    with pytest.raises(ValueError, match="rds.vpc_ref must reference the same vpc"):
-        Settings.model_validate(
-            {
-                "stage": "dev",
-                "general": {
-                    "region": "ap-northeast-1",
-                    "project_name": "testprj",
-                    "stages": ["dev"],
-                    "vpcs": [
-                        {"ref": "main", "zone_suffixes": ["a", "c"]},
-                        {"ref": "other", "zone_suffixes": ["a", "c"]},
-                    ],
-                },
-                "rds": {"vpc": {"ref": "other", "zone_suffixes": ["a", "c"]}},
-                "awscontainer": {
-                    "dockerfile_path": "Dockerfile",
-                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
-                },
             }
         )
 
@@ -98,7 +74,7 @@ def test_rds_none_when_not_configured(use_toml):
     assert context.rds is None
 
 
-def test_rds_custom_capacity(use_toml):
+def test_rds_custom_capacity():
     """カスタム min/max capacity の設定"""
     settings = Settings.model_validate(
         {
@@ -107,8 +83,8 @@ def test_rds_custom_capacity(use_toml):
                 "region": "ap-northeast-1",
                 "project_name": "testprj",
                 "stages": ["dev"],
-                "vpcs": [{"ref": "main", "zone_suffixes": ["a", "c"]}],
             },
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
             "rds": {
                 "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
                 "min_capacity": 1.0,
@@ -125,8 +101,8 @@ def test_rds_custom_capacity(use_toml):
     assert settings.rds.max_capacity == 4.0
 
 
-def test_rds_process_vpc_ref(use_toml):
-    """process_vpc_ref が rds.vpc_ref を正しく解決する"""
+def test_rds_resolve_vpc(use_toml):
+    """resolve_vpc が rds の vpc を正しく解決する"""
     use_toml("tests/data/toml/rds.toml")
     settings = Settings.from_toml(stage="dev")
     assert settings.rds is not None

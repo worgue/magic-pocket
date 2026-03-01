@@ -9,7 +9,7 @@ staticfiles = { store = "filesystem", static = true }
 
 [vpc]
 ref = "main"
-zone_suffixes = ["a", "c"]
+manage = false
 
 [rds]
 

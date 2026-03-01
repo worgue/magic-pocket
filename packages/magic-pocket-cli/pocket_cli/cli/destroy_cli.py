@@ -43,6 +43,25 @@ def _create_codebuild_builder(context: Context) -> CodeBuildBuilder | None:
     )
 
 
+def _collect_vpc_targets(context: Context) -> list[str]:
+    """VPC 関連の削除対象を収集"""
+    if not context.awscontainer or not context.awscontainer.vpc:
+        return []
+    if not context.awscontainer.vpc.manage:
+        return ["VPC (外部 VPC consumer タグ削除)"]
+    vpc = Vpc(context.awscontainer.vpc)
+    vpc_parts = []
+    if vpc.stack.status != "NOEXIST":
+        vpc_parts.append("CFNスタック")
+        if vpc.stack.consumers:
+            vpc_parts.append("consumers: %s" % ", ".join(vpc.stack.consumers))
+    if vpc.efs and vpc.efs.exists():
+        vpc_parts.append("EFS")
+    if vpc_parts:
+        return ["VPC (%s)" % " + ".join(vpc_parts)]
+    return []
+
+
 def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     """AwsContainer 関連の削除対象を収集"""
     targets: list[str] = []
@@ -62,16 +81,7 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
         parts.append("CodeBuild")
 
     targets.append("AwsContainer (%s)" % " + ".join(parts))
-
-    if context.awscontainer.vpc:
-        vpc = Vpc(context.awscontainer.vpc)
-        vpc_parts = []
-        if vpc.stack.status != "NOEXIST":
-            vpc_parts.append("CFNスタック")
-        if vpc.efs and vpc.efs.exists():
-            vpc_parts.append("EFS")
-        if vpc_parts:
-            targets.append("VPC (%s)" % " + ".join(vpc_parts))
+    targets.extend(_collect_vpc_targets(context))
 
     return targets
 
@@ -162,7 +172,24 @@ def _destroy_vpc(context: Context):
     """VPC 関連リソースを削除"""
     if not context.awscontainer or not context.awscontainer.vpc:
         return
-    vpc = Vpc(context.awscontainer.vpc)
+    vpc_ctx = context.awscontainer.vpc
+    if not vpc_ctx.manage:
+        # 外部 VPC: consumer タグのみ削除
+        from pocket_cli.resources.aws.cloudformation import VpcStack
+
+        vpc_stack = VpcStack(vpc_ctx)
+        if vpc_stack.status != "NOEXIST":
+            slug = context.stage + "-" + context.project_name
+            vpc_stack.remove_consumer_tag(slug)
+            echo.log("外部 VPC の consumer タグを削除しました。")
+        return
+    # managed VPC: consumer チェック後に削除
+    vpc = Vpc(vpc_ctx)
+    if vpc.stack.consumers:
+        echo.danger("VPC に consumer がいるため削除できません:")
+        for c in vpc.stack.consumers:
+            echo.info("  - %s" % c)
+        return
     has_stack = vpc.stack.status != "NOEXIST"
     has_efs = vpc.efs and vpc.efs.exists()
     if has_stack or has_efs:

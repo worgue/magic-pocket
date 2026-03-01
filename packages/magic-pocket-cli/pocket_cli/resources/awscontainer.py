@@ -149,7 +149,20 @@ class AwsContainer:
     def deploy_init(self):
         self.ecr.sync()
         if self.context.vpc:
-            Vpc(self.context.vpc).stack.wait_status("COMPLETED")
+            vpc_stack = Vpc(self.context.vpc).stack
+            if not self.context.vpc.manage:
+                if vpc_stack.status == "NOEXIST":
+                    raise ValueError(
+                        f"外部 VPC スタック '{vpc_stack.name}' が見つかりません。"
+                    )
+                if not vpc_stack.is_sharable:
+                    raise ValueError(
+                        f"VPC '{vpc_stack.name}' は共有が許可されていません "
+                        "(sharable = true が必要です)"
+                    )
+                vpc_stack.add_consumer_tag(self.context.slug)
+            else:
+                vpc_stack.wait_status("COMPLETED")
 
     def create(self, mediator: Mediator):
         print("Creating secrets ...")

@@ -340,20 +340,22 @@ pocket resource cloudfront-keys yaml --stage=dev --name=media
 
 ```bash
 # VPCの状態確認
-pocket resource vpc status --ref=main
+pocket resource vpc status
 
 # CloudFormation YAMLを表示
-pocket resource vpc yaml --ref=main
+pocket resource vpc yaml
 
 # CloudFormation YAMLの差分を確認
-pocket resource vpc yaml-diff --ref=main
+pocket resource vpc yaml-diff
 
 # VPCを削除（CFNスタック + EFS）
-pocket resource vpc destroy --ref=main
+pocket resource vpc destroy
 ```
 
-!!! note "VPCコマンドの `--ref`"
-    VPCコマンドでは `--stage` ではなく、`--ref` オプションで `general.vpcs` の `ref` 名を指定します。
+!!! note "VPCコマンド"
+    VPC は `pocket.toml` の `[vpc]` セクションから自動的に読み込まれます。
+    外部 VPC（`manage = false`）の場合、`create` / `update` / `destroy` は実行できません。
+    consumer がいる managed VPC は削除できません。
 
 ---
 
@@ -373,7 +375,7 @@ pocket resource cloudfront yaml --stage=dev
 pocket resource cloudfront-keys yaml --stage=dev
 
 # vpc
-pocket resource vpc yaml --ref=main
+pocket resource vpc yaml
 ```
 
 `yaml-diff` サブコマンドでは、デプロイ済みのテンプレートとの差分を JSON で表示します。
