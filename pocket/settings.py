@@ -197,6 +197,12 @@ class TiDb(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+class Rds(BaseModel):
+    vpc: Vpc | None = None  # process_vpc_ref で vpc_ref から解決
+    min_capacity: float = 0.5
+    max_capacity: float = 2.0
+
+
 class S3(BaseSettings):
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
 
@@ -345,6 +351,7 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     tidb: TiDb | None = None
+    rds: Rds | None = None
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
 
@@ -416,6 +423,31 @@ class Settings(BaseSettings):
         self._check_cloudfront_token_secret(name, cf)
 
     @model_validator(mode="after")
+    def check_rds_vpc(self):
+        if self.rds and self.rds.vpc:
+            if len(self.rds.vpc.zone_suffixes) < 2:
+                raise ValueError(
+                    "rds requires vpc with at least 2 zone_suffixes "
+                    "(DB Subnet Group needs 2+ AZs)"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_rds_requires_awscontainer_vpc(self):
+        if self.rds:
+            if not self.awscontainer or not self.awscontainer.vpc:
+                raise ValueError(
+                    "rds requires awscontainer with vpc_ref pointing to the same vpc"
+                )
+            if self.rds.vpc and self.awscontainer.vpc:
+                if self.rds.vpc.ref != self.awscontainer.vpc.ref:
+                    raise ValueError(
+                        "rds.vpc_ref must reference the same vpc"
+                        " as awscontainer.vpc_ref"
+                    )
+        return self
+
+    @model_validator(mode="after")
     def check_cloudfront_requires_s3(self):
         if self.cloudfront and not self.s3:
             raise ValueError("s3 is required when cloudfront is configured")
@@ -436,21 +468,34 @@ class Settings(BaseSettings):
 
     @classmethod
     def process_vpc_ref(cls, data: dict):
-        if "awscontainer" not in data:
-            return
-        if "vpc_ref" not in data["awscontainer"]:
-            return
-        vpc_ref = data["awscontainer"].pop("vpc_ref")
-        for vpc_data in data["general"]["vpcs"]:
-            if vpc_data["ref"] == vpc_ref:
-                data["awscontainer"]["vpc"] = vpc_data
-                break
-        else:
-            raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
+        if "awscontainer" in data and "vpc_ref" in data["awscontainer"]:
+            vpc_ref = data["awscontainer"].pop("vpc_ref")
+            for vpc_data in data["general"]["vpcs"]:
+                if vpc_data["ref"] == vpc_ref:
+                    data["awscontainer"]["vpc"] = vpc_data
+                    break
+            else:
+                raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
+        if "rds" in data and "vpc_ref" in data["rds"]:
+            vpc_ref = data["rds"].pop("vpc_ref")
+            for vpc_data in data["general"]["vpcs"]:
+                if vpc_data["ref"] == vpc_ref:
+                    data["rds"]["vpc"] = vpc_data
+                    break
+            else:
+                raise ValueError(f"vpc {vpc_ref} not found in general.vpcs")
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = ["general", "awscontainer", "neon", "tidb", "s3", "cloudfront"]
+        valid_keys = [
+            "general",
+            "awscontainer",
+            "neon",
+            "tidb",
+            "rds",
+            "s3",
+            "cloudfront",
+        ]
         valid_keys += data["general"]["stages"]
         for key in data:
             if key not in valid_keys:

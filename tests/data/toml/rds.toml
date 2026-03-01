@@ -1,0 +1,22 @@
+[general]
+region = "ap-northeast-1"
+project_name = "testprj"
+stages = ["dev", "prd"]
+
+[[general.vpcs]]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
+[general.django_fallback.storages]
+default = { store = "filesystem" }
+staticfiles = { store = "filesystem", static = true }
+
+[rds]
+vpc_ref = "main"
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+vpc_ref = "main"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"

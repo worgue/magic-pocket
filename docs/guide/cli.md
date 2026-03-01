@@ -58,6 +58,7 @@ pocket deploy --stage=dev
 `pocket.toml` の設定に応じて、以下の処理が行われます。
 
 - Neonへのデータベース作成
+- RDS Aurora クラスターの作成（`[rds]` 設定時）
 - Secrets Managerへのシークレット登録
 - S3バケットの作成と権限設定
 - コンテナイメージの作成とECRへのアップロード
@@ -97,11 +98,12 @@ pocket destroy --stage=dev
 
 1. CloudFront（CFNスタック + バケットポリシー）
 2. AwsContainer（CFNスタック + ECR + secrets）
-3. VPC（CFNスタック + EFS）
-4. S3 バケット
-5. TiDB クラスタ
-6. Neon ブランチ
-7. ステートバケット（`--with-state-bucket` 指定時のみ）
+3. RDS Aurora クラスター（Final Snapshot 付き）
+4. VPC（CFNスタック + EFS）
+5. S3 バケット
+6. TiDB クラスタ
+7. Neon ブランチ
+8. ステートバケット（`--with-state-bucket` 指定時のみ）
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
 
@@ -260,6 +262,19 @@ pocket resource awscontainer secrets delete-pocket-managed --stage=dev
 
 ```bash
 pocket resource neon status --stage=dev
+```
+
+### rds
+
+```bash
+# RDS Aurora クラスターの状態確認
+pocket resource rds status --stage=dev
+
+# 接続情報の表示（endpoint, port, database, username）
+pocket resource rds endpoint --stage=dev
+
+# クラスターの削除（確認プロンプト付き、Final Snapshot 作成）
+pocket resource rds destroy --stage=dev
 ```
 
 ### s3
