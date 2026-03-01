@@ -9,6 +9,7 @@ from pocket_cli.cli import (
     deploy_cli,
     destroy_cli,
     neon_cli,
+    rds_cli,
     s3_cli,
     status_cli,
     tidb_cli,
@@ -42,6 +43,7 @@ resource.add_command(vpc_cli.vpc)
 resource.add_command(awscontainer_cli.awscontainer)
 resource.add_command(neon_cli.neon)
 resource.add_command(tidb_cli.tidb)
+resource.add_command(rds_cli.rds)
 resource.add_command(s3_cli.s3)
 resource.add_command(cloudfront_cli.cloudfront)
 resource.add_command(cloudfront_keys_cli.cloudfront_keys)

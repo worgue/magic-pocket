@@ -8,6 +8,7 @@ from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.neon import Neon
+from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
 from pocket_cli.resources.vpc import Vpc
@@ -84,6 +85,11 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
 
+    if context.rds:
+        rds = Rds(context.rds)
+        if rds.status != "NOEXIST":
+            targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
+
     for name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
             targets.append("CloudFrontKeys '%s' (CFNスタック)" % name)
@@ -140,6 +146,18 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
     _destroy_vpc(context)
 
 
+def _destroy_rds(context: Context):
+    """RDS Aurora クラスターを削除"""
+    if not context.rds:
+        return
+    rds = Rds(context.rds)
+    if rds.status == "NOEXIST":
+        return
+    echo.log("Destroying RDS Aurora cluster...")
+    rds.delete()
+    echo.success("RDS Aurora cluster was destroyed. Final snapshot was created.")
+
+
 def _destroy_vpc(context: Context):
     """VPC 関連リソースを削除"""
     if not context.awscontainer or not context.awscontainer.vpc:
@@ -165,6 +183,9 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 
     # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
     _destroy_awscontainer(context, with_secrets)
+
+    # 2.5. RDS（AwsContainer の後、VPC の前）
+    _destroy_rds(context)
 
     # 3.5. CloudFrontKeys（AwsContainer の後、S3 の前）
     for name, cf_ctx in context.cloudfront.items():

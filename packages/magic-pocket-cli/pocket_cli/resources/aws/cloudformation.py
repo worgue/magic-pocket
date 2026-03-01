@@ -13,7 +13,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, CloudFrontContext
+    from pocket.context import AwsContainerContext, CloudFrontContext, RdsContext
     from pocket.general_context import VpcContext
 
 
@@ -396,6 +396,24 @@ class ContainerStack(Stack):
     context: AwsContainerContext
     template_filename = "awscontainer"
 
+    def __init__(
+        self,
+        context: AwsContainerContext,
+        *,
+        rds_context: RdsContext | None = None,
+    ):
+        self._rds_context = rds_context
+        super().__init__(context)
+
+    def _resolve_rds(self) -> tuple[str | None, str | None]:
+        """RDS の SG ID とシークレット ARN を動的に取得"""
+        if self._rds_context is None:
+            return None, None
+        from pocket_cli.resources.rds import Rds
+
+        rds = Rds(self._rds_context)
+        return rds.security_group_id, rds.master_user_secret_arn
+
     @property
     def name(self):
         return f"{self.context.slug}-container"
@@ -409,6 +427,29 @@ class ContainerStack(Stack):
         if self.context.vpc:
             return VpcStack(self.context.vpc).export
         return {}
+
+    @property
+    def yaml(self) -> str:
+        rds_sg_id, rds_secret_arn = self._resolve_rds()
+        template = Environment(
+            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
+        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
+        original_yaml = template.render(
+            stack_name=self.name,
+            export=self.export,
+            resource=self._get_resource(),
+            rds_security_group_id=rds_sg_id,
+            rds_secret_arn=rds_secret_arn,
+            use_rds=rds_sg_id is not None,
+            **self.context.model_dump(),
+        )
+        return "\n".join(
+            [
+                line
+                for line in original_yaml.splitlines()
+                if line.strip() not in ["#", "# prettier-ignore"]
+            ]
+        )
 
 
 class VpcStack(Stack):

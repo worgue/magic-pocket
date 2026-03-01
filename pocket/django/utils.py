@@ -207,7 +207,7 @@ def _detect_engine(stage: str | None, scheme: str) -> str:
         context = get_context(stage=stage)
         if context.tidb:
             return "django_tidb"
-        if context.neon:
+        if context.neon or context.rds:
             return "django.db.backends.postgresql"
     if scheme in ("postgres", "postgresql"):
         return "django.db.backends.postgresql"
