@@ -3,15 +3,15 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev", "tst", "stg", "prd"]
 
-[[general.vpcs]]
-ref = "sandbox"
-zone_suffixes = ["c"]
-efs = {}
-
 [general.django_fallback.storages]
 default = { store = "filesystem" }
 management = { store = "filesystem", location = "management" }
 staticfiles = { store = "filesystem", static = true }
+
+[vpc]
+ref = "sandbox"
+zone_suffixes = ["c"]
+efs = {}
 
 [s3]
 
@@ -43,9 +43,6 @@ routes = [
     { is_default = true, is_spa = true, origin_path = "/main" },
 ]
 
-[dev.awscontainer]
-vpc_ref = "sandbox"
-
 [dev.awscontainer.envs]
 DJANGO_ENV_PATH = "project/env/env.dev"
 
@@ -63,9 +60,6 @@ project_name = "dev-testprj"
 # SECRET_KEY = { type = "password", options = { length = 50 } }
 # DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 # DATABASE_URL = { type = "neon_database_url" }
-
-[prd.awscontainer]
-vpc_ref = "sandbox"
 
 [prd.awscontainer.envs]
 DJANGO_ENV_PATH = "project/env/env.prd"

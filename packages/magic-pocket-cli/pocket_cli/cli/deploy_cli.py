@@ -20,7 +20,8 @@ from pocket_cli.resources.vpc import Vpc
 def _append_infra_resources(resources, context: Context, state_bucket: str):
     """VPC / RDS / CloudFrontKeys / AwsContainer をまとめて追加"""
     if context.awscontainer and context.awscontainer.vpc:
-        resources.append(Vpc(context.awscontainer.vpc))
+        if context.awscontainer.vpc.manage:
+            resources.append(Vpc(context.awscontainer.vpc))
     if context.rds:
         resources.append(Rds(context.rds))
     for _name, cf_ctx in context.cloudfront.items():
