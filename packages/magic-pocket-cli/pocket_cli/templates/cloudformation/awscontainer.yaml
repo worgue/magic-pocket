@@ -69,6 +69,17 @@ Resources:
                   - Fn::Sub: "{{ value }}"
                   # {% endfor %}
         # {% endif %}
+        # {% if rds_secret_arn %}
+        - PolicyName: "{{ resource_prefix }}access-rds-secret"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "secretsmanager:GetSecretValue"
+                Resource:
+                  - "{{ rds_secret_arn }}"
+        # {% endif %}
         - PolicyName:
             Fn::Sub: "{{ resource_prefix }}access-cloudformation"
           PolicyDocument:
@@ -130,6 +141,9 @@ Resources:
           "{{ env_key }}":
             Fn::ImportValue: "{{ import_name }}"
           # {% endfor %}
+          # {% if rds_secret_arn %}
+          "POCKET_RDS_SECRET_ARN": "{{ rds_secret_arn }}"
+          # {% endif %}
       # {% if vpc %}
       VpcConfig:
         SecurityGroupIds:
@@ -352,6 +366,18 @@ Resources:
       IpProtocol: tcp
       FromPort: 2049
       ToPort: 2049
+  # {% endif %}
+
+  # {% if use_rds %}
+  LambdaRDSAccess:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: "{{ rds_security_group_id }}"
+      SourceSecurityGroupId:
+        Ref: LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
   # {% endif %}
 
 # {% if handlers %}

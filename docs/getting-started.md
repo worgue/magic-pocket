@@ -19,11 +19,14 @@ magic-pocketはPyPIからインストール可能です。
 credentialsは `~/.aws/credentials` への設定を想定しています。
 [boto3のドキュメント](https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#shared-credentials-file){:target="_blank"} を参考に設定してください。
 
-### Neon アカウント
+### データベース
 
-[Neonアカウント](https://neon.tech/){:target="_blank"} が必要です。
+以下のいずれかを選択してください。
 
-APIキーは環境変数 `NEON_API_KEY` で設定します。後の手順で `.env` に記述できます。
+- **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキーは環境変数 `NEON_API_KEY` で設定します。
+- **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。Neon アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
+
+このガイドでは Neon を使った手順を説明します。RDS を使う場合は「[設定ファイル - rds](guide/configuration.md#rds)」を参照してください。
 
 ---
 

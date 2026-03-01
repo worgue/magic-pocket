@@ -11,9 +11,29 @@ from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.neon import Neon
+from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
 from pocket_cli.resources.vpc import Vpc
+
+
+def _append_infra_resources(resources, context: Context, state_bucket: str):
+    """VPC / RDS / CloudFrontKeys / AwsContainer をまとめて追加"""
+    if context.awscontainer and context.awscontainer.vpc:
+        resources.append(Vpc(context.awscontainer.vpc))
+    if context.rds:
+        resources.append(Rds(context.rds))
+    for _name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.signing_key:
+            resources.append(CloudFrontKeys(cf_ctx))
+    if context.awscontainer:
+        resources.append(
+            AwsContainer(
+                context.awscontainer,
+                state_bucket=state_bucket,
+                rds_context=context.rds,
+            )
+        )
 
 
 def get_resources(context: Context, *, state_bucket: str = ""):
@@ -24,15 +44,7 @@ def get_resources(context: Context, *, state_bucket: str = ""):
         resources.append(TiDb(context.tidb))
     if context.s3:
         resources.append(S3(context.s3))
-    if context.awscontainer:
-        if context.awscontainer.vpc:
-            resources.append(Vpc(context.awscontainer.vpc))
-    # CloudFrontKeys は AwsContainer より前（PublicKeyId Export が必要）
-    for _name, cf_ctx in context.cloudfront.items():
-        if cf_ctx.signing_key:
-            resources.append(CloudFrontKeys(cf_ctx))
-    if context.awscontainer:
-        resources.append(AwsContainer(context.awscontainer, state_bucket=state_bucket))
+    _append_infra_resources(resources, context, state_bucket)
     for _name, cf_ctx in context.cloudfront.items():
         resources.append(CloudFront(cf_ctx))
     return resources

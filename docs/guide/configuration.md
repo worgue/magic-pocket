@@ -8,6 +8,7 @@
 [general]           # 全ステージ共通の設定
 [s3]                # S3設定（全ステージ共通）
 [neon]              # Neon設定（全ステージ共通）
+[rds]               # RDS Aurora設定（全ステージ共通）
 [awscontainer]      # Lambda設定（全ステージ共通）
 [cloudfront]        # CloudFront設定（全ステージ共通）
 
@@ -130,6 +131,49 @@ project_name = "prd-myproject"
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
 
 `NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
+
+---
+
+## rds
+
+RDS Aurora PostgreSQL Serverless v2 の設定です。`vpc_ref` を指定するだけでクラスターが自動作成されます。
+
+```toml
+[[general.vpcs]]
+ref = "main"
+zone_suffixes = ["a", "c"]  # RDS は 2AZ 以上必須
+
+[rds]
+vpc_ref = "main"
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+vpc_ref = "main"
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `vpc_ref` | str | **必須** | `general.vpcs` の `ref` を指定 |
+| `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU） |
+| `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU） |
+
+!!! info "DATABASE_URL の自動構築"
+    `[rds]` を設定すると、Lambda 環境変数 `POCKET_RDS_SECRET_ARN` が自動設定されます。
+    `set_envs()` の呼び出し時に、RDS の AWS 管理シークレットから `DATABASE_URL` が自動構築されるため、
+    `[awscontainer.secrets.managed]` に `DATABASE_URL` を定義する必要はありません。
+
+!!! warning "制約事項"
+    - VPC の `zone_suffixes` は 2 つ以上必要です（DB Subnet Group に最低 2AZ 必要）。
+    - `awscontainer.vpc_ref` が同じ VPC を参照している必要があります。
+    - CloudFormation ではなく boto3 で直接管理されます（データ保持リソースのため）。
+
+??? example "カスタムキャパシティの例"
+    ```toml
+    [rds]
+    vpc_ref = "main"
+    min_capacity = 1.0
+    max_capacity = 8.0
+    ```
 
 ---
 

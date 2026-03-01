@@ -1,6 +1,6 @@
 # Magic Pocket
 
-**magic-pocket** は、DjangoプロジェクトをAWS Lambda + Neon Postgres + S3 にデプロイするためのCLIツールです。
+**magic-pocket** は、DjangoプロジェクトをAWS Lambda + PostgreSQL (Neon / RDS Aurora) + S3 にデプロイするためのCLIツールです。
 
 設定ファイル `pocket.toml` を書くだけで、コマンド1つでインフラ構築からデプロイまで完了します。
 
@@ -19,6 +19,7 @@ graph LR
     A[pocket.toml] --> B[pocket deploy]
     B --> C[AWS Lambda]
     B --> D[Neon Postgres]
+    B --> D2[RDS Aurora]
     B --> E[S3]
     B --> F[API Gateway]
     B --> G[CloudFront]
@@ -59,3 +60,7 @@ pocket django manage collectstatic --noinput --stage=dev
 
     **Neon**
     :   月額サブスク料金。1アカウントで複数プロジェクト利用可能なので、RDSと比較すれば十分安価です。
+
+    **RDS Aurora Serverless v2**
+    :   `[rds]` 使用時。最小キャパシティ 0.5 ACU からスケールし、使用量に応じた従量課金です。
+        Neon と比べると固定費は高くなりますが、既存 RDS 資産がある場合や高い可用性が必要な場合に適しています。

@@ -390,6 +390,43 @@ class TiDbContext(BaseModel):
         )
 
 
+class RdsContext(BaseModel):
+    vpc: VpcContext
+    min_capacity: float = 0.5
+    max_capacity: float = 2.0
+    region: str
+    cluster_identifier: str
+    instance_identifier: str
+    database_name: str
+    master_username: str = "postgres"
+    subnet_group_name: str
+    security_group_name: str
+    slug: str
+
+    @classmethod
+    def from_settings(cls, rds: settings.Rds, root: settings.Settings) -> RdsContext:
+        assert rds.vpc, "rds.vpc must be resolved by process_vpc_ref"
+        vpc_ctx = VpcContext.from_settings(rds.vpc, root.general)
+        resource_prefix = root.prefix_template.format(
+            stage=root.stage,
+            project=root.project_name,
+            namespace=root.namespace,
+        )
+        database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
+        return cls(
+            vpc=vpc_ctx,
+            min_capacity=rds.min_capacity,
+            max_capacity=rds.max_capacity,
+            region=root.region,
+            cluster_identifier=f"{resource_prefix}aurora",
+            instance_identifier=f"{resource_prefix}aurora-1",
+            database_name=database_name,
+            subnet_group_name=f"{resource_prefix}aurora",
+            security_group_name=f"{resource_prefix}aurora-rds",
+            slug=root.slug,
+        )
+
+
 class S3Context(BaseModel):
     region: str
     bucket_name: str
@@ -639,6 +676,7 @@ class Context(BaseModel):
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
+    rds: RdsContext | None = None
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
     project_name: str
@@ -714,6 +752,10 @@ class Context(BaseModel):
         if s.tidb:
             tidb_ctx = TiDbContext.from_settings(s.tidb, s)
 
+        rds_ctx = None
+        if s.rds:
+            rds_ctx = RdsContext.from_settings(s.rds, s)
+
         s3_ctx = None
         if s.s3:
             s3_ctx = S3Context.from_settings(s.s3, s)
@@ -732,6 +774,7 @@ class Context(BaseModel):
             awscontainer=awscontainer_ctx,
             neon=neon_ctx,
             tidb=tidb_ctx,
+            rds=rds_ctx,
             s3=s3_ctx,
             cloudfront=cloudfront_ctx,
             project_name=s.project_name,

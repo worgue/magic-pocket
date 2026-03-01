@@ -85,6 +85,24 @@ def set_envs_from_secrets(stage: str | None = None):
     data = get_secrets(stage)
     for key, value in data.items():
         os.environ[key] = value
+    _set_rds_database_url()
+
+
+def _set_rds_database_url():
+    """POCKET_RDS_SECRET_ARN があれば RDS シークレットから DATABASE_URL を構築"""
+    import json
+    import urllib.parse
+
+    rds_secret_arn = os.environ.get("POCKET_RDS_SECRET_ARN")
+    if not rds_secret_arn:
+        return
+    sm = boto3.client("secretsmanager")
+    data = json.loads(sm.get_secret_value(SecretId=rds_secret_arn)["SecretString"])
+    password = urllib.parse.quote(data["password"], safe="")
+    os.environ["DATABASE_URL"] = (
+        f"postgres://{data['username']}:{password}"
+        f"@{data['host']}:{data['port']}/{data.get('dbname', '')}"
+    )
 
 
 # 後方互換エイリアス
