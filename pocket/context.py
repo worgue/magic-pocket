@@ -255,6 +255,20 @@ class BuildContext(BaseModel):
         )
 
 
+class SesContext(BaseModel):
+    from_email: str
+    region: str
+    configuration_set: str | None = None
+
+    @classmethod
+    def from_settings(cls, ses: settings.Ses, root: settings.Settings) -> SesContext:
+        return cls(
+            from_email=ses.from_email,
+            region=ses.region or root.region,
+            configuration_set=ses.configuration_set,
+        )
+
+
 class AwsContainerContext(BaseModel):
     vpc: VpcContext | None = None
     secrets: SecretsContext | None = None
@@ -271,6 +285,7 @@ class AwsContainerContext(BaseModel):
     handlers: dict[str, LambdaHandlerContext] = {}
     ecr_name: str
     use_s3: bool
+    use_ses: bool = False
     use_route53: bool = False
     use_sqs: bool = False
     use_efs: bool = False
@@ -333,6 +348,7 @@ class AwsContainerContext(BaseModel):
             handlers=handlers,
             ecr_name=resource_prefix + "lambda",
             use_s3=root.s3 is not None,
+            use_ses=root.ses is not None,
             use_route53=use_route53,
             use_sqs=use_sqs,
             use_efs=use_efs,
@@ -677,6 +693,7 @@ class Context(BaseModel):
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
     rds: RdsContext | None = None
+    ses: SesContext | None = None
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
     project_name: str
@@ -756,6 +773,10 @@ class Context(BaseModel):
         if s.rds:
             rds_ctx = RdsContext.from_settings(s.rds, s)
 
+        ses_ctx = None
+        if s.ses:
+            ses_ctx = SesContext.from_settings(s.ses, s)
+
         s3_ctx = None
         if s.s3:
             s3_ctx = S3Context.from_settings(s.s3, s)
@@ -775,6 +796,7 @@ class Context(BaseModel):
             neon=neon_ctx,
             tidb=tidb_ctx,
             rds=rds_ctx,
+            ses=ses_ctx,
             s3=s3_ctx,
             cloudfront=cloudfront_ctx,
             project_name=s.project_name,
