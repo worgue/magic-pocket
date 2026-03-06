@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.parse
+from typing import Any
 
 import boto3
 from django.core.management import call_command
@@ -139,6 +140,26 @@ def get_storages(*, stage: str | None = None) -> dict:
 def get_static_storage(*, stage: str | None = None):
     storages = get_storages(stage=stage)
     return storages["staticfiles"]  # must be available
+
+
+def get_email_backend(*, stage: str | None = None) -> dict[str, Any]:
+    stage = stage or os.environ.get("POCKET_STAGE")
+    if not stage:
+        return {}
+    from ..runtime import get_context
+
+    context = get_context(stage=stage)
+    if not context.ses:
+        return {}
+    ses = context.ses
+    result: dict[str, Any] = {
+        "EMAIL_BACKEND": "django_ses.SESBackend",
+        "DEFAULT_FROM_EMAIL": ses.from_email,
+        "AWS_SES_REGION_NAME": ses.region,
+    }
+    if ses.configuration_set:
+        result["AWS_SES_CONFIGURATION_SET"] = ses.configuration_set
+    return result
 
 
 def get_caches(*, stage: str | None = None) -> dict:

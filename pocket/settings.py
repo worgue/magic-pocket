@@ -203,6 +203,12 @@ class Rds(BaseModel):
     max_capacity: float = 2.0
 
 
+class Ses(BaseSettings):
+    from_email: str
+    region: str | None = None  # None → general.region を継承
+    configuration_set: str | None = None
+
+
 class S3(BaseSettings):
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
 
@@ -353,6 +359,7 @@ class Settings(BaseSettings):
     neon: Neon | None = None
     tidb: TiDb | None = None
     rds: Rds | None = None
+    ses: Ses | None = None
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
 
@@ -488,6 +495,7 @@ class Settings(BaseSettings):
             "neon",
             "tidb",
             "rds",
+            "ses",
             "s3",
             "cloudfront",
         ]

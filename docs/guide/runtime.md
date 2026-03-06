@@ -46,6 +46,36 @@ CACHES = get_caches()
 
 ---
 
+## EMAIL_BACKEND
+
+`pocket.toml` に `[ses]` セクションを設定すると、Django のメール送信バックエンドを SES に切り替えられます。
+
+```python
+from pocket.django.utils import get_email_backend
+
+vars().update(get_email_backend())
+```
+
+| 環境 | 動作 |
+|------|------|
+| Lambda（`POCKET_STAGE` あり、`[ses]` 設定あり） | `django-ses` バックエンドを返す |
+| Lambda（`POCKET_STAGE` あり、`[ses]` 設定なし） | 空 dict を返す（Django デフォルトのまま） |
+| ローカル（`POCKET_STAGE` なし） | 空 dict を返す（Django デフォルトのまま） |
+
+返される dict のキー:
+
+| キー | 説明 |
+|------|------|
+| `EMAIL_BACKEND` | `"django_ses.SESBackend"` |
+| `DEFAULT_FROM_EMAIL` | `[ses]` の `from_email` |
+| `AWS_SES_REGION_NAME` | SES リージョン |
+| `AWS_SES_CONFIGURATION_SET` | Configuration Set（設定時のみ） |
+
+!!! note "django-ses のインストール"
+    `django-ses` は `pip install magic-pocket[ses]` でインストールできます。
+
+---
+
 ## 環境変数の登録 (set_envs)
 
 `set_envs()` は、AWSリソースから取得した情報を環境変数に登録します。
@@ -232,13 +262,14 @@ import environ
 from pathlib import Path
 
 from pocket.django.runtime import set_envs, get_django_settings
-from pocket.django.utils import get_caches, get_storages
+from pocket.django.utils import get_caches, get_email_backend, get_storages
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# pocket.toml から STORAGES と CACHES を取得
+# pocket.toml から STORAGES, CACHES, EMAIL を取得
 STORAGES = get_storages()
 CACHES = get_caches()
+vars().update(get_email_backend())
 
 # .env を読み込み（ローカル用）
 environ.Env.read_env(BASE_DIR / ".env")
