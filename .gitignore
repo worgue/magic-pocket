@@ -18,6 +18,9 @@ wheels/
 # Rust
 /target/
 
+# Zensical build output
+site/
+
 # Forge
 .forge/
 forge.local.toml
