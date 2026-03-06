@@ -2,9 +2,9 @@ import pytest
 from pocket_cli.django_cli import _get_management_command_handler
 
 from pocket import settings
-from pocket.context import Context
+from pocket.context import Context, SesContext
 from pocket.django.context import DjangoStorageContext
-from pocket.django.utils import get_caches, get_storages
+from pocket.django.utils import get_caches, get_email_backend, get_storages
 
 
 def test_manage_cli(base_settings, aws_settings):
@@ -81,3 +81,60 @@ def test_cache(use_toml):
             "LOCATION": "/mnt/efs/dev",
         }
     }
+
+
+def test_ses_context(use_toml):
+    use_toml("tests/data/toml/ses.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.ses == SesContext(
+        from_email="noreply@example.com",
+        region="ap-northeast-1",
+        configuration_set=None,
+    )
+    assert context.awscontainer
+    assert context.awscontainer.use_ses is True
+
+
+def test_ses_context_custom_region(use_toml):
+    use_toml("tests/data/toml/ses_custom_region.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.ses == SesContext(
+        from_email="noreply@example.com",
+        region="us-east-1",
+        configuration_set="my-config-set",
+    )
+
+
+def test_ses_email_backend(use_toml):
+    use_toml("tests/data/toml/ses.toml")
+    result = get_email_backend(stage="dev")
+    assert result == {
+        "EMAIL_BACKEND": "django_ses.SESBackend",
+        "DEFAULT_FROM_EMAIL": "noreply@example.com",
+        "AWS_SES_REGION_NAME": "ap-northeast-1",
+    }
+
+
+def test_ses_email_backend_with_configuration_set(use_toml):
+    use_toml("tests/data/toml/ses_custom_region.toml")
+    result = get_email_backend(stage="dev")
+    assert result == {
+        "EMAIL_BACKEND": "django_ses.SESBackend",
+        "DEFAULT_FROM_EMAIL": "noreply@example.com",
+        "AWS_SES_REGION_NAME": "us-east-1",
+        "AWS_SES_CONFIGURATION_SET": "my-config-set",
+    }
+
+
+def test_ses_email_backend_not_configured(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    result = get_email_backend(stage="dev")
+    assert result == {}
+
+
+def test_ses_not_configured_use_ses_false(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.ses is None
+    assert context.awscontainer
+    assert context.awscontainer.use_ses is False

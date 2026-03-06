@@ -1,0 +1,20 @@
+[general]
+region = "ap-northeast-1"
+project_name = "testprj"
+stages = ["dev", "prd"]
+
+[general.django_fallback.storages]
+default = { store = "filesystem" }
+staticfiles = { store = "filesystem", static = true }
+
+[ses]
+from_email = "noreply@example.com"
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+[awscontainer.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600

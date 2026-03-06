@@ -20,7 +20,9 @@ Resources:
         # {% if vpc %}
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
         # {% endif %}
+        # {% if use_ses %}
         - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        # {% endif %}
         # {% if use_s3 %}
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         # {% endif %}

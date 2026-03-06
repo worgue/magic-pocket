@@ -225,6 +225,31 @@ dockerfile_path = "pocket.Dockerfile"
 
 ---
 
+## ses
+
+Amazon SES によるメール送信の設定です。設定すると、Lambda に `AmazonSESFullAccess` IAM ポリシーが付与されます。
+
+```toml
+[ses]
+from_email = "noreply@example.com"
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `from_email` | str | **必須** | デフォルトの送信元メールアドレス |
+| `region` | str \| None | None | SES リージョン（省略時は `general.region` を継承） |
+| `configuration_set` | str \| None | None | SES Configuration Set 名 |
+
+??? example "リージョンを指定する例"
+    ```toml
+    [ses]
+    from_email = "noreply@example.com"
+    region = "us-east-1"
+    configuration_set = "my-tracking-set"
+    ```
+
+---
+
 ## awscontainer
 
 AWS Lambda コンテナの設定です。
