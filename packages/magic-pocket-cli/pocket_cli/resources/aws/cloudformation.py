@@ -361,13 +361,14 @@ function _bytesToHex(bytes) {{
     return hex;
 }}
 """.format(fallback_uri=fallback_uri, login_path=login_path)
-        # indent 8 spaces for YAML embedding (skip first line)
+        # Fn::Sub: | の下はテンプレート位置が10スペース
+        # → indent 10 で合わせる
         lines = []
         for i, line in enumerate(code.splitlines()):
             if i == 0:
                 lines.append(line)
             else:
-                lines.append(" " * 8 + line)
+                lines.append(" " * 10 + line)
         return "\n".join(lines)
 
     @property
