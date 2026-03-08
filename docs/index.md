@@ -1,6 +1,6 @@
 # Magic Pocket
 
-**magic-pocket** は、DjangoプロジェクトをAWS Lambda + PostgreSQL (Neon / RDS Aurora) + S3 にデプロイするためのCLIツールです。
+**magic-pocket** は、Django / Rust (Loco) プロジェクトを AWS Lambda + PostgreSQL (Neon / RDS Aurora) + S3 にデプロイするためのCLIツールです。
 
 設定ファイル `pocket.toml` を書くだけで、コマンド1つでインフラ構築からデプロイまで完了します。
 
@@ -30,8 +30,11 @@ graph LR
 ## クイックスタート
 
 ```bash
-# インストール
+# インストール（PyPI）
 uv add magic-pocket
+
+# または、ソースからインストール（最新の開発版）
+uv add git+https://github.com/worgue/magic-pocket.git
 
 # Djangoプロジェクトで初期設定を生成
 pocket django init
