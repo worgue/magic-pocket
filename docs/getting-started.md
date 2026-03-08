@@ -9,7 +9,7 @@ Admin画面がLambda上で動くところまでを目標にします。
 
 ### Python パッケージマネージャー
 
-magic-pocketはPyPIからインストール可能です。
+magic-pocketはPyPIおよびGitHubからインストール可能です。
 以下の例では [uv](https://docs.astral.sh/uv/){:target="_blank"} を使います。他のツールを使う場合は、コマンドを適宜読み替えてください。
 
 ### AWS アカウント
@@ -51,6 +51,9 @@ localhost:8000 でDjangoが動くことを確認してください。
 
 ```bash
 uv add django-environ psycopg magic-pocket
+
+# PyPI のバージョンが古い場合は、GitHub から直接インストールできます
+# uv add django-environ psycopg "magic-pocket @ git+https://github.com/worgue/magic-pocket.git"
 ```
 
 !!! note "psycopgについて"

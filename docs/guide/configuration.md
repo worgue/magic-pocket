@@ -290,10 +290,15 @@ timeout = 600
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `command` | str | **必須** | Lambdaハンドラーのコマンド |
+| `command` | str | **必須** | Lambda コンテナの `ImageConfig.Command`（エントリーポイント） |
 | `timeout` | int | `30` | タイムアウト（秒） |
 | `memory_size` | int | `512` | メモリサイズ（MB） |
 | `reserved_concurrency` | int \| None | None | 予約済み同時実行数 |
+
+`command` は Lambda コンテナイメージの CMD を上書きする値です。
+
+- **Django**: Python モジュールパス形式のハンドラー関数を指定します（例: `pocket.django.lambda_handlers.wsgi_handler`）
+- **Rust**: コンテナ内のバイナリパスを指定します（例: `your-app`）
 
 #### handlers.`name`.apigateway
 

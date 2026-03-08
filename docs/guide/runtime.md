@@ -253,6 +253,84 @@ let delete_cookie = logout_cookie_value();
 
 ---
 
+## Rust (Loco) ランタイム {: #rust-runtime }
+
+Rust アプリケーション（Loco など）では、`magic-pocket-rs` crate を使って環境変数をセットアップします。
+Django の `set_envs()` に相当する機能を Rust で提供します。
+
+### セットアップ
+
+`Cargo.toml` に依存を追加します。
+
+```toml
+[dependencies]
+magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git" }
+```
+
+### set_envs()
+
+`set_envs()` は、Secrets Manager / SSM からシークレットを取得し、CloudFormation Output から API Gateway のホスト情報を取得して、すべて環境変数にセットします。
+
+```rust
+#[tokio::main]
+async fn main() {
+    magic_pocket_rs::set_envs().await.unwrap();
+    // この後で Loco を起動
+}
+```
+
+| 関数 | 説明 |
+|------|------|
+| `set_envs()` | シークレット + AWS リソース情報をすべてセット |
+| `set_envs_from_secrets(stage)` | シークレットのみセット |
+| `set_envs_from_resources(stage)` | AWS リソース情報のみセット |
+
+`POCKET_STAGE` が設定されていない場合、シークレット取得はスキップされます（ローカル環境での安全動作）。
+
+### セットされる環境変数
+
+| 環境変数 | 説明 |
+|----------|------|
+| `POCKET_PROJECT_NAME` | プロジェクト名 |
+| `POCKET_REGION` | AWS リージョン |
+| `POCKET_HOSTS` | API Gateway ホスト一覧 |
+| `POCKET_{HANDLER}_HOST` | 各ハンドラーのホスト |
+| `POCKET_{HANDLER}_ENDPOINT` | 各ハンドラーの URL |
+| `POCKET_{HANDLER}_QUEUEURL` | SQS キュー URL |
+| シークレットキー | Secrets Manager / SSM のシークレット値 |
+
+### pocket.toml の構成例（Loco）
+
+```toml
+[general]
+region = "ap-northeast-1"
+stages = ["dev", "prd"]
+
+[s3]
+
+[neon]
+project_name = "dev-myproject"
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+
+[awscontainer.handlers.web]
+command = "your-app"
+
+[dev.awscontainer.handlers.web]
+apigateway = {}
+
+[awscontainer.secrets.managed]
+LOCO_SECRET_KEY = { type = "password", options = { length = 50 } }
+DATABASE_URL = { type = "neon_database_url" }
+```
+
+!!! note "handlers.command の指定"
+    Rust の場合、`command` にはコンテナ内のバイナリパスを指定します。
+    詳細は「[設定ファイル - awscontainer.handlers](configuration.md#awscontainerhandlers)」を参照してください。
+
+---
+
 ## settings.py の完全な例
 
 以下は `django-environ` を利用した `settings.py` の典型的な構成です。
