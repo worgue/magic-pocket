@@ -230,7 +230,7 @@ class Neon:
             raise NeonResourceIsNotReady("Create role and endpoint first")
         if self.role.password is None:
             self.set_role_password()
-        return "postgres://%s:%s@%s:5432/%s" % (
+        return "postgres://%s:%s@%s:5432/%s?sslmode=require" % (
             self.context.role_name,
             self.role.password,
             self.endpoint.host,
