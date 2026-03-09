@@ -295,10 +295,18 @@ timeout = 600
 | `memory_size` | int | `512` | メモリサイズ（MB） |
 | `reserved_concurrency` | int \| None | None | 予約済み同時実行数 |
 
-`command` は Lambda コンテナイメージの CMD を上書きする値です。
+`command` は Lambda コンテナイメージの CMD を上書きする値です（CloudFormation の `ImageConfig.Command` にマップされます）。ENTRYPOINT はオーバーライドしません。
 
 - **Django**: Python モジュールパス形式のハンドラー関数を指定します（例: `pocket.django.lambda_handlers.wsgi_handler`）
-- **Rust**: コンテナ内のバイナリパスを指定します（例: `your-app`）
+- **Rust**: コンテナ内のバイナリパスを指定します（例: `myapp-lambda`）
+
+!!! warning "ENTRYPOINT と CMD の関係"
+    `command` は Docker の CMD のみをオーバーライドします。
+
+    - Dockerfile が `CMD ["binary"]` の場合 → `command = "binary"` でそのまま起動されます（**推奨**）
+    - Dockerfile が `ENTRYPOINT ["binary"]` + `CMD ["arg"]` の場合 → `command = "arg"` とすると `binary arg` で起動されます
+
+    意図しない起動を避けるため、Dockerfile では `ENTRYPOINT` を使わず `CMD` のみで指定することを推奨します。
 
 #### handlers.`name`.apigateway
 
