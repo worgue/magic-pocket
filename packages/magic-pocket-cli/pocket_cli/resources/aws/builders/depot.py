@@ -15,11 +15,9 @@ class DepotBuilder:
         self.project_id = project_id or os.environ.get("DEPOT_PROJECT_ID")
 
     def _get_token(self) -> str:
-        token = os.environ.get("DEPOT_TOKEN") or os.environ.get("DEPOT_API_KEY")
+        token = os.environ.get("DEPOT_TOKEN")
         if not token:
-            raise RuntimeError(
-                "DEPOT_TOKEN または DEPOT_API_KEY 環境変数が設定されていません"
-            )
+            raise RuntimeError("DEPOT_TOKEN 環境変数が設定されていません")
         return token
 
     def build_and_push(
@@ -47,6 +45,7 @@ class DepotBuilder:
             "--platform",
             platform,
             "--push",
+            "--provenance=false",
         ]
 
         if self.project_id:
