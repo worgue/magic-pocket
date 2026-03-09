@@ -167,7 +167,7 @@ pub fn load_config(stage: &str) -> Result<PocketConfig> {
 pub fn load_config_from_general() -> Result<PocketConfig> {
     let toml_path = find_toml_path()?;
     let content = std::fs::read_to_string(&toml_path).map_err(PocketError::Io)?;
-    let data: toml::Value = content.parse().map_err(PocketError::TomlParse)?;
+    let data: toml::Value = toml::from_str(&content).map_err(PocketError::TomlParse)?;
 
     let general: GeneralToml = {
         let general_val = data
@@ -199,7 +199,7 @@ pub fn load_config_from_path(path: &Path, stage: &str) -> Result<PocketConfig> {
 
 /// TOML 文字列から PocketConfig を構築する
 pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> {
-    let mut data: toml::Value = content.parse().map_err(PocketError::TomlParse)?;
+    let mut data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
 
     // ステージが stages に含まれるか検証
     let stages = data
