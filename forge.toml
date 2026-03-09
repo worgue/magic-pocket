@@ -9,20 +9,8 @@ kit_managed = "core"
 
 [[mounts]]
 type = "overlay"
-path = ".forge"
-kit_managed = "core"
-
-[[mounts]]
-type = "overlay"
 path = ".venv"
 kit_managed = "uv"
-
-[[mounts]]
-type = "inject"
-source = "forge/vm/.claude/settings.json"
-target = ".claude/settings.json"
-is_file = true
-kit_managed = "claude"
 
 [[mounts]]
 type = "overlay"
@@ -36,3 +24,13 @@ path = "example-tidb/.venv"
 [[mounts]]
 type = "overlay"
 path = "example-neon/.venv"
+[[mounts]]
+type = "overlay"
+path = ".forge/workspace"
+kit_managed = "core"
+[[mounts]]
+type = "inject"
+source = ".forge/vm/.claude/settings.json"
+target = ".claude/settings.json"
+is_file = true
+kit_managed = "claude"
