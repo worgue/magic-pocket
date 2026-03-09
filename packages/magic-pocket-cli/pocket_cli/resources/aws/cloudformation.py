@@ -317,7 +317,7 @@ class CloudFrontStack(Stack):
         if not route.path_pattern:
             fallback_uri = "/" + route.spa_fallback_html
         login_path = route.login_path
-        # ${TokenKvs} は Fn::Sub で CFn が KVS ID に解決する
+        # ${TokenKvs} は Fn::Sub の変数マッピングで KVS ID に解決される
         code = """\
 import cf from 'cloudfront';
 const kvsHandle = cf.kvs('${{TokenKvs}}');
@@ -361,14 +361,13 @@ function _bytesToHex(bytes) {{
     return hex;
 }}
 """.format(fallback_uri=fallback_uri, login_path=login_path)
-        # Fn::Sub: | の下はテンプレート位置が10スペース
-        # → indent 10 で合わせる
+        # Fn::Sub の2パラメータ形式で - | の下は12スペース
         lines = []
         for i, line in enumerate(code.splitlines()):
             if i == 0:
                 lines.append(line)
             else:
-                lines.append(" " * 10 + line)
+                lines.append(" " * 12 + line)
         return "\n".join(lines)
 
     @property

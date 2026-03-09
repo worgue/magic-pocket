@@ -42,8 +42,11 @@ Resources:
       AutoPublish: true
       # {% if route.require_token %}
       FunctionCode:
-        Fn::Sub: |
-          {{ function_codes[route.yaml_key] }}
+        Fn::Sub:
+          - |
+            {{ function_codes[route.yaml_key] }}
+          - TokenKvs:
+              Fn::GetAtt: TokenKvs.Id
       # {% else %}
       FunctionCode: |
         {{ function_codes[route.yaml_key] }}
