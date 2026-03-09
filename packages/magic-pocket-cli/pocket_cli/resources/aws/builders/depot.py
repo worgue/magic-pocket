@@ -15,11 +15,9 @@ class DepotBuilder:
         self.project_id = project_id or os.environ.get("DEPOT_PROJECT_ID")
 
     def _get_token(self) -> str:
-        token = os.environ.get("DEPOT_TOKEN") or os.environ.get("DEPOT_API_KEY")
+        token = os.environ.get("DEPOT_API_KEY") or os.environ.get("DEPOT_TOKEN")
         if not token:
-            raise RuntimeError(
-                "DEPOT_TOKEN または DEPOT_API_KEY 環境変数が設定されていません"
-            )
+            raise RuntimeError("DEPOT_API_KEY 環境変数が設定されていません")
         return token
 
     def build_and_push(
@@ -53,7 +51,21 @@ class DepotBuilder:
             cmd.extend(["--project", self.project_id])
             print("  project: %s" % self.project_id)
 
-        env = {**os.environ, "DEPOT_TOKEN": token}
+        env: dict[str, str] = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            "DEPOT_API_KEY": token,
+        }
+        for key in (
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+            "AWS_DEFAULT_REGION",
+        ):
+            if key in os.environ:
+                env[key] = os.environ[key]
+        if self.project_id:
+            env["DEPOT_PROJECT_ID"] = self.project_id
         subprocess.run(cmd, check=True, env=env)
         print("Depot ビルド完了")
 
