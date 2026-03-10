@@ -535,7 +535,7 @@ DEFAULT_FROM_EMAIL = '"Production" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```
 
-`settings.py` での読み込み方法は「[実行環境とDjango連携](runtime.md#django-settings)」を参照してください。
+`settings.py` での読み込み方法は「[Django連携](django.md#django-settings)」を参照してください。
 
 ---
 
@@ -704,7 +704,7 @@ routes = [
 
 トークンの形式は `{user_id}:{expiry_unix}:{hmac_hex}` です。
 Django 側では `pocket.django.spa_auth` モジュールでトークンの生成・検証・Cookie 設定が可能です。
-詳細は「[実行環境とDjango連携 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
+詳細は「[実行環境 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
 
 !!! warning "login_path の除外"
     `login_path`（デフォルト: `/api/auth/login`）はトークン検証の対象外にする必要があります。

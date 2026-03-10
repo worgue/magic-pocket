@@ -1,6 +1,6 @@
 [project]
 site_name = "Magic Pocket"
-site_description = "magic-pocketは、DjangoプロジェクトをAWS Lambdaにデプロイするためのツールです。"
+site_description = "magic-pocketは、WebアプリケーションをAWS Lambdaにデプロイするためのツールです。CLIはPythonで提供され、デプロイ先のランタイムではDjangoとRustをサポートしています。"
 site_url = "https://worgue.github.io/magic-pocket"
 repo_url = "https://github.com/worgue/magic-pocket"
 
@@ -10,9 +10,14 @@ nav = [
   { "ガイド" = [
     { "設定ファイル (pocket.toml)" = "guide/configuration.md" },
     { "コマンドライン (CLI)" = "guide/cli.md" },
-    { "実行環境とDjango連携" = "guide/runtime.md" },
+    { "実行環境" = "guide/runtime.md" },
+    { "Django連携" = "guide/django.md" },
+    { "Loco連携" = "guide/loco.md" },
     { "ベストプラクティス" = "guide/best-practices.md" },
     { "コールドスタート" = "guide/cold-start.md" },
+  ] },
+  { "デプロイ権限" = [
+    { "AWS" = "permissions/aws.md" },
   ] },
   { "Changelog" = "changelog.md" },
   { "旧ドキュメント" = [

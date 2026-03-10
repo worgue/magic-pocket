@@ -32,7 +32,7 @@ pocket deploy --stage=prd
 `POCKET_STAGE` も `--stage` も未指定の場合は、プロンプトで入力を求められます。
 
 !!! note "Lambda ランタイムとの共用"
-    `POCKET_STAGE` はLambda上でランタイム環境の判定にも使用されています（[実行環境とDjango連携](runtime.md) を参照）。
+    `POCKET_STAGE` はLambda上でランタイム環境の判定にも使用されています（[実行環境](runtime.md) を参照）。
     CLIのデフォルトステージとしても同じ環境変数を共用しているため、変数名を変える必要はありません。
 
 ---

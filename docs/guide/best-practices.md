@@ -178,7 +178,7 @@ def login_view(request):
     return response
 ```
 
-詳細は「[実行環境とDjango連携 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
+詳細は「[実行環境 - SPA トークン認証](runtime.md#spa-トークン認証)」を参照してください。
 
 ## デプロイ手順
 
