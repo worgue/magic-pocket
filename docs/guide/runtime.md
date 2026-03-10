@@ -27,6 +27,7 @@ Lambda上のアプリケーションは、`pocket.toml` とAWSリソースから
 | `POCKET_{HANDLER}_HOST` | 各ハンドラーのホスト |
 | `POCKET_{HANDLER}_ENDPOINT` | 各ハンドラーの URL |
 | `POCKET_{HANDLER}_QUEUEURL` | SQS キュー URL |
+| `POCKET_CLOUDFRONT_{NAME}_DOMAIN` | CloudFront ディストリビューションのドメイン名 |
 | シークレットキー | Secrets Manager / SSM のシークレット値 |
 
 ---
