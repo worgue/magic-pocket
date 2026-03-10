@@ -1,3 +1,4 @@
+import boto3
 import click
 
 from pocket.context import Context
@@ -130,6 +131,20 @@ def _destroy_codebuild(context: Context) -> None:
         echo.success("CodeBuild resources were deleted.")
 
 
+def _destroy_log_groups(context: Context):
+    """Lambda が自動作成したロググループを削除"""
+    if not context.awscontainer:
+        return
+    logs_client = boto3.client("logs", region_name=context.awscontainer.region)
+    for handler_ctx in context.awscontainer.handlers.values():
+        log_group_name = handler_ctx.log_group_name
+        try:
+            logs_client.delete_log_group(logGroupName=log_group_name)
+            echo.log("Deleted log group: %s" % log_group_name)
+        except logs_client.exceptions.ResourceNotFoundException:
+            pass
+
+
 def _destroy_awscontainer(context: Context, with_secrets: bool):
     """AwsContainer 関連リソースを削除"""
     if not context.awscontainer:
@@ -147,6 +162,8 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
         echo.success("ECR repository was deleted.")
 
     _destroy_codebuild(context)
+
+    _destroy_log_groups(context)
 
     if with_secrets and context.awscontainer.secrets:
         echo.log("Destroying pocket managed secrets...")
@@ -253,7 +270,10 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--with-secrets", is_flag=True, default=False)
 @click.option("--with-state-bucket", is_flag=True, default=False)
-def destroy(stage: str, with_secrets: bool, with_state_bucket: bool):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def destroy(stage: str, with_secrets: bool, with_state_bucket: bool, yes: bool):
     """ステージの全リソースを一括削除"""
     context = Context.from_toml(stage=stage)
     targets = _collect_targets(context, with_secrets, with_state_bucket)
@@ -266,7 +286,8 @@ def destroy(stage: str, with_secrets: bool, with_state_bucket: bool):
     for target in targets:
         echo.info("  - %s" % target)
     echo.danger("この操作は取り消せません！")
-    click.confirm("stage '%s' の全リソースを削除しますか？" % stage, abort=True)
+    if not yes:
+        click.confirm("stage '%s' の全リソースを削除しますか？" % stage, abort=True)
 
     _destroy_resources(context, with_secrets, with_state_bucket)
     echo.success("stage '%s' の全リソースを削除しました。" % stage)

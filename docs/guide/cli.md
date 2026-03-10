@@ -94,11 +94,12 @@ pocket destroy --stage=dev
 | `--stage` | 対象ステージ |
 | `--with-secrets` | pocket管理シークレットも削除 |
 | `--with-state-bucket` | ステートバケットも削除 |
+| `--yes`, `-y` | 確認プロンプトをスキップ |
 
 削除は以下の順序（デプロイの逆順）で行われます:
 
 1. CloudFront（CFNスタック + バケットポリシー）
-2. AwsContainer（CFNスタック + ECR + secrets）
+2. AwsContainer（CFNスタック + ECR + CloudWatch Logs + secrets）
 3. RDS Aurora クラスター（Final Snapshot 付き）
 4. VPC（CFNスタック + EFS）
 5. S3 バケット
