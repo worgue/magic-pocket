@@ -29,6 +29,10 @@ def set_envs_from_resources(stage: str | None = None):
         return
     set_envs_from_aws_resources(stage)
     add_or_append_env("ALLOWED_HOSTS", os.environ["POCKET_HOSTS"])
+    # CloudFront ドメインも ALLOWED_HOSTS に追加
+    for key, value in os.environ.items():
+        if key.startswith("POCKET_CLOUDFRONT_") and key.endswith("_DOMAIN") and value:
+            add_or_append_env("ALLOWED_HOSTS", value)
 
 
 def get_django_settings(

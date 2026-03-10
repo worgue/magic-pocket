@@ -275,6 +275,7 @@ class AwsContainerContext(BaseModel):
     dockerfile_path: str
     envs: dict[str, str] = {}
     signing_key_imports: dict[str, str] = {}
+    cloudfront_domain_imports: dict[str, str] = {}
     platform: str = "linux/amd64"
     django: DjangoContext | None = None
     region: str
@@ -532,29 +533,6 @@ class RouteContext(BaseModel):
     def yaml_key(self) -> str:
         return "".join([s.capitalize() for s in self.name.split("-")])
 
-    @computed_field
-    @property
-    def url_fallback_function_indent8(self) -> str:
-        lines = []
-        for i, line in enumerate(self._url_fallback_function.splitlines()):
-            if i == 0:
-                lines.append(line)
-            else:
-                lines.append(" " * 8 + line)
-        return "\n".join(lines)
-
-    @property
-    def _url_fallback_function(self):
-        return """function handler(event) {
-    var request = event.request;
-    var lastItem = request.uri.split('/').pop();
-    if (!lastItem.includes('.')) {
-        request.uri = '%s/%s';
-    }
-    return request;
-}
-""" % (self.path_pattern, self.spa_fallback_html)
-
     @classmethod
     def from_settings(cls, route: settings.Route) -> RouteContext:
         return cls(
@@ -749,6 +727,18 @@ class Context(BaseModel):
                 awscontainer_ctx = awscontainer_ctx.model_copy(
                     update={"signing_key_imports": signing_key_imports}
                 )
+
+        # cloudfront_domain_imports: CloudFront ドメインを Lambda 環境変数に
+        cloudfront_domain_imports: dict[str, str] = {}
+        for cf_name, cf_ctx in cloudfront_ctx.items():
+            env_var_name = f"POCKET_CLOUDFRONT_{cf_name.upper()}_DOMAIN"
+            export_name = f"{cf_ctx.slug}-{cf_name}-cf-domain"
+            cloudfront_domain_imports[env_var_name] = export_name
+        if cloudfront_domain_imports:
+            awscontainer_ctx = awscontainer_ctx.model_copy(
+                update={"cloudfront_domain_imports": cloudfront_domain_imports}
+            )
+
         return awscontainer_ctx
 
     @classmethod

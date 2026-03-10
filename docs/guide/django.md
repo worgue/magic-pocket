@@ -87,7 +87,7 @@ set_envs()
 
 - **Secrets Manager** — `pocket_secrets` で定義したシークレット（SECRET_KEY、DATABASE_URL など）
 - **RDS シークレット** — `[rds]` が設定されている場合、AWS 管理シークレットから `DATABASE_URL` を自動構築
-- **CloudFormation Output** — API GatewayのホストをDjangoの `ALLOWED_HOSTS` に追加
+- **CloudFormation Output** — API GatewayのホストとCloudFrontドメインをDjangoの `ALLOWED_HOSTS` に追加
 
 !!! info "RDS の DATABASE_URL"
     `[rds]` を設定すると、Lambda 起動時に `POCKET_RDS_SECRET_ARN` 環境変数から RDS の AWS 管理シークレットを読み取り、
