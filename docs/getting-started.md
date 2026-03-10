@@ -113,10 +113,10 @@ default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
 
-1. Neonが利用可能なAWSリージョンを指定してください。
+1. AWSリージョンを指定してください。Neon プロジェクトも同じリージョン（または近いリージョン）で作成してください。
 2. devとprdの2ステージ構成です。
 3. S3バケットを作成。バケット名はプロジェクト名+ステージ名から自動生成。
-4. Neonデータベースを作成。
+4. 既存の Neon プロジェクトにブランチ・DB を作成。プロジェクトは事前に [Neon Console](https://console.neon.tech/) で作成してください。
 5. Lambdaコンテナの設定。
 6. WSGIハンドラーのLambda関数を作成。
 7. マネジメントコマンド実行用のLambda関数（timeout 600秒）。

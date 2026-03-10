@@ -365,7 +365,6 @@ class NeonContext(BaseModel):
     branch_name: str
     name: str
     role_name: str
-    region_id: str
 
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
@@ -376,7 +375,6 @@ class NeonContext(BaseModel):
             branch_name=root.stage,
             name=root.project_name,
             role_name=root.project_name,
-            region_id="aws-" + root.region,
         )
 
 

@@ -168,7 +168,7 @@ S3バケットの設定です。
 
 ## neon
 
-Neon PostgreSQLの設定です。
+Neon PostgreSQLの設定です。Neon プロジェクトは事前に [Neon Console](https://console.neon.tech/){:target="_blank"} で作成しておく必要があります。magic-pocket はプロジェクト内にブランチ・データベース・ロールを作成します。
 
 ```toml
 [neon]
@@ -184,6 +184,10 @@ project_name = "prd-myproject"
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
 
 `NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
+
+!!! warning "Neon プロジェクトのリージョン"
+    Neon プロジェクトは `[general].region` と同じリージョン（または近いリージョン）で作成してください。
+    リージョンが異なると、Lambda ↔ Neon 間の通信がクロスリージョンとなりレイテンシが悪化します。
 
 ---
 
