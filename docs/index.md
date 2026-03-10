@@ -1,30 +1,85 @@
 # Magic Pocket
 
-**magic-pocket** は、Django / Rust (Loco) プロジェクトを AWS Lambda + PostgreSQL (Neon / RDS Aurora) + S3 にデプロイするためのCLIツールです。
+**magic-pocket** は、Django / Rust (Loco) プロジェクトを AWS Lambda + データベース (Neon / TiDB / RDS Aurora) + S3 にデプロイするためのCLIツールです。
 
 設定ファイル `pocket.toml` を書くだけで、コマンド1つでインフラ構築からデプロイまで完了します。
 
 ## 特徴
 
-- **サーバー保守不要** — AWS Lambdaを利用したサーバーレス構成
-- **使わない間のコストが最小** — リクエストがなければ課金なし（一部固定費あり）
 - **コマンド1つでデプロイ** — `pocket deploy --stage=dev` だけ
 - **マルチステージ対応** — dev / prd などの環境を `pocket.toml` で一元管理
 - **シークレット自動生成** — SECRET_KEY、DB接続情報などを自動でSecrets Managerに保存
+- **固定費なしのdev環境** — VPC / RDS を使わない構成なら、リクエストがない間の固定費はゼロ
 
-## アーキテクチャ
+## 構成例
+
+1つの `pocket.toml` から、ステージごとに異なる構成をデプロイできます。
+
+```toml
+[general]
+region = "ap-northeast-1"
+stages = ["dev", "prd"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "pocket.Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[awscontainer.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+
+# --- dev: Neon、VPCなし ---
+
+[dev.neon]
+project_name = "dev-myproject"
+
+[dev.awscontainer.secrets.managed]
+DATABASE_URL = { type = "neon_database_url" }
+
+[dev.awscontainer.handlers.wsgi]
+apigateway = {}
+
+# --- prd: RDS + VPC + CloudFront ---
+
+[prd.vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
+[prd.rds]
+
+[prd.awscontainer.handlers.wsgi]
+apigateway = {}
+
+[prd.cloudfront.web]
+domain = "example.com"
+routes = [
+    { is_default = true, is_spa = true },
+    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+]
+```
+
+**`pocket deploy --stage=dev`**
 
 ```mermaid
 graph LR
-    A[pocket.toml] --> B[pocket deploy]
-    B --> C[AWS Lambda]
-    B --> D[Neon Postgres]
-    B --> D2[RDS Aurora]
-    B --> E[S3]
-    B --> F[API Gateway]
-    B --> G[CloudFront]
-    C --> F
-    G --> E
+    APIGW[API Gateway] --> Lambda
+    Lambda --> Neon
+    Lambda --> S3
+```
+
+**`pocket deploy --stage=prd`**
+
+```mermaid
+graph LR
+    CF[CloudFront] --> S3
+    CF --> APIGW[API Gateway]
+    subgraph VPC
+        APIGW --> Lambda
+        Lambda --> RDS[RDS Aurora]
+    end
 ```
 
 ## クイックスタート
