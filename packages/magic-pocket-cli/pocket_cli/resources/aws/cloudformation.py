@@ -265,6 +265,7 @@ class CloudFrontStack(Stack):
     @property
     def export(self):
         exports: dict[str, str] = {}
+        exports["domain"] = f"{self.context.slug}-{self.context.name}-cf-domain"
         if self.context.signing_key:
             exports["key_group_id"] = f"{self.context.slug}-key-group-id"
         if self._has_token_kvs:
@@ -308,59 +309,43 @@ class CloudFrontStack(Stack):
             if route.require_token:
                 codes[route.yaml_key] = self._generate_spa_auth_function(route)
             else:
-                codes[route.yaml_key] = route.url_fallback_function_indent8
+                codes[route.yaml_key] = self._generate_spa_fallback_function(route)
         return codes
+
+    def _generate_spa_fallback_function(self, route) -> str:  # type: ignore
+        """SPA URL フォールバック用 CloudFront Function コードを生成する"""
+        fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
+        if not route.path_pattern:
+            fallback_uri = "/" + route.spa_fallback_html
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_spa_fallback.js")
+        code = template.render(fallback_uri=fallback_uri)
+        # FunctionCode: | の下は8スペース
+        lines = []
+        for i, line in enumerate(code.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * 8 + line)
+        return "\n".join(lines)
 
     def _generate_spa_auth_function(self, route) -> str:  # type: ignore
         """KVS + HMAC 検証付き async CloudFront Function コードを生成する"""
         fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
         if not route.path_pattern:
             fallback_uri = "/" + route.spa_fallback_html
-        login_path = route.login_path
-        # ${TokenKvs} は Fn::Sub の変数マッピングで KVS ID に解決される
-        code = """\
-import cf from 'cloudfront';
-const kvsHandle = cf.kvs('${{TokenKvs}}');
-async function handler(event) {{
-    var request = event.request;
-    var lastItem = request.uri.split('/').pop();
-    if (!lastItem.includes('.')) {{ request.uri = '{fallback_uri}'; }}
-    var cookie = request.cookies['pocket-spa-token'];
-    if (!cookie) {{ return _redirect(request); }}
-    var parts = cookie.value.split(':');
-    if (parts.length !== 3) {{ return _redirect(request); }}
-    var expiry = parseInt(parts[1], 10);
-    if (Math.floor(Date.now() / 1000) > expiry) {{ return _redirect(request); }}
-    var secret;
-    try {{ secret = await kvsHandle.get('token_secret'); }}
-    catch (e) {{ return _redirect(request); }}
-    var msg = parts[0] + ':' + parts[1];
-    var key = await crypto.subtle.importKey('raw', _hexToBytes(secret),
-        {{name:'HMAC',hash:'SHA-256'}}, false, ['sign']);
-    var sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg));
-    if (_bytesToHex(new Uint8Array(sig)) !== parts[2]) {{ return _redirect(request); }}
-    return request;
-}}
-function _redirect(request) {{
-    var next = encodeURIComponent(request.uri);
-    return {{ statusCode: 302, statusDescription: 'Found',
-        headers: {{ location: {{ value: '{login_path}?next=' + next }} }} }};
-}}
-function _hexToBytes(hex) {{
-    var bytes = new Uint8Array(hex.length / 2);
-    for (var i = 0; i < hex.length; i += 2) {{
-        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
-    }}
-    return bytes;
-}}
-function _bytesToHex(bytes) {{
-    var hex = '';
-    for (var i = 0; i < bytes.length; i++) {{
-        hex += bytes[i].toString(16).padStart(2, '0');
-    }}
-    return hex;
-}}
-""".format(fallback_uri=fallback_uri, login_path=login_path)
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_spa_auth.js")
+        code = template.render(
+            fallback_uri=fallback_uri,
+            login_path=route.login_path,
+        )
         # Fn::Sub の2パラメータ形式で - | の下は12スペース
         lines = []
         for i, line in enumerate(code.splitlines()):

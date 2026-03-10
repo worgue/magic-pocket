@@ -251,6 +251,8 @@ Outputs:
   DistributionDomainName:
     Value:
       Fn::GetAtt: CloudFrontDistribution.DomainName
+    Export:
+      Name: "{{ export.domain }}"
   # {% if has_token_kvs %}
   TokenKvsArn:
     Value:
