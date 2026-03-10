@@ -24,9 +24,10 @@ credentialsは `~/.aws/credentials` への設定を想定しています。
 以下のいずれかを選択してください。
 
 - **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキーは環境変数 `NEON_API_KEY` で設定します。
-- **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。Neon アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
+- **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。APIキーは環境変数 `TIDB_PUBLIC_KEY` / `TIDB_PRIVATE_KEY` で設定します。
+- **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。外部アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
 
-このガイドでは Neon を使った手順を説明します。RDS を使う場合は「[設定ファイル - rds](guide/configuration.md#rds)」を参照してください。
+このガイドでは Neon を使った手順を説明します。TiDB を使う場合は「[設定ファイル - tidb](guide/configuration.md#tidb)」、RDS を使う場合は「[設定ファイル - rds](guide/configuration.md#rds)」を参照してください。
 
 ---
 

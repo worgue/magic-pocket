@@ -9,7 +9,9 @@
 [vpc]               # VPC設定（単一、トップレベル）
 [s3]                # S3設定（全ステージ共通）
 [neon]              # Neon設定（全ステージ共通）
+[tidb]              # TiDB Serverless設定（全ステージ共通）
 [rds]               # RDS Aurora設定（全ステージ共通）
+[ses]               # SES設定（全ステージ共通）
 [awscontainer]      # Lambda設定（全ステージ共通）
 [cloudfront]        # CloudFront設定（全ステージ共通）
 
@@ -182,6 +184,30 @@ project_name = "prd-myproject"
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
 
 `NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
+
+---
+
+## tidb
+
+TiDB Serverless（MySQL 互換）の設定です。
+
+```toml
+[tidb]
+project = "1234567890123456789"
+
+[prd.tidb]
+project = "9876543210987654321"
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `project` | str | **必須** | TiDB Cloud のプロジェクト ID |
+| `region` | str | `"ap-northeast-1"` | TiDB クラスターのリージョン |
+
+`TIDB_PUBLIC_KEY` と `TIDB_PRIVATE_KEY` 環境変数（または `.env`）が必要です。TiDB Cloud のコンソールから API キーを取得してください。
+
+!!! note "クラスター名"
+    クラスター名はプロジェクト名から自動生成されます（`{project_name}`）。
 
 ---
 

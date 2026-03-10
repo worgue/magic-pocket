@@ -57,7 +57,8 @@ pocket deploy --stage=dev
 
 `pocket.toml` の設定に応じて、以下の処理が行われます。
 
-- Neonへのデータベース作成
+- Neonへのデータベース作成（`[neon]` 設定時）
+- TiDB クラスターの作成（`[tidb]` 設定時）
 - RDS Aurora クラスターの作成（`[rds]` 設定時）
 - Secrets Managerへのシークレット登録
 - S3バケットの作成と権限設定
@@ -262,6 +263,13 @@ pocket resource awscontainer secrets delete-pocket-managed --stage=dev
 
 ```bash
 pocket resource neon status --stage=dev
+```
+
+### tidb
+
+```bash
+# TiDB クラスターの状態確認
+pocket resource tidb status --stage=dev
 ```
 
 ### rds

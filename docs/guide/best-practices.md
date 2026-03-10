@@ -118,6 +118,20 @@ domain = "media.example.com"
 **Neon のプロジェクトをステージで分離**
 :   dev と prd で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
 
+??? tip "TiDB Serverless を使う場合"
+    Neon の代わりに TiDB Serverless（MySQL 互換）を使う場合は、`[neon]` を `[tidb]` に、`DATABASE_URL` の type を `tidb_database_url` に変更します。
+
+    ```toml
+    [tidb]
+    project = "1234567890123456789"
+
+    [awscontainer.secrets.managed]
+    SECRET_KEY = { type = "password", options = { length = 50 } }
+    DATABASE_URL = { type = "tidb_database_url" }
+    ```
+
+    詳しいコールドスタート特性は「[コールドスタート](cold-start.md)」を参照してください。
+
 ??? tip "RDS Aurora を使う場合"
     Neon の代わりに RDS Aurora PostgreSQL Serverless v2 を使う場合は、`[neon]` と `DATABASE_URL` managed secret の代わりに `[rds]` と `[vpc]` を設定します。
 
