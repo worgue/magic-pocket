@@ -11,20 +11,6 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  # {% if domain %}
-  Certificate:
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: "{{ domain }}"
-      DomainValidationOptions:
-        - DomainName: "{{ domain }}"
-          HostedZoneId: "{{ hosted_zone_id }}"
-      Tags:
-        - Key: Name
-          Value: "{{ resource_prefix }}cloudfront-cert"
-      ValidationMethod: DNS
-  # {% endif %}
-
   # {% if has_token_kvs %}
   TokenKvs:
     Type: AWS::CloudFront::KeyValueStore
@@ -78,9 +64,6 @@ Resources:
     Type: AWS::CloudFront::Distribution
     DependsOn:
       - OriginAccessControl
-      # {% if domain %}
-      - Certificate
-      # {% endif %}
       # {% for route in routes %}
       # {% if route.is_spa %}
       - UrlFallbackFunction{{ route.yaml_key }}
@@ -172,9 +155,8 @@ Resources:
           # {% endfor %}
         # {% endif %}
         ViewerCertificate:
-          # {% if domain %}
-          AcmCertificateArn:
-            Ref: Certificate
+          # {% if acm_certificate_arn %}
+          AcmCertificateArn: "{{ acm_certificate_arn }}"
           SslSupportMethod: sni-only
           # {% else %}
           CloudFrontDefaultCertificate: true
@@ -196,18 +178,6 @@ Resources:
   # {% endif %}
 
   # {% for rf in redirect_from %}
-  "Certificate{{ rf.yaml_key }}":
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: "{{ rf.domain }}"
-      DomainValidationOptions:
-        - DomainName: "{{ rf.domain }}"
-          HostedZoneId: "{{ hosted_zone_id }}"
-      Tags:
-        - Key: Name
-          Value: "{{ resource_prefix }}spa-cert-{{ rf.yaml_key }}"
-      ValidationMethod: DNS
-
   "CloudFrontDistribution{{ rf.yaml_key }}":
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -226,8 +196,7 @@ Resources:
           TargetOriginId: "redirect-from"
           ViewerProtocolPolicy: "redirect-to-https"
         ViewerCertificate:
-          AcmCertificateArn:
-            Ref: "Certificate{{ rf.yaml_key }}"
+          AcmCertificateArn: "{{ acm_redirect_arns[rf.yaml_key] }}"
           SslSupportMethod: sni-only
 
   "DNSRecord{{ rf.yaml_key }}":

@@ -7,6 +7,7 @@ from pocket_cli.resources.aws.builders.codebuild import CodeBuildBuilder
 from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
@@ -110,8 +111,10 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
     """削除対象のリソース一覧を収集"""
     targets: list[str] = []
 
-    for name in context.cloudfront:
+    for name, cf_ctx in context.cloudfront.items():
         targets.append("CloudFront '%s' (CFNスタック + バケットポリシー)" % name)
+        if cf_ctx.domain:
+            targets.append("CloudFront ACM '%s' (us-east-1 証明書)" % name)
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
     targets.extend(_collect_database_targets(context))
@@ -235,15 +238,26 @@ def _destroy_vpc(context: Context):
         echo.success("VPC was destroyed.")
 
 
-def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: bool):
-    """リソースをデプロイの逆順で削除"""
-    # 1. CloudFront
+def _destroy_cloudfront_and_acm(context: Context):
+    """CloudFront ディストリビューションと ACM 証明書を削除"""
     for name, cf_ctx in context.cloudfront.items():
         cf = CloudFront(cf_ctx)
         if cf.stack.status != "NOEXIST":
             echo.log("Destroying CloudFront '%s'..." % name)
             cf.delete()
             echo.success("CloudFront '%s' was destroyed." % name)
+        if cf_ctx.domain:
+            acm = CloudFrontAcm(cf_ctx)
+            if acm.stack.status != "NOEXIST":
+                echo.log("Destroying CloudFront ACM '%s'..." % name)
+                acm.delete()
+                echo.success("CloudFront ACM '%s' was destroyed." % name)
+
+
+def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: bool):
+    """リソースをデプロイの逆順で削除"""
+    # 1. CloudFront + ACM
+    _destroy_cloudfront_and_acm(context)
 
     # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
     _destroy_awscontainer(context, with_secrets)

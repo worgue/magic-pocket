@@ -195,6 +195,28 @@ class Stack:
         return self.client.delete_stack(StackName=self.name)
 
 
+class AcmStack(Stack):
+    """us-east-1 に ACM 証明書を作成するスタック。
+
+    CloudFront はカスタムドメイン使用時に us-east-1 の ACM 証明書が必須。
+    メインの CloudFront スタックとは別リージョンで管理する。
+    """
+
+    context: CloudFrontContext
+    template_filename = "cloudfront_acm"
+
+    def get_client(self):
+        return boto3.client("cloudformation", region_name="us-east-1")
+
+    @property
+    def name(self):
+        return f"{self.context.slug}-acm"
+
+    @property
+    def export(self):
+        return {}
+
+
 class CloudFrontKeysStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront_keys"
@@ -277,13 +299,33 @@ class CloudFrontStack(Stack):
             exports["kvs_arn"] = f"{self.context.slug}-token-kvs-arn"
         return exports
 
-    def _resolve_api_origins(self) -> dict[str, str]:
-        """Resolve cross-region CloudFormation exports for API origins.
+    def _resolve_acm_arns(self) -> tuple[str | None, dict[str, str]]:
+        """ACM スタック (us-east-1) から証明書 ARN を取得する。
 
-        CloudFormation Fn::ImportValue only works within the same region.
-        Since CloudFront stacks run in us-east-1 but Container stacks may be
-        in another region, we resolve the exports at render time and embed
-        the domain names as literal values.
+        Returns:
+            (メインドメインの証明書 ARN, redirect_from の yaml_key → ARN マップ)
+        """
+        if not self.context.domain:
+            return None, {}
+        acm_stack = AcmStack(self.context)
+        output = acm_stack.output
+        if not output:
+            raise RuntimeError(
+                f"ACM stack '{acm_stack.name}' が見つかりません。"
+                "先に ACM スタックをデプロイしてください。"
+            )
+        cert_arn = output.get("CertificateArn")
+        redirect_arns: dict[str, str] = {}
+        for rf in self.context.redirect_from:
+            key = f"CertificateArn{rf.yaml_key}"
+            if key in output:
+                redirect_arns[rf.yaml_key] = output[key]
+        return cert_arn, redirect_arns
+
+    def _resolve_api_origins(self) -> dict[str, str]:
+        """Container スタックの API ドメインエクスポートをレンダリング時に解決する。
+
+        CloudFront テンプレートに literal 値として埋め込む。
         """
         if not self.context.api_origins:
             return {}
@@ -365,6 +407,7 @@ class CloudFrontStack(Stack):
         from jinja2 import Environment, PackageLoader, select_autoescape
 
         resolved_api_origins = self._resolve_api_origins()
+        acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
         function_codes = self._build_function_codes()
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
@@ -378,6 +421,8 @@ class CloudFrontStack(Stack):
             resource=self._get_resource(),
             signing_key=bool(self.context.signing_key),
             api_origins=resolved_api_origins,
+            acm_certificate_arn=acm_certificate_arn,
+            acm_redirect_arns=acm_redirect_arns,
             function_codes=function_codes,
             has_token_kvs=self._has_token_kvs,
             **context_data,
@@ -414,6 +459,29 @@ class ContainerStack(Stack):
 
         rds = Rds(self._rds_context)
         return rds.security_group_id, rds.master_user_secret_arn
+
+    def _resolve_cloudfront_domains(self) -> dict[str, str]:
+        """CloudFront ドメインのエクスポートをレンダリング時に解決する。
+
+        CloudFront スタックは Container スタックの後にデプロイされるため、
+        初回デプロイ時にはエクスポートが存在しない。その場合はスキップする。
+        """
+        imports = self.context.cloudfront_domain_imports
+        if not imports:
+            return {}
+
+        cf = boto3.client("cloudformation", region_name=self.context.region)
+        exports: dict[str, str] = {}
+        paginator = cf.get_paginator("list_exports")
+        for page in paginator.paginate():
+            for export in page["Exports"]:
+                exports[export["Name"]] = export["Value"]
+
+        resolved: dict[str, str] = {}
+        for env_key, export_name in imports.items():
+            if export_name in exports:
+                resolved[env_key] = exports[export_name]
+        return resolved
 
     def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
         """DSQL のエンドポイント、リージョン、ARN を動的に取得"""
@@ -456,6 +524,7 @@ class ContainerStack(Stack):
     def yaml(self) -> str:
         rds_sg_id, rds_secret_arn = self._resolve_rds()
         dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
+        cloudfront_domains = self._resolve_cloudfront_domains()
         context_dump = self.context.model_dump()
 
         # 外部 VPC: zones を動的取得
@@ -479,6 +548,7 @@ class ContainerStack(Stack):
             dsql_region=dsql_region,
             dsql_cluster_arn=dsql_cluster_arn,
             use_dsql=dsql_endpoint is not None,
+            cloudfront_domains=cloudfront_domains,
             **context_dump,
         )
         return "\n".join(
