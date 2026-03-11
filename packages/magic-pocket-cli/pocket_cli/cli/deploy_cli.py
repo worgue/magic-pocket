@@ -10,6 +10,7 @@ from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
@@ -22,6 +23,8 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
     if context.awscontainer and context.awscontainer.vpc:
         if context.awscontainer.vpc.manage:
             resources.append(Vpc(context.awscontainer.vpc))
+    if context.dsql:
+        resources.append(Dsql(context.dsql))
     if context.rds:
         resources.append(Rds(context.rds))
     for _name, cf_ctx in context.cloudfront.items():
@@ -33,6 +36,7 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
                 context.awscontainer,
                 state_bucket=state_bucket,
                 rds_context=context.rds,
+                dsql_context=context.dsql,
             )
         )
 

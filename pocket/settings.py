@@ -197,6 +197,10 @@ class TiDb(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+class Dsql(BaseModel):
+    deletion_protection: bool = False
+
+
 class Rds(BaseModel):
     vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
@@ -358,6 +362,7 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     tidb: TiDb | None = None
+    dsql: Dsql | None = None
     rds: Rds | None = None
     ses: Ses | None = None
     s3: S3 | None = None
@@ -494,6 +499,7 @@ class Settings(BaseSettings):
             "awscontainer",
             "neon",
             "tidb",
+            "dsql",
             "rds",
             "ses",
             "s3",

@@ -86,6 +86,7 @@ def set_envs_from_secrets(stage: str | None = None):
     for key, value in data.items():
         os.environ[key] = value
     _set_rds_database_url()
+    _set_dsql_token()
 
 
 def _set_rds_database_url():
@@ -103,6 +104,17 @@ def _set_rds_database_url():
         f"postgres://{data['username']}:{password}"
         f"@{data['host']}:{data['port']}/{data.get('dbname', '')}"
     )
+
+
+def _set_dsql_token():
+    """POCKET_DSQL_ENDPOINT があれば IAM 認証トークンを生成"""
+    dsql_endpoint = os.environ.get("POCKET_DSQL_ENDPOINT")
+    dsql_region = os.environ.get("POCKET_DSQL_REGION")
+    if not dsql_endpoint or not dsql_region:
+        return
+    client = boto3.client("dsql", region_name=dsql_region)
+    token = client.generate_db_connect_admin_auth_token(dsql_endpoint, dsql_region)
+    os.environ["POCKET_DSQL_TOKEN"] = token
 
 
 # 後方互換エイリアス
