@@ -56,12 +56,13 @@ class DepotBuilder:
             "PATH": os.environ.get("PATH", ""),
             "HOME": os.environ.get("HOME", ""),
             "DEPOT_TOKEN": token,
+            "AWS_DEFAULT_REGION": self.region,
+            "AWS_REGION": self.region,
         }
         for key in (
             "AWS_ACCESS_KEY_ID",
             "AWS_SECRET_ACCESS_KEY",
             "AWS_SESSION_TOKEN",
-            "AWS_DEFAULT_REGION",
         ):
             if key in os.environ:
                 env[key] = os.environ[key]
