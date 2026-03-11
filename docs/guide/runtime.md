@@ -28,6 +28,9 @@ Lambda上のアプリケーションは、`pocket.toml` とAWSリソースから
 | `POCKET_{HANDLER}_ENDPOINT` | 各ハンドラーの URL |
 | `POCKET_{HANDLER}_QUEUEURL` | SQS キュー URL |
 | `POCKET_CLOUDFRONT_{NAME}_DOMAIN` | CloudFront ディストリビューションのドメイン名 |
+| `POCKET_DSQL_ENDPOINT` | DSQL クラスターのエンドポイント |
+| `POCKET_DSQL_REGION` | DSQL クラスターのリージョン |
+| `POCKET_DSQL_TOKEN` | DSQL IAM 認証トークン（`set_envs()` 呼び出し時に生成） |
 | シークレットキー | Secrets Manager / SSM のシークレット値 |
 
 ---

@@ -273,6 +273,19 @@ pocket resource neon status --stage=dev
 pocket resource tidb status --stage=dev
 ```
 
+### dsql
+
+```bash
+# DSQL クラスターの状態確認
+pocket resource dsql status --stage=dev
+
+# 接続情報の表示（endpoint, region, port）
+pocket resource dsql endpoint --stage=dev
+
+# クラスターの削除（確認プロンプト付き）
+pocket resource dsql destroy --stage=dev
+```
+
 ### rds
 
 ```bash

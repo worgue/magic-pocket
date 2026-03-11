@@ -8,6 +8,7 @@ from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
@@ -87,6 +88,24 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     return targets
 
 
+def _collect_database_targets(context: Context) -> list[str]:
+    """データベース関連の削除対象を収集"""
+    targets: list[str] = []
+    if context.dsql:
+        dsql = Dsql(context.dsql)
+        if dsql.status != "NOEXIST":
+            targets.append("DSQL クラスター: %s" % context.dsql.tag_name)
+    if context.rds:
+        rds = Rds(context.rds)
+        if rds.status != "NOEXIST":
+            targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
+    if context.tidb:
+        targets.append("TiDB クラスタ")
+    if context.neon:
+        targets.append("Neon ブランチ")
+    return targets
+
+
 def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bool):
     """削除対象のリソース一覧を収集"""
     targets: list[str] = []
@@ -95,11 +114,7 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
         targets.append("CloudFront '%s' (CFNスタック + バケットポリシー)" % name)
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
-
-    if context.rds:
-        rds = Rds(context.rds)
-        if rds.status != "NOEXIST":
-            targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
+    targets.extend(_collect_database_targets(context))
 
     for name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
@@ -107,12 +122,6 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
 
     if context.s3 and S3(context.s3).exists():
         targets.append("S3 バケット: %s" % context.s3.bucket_name)
-
-    if context.tidb:
-        targets.append("TiDB クラスタ")
-
-    if context.neon:
-        targets.append("Neon ブランチ")
 
     if with_state_bucket:
         targets.append("ステートバケット")
@@ -173,6 +182,17 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
     _destroy_vpc(context)
 
 
+def _destroy_dsql(context: Context):
+    """DSQL クラスターを削除"""
+    if not context.dsql:
+        return
+    dsql = Dsql(context.dsql)
+    if dsql.status == "NOEXIST":
+        return
+    echo.log("Destroying DSQL cluster...")
+    dsql.delete()
+
+
 def _destroy_rds(context: Context):
     """RDS Aurora クラスターを削除"""
     if not context.rds:
@@ -228,7 +248,10 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
     # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
     _destroy_awscontainer(context, with_secrets)
 
-    # 2.5. RDS（AwsContainer の後、VPC の前）
+    # 2.5. DSQL
+    _destroy_dsql(context)
+
+    # 2.6. RDS（AwsContainer の後、VPC の前）
     _destroy_rds(context)
 
     # 3.5. CloudFrontKeys（AwsContainer の後、S3 の前）

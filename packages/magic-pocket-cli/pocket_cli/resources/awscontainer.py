@@ -15,7 +15,7 @@ from pocket_cli.resources.aws.lambdahandler import LambdaHandler
 from pocket_cli.resources.vpc import Vpc
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, RdsContext
+    from pocket.context import AwsContainerContext, DsqlContext, RdsContext
 
 
 class NotCreatedYetError(Exception):
@@ -39,11 +39,13 @@ class AwsContainer:
         *,
         state_bucket: str = "",
         rds_context: RdsContext | None = None,
+        dsql_context: DsqlContext | None = None,
     ) -> None:
         self.context = context
         self.client = boto3.client("lambda", region_name=context.region)
         self._state_bucket = state_bucket
         self._rds_context = rds_context
+        self._dsql_context = dsql_context
 
     @property
     def builder(self) -> Builder:
@@ -73,7 +75,11 @@ class AwsContainer:
 
     @property
     def stack(self):
-        return ContainerStack(self.context, rds_context=self._rds_context)
+        return ContainerStack(
+            self.context,
+            rds_context=self._rds_context,
+            dsql_context=self._dsql_context,
+        )
 
     @property
     def handlers(self):

@@ -82,6 +82,17 @@ Resources:
                 Resource:
                   - "{{ rds_secret_arn }}"
         # {% endif %}
+        # {% if use_dsql %}
+        - PolicyName: "{{ resource_prefix }}access-dsql"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "dsql:DbConnectAdmin"
+                Resource:
+                  - "{{ dsql_cluster_arn }}"
+        # {% endif %}
         - PolicyName:
             Fn::Sub: "{{ resource_prefix }}access-cloudformation"
           PolicyDocument:
@@ -149,6 +160,10 @@ Resources:
           # {% endfor %}
           # {% if rds_secret_arn %}
           "POCKET_RDS_SECRET_ARN": "{{ rds_secret_arn }}"
+          # {% endif %}
+          # {% if use_dsql %}
+          "POCKET_DSQL_ENDPOINT": "{{ dsql_endpoint }}"
+          "POCKET_DSQL_REGION": "{{ dsql_region }}"
           # {% endif %}
       # {% if vpc %}
       VpcConfig:

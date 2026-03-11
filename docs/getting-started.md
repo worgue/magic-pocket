@@ -26,8 +26,9 @@ credentialsは `~/.aws/credentials` への設定を想定しています。
 - **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキーは環境変数 `NEON_API_KEY` で設定します。
 - **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。APIキーは環境変数 `TIDB_PUBLIC_KEY` / `TIDB_PRIVATE_KEY` で設定します。
 - **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。外部アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
+- **[Aurora DSQL](https://aws.amazon.com/dsql/){:target="_blank"}**: AWS マネージドのサーバーレス PostgreSQL 互換 DB。VPC 不要、IAM 認証。Django ORM / Loco との互換性が低いため、直接 SQL 実行向けです。
 
-このガイドでは Neon を使った手順を説明します。TiDB を使う場合は「[設定ファイル - tidb](guide/configuration.md#tidb)」、RDS を使う場合は「[設定ファイル - rds](guide/configuration.md#rds)」を参照してください。
+このガイドでは Neon を使った手順を説明します。TiDB を使う場合は「[設定ファイル - tidb](guide/configuration.md#tidb)」、RDS を使う場合は「[設定ファイル - rds](guide/configuration.md#rds)」、DSQL を使う場合は「[設定ファイル - dsql](guide/configuration.md#dsql)」を参照してください。
 
 ---
 

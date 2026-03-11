@@ -23,6 +23,9 @@ pub enum PocketError {
     #[error("SQS error: {0}")]
     Sqs(String),
 
+    #[error("DSQL error: {0}")]
+    Dsql(String),
+
     #[error("unsupported secret type: {0}")]
     UnsupportedSecretType(String),
 
