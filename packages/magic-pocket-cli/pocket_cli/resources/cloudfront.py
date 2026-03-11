@@ -46,8 +46,8 @@ class CloudFront:
 
     def __init__(self, context: CloudFrontContext) -> None:
         self.context = context
-        self.s3_client = boto3.client("s3", region_name=context.region)
-        self.cf_client = boto3.client("cloudfront", region_name=context.region)
+        self.s3_client = boto3.client("s3", region_name=context.s3_region)
+        self.cf_client = boto3.client("cloudfront")
         self._token_secret_value: str = ""
 
     @property
@@ -283,7 +283,7 @@ class CloudFront:
     def _ensure_redirect_from_exists(self):
         for redirect_from in self.context.redirect_from:
             if not self._bucket_exists(redirect_from.domain):
-                self._create_bucket(redirect_from.domain, self.context.region)
+                self._create_bucket(redirect_from.domain, redirect_from.region)
 
     def _ensure_redirect_from_empty(self):
         for redirect_from in self.context.redirect_from:

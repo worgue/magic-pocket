@@ -575,7 +575,7 @@ class RouteContext(BaseModel):
 
 class CloudFrontContext(BaseModel):
     name: str
-    region: Literal["us-east-1"] = "us-east-1"
+    region: str
     s3_region: str
     domain: str | None = None
     hosted_zone_id_override: str | None = None
@@ -667,6 +667,7 @@ class CloudFrontContext(BaseModel):
         )
         return cls(
             name=name,
+            region=root.region,
             s3_region=root.region,
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,

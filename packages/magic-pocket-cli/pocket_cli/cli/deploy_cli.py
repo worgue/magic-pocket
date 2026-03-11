@@ -9,6 +9,7 @@ from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
@@ -43,6 +44,10 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
 
 def get_resources(context: Context, *, state_bucket: str = ""):
     resources = []
+    # ACM 証明書を最初にデプロイ（us-east-1、DNS 検証に時間がかかる）
+    for _name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.domain:
+            resources.append(CloudFrontAcm(cf_ctx))
     if context.neon:
         resources.append(Neon(context.neon))
     if context.tidb:
