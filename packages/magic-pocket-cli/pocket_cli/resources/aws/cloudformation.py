@@ -13,7 +13,12 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
-    from pocket.context import AwsContainerContext, CloudFrontContext, RdsContext
+    from pocket.context import (
+        AwsContainerContext,
+        CloudFrontContext,
+        DsqlContext,
+        RdsContext,
+    )
     from pocket.general_context import VpcContext
 
 
@@ -395,8 +400,10 @@ class ContainerStack(Stack):
         context: AwsContainerContext,
         *,
         rds_context: RdsContext | None = None,
+        dsql_context: DsqlContext | None = None,
     ):
         self._rds_context = rds_context
+        self._dsql_context = dsql_context
         super().__init__(context)
 
     def _resolve_rds(self) -> tuple[str | None, str | None]:
@@ -407,6 +414,15 @@ class ContainerStack(Stack):
 
         rds = Rds(self._rds_context)
         return rds.security_group_id, rds.master_user_secret_arn
+
+    def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
+        """DSQL のエンドポイント、リージョン、ARN を動的に取得"""
+        if self._dsql_context is None:
+            return None, None, None
+        from pocket_cli.resources.dsql import Dsql
+
+        dsql = Dsql(self._dsql_context)
+        return dsql.endpoint, self._dsql_context.region, dsql.arn
 
     @property
     def name(self):
@@ -439,6 +455,7 @@ class ContainerStack(Stack):
     @property
     def yaml(self) -> str:
         rds_sg_id, rds_secret_arn = self._resolve_rds()
+        dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
         context_dump = self.context.model_dump()
 
         # 外部 VPC: zones を動的取得
@@ -458,6 +475,10 @@ class ContainerStack(Stack):
             rds_security_group_id=rds_sg_id,
             rds_secret_arn=rds_secret_arn,
             use_rds=rds_sg_id is not None,
+            dsql_endpoint=dsql_endpoint,
+            dsql_region=dsql_region,
+            dsql_cluster_arn=dsql_cluster_arn,
+            use_dsql=dsql_endpoint is not None,
             **context_dump,
         )
         return "\n".join(

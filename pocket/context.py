@@ -405,6 +405,25 @@ class TiDbContext(BaseModel):
         )
 
 
+class DsqlContext(BaseModel):
+    region: str
+    tag_name: str  # Name タグで検索するための識別名
+    deletion_protection: bool = False
+
+    @classmethod
+    def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
+        resource_prefix = root.prefix_template.format(
+            stage=root.stage,
+            project=root.project_name,
+            namespace=root.namespace,
+        )
+        return cls(
+            region=root.region,
+            tag_name=f"{resource_prefix}dsql",
+            deletion_protection=dsql.deletion_protection,
+        )
+
+
 class RdsContext(BaseModel):
     vpc: VpcContext
     min_capacity: float = 0.5
@@ -668,6 +687,7 @@ class Context(BaseModel):
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
+    dsql: DsqlContext | None = None
     rds: RdsContext | None = None
     ses: SesContext | None = None
     s3: S3Context | None = None
@@ -757,6 +777,10 @@ class Context(BaseModel):
         if s.tidb:
             tidb_ctx = TiDbContext.from_settings(s.tidb, s)
 
+        dsql_ctx = None
+        if s.dsql:
+            dsql_ctx = DsqlContext.from_settings(s.dsql, s)
+
         rds_ctx = None
         if s.rds:
             rds_ctx = RdsContext.from_settings(s.rds, s)
@@ -783,6 +807,7 @@ class Context(BaseModel):
             awscontainer=awscontainer_ctx,
             neon=neon_ctx,
             tidb=tidb_ctx,
+            dsql=dsql_ctx,
             rds=rds_ctx,
             ses=ses_ctx,
             s3=s3_ctx,

@@ -215,6 +215,34 @@ project = "9876543210987654321"
 
 ---
 
+## dsql
+
+Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラスターが自動作成されます。VPC は不要です。
+
+```toml
+[dsql]
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `deletion_protection` | bool | `false` | 削除保護の有効化 |
+
+Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が自動設定されます。
+`set_envs()` の呼び出し時に、IAM 認証トークンが `POCKET_DSQL_TOKEN` に設定されます。
+
+!!! warning "互換性に関する注意"
+    DSQL は PostgreSQL 互換ですが、完全な互換ではありません。
+    Django ORM のマイグレーション、contrib（auth, admin 等）、およびほとんどの 3rd パーティライブラリは正常に動作しません。
+    Loco も同様です。
+    アプリケーションが DSQL の制約を理解した上で、直接 SQL を実行する用途に適しています。
+
+!!! info "認証方式"
+    DSQL はパスワード認証ではなく IAM 認証トークンを使用します。
+    トークンは 15 分で失効するため、長時間の接続では定期的に再生成が必要です。
+    `pocket.runtime` の `_set_dsql_token()` は起動時に1回だけトークンを生成します。
+
+---
+
 ## rds
 
 RDS Aurora PostgreSQL Serverless v2 の設定です。`[vpc]` と組み合わせてクラスターが自動作成されます。
