@@ -292,7 +292,6 @@ class CloudFrontStack(Stack):
     @property
     def export(self):
         exports: dict[str, str] = {}
-        exports["domain"] = f"{self.context.slug}-{self.context.name}-cf-domain"
         if self.context.signing_key:
             exports["key_group_id"] = f"{self.context.slug}-key-group-id"
         if self._has_token_kvs:
@@ -460,29 +459,6 @@ class ContainerStack(Stack):
         rds = Rds(self._rds_context)
         return rds.security_group_id, rds.master_user_secret_arn
 
-    def _resolve_cloudfront_domains(self) -> dict[str, str]:
-        """CloudFront ドメインのエクスポートをレンダリング時に解決する。
-
-        CloudFront スタックは Container スタックの後にデプロイされるため、
-        初回デプロイ時にはエクスポートが存在しない。その場合はスキップする。
-        """
-        imports = self.context.cloudfront_domain_imports
-        if not imports:
-            return {}
-
-        cf = boto3.client("cloudformation", region_name=self.context.region)
-        exports: dict[str, str] = {}
-        paginator = cf.get_paginator("list_exports")
-        for page in paginator.paginate():
-            for export in page["Exports"]:
-                exports[export["Name"]] = export["Value"]
-
-        resolved: dict[str, str] = {}
-        for env_key, export_name in imports.items():
-            if export_name in exports:
-                resolved[env_key] = exports[export_name]
-        return resolved
-
     def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
         """DSQL のエンドポイント、リージョン、ARN を動的に取得"""
         if self._dsql_context is None:
@@ -524,7 +500,6 @@ class ContainerStack(Stack):
     def yaml(self) -> str:
         rds_sg_id, rds_secret_arn = self._resolve_rds()
         dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
-        cloudfront_domains = self._resolve_cloudfront_domains()
         context_dump = self.context.model_dump()
 
         # 外部 VPC: zones を動的取得
@@ -548,7 +523,6 @@ class ContainerStack(Stack):
             dsql_region=dsql_region,
             dsql_cluster_arn=dsql_cluster_arn,
             use_dsql=dsql_endpoint is not None,
-            cloudfront_domains=cloudfront_domains,
             **context_dump,
         )
         return "\n".join(
