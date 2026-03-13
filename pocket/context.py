@@ -275,7 +275,6 @@ class AwsContainerContext(BaseModel):
     dockerfile_path: str
     envs: dict[str, str] = {}
     signing_key_imports: dict[str, str] = {}
-    cloudfront_domain_imports: dict[str, str] = {}
     platform: str = "linux/amd64"
     django: DjangoContext | None = None
     region: str
@@ -748,17 +747,6 @@ class Context(BaseModel):
                 awscontainer_ctx = awscontainer_ctx.model_copy(
                     update={"signing_key_imports": signing_key_imports}
                 )
-
-        # cloudfront_domain_imports: CloudFront ドメインを Lambda 環境変数に
-        cloudfront_domain_imports: dict[str, str] = {}
-        for cf_name, cf_ctx in cloudfront_ctx.items():
-            env_var_name = f"POCKET_CLOUDFRONT_{cf_name.upper()}_DOMAIN"
-            export_name = f"{cf_ctx.slug}-{cf_name}-cf-domain"
-            cloudfront_domain_imports[env_var_name] = export_name
-        if cloudfront_domain_imports:
-            awscontainer_ctx = awscontainer_ctx.model_copy(
-                update={"cloudfront_domain_imports": cloudfront_domain_imports}
-            )
 
         return awscontainer_ctx
 

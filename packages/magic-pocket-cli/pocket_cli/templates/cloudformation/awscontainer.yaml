@@ -154,9 +154,6 @@ Resources:
           "{{ env_key }}":
             Fn::ImportValue: "{{ import_name }}"
           # {% endfor %}
-          # {% for env_key, domain_value in cloudfront_domains.items() %}
-          "{{ env_key }}": "{{ domain_value }}"
-          # {% endfor %}
           # {% if rds_secret_arn %}
           "POCKET_RDS_SECRET_ARN": "{{ rds_secret_arn }}"
           # {% endif %}
