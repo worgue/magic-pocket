@@ -176,6 +176,7 @@ class AwsContainer:
         print("Creating cloudformation stack for awscontainer ...")
         self.show_acm_manual_request()
         self.stack.create()
+        self.stack.wait_status("COMPLETED", timeout=600, interval=10)
 
     def update(self, mediator: Mediator):
         mediator.ensure_pocket_managed_secrets()
@@ -189,6 +190,7 @@ class AwsContainer:
             handler.wait_update()
         if not self.stack.yaml_synced:
             self.stack.update()
+            self.stack.wait_status("COMPLETED", timeout=600, interval=10)
 
     def get_host(self, key: str):
         handler = self.handlers[key]
