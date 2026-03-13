@@ -354,6 +354,50 @@ class CloudFront(BaseSettings):
             raise ValueError("routes must have exactly one is_default = true route")
         return self
 
+    @model_validator(mode="after")
+    def check_route_s3_prefix_overlap(self):
+        """S3 ルート同士の S3 prefix が重複していないことを検証する。
+
+        一方の prefix がもう一方の prefix の親になっている場合、
+        s3 sync --delete 等で意図せずファイルが削除される危険がある。
+        """
+        s3_routes = [
+            r for r in self.routes if r.type == "s3" and r.origin_path is not None
+        ]
+        prefixes: list[tuple[str, str]] = []
+        for route in s3_routes:
+            label = route.ref or route.path_pattern or "default"
+            origin_path: str = route.origin_path  # type: ignore
+            prefix = (origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
+            prefixes.append((label, prefix))
+
+        for i, (label_a, prefix_a) in enumerate(prefixes):
+            for label_b, prefix_b in prefixes[i + 1 :]:
+                if prefix_a == prefix_b:
+                    raise ValueError(
+                        "ルート '%s' と '%s' の S3 prefix が同一です: '%s'"
+                        % (label_a, label_b, prefix_a)
+                    )
+                if prefix_b.startswith(prefix_a + "/"):
+                    raise ValueError(
+                        "ルート '%s' の S3 prefix '%s' は"
+                        "ルート '%s' の S3 prefix '%s' "
+                        "の子パスです。"
+                        "s3 sync --delete 等で意図せず"
+                        "ファイルが削除される危険があります。"
+                        % (label_b, prefix_b, label_a, prefix_a)
+                    )
+                if prefix_a.startswith(prefix_b + "/"):
+                    raise ValueError(
+                        "ルート '%s' の S3 prefix '%s' は"
+                        "ルート '%s' の S3 prefix '%s' "
+                        "の子パスです。"
+                        "s3 sync --delete 等で意図せず"
+                        "ファイルが削除される危険があります。"
+                        % (label_a, prefix_a, label_b, prefix_b)
+                    )
+        return self
+
 
 class Settings(BaseSettings):
     general: GeneralSettings

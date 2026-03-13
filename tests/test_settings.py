@@ -189,3 +189,99 @@ def test_storage_route_requires_distribution():
         DjangoStorage.model_validate(
             {"store": "s3", "location": "media", "route": "static"}
         )
+
+
+def test_route_s3_prefix_overlap_parent_child():
+    """SPA ルートと static ルートの S3 prefix が親子関係の場合エラー"""
+    # 今回のインシデント: staticfiles に route 未指定で
+    # SPA デフォルトルート (origin_path="/web/app") にフォールバックした場合、
+    # deploystatic の --delete が SPA ファイルを削除してしまう。
+    # この設定では /web/app が /web/app/static の親になるため検出される。
+    with pytest.raises(ValueError, match="子パス"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {
+                        "is_default": True,
+                        "is_spa": True,
+                        "origin_path": "/web/app",
+                    },
+                    {
+                        "path_pattern": "/static/*",
+                        "is_versioned": True,
+                        "origin_path": "/web/app",
+                    },
+                ],
+            }
+        )
+
+
+def test_route_s3_prefix_overlap_same():
+    """S3 prefix が完全に同一の場合エラー"""
+    with pytest.raises(ValueError, match="同一"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {
+                        "is_default": True,
+                        "is_spa": True,
+                        "origin_path": "/web/app",
+                    },
+                    {
+                        "path_pattern": "/app/*",
+                        "is_versioned": True,
+                        "origin_path": "/web",
+                    },
+                ],
+            }
+        )
+
+
+def test_route_s3_prefix_no_overlap():
+    """S3 prefix が分離されている場合は正常"""
+    # 今回の修正後の正しい設定: SPA=/web/app, static=/web/static
+    cf = CloudFront.model_validate(
+        {
+            "routes": [
+                {
+                    "is_default": True,
+                    "is_spa": True,
+                    "origin_path": "/web/app",
+                },
+                {
+                    "path_pattern": "/static/*",
+                    "ref": "static",
+                    "is_versioned": True,
+                    "origin_path": "/web",
+                },
+            ],
+        }
+    )
+    assert len(cf.routes) == 2
+
+
+def test_route_s3_prefix_overlap_with_api_ignored():
+    """API ルートは S3 を使わないので重複チェック対象外"""
+    cf = CloudFront.model_validate(
+        {
+            "routes": [
+                {
+                    "is_default": True,
+                    "is_spa": True,
+                    "origin_path": "/web/app",
+                },
+                {
+                    "path_pattern": "/api/*",
+                    "type": "api",
+                    "handler": "wsgi",
+                },
+                {
+                    "path_pattern": "/static/*",
+                    "ref": "static",
+                    "is_versioned": True,
+                    "origin_path": "/web",
+                },
+            ],
+        }
+    )
+    assert len(cf.routes) == 3
