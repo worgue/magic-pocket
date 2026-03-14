@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import subprocess
 
+from python_on_whales import docker
+
 
 class DepotBuilder:
     def __init__(
@@ -28,6 +30,9 @@ class DepotBuilder:
         platform: str,
     ) -> None:
         token = self._get_token()
+
+        print("ECR にログインします...")
+        docker.login_ecr(region_name=self.region)
 
         print("Depot でイメージをビルドします...")
         print("  target: %s" % target)
