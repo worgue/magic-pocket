@@ -68,6 +68,17 @@ def _create_cloudfront_signer(signing_key_name: str):
     return CloudFrontSigner(key_id, rsa_signer)
 
 
+def _resolve_cloudfront_domain(cf_name: str, cf_domain: str | None) -> str | None:
+    """CloudFront ドメインを解決する。
+
+    pocket.toml に domain が設定されていればそれを使い、
+    未設定なら環境変数 POCKET_CLOUDFRONT_{NAME}_DOMAIN にフォールバックする。
+    """
+    if cf_domain:
+        return cf_domain
+    return os.environ.get("POCKET_CLOUDFRONT_%s_DOMAIN" % cf_name.upper())
+
+
 def _build_storage_options(
     storage, context: Context | None, general_context: GeneralContext
 ) -> dict | None:
@@ -82,10 +93,11 @@ def _build_storage_options(
             s3_location = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip(
                 "/"
             )
+            custom_domain = _resolve_cloudfront_domain(cf.name, cf.domain)
             options: dict = {
                 "bucket_name": cf.bucket_name,
                 "location": s3_location,
-                "custom_domain": cf.domain,
+                "custom_domain": custom_domain,
                 "custom_origin_path": route.origin_path,
                 "querystring_auth": route.signed,
             }
