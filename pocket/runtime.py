@@ -167,6 +167,24 @@ def _get_queueurls(ac_context: AwsContainerContext) -> dict[str, str | None]:
     return data
 
 
+def _get_cloudfront_domains(context: Context) -> dict[str, str]:
+    """CloudFront スタックの Output から distribution ドメインを取得"""
+    domains: dict[str, str] = {}
+    for name, cf_ctx in context.cloudfront.items():
+        stack_name = f"{cf_ctx.slug}-cloudfront"
+        cfn = boto3.client("cloudformation", region_name=cf_ctx.region)
+        try:
+            res = cfn.describe_stacks(StackName=stack_name)
+            outputs = res["Stacks"][0].get("Outputs", [])
+            for output in outputs:
+                if output["OutputKey"] == "DistributionDomainName":
+                    domains[name] = output["OutputValue"]
+                    break
+        except cfn.exceptions.ClientError:
+            pass
+    return domains
+
+
 def set_envs_from_aws_resources(
     stage: str | None = None,
 ):
@@ -197,3 +215,8 @@ def set_envs_from_aws_resources(
                 os.environ["POCKET_%s_QUEUEURL" % lambda_key.upper()] = queueurl
     else:
         os.environ["POCKET_HOSTS"] = ""
+    # CloudFront distribution ドメインを環境変数に設定
+    if context.cloudfront:
+        cf_domains = _get_cloudfront_domains(context)
+        for name, domain in cf_domains.items():
+            os.environ["POCKET_CLOUDFRONT_%s_DOMAIN" % name.upper()] = domain
