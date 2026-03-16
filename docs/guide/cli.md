@@ -92,9 +92,12 @@ pocket destroy --stage=dev
 | オプション | 説明 |
 |-----------|------|
 | `--stage` | 対象ステージ |
-| `--with-secrets` | pocket管理シークレットも削除 |
+| `--without-secrets` | pocket管理シークレットを削除せずに残す |
 | `--with-state-bucket` | ステートバケットも削除 |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+
+デフォルトでpocket管理シークレット（SSM / Secrets Manager）も削除されます。
+残したい場合は `--without-secrets` を指定してください。
 
 削除は以下の順序（デプロイの逆順）で行われます:
 
@@ -168,6 +171,25 @@ pocket django manage createsuperuser --username=admin --email=admin@example.com 
 | `--stage` | 対象ステージ |
 | `--handler` | 特定のハンドラーを指定（非推奨） |
 | `--timeout-seconds` | ログ表示のタイムアウト（秒） |
+
+### pocket django resetdb
+
+データベースの public スキーマをリセットします。
+Lambda 経由で `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` を実行し、全テーブルを削除します。
+
+```bash
+pocket django resetdb --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--yes`, `-y` | 確認プロンプトをスキップ |
+
+リセット後は `pocket django manage migrate --stage=dev` でマイグレーションをやり直してください。
+
+!!! warning "破壊的操作"
+    全テーブルとデータが削除されます。本番環境での実行には十分注意してください。
 
 ### pocket django deploystatic
 

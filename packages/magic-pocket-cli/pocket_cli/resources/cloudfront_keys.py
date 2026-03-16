@@ -56,8 +56,9 @@ class CloudFrontKeys:
             self.stack.wait_status("COMPLETED", timeout=120, interval=5)
 
     def delete(self):
-        self.stack.delete()
         echo.info("Deleting CloudFront keys stack ...")
+        self.stack.delete()
+        self.stack.wait_status("NOEXIST", timeout=300, interval=10)
 
     def _prepare_signing_key(self, mediator: Mediator):
         if not self.context.signing_key:
