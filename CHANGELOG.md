@@ -7,8 +7,14 @@
 ## [?.?.?](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - unreleased
 ### Features
 - :material-console: `pocket django deploy`でデプロイ + マイグレーションなどの管理コマンド実行。実行内容が決まらないためUnreleases。
+- :material-console: `pocket django resetdb`でデータベースの public スキーマをリセット（`DROP SCHEMA public CASCADE`）
 - Neon接続時のIP制限
 - RDSの利用
+
+### Improvements
+- `pocket destroy`がデフォルトでシークレットも削除するように変更（`--without-secrets`で残す）
+- `pocket destroy`でCloudFrontスタック削除の完了を待機するように修正
+- `pocket deploy`時にSSM/SMの不要なシークレットを自動クリーンアップ
 - 環境ごとに異なるファイルを返すurlsの作成（`robots.txt`と`favicon.ico`用）
 - :material-console: `pocket deploy`でデプロイ（以下全て`pocket.toml`に設定がある場合のみ）
     - EFSの作成

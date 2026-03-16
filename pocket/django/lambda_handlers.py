@@ -19,6 +19,16 @@ wsgi_handler = make_lambda_handler(
 )
 
 
+def _handle_resetdb():
+    """public スキーマを DROP して再作成する"""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("DROP SCHEMA public CASCADE")
+        cursor.execute("CREATE SCHEMA public")
+    print("resetdb: public スキーマをリセットしました")
+
+
 def management_command_handler(event, context):
     print(event)
     command = event["command"]
@@ -27,6 +37,9 @@ def management_command_handler(event, context):
     print(command)
     print("args:", args)
     print("kwargs:", kwargs)
+    if command == "pocket_resetdb":
+        _handle_resetdb()
+        return
     if command == "createsuperuser":
         if not os.environ.get("DJANGO_SUPERUSER_PASSWORD"):
             raise Exception("DJANGO_SUPERUSER_PASSWORD is not set")

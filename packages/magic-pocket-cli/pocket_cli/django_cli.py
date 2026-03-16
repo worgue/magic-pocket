@@ -240,6 +240,30 @@ def manage(stage, command, args, handler, timeout_seconds):
         handler.show_logs(res)
 
 
+@django.command()
+@click.option("--stage", prompt=True)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def resetdb(stage: str, yes: bool):
+    """データベースの public スキーマをリセットする
+
+    Lambda 経由で DROP SCHEMA public CASCADE; CREATE SCHEMA public; を実行し、
+    全テーブルを削除してマイグレーションをやり直せる状態にする。
+    """
+    echo.danger("stage '%s' のデータベースをリセットします。" % stage)
+    echo.danger("全テーブルとデータが削除されます。")
+    if not yes:
+        click.confirm("本当に実行しますか？", abort=True)
+
+    context = Context.from_toml(stage=stage)
+    handler = _get_management_command_handler(context)
+    res = handler.invoke(json.dumps({"command": "pocket_resetdb", "args": []}))
+    handler.show_logs(res)
+    echo.success("データベースをリセットしました。")
+    echo.info("pocket django manage --stage %s migrate を実行してください。" % stage)
+
+
 @django.group()
 def storage():
     pass

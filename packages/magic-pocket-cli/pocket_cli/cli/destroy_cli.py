@@ -305,14 +305,20 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 
 @click.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
-@click.option("--with-secrets", is_flag=True, default=False)
+@click.option(
+    "--without-secrets",
+    is_flag=True,
+    default=False,
+    help="シークレットを削除せずに残す",
+)
 @click.option("--with-state-bucket", is_flag=True, default=False)
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
-def destroy(stage: str, with_secrets: bool, with_state_bucket: bool, yes: bool):
+def destroy(stage: str, without_secrets: bool, with_state_bucket: bool, yes: bool):
     """ステージの全リソースを一括削除"""
     context = Context.from_toml(stage=stage)
+    with_secrets = not without_secrets
     targets = _collect_targets(context, with_secrets, with_state_bucket)
 
     if not targets:

@@ -58,6 +58,7 @@ class Mediator:
 
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
+        self._cleanup_orphaned_secrets()
         if self.context.awscontainer and self.context.awscontainer.secrets:
             sc = self.context.awscontainer.secrets
             if hasattr(sc, "pocket_store"):
@@ -66,6 +67,29 @@ class Mediator:
                 del sc.allowed_sm_resources
             if hasattr(sc, "allowed_ssm_resources"):
                 del sc.allowed_ssm_resources
+
+    def _cleanup_orphaned_secrets(self):
+        """SSM/SM にあるが managed 定義にないシークレットを削除する"""
+        if self.context.awscontainer is None:
+            return
+        if (sc := self.context.awscontainer.secrets) is None:
+            return
+        stored_keys = set(sc.pocket_store.secrets.keys())
+        managed_keys = set(sc.managed.keys())
+        orphaned = stored_keys - managed_keys
+        if not orphaned:
+            return
+        echo.warning(
+            "managed 定義にないシークレットを削除します: %s"
+            % ", ".join(sorted(orphaned))
+        )
+        # managed に含まれるキーだけ残して再書き込み
+        cleaned = {
+            k: v for k, v in sc.pocket_store.secrets.items() if k in managed_keys
+        }
+        sc.pocket_store.delete_secrets()
+        if cleaned:
+            sc.pocket_store.update_secrets(cleaned)
 
     def _generate_secret(self, spec: ManagedSecretSpec):
         if spec.type == "password":

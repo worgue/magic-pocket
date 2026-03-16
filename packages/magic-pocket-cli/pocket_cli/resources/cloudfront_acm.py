@@ -50,5 +50,6 @@ class CloudFrontAcm:
         self.stack.wait_status("COMPLETED", timeout=600, interval=10)
 
     def delete(self):
-        self.stack.delete()
         echo.log("ACM スタックを削除中...")
+        self.stack.delete()
+        self.stack.wait_status("NOEXIST", timeout=300, interval=10)

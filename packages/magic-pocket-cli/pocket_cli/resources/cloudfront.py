@@ -237,8 +237,9 @@ class CloudFront:
     def delete(self):
         self._delete_redirect_from()
         self._delete_bucket_policy()
-        self.stack.delete()
         echo.info("Deleting cloudformation stack for cloudfront ...")
+        self.stack.delete()
+        self.stack.wait_status("NOEXIST", timeout=900, interval=15)
         echo.warning(
             "S3 bucket is managed by the S3 resource: " + self.context.bucket_name
         )

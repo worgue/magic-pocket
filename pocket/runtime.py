@@ -58,6 +58,15 @@ def get_secrets(stage: str | None = None) -> dict:
     secrets = {}
     # managed: pocket_store経由で自動ディスパッチ (SM/SSM)
     for key, value in sc.pocket_store.secrets.items():
+        if key not in sc.managed:
+            import sys
+
+            print(
+                "Warning: SSM にキー '%s' が managed 定義にありません。"
+                " pocket deploy で同期してください。" % key,
+                file=sys.stderr,
+            )
+            continue
         envs = _pocket_secret_to_envs(key, value, sc.managed[key])
         secrets.update(envs)
     # user: 各specのstoreに応じてSM/SSMクライアントを使い分け
