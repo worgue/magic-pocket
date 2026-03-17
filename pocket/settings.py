@@ -59,6 +59,7 @@ class ManagedSecretSpec(BaseModel):
         "password",
         "neon_database_url",
         "tidb_database_url",
+        "upstash_redis_url",
         "rsa_pem_base64",
         "cloudfront_signing_key",
         "spa_token_secret",
@@ -193,6 +194,14 @@ class TiDb(BaseSettings):
     project: str | None = None
     cluster: str | None = None
     region: str = "ap-northeast-1"
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
+class Upstash(BaseSettings):
+    email: str | None = Field(alias="upstash_email", default=None)
+    api_key: str | None = Field(alias="upstash_api_key", default=None)
+    budget: int = 20
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -407,6 +416,7 @@ class Settings(BaseSettings):
     awscontainer: AwsContainer | None = None
     neon: Neon | None = None
     tidb: TiDb | None = None
+    upstash: Upstash | None = None
     dsql: Dsql | None = None
     rds: Rds | None = None
     ses: Ses | None = None

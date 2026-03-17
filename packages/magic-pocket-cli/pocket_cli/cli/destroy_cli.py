@@ -14,6 +14,7 @@ from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
+from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
 
 
@@ -102,6 +103,8 @@ def _collect_database_targets(context: Context) -> list[str]:
             targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
     if context.tidb:
         targets.append("TiDB クラスタ")
+    if context.upstash:
+        targets.append("Upstash Redis: %s" % context.upstash.database_name)
     if context.neon:
         targets.append("Neon ブランチ")
     return targets
@@ -288,6 +291,12 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
         echo.log("Destroying TiDB cluster...")
         TiDb(context.tidb).delete_cluster()
         echo.success("TiDB cluster was deleted.")
+
+    # 5.5. Upstash Redis
+    if context.upstash:
+        upstash = Upstash(context.upstash)
+        if upstash.database:
+            upstash.delete_database()
 
     # 6. Neon ブランチ
     if context.neon and Neon(context.neon).branch:

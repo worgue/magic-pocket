@@ -215,6 +215,36 @@ project = "9876543210987654321"
 
 ---
 
+## upstash
+
+Upstash Redis（サーバーレス Redis）の設定です。VPC 不要で Lambda から直接利用できます。
+
+```toml
+[upstash]
+
+[awscontainer.secrets.managed]
+REDIS_URL = { type = "upstash_redis_url" }
+
+[awscontainer.django.caches]
+default = { store = "redis" }
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `budget` | int | `20` | 月額上限（ドル）。最低値の $20 がデフォルト |
+
+`UPSTASH_EMAIL` と `UPSTASH_API_KEY` 環境変数（または `.env`）が必要です。Upstash Console の Account > Management API で API Key を取得してください。これらはデプロイ時のみ必要で、Lambda 実行時には不要です。
+
+データベースは `{project_name}-{stage}` の名前で自動作成されます。プライマリリージョンは `ap-southeast-1`（シンガポール）に固定です。
+
+!!! info "budget について"
+    月額利用料が budget に達するとレート制限がかかり、コストは budget を超えません。Upstash の最低 budget は $20 です。利用が 70% と 90% に達した時点で通知が届きます。
+
+!!! note "Django での利用"
+    `store = "redis"` を指定すると `django-redis` バックエンドが使用されます。`django-redis` のインストールが必要です。`REDIS_URL` は managed secrets から自動設定されます。
+
+---
+
 ## dsql
 
 Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラスターが自動作成されます。VPC は不要です。

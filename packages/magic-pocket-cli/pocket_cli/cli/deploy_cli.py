@@ -16,6 +16,7 @@ from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.tidb import TiDb
+from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
 
 
@@ -52,6 +53,8 @@ def get_resources(context: Context, *, state_bucket: str = ""):
         resources.append(Neon(context.neon))
     if context.tidb:
         resources.append(TiDb(context.tidb))
+    if context.upstash:
+        resources.append(Upstash(context.upstash))
     if context.s3:
         resources.append(S3(context.s3))
     _append_infra_resources(resources, context, state_bucket)

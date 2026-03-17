@@ -195,7 +195,13 @@ def get_caches(*, stage: str | None = None) -> dict:
     caches = {}
     for key, cache in django_context.caches.items():
         caches[key] = {"BACKEND": cache.backend}
-        if cache.location is not None:
+        if cache.store == "redis":
+            redis_url = os.environ.get("REDIS_URL", "")
+            caches[key]["LOCATION"] = redis_url
+            caches[key]["OPTIONS"] = {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        elif cache.location is not None:
             caches[key]["LOCATION"] = cache.location
     return caches
 
