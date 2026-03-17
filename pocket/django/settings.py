@@ -46,7 +46,7 @@ class DjangoStorage(BaseSettings):
 
 
 class DjangoCache(BaseSettings):
-    store: Literal["efs", "locmem"]
+    store: Literal["efs", "locmem", "redis"]
     location_subdir: str = "{stage}"
 
 

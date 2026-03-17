@@ -72,7 +72,7 @@ class DjangoStorageContext(BaseModel):
 
 
 class DjangoCacheContext(BaseModel):
-    store: Literal["efs", "locmem"]
+    store: Literal["efs", "locmem", "redis"]
     location_subdir: str = "{stage}"
     location: str | None = None
 
@@ -82,6 +82,8 @@ class DjangoCacheContext(BaseModel):
             return "django.core.cache.backends.filebased.FileBasedCache"
         elif self.store == "locmem":
             return "django.core.cache.backends.locmem.LocMemCache"
+        elif self.store == "redis":
+            return "django_redis.cache.RedisCache"
         raise ValueError("Unknown store")
 
     @classmethod
@@ -90,6 +92,8 @@ class DjangoCacheContext(BaseModel):
     ) -> DjangoCacheContext:
         location = None
         if cache.store == "locmem":
+            pass
+        elif cache.store == "redis":
             pass
         elif cache.store == "efs":
             assert (
