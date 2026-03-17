@@ -98,6 +98,15 @@ Resources:
               OriginProtocolPolicy: https-only
               HTTPSPort: 443
           # {% endfor %}
+          # {% if managed_asset_files %}
+          - Id: "{{ resource_prefix }}pocket-managed"
+            DomainName: "{{ bucket_name }}.s3.{{ s3_region }}.amazonaws.com"
+            OriginPath: "/pocket_managed"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          # {% endif %}
         DefaultCacheBehavior:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
           TargetOriginId: "{{ resource_prefix }}{{ default_route.name }}"
@@ -116,7 +125,7 @@ Resources:
           TrustedKeyGroups:
             - Fn::ImportValue: "{{ export.key_group_id }}"
           # {% endif %}
-        # {% if extra_routes or api_routes %}
+        # {% if extra_routes or api_routes or managed_asset_files %}
         CacheBehaviors:
           # {% for route in extra_routes %}
           - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
@@ -152,6 +161,12 @@ Resources:
               - PATCH
               - POST
               - DELETE
+          # {% endfor %}
+          # {% for filename in managed_asset_files %}
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "{{ resource_prefix }}pocket-managed"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/{{ filename }}"
           # {% endfor %}
         # {% endif %}
         ViewerCertificate:
