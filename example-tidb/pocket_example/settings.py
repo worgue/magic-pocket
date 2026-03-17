@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 
-from pocket.runtime import set_envs_from_secrets
+from pocket.django.runtime import set_envs
 
-set_envs_from_secrets()
+set_envs()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -14,7 +14,10 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DEBUG", "true").lower() == "true"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+CSRF_TRUSTED_ORIGINS = [
+    o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",
