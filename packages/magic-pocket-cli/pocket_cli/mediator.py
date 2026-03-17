@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from pocket.utils import echo
 from pocket_cli.resources.neon import Neon, NeonResourceIsNotReady
 from pocket_cli.resources.tidb import TiDb, TiDbResourceIsNotReady
+from pocket_cli.resources.upstash import Upstash, UpstashResourceIsNotReady
 
 if TYPE_CHECKING:
     from pocket.context import Context
@@ -98,6 +99,8 @@ class Mediator:
             return self._get_neon_database_url()
         elif spec.type == "tidb_database_url":
             return self._get_tidb_database_url()
+        elif spec.type == "upstash_redis_url":
+            return self._get_upstash_redis_url()
         elif spec.type == "rsa_pem_base64":
             return self._generate_rsa_pem()
         elif spec.type == "cloudfront_signing_key":
@@ -151,6 +154,17 @@ class Mediator:
             return Neon(self.context.neon).database_url
         except NeonResourceIsNotReady:
             echo.warning("neon database is not ready")
+            return None
+
+    def _get_upstash_redis_url(self):
+        if not self.context.upstash:
+            raise RuntimeError(
+                "upstash is not configured. Please set upstash in pocket.toml"
+            )
+        try:
+            return Upstash(self.context.upstash).redis_url
+        except UpstashResourceIsNotReady:
+            echo.warning("upstash redis is not ready")
             return None
 
     def _get_tidb_database_url(self):

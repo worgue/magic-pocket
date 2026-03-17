@@ -405,6 +405,24 @@ class TiDbContext(BaseModel):
         )
 
 
+class UpstashContext(BaseModel):
+    email: str | None = None
+    api_key: str | None = None
+    database_name: str
+    budget: int = 20
+
+    @classmethod
+    def from_settings(
+        cls, upstash: settings.Upstash, root: settings.Settings
+    ) -> UpstashContext:
+        return cls(
+            email=upstash.email,
+            api_key=upstash.api_key,
+            database_name=f"{root.project_name}-{root.stage}",
+            budget=upstash.budget,
+        )
+
+
 class DsqlContext(BaseModel):
     region: str
     tag_name: str  # Name タグで検索するための識別名
@@ -709,11 +727,25 @@ class CloudFrontContext(BaseModel):
         )
 
 
+def _build_service_contexts(s: settings.Settings) -> dict:
+    """外部サービスのコンテキストを構築する"""
+    ctx: dict = {}
+    ctx["neon"] = NeonContext.from_settings(s.neon, s) if s.neon else None
+    ctx["tidb"] = TiDbContext.from_settings(s.tidb, s) if s.tidb else None
+    ctx["upstash"] = UpstashContext.from_settings(s.upstash, s) if s.upstash else None
+    ctx["dsql"] = DsqlContext.from_settings(s.dsql, s) if s.dsql else None
+    ctx["rds"] = RdsContext.from_settings(s.rds, s) if s.rds else None
+    ctx["ses"] = SesContext.from_settings(s.ses, s) if s.ses else None
+    ctx["s3"] = S3Context.from_settings(s.s3, s) if s.s3 else None
+    return ctx
+
+
 class Context(BaseModel):
     general: GeneralContext | None = None
     awscontainer: AwsContainerContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
+    upstash: UpstashContext | None = None
     dsql: DsqlContext | None = None
     rds: RdsContext | None = None
     ses: SesContext | None = None
@@ -780,34 +812,11 @@ class Context(BaseModel):
     @classmethod
     def from_settings(cls, s: settings.Settings) -> Context:
         general_ctx = GeneralContext.from_general_settings(s.general)
+        svc = _build_service_contexts(s)
 
         awscontainer_ctx = None
         if s.awscontainer:
             awscontainer_ctx = AwsContainerContext.from_settings(s.awscontainer, s)
-
-        neon_ctx = None
-        if s.neon:
-            neon_ctx = NeonContext.from_settings(s.neon, s)
-
-        tidb_ctx = None
-        if s.tidb:
-            tidb_ctx = TiDbContext.from_settings(s.tidb, s)
-
-        dsql_ctx = None
-        if s.dsql:
-            dsql_ctx = DsqlContext.from_settings(s.dsql, s)
-
-        rds_ctx = None
-        if s.rds:
-            rds_ctx = RdsContext.from_settings(s.rds, s)
-
-        ses_ctx = None
-        if s.ses:
-            ses_ctx = SesContext.from_settings(s.ses, s)
-
-        s3_ctx = None
-        if s.s3:
-            s3_ctx = S3Context.from_settings(s.s3, s)
 
         cloudfront_ctx: dict[str, CloudFrontContext] = {}
         for name, cf in s.cloudfront.items():
@@ -821,15 +830,10 @@ class Context(BaseModel):
         return cls(
             general=general_ctx,
             awscontainer=awscontainer_ctx,
-            neon=neon_ctx,
-            tidb=tidb_ctx,
-            dsql=dsql_ctx,
-            rds=rds_ctx,
-            ses=ses_ctx,
-            s3=s3_ctx,
             cloudfront=cloudfront_ctx,
             project_name=s.project_name,
             stage=s.stage,
+            **svc,
         )
 
     @classmethod
