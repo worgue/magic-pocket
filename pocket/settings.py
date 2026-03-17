@@ -329,6 +329,7 @@ class CloudFront(BaseSettings):
     routes: list[Route] = []
     signing_key: str | None = None
     token_secret: str | None = None
+    managed_assets: str | None = None
 
     @model_validator(mode="after")
     def check_domain_redirect_from(self):
