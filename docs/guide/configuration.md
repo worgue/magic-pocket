@@ -633,6 +633,49 @@ routes = [
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |
 | `signing_key` | str \| None | None | 署名付きURL用のmanaged secret名 |
 | `token_secret` | str \| None | None | SPA トークン認証用の managed secret 名（`type = "spa_token_secret"`） |
+| `managed_assets` | str \| None | None | ステージ別アセットのディレクトリ（下記参照） |
+
+### managed_assets
+
+`favicon.ico` や `robots.txt` など、ステージごとに異なるファイルを CloudFront 経由で配信できます。
+
+```toml
+[cloudfront.web]
+managed_assets = "assets/managed"
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/web" },
+]
+```
+
+ディレクトリ構成:
+
+```
+assets/managed/
+├── default/           # フォールバック
+│   ├── favicon.ico
+│   └── robots.txt
+├── sandbox/           # sandbox ステージ用
+│   ├── favicon.ico    # 開発用アイコン
+│   └── robots.txt     # Disallow: /
+└── prd/               # 本番用
+    ├── favicon.ico
+    └── robots.txt     # Allow: /
+```
+
+`pocket deploy --stage=sandbox` 実行時:
+
+1. `assets/managed/sandbox/` が存在すればそのディレクトリを使用
+2. 存在しなければ `assets/managed/default/` にフォールバック
+3. ファイルを S3 の `pocket_managed/` にアップロード
+4. ファイルごとに CloudFront の CacheBehavior を自動生成（`/favicon.ico`, `/robots.txt` 等）
+
+ファイル単位のマージは行いません。ステージディレクトリがあればそれだけ、なければ default だけが配信されます。
+
+!!! note "SPA のビルド成果物との分離"
+    managed_assets は S3 の `pocket_managed/` プレフィックスに配置されるため、SPA の `build_dir` アップロードとは独立しています。`--delete` による意図しない削除の心配はありません。
+
+!!! note "Django のみ（CloudFront なし）の場合"
+    CloudFront を使用しない構成では、同じディレクトリ形式で Django view から配信できます（[Django連携 - ステージ別ファイル配信](django.md#ステージ別ファイル配信-managed_assets) を参照）。
 
 ### redirect_from
 
