@@ -79,6 +79,7 @@ class CloudFront:
 
     def update(self, mediator: Mediator | None = None):
         self._prepare_token_secret(mediator)
+        self._upload_managed_assets()
         self._ensure_redirect_from()
         if not self.stack.exists:
             self.stack.create()
@@ -144,6 +145,47 @@ class CloudFront:
             IfMatch=etag,
         )
         echo.info("KVS にトークンシークレットを書き込みました")
+
+    def _upload_managed_assets(self):
+        """managed_assets のファイルを S3 にアップロードする"""
+        if not self.context.managed_assets:
+            return
+        base = Path(self.context.managed_assets)
+        stage_dir = base / self.context.stage
+        if stage_dir.is_dir():
+            asset_dir = stage_dir
+        else:
+            asset_dir = base / "default"
+        if not asset_dir.is_dir():
+            echo.warning("managed_assets ディレクトリが見つかりません: %s" % asset_dir)
+            return
+        bucket = self.context.bucket_name
+        uploaded_keys: set[str] = set()
+        for file in asset_dir.iterdir():
+            if not file.is_file():
+                continue
+            s3_key = "pocket_managed/%s" % file.name
+            uploaded_keys.add(s3_key)
+            content_type = (
+                mimetypes.guess_type(str(file))[0] or "application/octet-stream"
+            )
+            self.s3_client.upload_file(
+                str(file),
+                bucket,
+                s3_key,
+                ExtraArgs={"ContentType": content_type},
+            )
+            echo.log("managed_assets: s3://%s/%s" % (bucket, s3_key))
+        # pocket_managed/ 配下の不要ファイルを削除
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix="pocket_managed/"):
+            for obj in page.get("Contents", []):
+                if obj["Key"] not in uploaded_keys:
+                    self.s3_client.delete_object(Bucket=bucket, Key=obj["Key"])
+                    echo.log("managed_assets 削除: s3://%s/%s" % (bucket, obj["Key"]))
+        echo.info(
+            "managed_assets: %d ファイルをアップロードしました" % len(uploaded_keys)
+        )
 
     def upload(self, *, skip_build: bool = False):
         for route in self.context.uploadable_routes:

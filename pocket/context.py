@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from functools import cached_property
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, computed_field, model_validator
@@ -576,6 +577,7 @@ class CloudFrontContext(BaseModel):
     name: str
     region: str
     s3_region: str
+    stage: str
     domain: str | None = None
     hosted_zone_id_override: str | None = None
     slug: str
@@ -586,6 +588,7 @@ class CloudFrontContext(BaseModel):
     signing_key: str | None = None
     token_secret: str | None = None
     api_origins: dict[str, str] = {}
+    managed_assets: str | None = None
 
     @computed_field
     @property
@@ -598,6 +601,8 @@ class CloudFrontContext(BaseModel):
         prefixes = [
             r.origin_path for r in self.routes if not r.is_api and r.origin_path
         ]
+        if self.managed_assets:
+            prefixes.append("/pocket_managed")
         if not prefixes:
             return ""
         parts_list = [p.split("/") for p in prefixes]
@@ -641,6 +646,26 @@ class CloudFrontContext(BaseModel):
         return [route for route in self.routes if route.is_api]
 
     @computed_field
+    @property
+    def managed_asset_files(self) -> list[str]:
+        """managed_assets ディレクトリから配信するファイル名のリストを返す。
+
+        {managed_assets}/{stage}/ があればそれを使い、
+        なければ {managed_assets}/default/ にフォールバックする。
+        """
+        if not self.managed_assets:
+            return []
+        base = Path(self.managed_assets)
+        stage_dir = base / self.stage
+        if stage_dir.is_dir():
+            asset_dir = stage_dir
+        else:
+            asset_dir = base / "default"
+        if not asset_dir.is_dir():
+            return []
+        return [f.name for f in asset_dir.iterdir() if f.is_file()]
+
+    @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
         if not self.domain:
@@ -668,6 +693,7 @@ class CloudFrontContext(BaseModel):
             name=name,
             region=root.region,
             s3_region=root.region,
+            stage=root.stage,
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,
             slug=f"{root.slug}-{name}",
@@ -679,6 +705,7 @@ class CloudFrontContext(BaseModel):
             routes=[RouteContext.from_settings(r) for r in cf.routes],
             signing_key=cf.signing_key,
             token_secret=cf.token_secret,
+            managed_assets=cf.managed_assets,
         )
 
 
