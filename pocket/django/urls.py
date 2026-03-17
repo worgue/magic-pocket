@@ -1,5 +1,5 @@
 import mimetypes
-import sys
+from pathlib import Path
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -7,44 +7,45 @@ from django.urls import path
 
 from ..utils import get_stage
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
-pocket_http_root = settings.PROJECT_DIR / "pocket_http_root"
+def _resolve_managed_assets_dir(stage: str) -> Path | None:
+    """managed_assets ディレクトリを解決する。
+
+    {PROJECT_DIR}/managed_assets/{stage}/ があればそれを使い、
+    なければ {PROJECT_DIR}/managed_assets/default/ にフォールバックする。
+    どちらも存在しなければ None を返す。
+    """
+    base = settings.PROJECT_DIR / "managed_assets"
+    if not base.is_dir():
+        return None
+    stage_dir = base / stage
+    if stage_dir.is_dir():
+        return stage_dir
+    default_dir = base / "default"
+    if default_dir.is_dir():
+        return default_dir
+    return None
 
 
-def find_http_toml_filepaths():
-    return pocket_http_root.glob("**/__serve__.toml")
-
-
-def as_path(toml_file, stage):
-    dirpath = toml_file.parent
-    filetype = mimetypes.guess_type(dirpath)[0] or "text/plain"
-
-    config = tomllib.loads(toml_file.read_text())
-    if stage in config:
-        filename = config[stage]["filename"]
-    else:
-        filename = stage + dirpath.suffix
-    content_file = dirpath / filename
-    if not content_file.exists():
-        filetype = None
+def _as_path(asset_dir: Path, filename: str):
+    """ファイルを返す Django URL パターンを生成する"""
+    file_path = asset_dir / filename
+    filetype = mimetypes.guess_type(filename)[0] or "application/octet-stream"
 
     def render(request):
-        if filetype is None:
-            raise FileNotFoundError(content_file)
-        if filetype.startswith("text"):
-            content = content_file.read_text()
-        else:
-            content = content_file.read_bytes()
-        return HttpResponse(content, content_type=filetype)
+        return HttpResponse(file_path.read_bytes(), content_type=filetype)
 
-    return path(str(dirpath.relative_to(pocket_http_root)), render)
+    return path(filename, render)
 
 
-def get_pocket_http_urls():
-    serve_toml_fils = find_http_toml_filepaths()
-    paths = [as_path(toml_file, get_stage()) for toml_file in serve_toml_fils]
-    return paths
+def get_managed_assets_urls() -> list:
+    """managed_assets ディレクトリからURLパターンを生成する"""
+    stage = get_stage()
+    asset_dir = _resolve_managed_assets_dir(stage)
+    if asset_dir is None:
+        return []
+    return [_as_path(asset_dir, f.name) for f in asset_dir.iterdir() if f.is_file()]
+
+
+# 後方互換エイリアス
+get_pocket_http_urls = get_managed_assets_urls
