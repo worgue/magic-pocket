@@ -87,7 +87,7 @@ set_envs()
 
 - **Secrets Manager** — `pocket_secrets` で定義したシークレット（SECRET_KEY、DATABASE_URL など）
 - **RDS シークレット** — `[rds]` が設定されている場合、AWS 管理シークレットから `DATABASE_URL` を自動構築
-- **CloudFormation Output** — API GatewayのホストとCloudFrontドメインをDjangoの `ALLOWED_HOSTS` に追加
+- **CloudFormation Output** — API GatewayのホストとCloudFrontドメインをDjangoの `ALLOWED_HOSTS` と `CSRF_TRUSTED_ORIGINS` に追加
 
 !!! info "RDS の DATABASE_URL"
     `[rds]` を設定すると、Lambda 起動時に `POCKET_RDS_SECRET_ARN` 環境変数から RDS の AWS 管理シークレットを読み取り、
@@ -100,6 +100,12 @@ set_envs()
 
     環境変数には型がありません。`DEBUG = os.environ.get("DEBUG")` のように取得すると文字列 `"False"` が真値になります。
     [django-environ](https://django-environ.readthedocs.io/) の利用を推奨します。
+
+!!! warning "`set_envs_from_secrets()` ではなく `set_envs()` を使うこと"
+    `pocket.runtime.set_envs_from_secrets()` はシークレットのみ設定します。
+    Django プロジェクトでは `pocket.django.runtime.set_envs()` を使ってください。
+    `set_envs()` はシークレットに加え、`ALLOWED_HOSTS` と `CSRF_TRUSTED_ORIGINS` も設定します。
+    これを使わないと CloudFront 経由のアクセスで CSRF 検証エラー (403) が発生します。
 
 !!! note "ローカル環境での動作"
     `POCKET_STAGE` が設定されていない場合、`set_envs()` は何もしません。
@@ -194,6 +200,7 @@ env = environ.Env(
     SECRET_KEY=str,
     DEBUG=(bool, False),
     ALLOWED_HOSTS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
 )
 
 # AWS リソースから環境変数を登録（Lambda上のみ動作）
@@ -204,6 +211,7 @@ SECRET_KEY = env.str("SECRET_KEY")
 DEBUG = env.bool("DEBUG")
 DATABASES = {"default": env.db()}
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS")
 
 # pocket.toml の django.settings を反映
 vars().update(get_django_settings())
