@@ -176,6 +176,42 @@ pocket_call_command("my_command", force_sqs=True)
 
 ---
 
+## ステージ別ファイル配信 (managed_assets)
+
+`favicon.ico` や `robots.txt` など、ステージごとに異なる内容を返したいファイルを Django view 経由で配信できます。
+
+### ディレクトリ構成
+
+プロジェクトルートに `managed_assets/` ディレクトリを作成します。CloudFront の `managed_assets` 設定と同じディレクトリ形式です。
+
+```
+managed_assets/
+├── default/
+│   ├── favicon.ico
+│   └── robots.txt
+└── sandbox/
+    ├── favicon.ico
+    └── robots.txt
+```
+
+`POCKET_STAGE` に応じたディレクトリが使用されます。ステージ名のディレクトリが存在しなければ `default/` にフォールバックします。
+
+### urls.py への登録
+
+```python
+from pocket.django.urls import get_managed_assets_urls
+
+urlpatterns = [
+    # ...
+    *get_managed_assets_urls(),
+]
+```
+
+!!! note "CloudFront 構成との使い分け"
+    Django view 経由の配信は Lambda を経由するため、CloudFront を使用している場合は `managed_assets` 設定（[設定リファレンス](configuration.md#managed_assets) を参照）を使うと S3 から直接配信でき、Lambda のコールドスタートを回避できます。同じディレクトリ形式なので、移行は設定の追加だけで完了します。
+
+---
+
 ## settings.py の完全な例
 
 以下は `django-environ` を利用した `settings.py` の典型的な構成です。
