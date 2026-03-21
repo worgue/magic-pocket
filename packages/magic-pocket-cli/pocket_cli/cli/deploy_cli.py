@@ -133,16 +133,34 @@ def deploy(stage: str, openpath, skip_frontend):
     deploy_resources(context, state_bucket=state_bucket)
     if not skip_frontend:
         deploy_frontend(context)
-    if endpoint := context.awscontainer and AwsContainer(
-        context.awscontainer
-    ).endpoints.get("wsgi"):
-        if endpoint is None:
-            echo.warning("wsgi endpoint is not created yet.")
-            echo.warning("You can check the endpoint later by resource command.")
-            echo.warning("$ pocket resource awscontainer url")
-            echo.warning("Or deploy again.")
-            echo.warning("$ pocket deploy")
-        else:
-            echo.success(f"wsgi url: {endpoint}")
-            if openpath:
-                webbrowser.open(endpoint + "/" + openpath)
+    # デプロイ完了後の URL 表示
+    url = _get_deploy_url(context)
+    if url:
+        echo.success(f"url: {url}")
+        if openpath:
+            webbrowser.open(url + "/" + openpath)
+
+
+def _get_deploy_url(context: Context) -> str | None:
+    """デプロイ後に表示する URL を決定する。
+
+    CloudFront がある場合はそのドメイン（カスタム or 自動生成）を優先し、
+    なければ API Gateway の wsgi エンドポイントを返す。
+    """
+    # CloudFront ドメインを優先
+    for _name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.domain:
+            return f"https://{cf_ctx.domain}"
+        cf = CloudFront(cf_ctx)
+        if cf.stack.output:
+            domain = cf.stack.output.get("DistributionDomainName")
+            if domain:
+                return f"https://{domain}"
+
+    # フォールバック: API Gateway
+    if context.awscontainer:
+        ac = AwsContainer(context.awscontainer)
+        endpoint = ac.endpoints.get("wsgi")
+        if endpoint:
+            return endpoint
+    return None
