@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import boto3
@@ -7,6 +8,7 @@ import boto3
 from pocket import context
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
+from pocket_cli.cli.runtime_config_cli import generate_runtime_config
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.builders import Builder, create_builder
 from pocket_cli.resources.aws.cloudformation import ContainerStack
@@ -153,7 +155,13 @@ class AwsContainer:
         return {"ecr": {"repository_name": self.context.ecr_name}}
 
     def deploy_init(self):
-        self.ecr.sync()
+        runtime_toml = Path("pocket.runtime.toml")
+        generate_runtime_config(runtime_toml)
+        try:
+            self.ecr.sync()
+        finally:
+            if runtime_toml.exists():
+                runtime_toml.unlink()
         if self.context.vpc:
             vpc_stack = Vpc(self.context.vpc).stack
             if not self.context.vpc.manage:

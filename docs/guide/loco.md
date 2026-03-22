@@ -106,7 +106,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/myapp-lambda /usr/local/bin/
 COPY --from=builder /app/config /app/config
-COPY --from=builder /app/pocket.toml /app/pocket.toml
+COPY pocket.runtime.toml /app/pocket.runtime.toml
 WORKDIR /app
 CMD ["myapp-lambda"]
 ```

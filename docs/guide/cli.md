@@ -112,6 +112,20 @@ pocket destroy --stage=dev
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
 
+### pocket runtime-config
+
+Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build_dir` 等）が除外されます。
+
+```bash
+# 標準出力に出力
+pocket runtime-config
+
+# ファイルに出力
+pocket runtime-config pocket.runtime.toml
+```
+
+詳細は「[設定ファイル - pocket runtime-config](configuration.md#pocket-runtime-config)」を参照してください。
+
 ---
 
 ## Django コマンド

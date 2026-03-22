@@ -11,6 +11,7 @@ from pocket_cli.cli import (
     dsql_cli,
     neon_cli,
     rds_cli,
+    runtime_config_cli,
     s3_cli,
     status_cli,
     tidb_cli,
@@ -33,6 +34,7 @@ main.add_command(deploy_cli.deploy)
 main.add_command(destroy_cli.destroy)
 main.add_command(status_cli.status)
 main.add_command(django_cli.django)
+main.add_command(runtime_config_cli.runtime_config)
 
 
 @main.group()

@@ -354,6 +354,49 @@ dockerfile_path = "pocket.Dockerfile"
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
 | `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
 
+!!! info "Docker ビルドコンテキスト"
+    Docker ビルドコンテキストは **pocket.toml のあるディレクトリ**（= `pocket deploy` を実行するディレクトリ）です。
+    `dockerfile_path` はそこからの相対パスで指定します。
+
+    uv workspace でフロントエンドとバックエンドを分けている場合、pocket.toml を**プロジェクトルート**に配置すると、
+    ルートの `uv.lock` を Dockerfile 内で直接参照できます。
+
+    ```toml
+    # プロジェクトルートの pocket.toml
+    [awscontainer]
+    dockerfile_path = "backend/pocket.Dockerfile"
+    ```
+
+    ```dockerfile
+    # ビルドコンテキスト = プロジェクトルート
+    COPY uv.lock pyproject.toml backend/pyproject.toml ./
+    RUN uv sync --frozen --no-dev --no-install-project --package my-backend
+
+    COPY backend/src/ .
+    ```
+
+    Lambda 上でランタイム設定が必要です。
+    `pocket deploy` 時にビルド専用設定を除外した `pocket.runtime.toml` が自動生成され、
+    Docker ビルドコンテキストに配置されます。
+    Dockerfile で `COPY pocket.runtime.toml ./` としてコピーしてください。
+
+### pocket runtime-config
+
+`pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build_dir` 等）を除外した TOML を生成します。
+
+```bash
+# 標準出力に出力
+pocket runtime-config
+
+# ファイルに出力
+pocket runtime-config pocket.runtime.toml
+```
+
+`pocket deploy` 時にはビルド前に自動生成され、ビルド後に削除されるため、手動で実行する必要はありません。
+手動実行は生成内容の確認やデバッグ用途で使えます。
+
+Lambda 上では `pocket.runtime.toml` が `pocket.toml` より優先して読み込まれます。
+
 !!! info "VPCなしデプロイ"
     `[vpc]` セクションがない場合（または `use_vpc = false`）、LambdaはVPCの外（パブリック）で実行されます。
     VPC、NAT Gateway、EFSが不要な開発環境では、VPCなしの方がコスト効率が良く、コールドスタートも高速です。
