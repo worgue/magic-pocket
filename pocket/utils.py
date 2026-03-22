@@ -63,9 +63,26 @@ def _find_pyproject_dir() -> Path:
     return Path.cwd()
 
 
+def is_runtime() -> bool:
+    """アプリケーションのランタイム環境（Lambda 等）で動作しているかを判定する。
+
+    現在は AWS Lambda のみ対応。将来 ECS 等を追加する場合はここを拡張する。
+    """
+    return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
+
+
 def get_toml_path() -> Path:
-    """pocket.toml のパスを返す。pyproject.toml と同じディレクトリにある前提。"""
-    return _find_pyproject_dir() / "pocket.toml"
+    """pocket.toml のパスを返す。
+
+    ランタイム環境では pocket.runtime.toml を優先する。
+    CLI 実行時（pocket deploy 等）では常に pocket.toml を返す。
+    """
+    base = _find_pyproject_dir()
+    if is_runtime():
+        runtime_toml = base / "pocket.runtime.toml"
+        if runtime_toml.exists():
+            return runtime_toml
+    return base / "pocket.toml"
 
 
 def get_project_name():
