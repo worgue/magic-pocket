@@ -154,14 +154,19 @@ class AwsContainer:
     def state_info(self):
         return {"ecr": {"repository_name": self.context.ecr_name}}
 
+    def _runtime_toml_path(self) -> Path:
+        """pocket.runtime.toml の出力先を返す。
+
+        django.project_dir が設定されていればその中に、
+        なければ CWD に配置する。
+        """
+        if self.context.django and self.context.django.project_dir:
+            return Path(self.context.django.project_dir) / "pocket.runtime.toml"
+        return Path("pocket.runtime.toml")
+
     def deploy_init(self):
-        runtime_toml = Path("pocket.runtime.toml")
-        generate_runtime_config(runtime_toml)
-        try:
-            self.ecr.sync()
-        finally:
-            if runtime_toml.exists():
-                runtime_toml.unlink()
+        generate_runtime_config(self._runtime_toml_path())
+        self.ecr.sync()
         if self.context.vpc:
             vpc_stack = Vpc(self.context.vpc).stack
             if not self.context.vpc.manage:
