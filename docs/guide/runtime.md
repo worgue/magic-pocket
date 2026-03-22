@@ -1,6 +1,8 @@
 # 実行環境
 
-Lambda上のアプリケーションは、`pocket.toml` とAWSリソースから設定情報を取得します。
+Lambda上のアプリケーションは、`pocket.toml`（または `pocket.runtime.toml`）とAWSリソースから設定情報を取得します。
+
+`pocket.runtime.toml` が存在する場合はそちらが優先されます。`pocket runtime-config` コマンドでビルド専用設定を除外したランタイム用 TOML を生成できます（[設定ファイル - pocket runtime-config](configuration.md#pocket-runtime-config) を参照）。
 
 ---
 
