@@ -120,6 +120,7 @@ class DjangoContext(BaseModel):
     storages: dict[str, DjangoStorageContext] = {}
     caches: dict[str, DjangoCacheContext] = {}
     settings: dict[str, Any] = {}
+    project_dir: str | None = None
 
     @classmethod
     def from_settings(cls, django: settings.Django, *, root=None) -> DjangoContext:
@@ -141,4 +142,5 @@ class DjangoContext(BaseModel):
             storages=storages,
             caches=caches,
             settings=django.settings,
+            project_dir=django.project_dir,
         )

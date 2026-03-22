@@ -54,6 +54,7 @@ class Django(BaseSettings):
     storages: dict[str, DjangoStorage] | None = None
     caches: dict[str, DjangoCache] | None = None
     settings: dict[str, Any] = {}
+    project_dir: str | None = None
 
     @model_validator(mode="after")
     def set_defaults(self):

@@ -71,18 +71,36 @@ def is_runtime() -> bool:
     return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME"))
 
 
+def _find_file_upward(filename: str) -> Path | None:
+    """CWD から上方向にファイルを探索し、見つかったパスを返す。"""
+    current = Path.cwd().resolve()
+    while True:
+        candidate = current / filename
+        if candidate.exists():
+            return candidate
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
 def get_toml_path() -> Path:
     """pocket.toml のパスを返す。
 
     ランタイム環境では pocket.runtime.toml を優先する。
     CLI 実行時（pocket deploy 等）では常に pocket.toml を返す。
+    いずれも CWD から上方向に探索する。
     """
-    base = _find_pyproject_dir()
     if is_runtime():
-        runtime_toml = base / "pocket.runtime.toml"
-        if runtime_toml.exists():
+        runtime_toml = _find_file_upward("pocket.runtime.toml")
+        if runtime_toml:
             return runtime_toml
-    return base / "pocket.toml"
+    toml = _find_file_upward("pocket.toml")
+    if toml:
+        return toml
+    # フォールバック: pyproject.toml のディレクトリ
+    return _find_pyproject_dir() / "pocket.toml"
 
 
 def get_project_name():

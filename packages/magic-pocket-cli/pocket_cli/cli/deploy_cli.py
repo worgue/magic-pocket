@@ -124,6 +124,9 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
 def deploy(stage: str, openpath, skip_frontend):
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
     context = Context.from_toml(stage=stage)
     # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
     state_store = _create_state_store(context)

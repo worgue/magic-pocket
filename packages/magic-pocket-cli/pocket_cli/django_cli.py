@@ -80,16 +80,21 @@ def _update_dotenv(jinja2_env):
 @django.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 @click.option("--openpath")
-@click.option("--force", is_flag=True, default=False)
-def deploy(stage: str, openpath, force):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def deploy(stage: str, openpath, yes):
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
     context = Context.from_toml(stage=stage)
     deploy_init_resources(context)
     deploy_resources(context)
-    if force or click.confirm("deploystatic? Or run collectstatic in lambda"):
+    if yes or click.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
         upload_collected_staticfiles(stage)
     handler = _get_management_command_handler(context)
-    if force or click.confirm("migrate?"):
+    if yes or click.confirm("migrate?", default=True):
         res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
         handler.show_logs(res)
     if endpoint := context.awscontainer and AwsContainer(
@@ -142,8 +147,11 @@ def get_deploystatic_local_storage(stage: str):
         raise DeploystaticConfigError(
             "BACKEND %s is not supported" % storage["BACKEND"]
         )
-    local_build_static_root = "pocket_cache/static_build/%s" % stage
-    return {"BACKEND": local_backend, "OPTIONS": {"location": local_build_static_root}}
+    local_build_static_root = Path.cwd() / "pocket_cache" / "static_build" / stage
+    return {
+        "BACKEND": local_backend,
+        "OPTIONS": {"location": str(local_build_static_root)},
+    }
 
 
 def can_deploystatic(stage: str):
@@ -200,12 +208,21 @@ def _build_python_command(args: list[str]) -> list[str]:
     )
 
 
+def _get_project_dir(stage: str) -> str | None:
+    """pocket.toml の awscontainer.django.project_dir を取得する"""
+    context = Context.from_toml(stage=stage)
+    if context.awscontainer and context.awscontainer.django:
+        return context.awscontainer.django.project_dir
+    return None
+
+
 def collectstatic_locally(stage: str):
     local_storage = get_deploystatic_local_storage(stage)
     echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
     set_staticfiles_override_env(local_storage)
     cmd = _build_python_command(["manage.py", "collectstatic", "--noinput"])
-    run(cmd, check=True)
+    project_dir = _get_project_dir(stage)
+    run(cmd, check=True, cwd=project_dir)
     clear_staticfiles_override_env()
 
 
