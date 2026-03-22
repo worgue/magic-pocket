@@ -43,6 +43,11 @@ _ROUTE_REMOVE_KEYS = {
     "login_path",
 }
 
+# awscontainer.django から除外するキー
+_DJANGO_REMOVE_KEYS = {
+    "project_dir",
+}
+
 # トップレベルから除外するセクション
 _TOPLEVEL_REMOVE_KEYS = {
     "vpc",
@@ -68,6 +73,8 @@ def _clean_section(section: dict) -> None:
         for key, value in _AWSCONTAINER_DUMMY_VALUES.items():
             if key in ac:
                 ac[key] = value
+        if "django" in ac:
+            _remove_keys(ac["django"], _DJANGO_REMOVE_KEYS)
     if "cloudfront" in section:
         for cf in section["cloudfront"].values():
             _clean_cloudfront(cf)

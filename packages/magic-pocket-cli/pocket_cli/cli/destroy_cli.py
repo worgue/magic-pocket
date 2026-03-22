@@ -326,6 +326,9 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 )
 def destroy(stage: str, without_secrets: bool, with_state_bucket: bool, yes: bool):
     """ステージの全リソースを一括削除"""
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
     context = Context.from_toml(stage=stage)
     with_secrets = not without_secrets
     targets = _collect_targets(context, with_secrets, with_state_bucket)
