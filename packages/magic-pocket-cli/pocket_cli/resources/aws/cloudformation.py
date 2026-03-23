@@ -401,13 +401,35 @@ class CloudFrontStack(Stack):
                 lines.append(" " * 12 + line)
         return "\n".join(lines)
 
-    @property
-    def yaml(self) -> str:
+    def _generate_api_host_function(self) -> str:
+        """API ルート用 X-Forwarded-Host 付与 Function コードを生成する"""
         from jinja2 import Environment, PackageLoader, select_autoescape
 
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_api_host.js")
+        code = template.render()
+        lines = []
+        for i, line in enumerate(code.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * 8 + line)
+        return "\n".join(lines)
+
+    @property
+    def yaml(self) -> str:
         resolved_api_origins = self._resolve_api_origins()
         acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
         function_codes = self._build_function_codes()
+        api_host_function_code = ""
+        if self.context.api_routes:
+            api_host_function_code = self._generate_api_host_function()
+
+        from jinja2 import Environment, PackageLoader, select_autoescape
+
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
@@ -423,6 +445,7 @@ class CloudFrontStack(Stack):
             acm_certificate_arn=acm_certificate_arn,
             acm_redirect_arns=acm_redirect_arns,
             function_codes=function_codes,
+            api_host_function_code=api_host_function_code,
             has_token_kvs=self._has_token_kvs,
             **context_data,
         )

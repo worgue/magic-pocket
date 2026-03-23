@@ -60,6 +60,19 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
+  # {% if api_routes %}
+  ApiHostFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "{{ slug }}-api-host"
+      AutoPublish: true
+      FunctionCode: |
+        {{ api_host_function_code }}
+      FunctionConfig:
+        Comment: "Add X-Forwarded-Host for API routes"
+        Runtime: cloudfront-js-2.0
+  # {% endif %}
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     DependsOn:
@@ -72,6 +85,9 @@ Resources:
       - ResponseHeadersPolicy{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
+      # {% if api_routes %}
+      - ApiHostFunction
+      # {% endif %}
     Properties:
       DistributionConfig:
         # {% if domain %}
@@ -153,6 +169,10 @@ Resources:
             TargetOriginId: "{{ resource_prefix }}api-{{ route.handler }}"
             ViewerProtocolPolicy: "redirect-to-https"
             PathPattern: "{{ route.path_pattern }}"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: ApiHostFunction.FunctionMetadata.FunctionARN
             AllowedMethods:
               - GET
               - HEAD
