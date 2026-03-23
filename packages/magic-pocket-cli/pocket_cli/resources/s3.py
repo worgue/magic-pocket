@@ -15,14 +15,20 @@ from pocket_cli.resources.aws.s3_utils import (
 )
 
 if TYPE_CHECKING:
-    from pocket.context import S3Context
+    from pocket.context import CloudFrontContext, S3Context
 
 
 class S3:
     context: S3Context
+    _cloudfront_contexts: dict[str, CloudFrontContext]
 
-    def __init__(self, context: S3Context) -> None:
+    def __init__(
+        self,
+        context: S3Context,
+        cloudfront_contexts: dict[str, CloudFrontContext] | None = None,
+    ) -> None:
         self.context = context
+        self._cloudfront_contexts = cloudfront_contexts or {}
         self.client = boto3.client("s3", region_name=context.region)
 
     @property
@@ -38,10 +44,12 @@ class S3:
     def create(self):
         create_bucket(self.client, self.context.bucket_name, self.context.region)
         self.ensure_public_access_block()
+        self._ensure_cors()
 
     def ensure_exists(self):
         if self.exists():
             self.ensure_public_access_block()
+            self._ensure_cors()
             return
         self.create()
 
@@ -50,6 +58,7 @@ class S3:
 
     def update(self):
         self.ensure_public_access_block()
+        self._ensure_cors()
 
     def exists(self):
         try:
@@ -100,3 +109,40 @@ class S3:
             echo.info("Updated to: %s" % self.public_access_block_should_be)
         else:
             echo.info("Public access block is already configured properly.")
+
+    def _resolve_cors_origins(self) -> list[str]:
+        """CORS の AllowedOrigins を CloudFront ドメインから解決する"""
+        if not self.context.cors:
+            return []
+        origins: list[str] = []
+        for cf_name in self.context.cors.cloudfront_names:
+            cf_ctx = self._cloudfront_contexts.get(cf_name)
+            if not cf_ctx:
+                echo.warning("CORS: cloudfront '%s' が見つかりません" % cf_name)
+                continue
+            if cf_ctx.domain:
+                origins.append("https://%s" % cf_ctx.domain)
+            else:
+                origins.append("https://*.cloudfront.net")
+        return origins
+
+    def _ensure_cors(self):
+        """S3 バケットの CORS 設定を適用する"""
+        if not self.context.cors:
+            return
+        origins = self._resolve_cors_origins()
+        if not origins:
+            return
+        cors_rules = [
+            {
+                "AllowedOrigins": origins,
+                "AllowedMethods": self.context.cors.methods,
+                "AllowedHeaders": ["*"],
+                "MaxAgeSeconds": 3600,
+            }
+        ]
+        self.client.put_bucket_cors(
+            Bucket=self.context.bucket_name,
+            CORSConfiguration={"CORSRules": cors_rules},
+        )
+        echo.info("CORS 設定を適用しました: %s" % origins)

@@ -149,6 +149,7 @@ S3バケットの設定です。
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `bucket_name_format` | str | `"{stage}-{project}-{namespace}"` | バケット名のフォーマット |
+| `cors` | S3Cors \| None | None | CORS 設定（下記参照） |
 
 `bucket_name_format` で使える変数:
 
@@ -162,6 +163,33 @@ S3バケットの設定です。
     bucket_name_format = "{project}-{namespace}"
     [prd.s3]
     bucket_name_format = "{stage}-{project}-{namespace}"
+    ```
+
+### cors
+
+ブラウザから S3 presigned URL で直接アップロードする場合に必要な CORS 設定を宣言できます。
+
+```toml
+[s3]
+cors = { methods = ["PUT", "GET"], cloudfront = "web" }
+```
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `methods` | list[str] | 許可する HTTP メソッド（`"PUT"`, `"GET"` 等） |
+| `cloudfront` | str \| list[str] | AllowedOrigins を解決する CloudFront ディストリビューション名 |
+
+`cloudfront` で指定した `[cloudfront.xxx]` のドメインが AllowedOrigins に設定されます。
+
+- カスタムドメインがある場合: `https://dev.example.com`
+- カスタムドメインがない場合: `https://*.cloudfront.net`
+
+`AllowedHeaders` は `["*"]`、`MaxAgeSeconds` は `3600` で固定です。
+
+??? example "複数ディストリビューションの例"
+    ```toml
+    [s3]
+    cors = { methods = ["PUT", "GET"], cloudfront = ["web", "media"] }
     ```
 
 ---
