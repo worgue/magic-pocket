@@ -56,7 +56,7 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     if context.upstash:
         resources.append(Upstash(context.upstash))
     if context.s3:
-        resources.append(S3(context.s3))
+        resources.append(S3(context.s3, cloudfront_contexts=context.cloudfront))
     _append_infra_resources(resources, context, state_bucket)
     for _name, cf_ctx in context.cloudfront.items():
         resources.append(CloudFront(cf_ctx))
