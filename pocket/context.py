@@ -479,9 +479,15 @@ class RdsContext(BaseModel):
         )
 
 
+class S3CorsContext(BaseModel):
+    methods: list[str]
+    cloudfront_names: list[str]
+
+
 class S3Context(BaseModel):
     region: str
     bucket_name: str
+    cors: S3CorsContext | None = None
 
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
@@ -490,9 +496,21 @@ class S3Context(BaseModel):
             "stage": root.stage,
             "project": root.project_name,
         }
+        cors_ctx = None
+        if s3.cors:
+            cf_names = (
+                s3.cors.cloudfront
+                if isinstance(s3.cors.cloudfront, list)
+                else [s3.cors.cloudfront]
+            )
+            cors_ctx = S3CorsContext(
+                methods=s3.cors.methods,
+                cloudfront_names=cf_names,
+            )
         return cls(
             region=root.region,
             bucket_name=s3.bucket_name_format.format(**format_vars),
+            cors=cors_ctx,
         )
 
 

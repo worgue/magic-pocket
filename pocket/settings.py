@@ -222,8 +222,14 @@ class Ses(BaseSettings):
     configuration_set: str | None = None
 
 
+class S3Cors(BaseModel):
+    methods: list[str]
+    cloudfront: str | list[str]
+
+
 class S3(BaseSettings):
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
+    cors: S3Cors | None = None
 
 
 class RedirectFrom(BaseSettings):

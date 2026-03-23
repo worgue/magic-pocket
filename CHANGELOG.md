@@ -12,6 +12,7 @@
 - RDSの利用
 
 ### Improvements
+- S3バケットのCORS設定を`pocket.toml`で宣言可能に（CloudFrontドメイン自動解決）
 - `pocket destroy`がデフォルトでシークレットも削除するように変更（`--without-secrets`で残す）
 - `pocket destroy`でCloudFrontスタック削除の完了を待機するように修正
 - `pocket deploy`時にSSM/SMの不要なシークレットを自動クリーンアップ
