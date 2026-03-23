@@ -97,12 +97,13 @@ def deploy(stage: str, openpath, yes):
     if yes or click.confirm("migrate?", default=True):
         res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
         handler.show_logs(res)
-    if endpoint := context.awscontainer and AwsContainer(
-        context.awscontainer
-    ).endpoints.get("wsgi"):
-        echo.success(f"wsgi url: {endpoint}")
+    from pocket_cli.cli.deploy_cli import _get_deploy_url
+
+    url = _get_deploy_url(context)
+    if url:
+        echo.success(f"url: {url}")
         if openpath:
-            webbrowser.open(endpoint + "/" + openpath)
+            webbrowser.open(url + "/" + openpath)
 
 
 def _get_management_command_handler(context: Context, key: str | None = None):
