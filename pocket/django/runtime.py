@@ -50,10 +50,15 @@ def get_django_settings(
     )
     if not stage:
         django_context = general_context.django_fallback
+        return django_context.settings
+    context = get_context(stage=stage)
+    if context.awscontainer and context.awscontainer.django:
+        django_context = context.awscontainer.django
     else:
-        context = get_context(stage=stage)
-        if context.awscontainer and context.awscontainer.django:
-            django_context = context.awscontainer.django
-        else:
-            django_context = general_context.django_fallback
-    return django_context.settings
+        django_context = general_context.django_fallback
+    result = dict(django_context.settings)
+    # CloudFront の API ルートがある場合、X-Forwarded-Host を有効化
+    has_api_route = any(cf_ctx.api_routes for cf_ctx in context.cloudfront.values())
+    if has_api_route:
+        result.setdefault("USE_X_FORWARDED_HOST", True)
+    return result
