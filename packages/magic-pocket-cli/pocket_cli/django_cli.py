@@ -15,7 +15,6 @@ from pocket.context import Context
 from pocket.django import django_installed
 from pocket.django.utils import get_static_storage, get_storages
 from pocket.utils import echo
-from pocket_cli.cli.deploy_cli import deploy_init_resources, deploy_resources
 from pocket_cli.resources.awscontainer import AwsContainer
 
 
@@ -84,12 +83,14 @@ def _update_dotenv(jinja2_env):
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
 def deploy(stage: str, openpath, yes):
-    from pocket_cli.cli.aws_auth import check_aws_credentials
+    from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
 
-    check_aws_credentials()
+    # pocket deploy を実行（インフラ + SPA フロントエンド）
+    ctx = click.Context(pocket_deploy)
+    ctx.invoke(pocket_deploy, stage=stage, openpath=None, skip_frontend=False)
+
+    # Django 固有: collectstatic + migrate
     context = Context.from_toml(stage=stage)
-    deploy_init_resources(context)
-    deploy_resources(context)
     if yes or click.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
         upload_collected_staticfiles(stage)
