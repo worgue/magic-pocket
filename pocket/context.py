@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from functools import cached_property
 from pathlib import Path
@@ -353,7 +354,9 @@ class AwsContainerContext(BaseModel):
             use_route53=use_route53,
             use_sqs=use_sqs,
             use_efs=use_efs,
-            permissions_boundary=ac.permissions_boundary,
+            permissions_boundary=os.environ.get(
+                "POCKET_PERMISSIONS_BOUNDARY_ARN",
+            ),
             efs_local_mount_path=efs_local_mount_path,
             build=BuildContext.from_settings(ac.build),
         )
