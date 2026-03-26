@@ -56,9 +56,11 @@ class BuildConfig(BaseModel):
 
 class ManagedSecretSpec(BaseModel):
     type: Literal[
+        "auto_database_url",
         "password",
         "neon_database_url",
         "tidb_database_url",
+        "rds_database_url",
         "upstash_redis_url",
         "rsa_pem_base64",
         "cloudfront_signing_key",

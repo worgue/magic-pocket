@@ -93,12 +93,16 @@ class Mediator:
             sc.pocket_store.update_secrets(cleaned)
 
     def _generate_secret(self, spec: ManagedSecretSpec):
-        if spec.type == "password":
+        if spec.type == "auto_database_url":
+            return self._get_auto_database_url()
+        elif spec.type == "password":
             return self._generate_password(spec.options)
         elif spec.type == "neon_database_url":
             return self._get_neon_database_url()
         elif spec.type == "tidb_database_url":
             return self._get_tidb_database_url()
+        elif spec.type == "rds_database_url":
+            return self._get_rds_database_url()
         elif spec.type == "upstash_redis_url":
             return self._get_upstash_redis_url()
         elif spec.type == "rsa_pem_base64":
@@ -108,7 +112,7 @@ class Mediator:
         elif spec.type == "spa_token_secret":
             return secrets.token_hex(32)
         else:
-            raise Exception("Unknown secret type: %s" % spec.type)
+            raise RuntimeError("Unknown secret type: %s" % spec.type)
 
     def _generate_rsa_pem(self) -> dict[str, str]:
         try:
@@ -167,9 +171,48 @@ class Mediator:
             echo.warning("upstash redis is not ready")
             return None
 
+    def _get_auto_database_url(self):
+        """pocket.toml の DB 設定を自動検出して DATABASE_URL を生成する"""
+        dbs = []
+        if self.context.neon:
+            dbs.append("neon")
+        if self.context.tidb:
+            dbs.append("tidb")
+        if self.context.rds:
+            dbs.append("rds")
+        if len(dbs) == 0:
+            raise RuntimeError(
+                "auto_database_url: DB が設定されていません。"
+                "[neon], [tidb], [rds] のいずれかを pocket.toml に追加してください。"
+            )
+        if len(dbs) > 1:
+            raise RuntimeError(
+                "auto_database_url: 複数の DB が設定されています: %s。"
+                "neon_database_url, tidb_database_url, rds_database_url "
+                "のいずれかを明示的に指定してください。" % ", ".join(dbs)
+            )
+        db = dbs[0]
+        if db == "neon":
+            return self._get_neon_database_url()
+        if db == "tidb":
+            return self._get_tidb_database_url()
+        # rds: runtime の _set_rds_database_url に委譲
+        return self._get_rds_database_url()
+
+    def _get_rds_database_url(self):
+        """RDS の DATABASE_URL は runtime で動的構築されるため、
+
+        deploy 時には marker 値を返す。
+        runtime の _set_rds_database_url が POCKET_RDS_SECRET_ARN から
+        実際の DATABASE_URL を上書きする。
+        """
+        if not self.context.rds:
+            raise RuntimeError("rds is not configured. Please set rds in pocket.toml")
+        return "__rds_runtime__"
+
     def _get_tidb_database_url(self):
         if not self.context.tidb:
-            raise Exception("tidb is not configured. Please set tidb in pocket.toml")
+            raise RuntimeError("tidb is not configured. Please set tidb in pocket.toml")
         try:
             return TiDb(self.context.tidb).database_url
         except TiDbResourceIsNotReady:
