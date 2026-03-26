@@ -1,7 +1,7 @@
 [general]
 region = "ap-northeast-1"
 project_name = "testprj"
-stages = ["dev", "prd"]
+stages = ["dev", "prod"]
 
 [general.django_fallback.storages]
 default = { store = "filesystem" }

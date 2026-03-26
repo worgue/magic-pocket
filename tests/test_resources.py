@@ -52,7 +52,7 @@ def test_secretsmanager(use_toml):
 @mock_aws
 def test_initial_secretsmanager_policy(use_toml):
     use_toml("tests/data/toml/awscontainer_pocket_secrets.toml")
-    settings = Settings.from_toml(stage="prd")
+    settings = Settings.from_toml(stage="prod")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -65,7 +65,7 @@ def test_initial_secretsmanager_policy(use_toml):
 @mock_aws
 def test_initial_ssm_policy(use_toml):
     use_toml("tests/data/toml/awscontainer_secrets_ssm.toml")
-    settings = Settings.from_toml(stage="prd")
+    settings = Settings.from_toml(stage="prod")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -79,7 +79,7 @@ def test_initial_ssm_policy(use_toml):
 @mock_aws
 def test_ssm_pocket_secrets(use_toml):
     use_toml("tests/data/toml/awscontainer_secrets_ssm.toml")
-    settings = Settings.from_toml(stage="prd")
+    settings = Settings.from_toml(stage="prod")
     context = Context.from_settings(settings)
     assert context.awscontainer
     assert context.awscontainer.secrets
@@ -110,7 +110,7 @@ def test_ecr(use_toml):
 @mock_aws
 def test_neon_none(use_toml):
     use_toml("tests/data/toml/default.toml")
-    settings = Settings.from_toml(stage="prd")
+    settings = Settings.from_toml(stage="prod")
     assert not settings.neon
     context = Context.from_settings(settings)
     assert not context.neon
