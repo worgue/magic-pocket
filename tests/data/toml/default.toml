@@ -1,7 +1,7 @@
 [general]
 region = "ap-southeast-1"
 project_name = "testprj"
-stages = ["dev", "tst", "stg", "prd"]
+stages = ["sandbox", "dev", "stg", "prod"]
 
 [general.django_fallback.storages]
 default = { store = "filesystem" }
@@ -52,7 +52,7 @@ apigateway = { domain = "api.project.com" }
 [dev.neon]
 project_name = "dev-testprj"
 
-# [prd.awscontainer.secretsmanager]
+# [prod.awscontainer.secretsmanager]
 # pocket_key_format = "{stage}-{project}-{namespace}"
 # [awscontainer.secretsmanager]
 # pocket_key_format = "{project}-{namespace}"
@@ -61,8 +61,8 @@ project_name = "dev-testprj"
 # DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 # DATABASE_URL = { type = "neon_database_url" }
 
-[prd.awscontainer.envs]
-DJANGO_ENV_PATH = "project/env/env.prd"
+[prod.awscontainer.envs]
+DJANGO_ENV_PATH = "project/env/env.prod"
 
-[prd.awscontainer.handlers.wsgi]
+[prod.awscontainer.handlers.wsgi]
 apigateway = { domain = "api.project.com" }

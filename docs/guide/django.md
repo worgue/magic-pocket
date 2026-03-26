@@ -130,8 +130,8 @@ CORS_ALLOWED_ORIGINS = [
 DEFAULT_FROM_EMAIL = '"Dev" <test@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://dev.example.com"]
 
-# prd
-[prd.awscontainer.django.settings]
+# prod
+[prod.awscontainer.django.settings]
 DEFAULT_FROM_EMAIL = '"Production" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```

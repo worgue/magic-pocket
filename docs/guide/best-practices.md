@@ -24,7 +24,7 @@ Browser → CloudFront (media.example.com)
 ```toml
 [general]
 region = "ap-northeast-1"
-stages = ["dev", "prd"]
+stages = ["dev", "prod"]
 
 [general.django_fallback.storages]
 default = { store = "filesystem" }
@@ -76,17 +76,17 @@ routes = [
 [dev.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[prd.neon]
-project_name = "prd-myproject"
+[prod.neon]
+project_name = "prod-myproject"
 
-[prd.awscontainer.handlers.wsgi]
+[prod.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[prd.cloudfront.web]
+[prod.cloudfront.web]
 domain = "example.com"
 redirect_from = [{ domain = "www.example.com" }]
 
-[prd.cloudfront.usercontent]
+[prod.cloudfront.usercontent]
 domain = "media.example.com"
 ```
 
@@ -116,7 +116,7 @@ domain = "media.example.com"
     鍵ペアの生成・管理は magic-pocket が自動で行います。
 
 **Neon のプロジェクトをステージで分離**
-:   dev と prd で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
+:   dev と prod で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
 
 ??? tip "TiDB Serverless を使う場合"
     Neon の代わりに TiDB Serverless（MySQL 互換）を使う場合は、`[neon]` を `[tidb]` に、`DATABASE_URL` の type を `tidb_database_url` に変更します。

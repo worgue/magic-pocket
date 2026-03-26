@@ -71,7 +71,7 @@ async fn main() -> Result<(), lambda_http::Error> {
 ```toml
 [general]
 region = "ap-northeast-1"
-stages = ["dev", "prd"]
+stages = ["dev", "prod"]
 
 [s3]
 

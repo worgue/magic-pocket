@@ -71,8 +71,8 @@ CORS_ALLOWED_ORIGINS = [
 DEFAULT_FROM_EMAIL = '"Magic Pocket Test Version" <magic-pocket-test@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://dev.example.com"]
 
-# prd
-[prd.awscontainer.django.settings]
+# prod
+[prod.awscontainer.django.settings]
 DEFAULT_FROM_EMAIL = '"Magic Pocket" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```
@@ -85,7 +85,7 @@ vars().update(get_django_settings().items())
 ```
 
 ??? question "環境変数とenvファイルで良いのでは？"
-    機密性の低い情報では、env.devやenv.prdなどのenvファイルをコミットして、devやprdのみ環境変数としても構いません。
+    機密性の低い情報では、env.devやenv.prodなどのenvファイルをコミットして、devやprodのみ環境変数としても構いません。
     それでも、この機能を実装した理由は、以下2点です。
 
     1. 全ての環境差分を`pocket.toml`で管理することができる

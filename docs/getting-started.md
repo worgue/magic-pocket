@@ -83,7 +83,7 @@ uv run pocket django init
 ```toml
 [general]
 region = "ap-southeast-1" # (1)!
-stages = ["dev", "prd"] # (2)!
+stages = ["dev", "prod"] # (2)!
 
 [s3] # (3)!
 
@@ -101,7 +101,7 @@ timeout = 600
 
 [dev.awscontainer.handlers.wsgi] # (8)!
 apigateway = {}
-[prd.awscontainer.handlers.wsgi]
+[prod.awscontainer.handlers.wsgi]
 apigateway = {}
 
 [awscontainer.secrets.managed] # (9)!
@@ -115,13 +115,13 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 ```
 
 1. AWSリージョンを指定してください。Neon プロジェクトも同じリージョン（または近いリージョン）で作成してください。
-2. devとprdの2ステージ構成です。
+2. devとprodの2ステージ構成です。
 3. S3バケットを作成。バケット名はプロジェクト名+ステージ名から自動生成。
 4. 既存の Neon プロジェクトにブランチ・DB を作成。プロジェクトは事前に [Neon Console](https://console.neon.tech/) で作成してください。
 5. Lambdaコンテナの設定。
 6. WSGIハンドラーのLambda関数を作成。
 7. マネジメントコマンド実行用のLambda関数（timeout 600秒）。
-8. dev/prd各環境にAPI Gatewayを設定。URLはAWSが自動生成。独自ドメインの場合は `apigateway = { domain = "example.com" }` と指定。
+8. dev/prod各環境にAPI Gatewayを設定。URLはAWSが自動生成。独自ドメインの場合は `apigateway = { domain = "example.com" }` と指定。
 9. SECRET_KEY、スーパーユーザーパスワード、DB接続URLを自動生成しシークレットストアに保存。
 10. S3上の `media` と `static` ディレクトリをDjangoのSTORAGESとして利用。
 
@@ -190,15 +190,15 @@ uv run pocket django manage createsuperuser --username=admin --email=admin@examp
 uv run pocket resource awscontainer secrets list --stage=dev --show-values
 ```
 
-### prd環境
+### prod環境
 
-同じコマンドで `--stage=prd` に変えるだけです。環境・シークレットは全て別になります。
+同じコマンドで `--stage=prod` に変えるだけです。環境・シークレットは全て別になります。
 
 ```bash
-uv run pocket deploy --stage=prd
-uv run pocket django manage migrate --stage=prd
-uv run pocket django manage collectstatic --noinput --stage=prd
-uv run pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=prd
+uv run pocket deploy --stage=prod
+uv run pocket django manage migrate --stage=prod
+uv run pocket django manage collectstatic --noinput --stage=prod
+uv run pocket django manage createsuperuser --username=admin --email=admin@example.com --noinput --stage=prod
 ```
 
 !!! success "デプロイ完了"

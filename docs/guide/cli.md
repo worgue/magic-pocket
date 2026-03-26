@@ -26,7 +26,7 @@ pocket resource s3 status
 export POCKET_STAGE=dev
 
 # 環境変数を上書き
-pocket deploy --stage=prd
+pocket deploy --stage=prod
 ```
 
 `POCKET_STAGE` も `--stage` も未指定の場合は、プロンプトで入力を求められます。
