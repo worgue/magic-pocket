@@ -16,7 +16,7 @@
 [cloudfront]        # CloudFront設定（全ステージ共通）
 
 [dev.awscontainer]  # dev ステージ固有のLambda設定
-[prd.s3]            # prd ステージ固有のS3設定
+[prod.s3]            # prod ステージ固有のS3設定
 ```
 
 !!! info "ステージ毎の設定"
@@ -34,7 +34,7 @@
 ```toml
 [general]
 region = "ap-northeast-1"
-stages = ["dev", "prd"]
+stages = ["dev", "prod"]
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
@@ -46,12 +46,12 @@ stages = ["dev", "prd"]
 | `s3_fallback_bucket_name` | str \| None | None | ローカルでS3ストレージを使う場合のバケット名 |
 
 ??? example "ステージごとにリージョンを変える例"
-    dev は Neon（シンガポール）に近い `ap-southeast-1`、prd は RDS（東京）の `ap-northeast-1` で運用する場合:
+    dev は Neon（シンガポール）に近い `ap-southeast-1`、prod は RDS（東京）の `ap-northeast-1` で運用する場合:
 
     ```toml
     [general]
     region = "ap-northeast-1"
-    stages = ["dev", "prd"]
+    stages = ["dev", "prod"]
 
     [dev.general]
     region = "ap-southeast-1"
@@ -174,11 +174,11 @@ S3バケットの設定です。
 - `{stage}` — ステージ名
 - `{project}` — プロジェクト名
 
-??? example "prdのみバケットを分ける例"
+??? example "prodのみバケットを分ける例"
     ```toml
     [s3]
     bucket_name_format = "{project}-{namespace}"
-    [prd.s3]
+    [prod.s3]
     bucket_name_format = "{stage}-{project}-{namespace}"
     ```
 
@@ -219,8 +219,8 @@ Neon PostgreSQLの設定です。Neon プロジェクトは事前に [Neon Conso
 [neon]
 project_name = "dev-myproject"
 
-[prd.neon]
-project_name = "prd-myproject"
+[prod.neon]
+project_name = "prod-myproject"
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
@@ -244,7 +244,7 @@ TiDB Serverless（MySQL 互換）の設定です。
 [tidb]
 project = "1234567890123456789"
 
-[prd.tidb]
+[prod.tidb]
 project = "9876543210987654321"
 ```
 
@@ -493,7 +493,7 @@ API Gatewayの設定です。
 apigateway = {}
 
 # 独自ドメインを利用する場合
-[prd.awscontainer.handlers.wsgi]
+[prod.awscontainer.handlers.wsgi]
 apigateway = { domain = "example.com" }
 ```
 
@@ -562,7 +562,7 @@ DATABASE_URL = { type = "auto_database_url" }
     [dev.neon]
     project_name = "dev-myproject"
 
-    [prd.rds]
+    [prod.rds]
     ```
 
 **type = "password"**
@@ -723,7 +723,7 @@ default = { store = "locmem" }
 DEFAULT_FROM_EMAIL = '"Dev" <test@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://dev.example.com"]
 
-[prd.awscontainer.django.settings]
+[prod.awscontainer.django.settings]
 DEFAULT_FROM_EMAIL = '"Production" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```
@@ -792,7 +792,7 @@ assets/managed/
 ├── sandbox/           # sandbox ステージ用
 │   ├── favicon.ico    # 開発用アイコン
 │   └── robots.txt     # Disallow: /
-└── prd/               # 本番用
+└── prod/               # 本番用
     ├── favicon.ico
     └── robots.txt     # Allow: /
 ```
@@ -815,7 +815,7 @@ assets/managed/
 ### redirect_from
 
 ```toml
-[prd.cloudfront.main]
+[prod.cloudfront.main]
 domain = "www.example.com"
 redirect_from = [{ domain = "example.com" }]
 ```
@@ -830,7 +830,7 @@ redirect_from = [{ domain = "example.com" }]
 CloudFrontのキャッシュ動作ルーティングを定義します。
 
 ```toml
-[prd.cloudfront.main]
+[prod.cloudfront.main]
 domain = "www.example.com"
 routes = [
     { is_default = true, is_spa = true },

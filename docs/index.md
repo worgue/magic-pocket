@@ -7,7 +7,7 @@
 ## 特徴
 
 - **コマンド1つでデプロイ** — `pocket deploy --stage=dev` だけ
-- **マルチステージ対応** — dev / prd などの環境を `pocket.toml` で一元管理
+- **マルチステージ対応** — dev / prod などの環境を `pocket.toml` で一元管理
 - **シークレット自動生成** — SECRET_KEY、DB接続情報などを自動でSecrets Managerに保存
 - **固定費なしのdev環境** — VPC / RDS を使わない構成なら、リクエストがない間の固定費はゼロ
 
@@ -18,7 +18,7 @@
 ```toml
 [general]
 region = "ap-northeast-1"
-stages = ["dev", "prd"]
+stages = ["dev", "prod"]
 
 [s3]
 
@@ -42,18 +42,18 @@ DATABASE_URL = { type = "neon_database_url" }
 [dev.awscontainer.handlers.wsgi]
 apigateway = {}
 
-# --- prd: RDS + VPC + CloudFront ---
+# --- prod: RDS + VPC + CloudFront ---
 
-[prd.vpc]
+[prod.vpc]
 ref = "main"
 zone_suffixes = ["a", "c"]
 
-[prd.rds]
+[prod.rds]
 
-[prd.awscontainer.handlers.wsgi]
+[prod.awscontainer.handlers.wsgi]
 apigateway = {}
 
-[prd.cloudfront.web]
+[prod.cloudfront.web]
 domain = "example.com"
 routes = [
     { is_default = true, is_spa = true },
@@ -70,7 +70,7 @@ graph LR
     Lambda --> S3
 ```
 
-**`pocket deploy --stage=prd`**
+**`pocket deploy --stage=prod`**
 
 ```mermaid
 graph LR
