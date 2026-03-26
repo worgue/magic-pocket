@@ -23,7 +23,7 @@
     `[neon]` のようにステージ名なしで書くと、全ステージに適用されます。
 
     `[dev.neon]` のようにステージ名をプレフィックスにすると、そのステージのみに適用されます。
-    ステージ固有の設定は、共通設定にマージされます。
+    ステージ固有の設定は、共通設定にディープマージされます。`[general]` を含む全セクションが対象です。
 
 ---
 
@@ -44,6 +44,23 @@ stages = ["dev", "prd"]
 | `namespace` | str | `"pocket"` | リソース名の名前空間 |
 | `project_name` | str | ディレクトリ名 | プロジェクト名（通常は自動取得） |
 | `s3_fallback_bucket_name` | str \| None | None | ローカルでS3ストレージを使う場合のバケット名 |
+
+??? example "ステージごとにリージョンを変える例"
+    dev は Neon（シンガポール）に近い `ap-southeast-1`、prd は RDS（東京）の `ap-northeast-1` で運用する場合:
+
+    ```toml
+    [general]
+    region = "ap-northeast-1"
+    stages = ["dev", "prd"]
+
+    [dev.general]
+    region = "ap-southeast-1"
+    ```
+
+    `[dev.general]` の設定は `[general]` にマージされるため、`region` だけを上書きでき、他の設定（`stages`, `project_name` 等）はそのまま維持されます。
+
+    !!! warning "リージョンを変えるとリソース名は同じでもリージョンが異なります"
+        S3 バケット、CloudFormation スタック、ECR リポジトリ等はすべて `region` に基づいて作成されます。ステージ間でリージョンが異なる場合、同名のリソースが別リージョンに存在することになります。
 
 ### general.django_fallback
 
