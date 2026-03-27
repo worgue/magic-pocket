@@ -62,6 +62,7 @@ class CloudFront:
         return {key: {"bucket_name": self.context.bucket_name}}
 
     def deploy_init(self):
+        self._upload_managed_assets()
         self.warn_contents()
 
     @property
@@ -79,7 +80,6 @@ class CloudFront:
 
     def update(self, mediator: Mediator | None = None):
         self._prepare_token_secret(mediator)
-        self._upload_managed_assets()
         self._ensure_redirect_from()
         if not self.stack.exists:
             self.stack.create()
