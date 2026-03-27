@@ -81,6 +81,13 @@ Resources:
                   - "secretsmanager:GetSecretValue"
                 Resource:
                   - "{{ rds_secret_arn }}"
+              # {% if rds_kms_key_id %}
+              - Effect: "Allow"
+                Action:
+                  - "kms:Decrypt"
+                Resource:
+                  - "{{ rds_kms_key_id }}"
+              # {% endif %}
         # {% endif %}
         # {% if use_dsql %}
         - PolicyName: "{{ resource_prefix }}access-dsql"
@@ -156,6 +163,9 @@ Resources:
           # {% endfor %}
           # {% if rds_secret_arn %}
           "POCKET_RDS_SECRET_ARN": "{{ rds_secret_arn }}"
+          "POCKET_RDS_ENDPOINT": "{{ rds_endpoint }}"
+          "POCKET_RDS_PORT": "{{ rds_port }}"
+          "POCKET_RDS_DBNAME": "{{ rds_dbname }}"
           # {% endif %}
           # {% if use_dsql %}
           "POCKET_DSQL_ENDPOINT": "{{ dsql_endpoint }}"

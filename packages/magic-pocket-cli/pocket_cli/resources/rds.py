@@ -84,6 +84,28 @@ class Rds:
         return None
 
     @property
+    def master_user_secret_kms_key_id(self) -> str | None:
+        if self.cluster and "MasterUserSecret" in self.cluster:
+            return self.cluster["MasterUserSecret"].get("KmsKeyId")
+        return None
+
+    @property
+    def endpoint(self) -> str | None:
+        if self.cluster:
+            return self.cluster.get("Endpoint")
+        return None
+
+    @property
+    def port(self) -> int | None:
+        if self.cluster:
+            return self.cluster.get("Port")
+        return None
+
+    @property
+    def database_name(self) -> str:
+        return self.context.database_name
+
+    @property
     def status(self) -> ResourceStatus:
         if self.cluster is None:
             return "NOEXIST"
@@ -153,10 +175,13 @@ class Rds:
                 raise ValueError(
                     f"外部 VPC スタック '{vpc_stack.name}' が見つかりません。"
                 )
-        else:
-            vpc_stack.wait_status("COMPLETED")
+        # managed VPC の COMPLETED 待ちは deploy_resources で行う
+        # （deploy_init 時点ではまだ VPC が作成されていない場合がある）
 
     def create(self):
+        # VPC スタックの完了を待つ
+        if self.context.vpc.manage:
+            Vpc(self.context.vpc).stack.wait_status("COMPLETED")
         subnet_ids = self._get_vpc_subnet_ids()
         vpc_id = self._get_vpc_id()
 

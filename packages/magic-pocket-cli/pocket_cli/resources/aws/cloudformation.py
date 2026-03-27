@@ -78,6 +78,7 @@ class Stack:
         interval=3,
         error_statuses: tuple[ResourceStatus] = ("FAILED",),
     ):
+        noexist_count = 0
         for i in range(timeout // interval):
             self.clear_status()
             if self.status == status:
@@ -85,9 +86,20 @@ class Stack:
                 return
             if self.status in error_statuses:
                 print(self.description)
-                raise Exception(
+                raise RuntimeError(
                     f"Stack status is {self.status}. Please check the console."
                 )
+            # COMPLETED を待っているのにスタックが見つからない場合
+            if status != "NOEXIST" and self.status == "NOEXIST":
+                noexist_count += 1
+                if noexist_count >= 3:
+                    raise RuntimeError(
+                        f"Stack '{self.name}' が見つかりません。"
+                        "作成に失敗した可能性があります。"
+                        "AWS コンソールで権限とリージョンを確認してください。"
+                    )
+            else:
+                noexist_count = 0
             if i == 0:
                 msg = "Waiting for %s stack status to be %s" % (
                     self.template_filename,
@@ -96,15 +108,17 @@ class Stack:
                 print(msg, end="", flush=True)
             print(".", end="", flush=True)
             time.sleep(interval)
-        raise Exception("Timeout is %s seconds" % timeout)
+        raise RuntimeError("Timeout is %s seconds" % timeout)
 
     @property
     def output(self) -> dict[str, str] | None:
         if self.description and "Outputs" in self.description:
-            return {
-                output["OutputKey"]: output["OutputValue"]
-                for output in self.description["Outputs"]
-            }
+            result = {}
+            for output in self.description["Outputs"]:
+                result[output["OutputKey"]] = output["OutputValue"]
+                if "ExportName" in output:
+                    result[output["ExportName"]] = output["OutputValue"]
+            return result
 
     @property
     def deleted_at(self):
@@ -473,14 +487,21 @@ class ContainerStack(Stack):
         self._dsql_context = dsql_context
         super().__init__(context)
 
-    def _resolve_rds(self) -> tuple[str | None, str | None]:
-        """RDS の SG ID とシークレット ARN を動的に取得"""
+    def _resolve_rds(self) -> dict:
+        """RDS の接続情報を動的に取得"""
         if self._rds_context is None:
-            return None, None
+            return {}
         from pocket_cli.resources.rds import Rds
 
         rds = Rds(self._rds_context)
-        return rds.security_group_id, rds.master_user_secret_arn
+        return {
+            "rds_security_group_id": rds.security_group_id,
+            "rds_secret_arn": rds.master_user_secret_arn,
+            "rds_kms_key_id": rds.master_user_secret_kms_key_id,
+            "rds_endpoint": rds.endpoint,
+            "rds_port": str(rds.port) if rds.port else None,
+            "rds_dbname": rds.database_name,
+        }
 
     def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
         """DSQL のエンドポイント、リージョン、ARN を動的に取得"""
@@ -521,7 +542,7 @@ class ContainerStack(Stack):
 
     @property
     def yaml(self) -> str:
-        rds_sg_id, rds_secret_arn = self._resolve_rds()
+        rds_info = self._resolve_rds()
         dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
         context_dump = self.context.model_dump()
 
@@ -539,9 +560,13 @@ class ContainerStack(Stack):
             stack_name=self.name,
             export=self.export,
             resource=self._get_resource(),
-            rds_security_group_id=rds_sg_id,
-            rds_secret_arn=rds_secret_arn,
-            use_rds=rds_sg_id is not None,
+            rds_security_group_id=rds_info.get("rds_security_group_id"),
+            rds_secret_arn=rds_info.get("rds_secret_arn"),
+            rds_kms_key_id=rds_info.get("rds_kms_key_id"),
+            rds_endpoint=rds_info.get("rds_endpoint"),
+            rds_port=rds_info.get("rds_port"),
+            rds_dbname=rds_info.get("rds_dbname"),
+            use_rds=bool(rds_info),
             dsql_endpoint=dsql_endpoint,
             dsql_region=dsql_region,
             dsql_cluster_arn=dsql_cluster_arn,
