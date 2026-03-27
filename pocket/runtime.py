@@ -99,7 +99,11 @@ def set_envs_from_secrets(stage: str | None = None):
 
 
 def _set_rds_database_url():
-    """POCKET_RDS_SECRET_ARN があれば RDS シークレットから DATABASE_URL を構築"""
+    """POCKET_RDS_SECRET_ARN があれば RDS シークレットから DATABASE_URL を構築。
+
+    ManageMasterUserPassword のシークレットには host/port/dbname が
+    含まれない場合があるため、Lambda 環境変数で補完する。
+    """
     import json
     import urllib.parse
 
@@ -109,9 +113,12 @@ def _set_rds_database_url():
     sm = boto3.client("secretsmanager")
     data = json.loads(sm.get_secret_value(SecretId=rds_secret_arn)["SecretString"])
     password = urllib.parse.quote(data["password"], safe="")
+    username = data.get("username", "postgres")
+    host = data.get("host") or os.environ.get("POCKET_RDS_ENDPOINT", "")
+    port = data.get("port") or os.environ.get("POCKET_RDS_PORT", "5432")
+    dbname = data.get("dbname") or os.environ.get("POCKET_RDS_DBNAME", "")
     os.environ["DATABASE_URL"] = (
-        f"postgres://{data['username']}:{password}"
-        f"@{data['host']}:{data['port']}/{data.get('dbname', '')}"
+        f"postgres://{username}:{password}@{host}:{port}/{dbname}"
     )
 
 

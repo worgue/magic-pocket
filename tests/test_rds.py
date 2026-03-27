@@ -1,4 +1,10 @@
+import json
+import os
+
+import boto3
 import pytest
+from moto import mock_aws
+from pocket_cli.resources.rds import Rds
 
 from pocket.context import Context
 from pocket.settings import Settings
@@ -117,3 +123,91 @@ def test_rds_check_keys(use_toml):
     # エラーなく from_toml できること
     settings = Settings.from_toml(stage="dev")
     assert settings.rds is not None
+
+
+# --- moto テスト ---
+
+
+@mock_aws
+def test_rds_master_user_secret_properties(use_toml):
+    """RDS クラスター作成後に secret_arn, kms_key_id, endpoint, port が取得できる"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+
+    assert rds.master_user_secret_arn is not None
+    assert rds.master_user_secret_kms_key_id is not None
+    assert rds.endpoint is not None
+    assert rds.port is not None
+    assert rds.database_name == context.rds.database_name
+
+
+@mock_aws
+def test_rds_secret_lacks_host(use_toml):
+    """ManageMasterUserPassword のシークレットに host/port が含まれないことを確認"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    secret = sm.get_secret_value(SecretId=rds.master_user_secret_arn)
+    data = json.loads(secret["SecretString"])
+
+    assert "username" in data
+    assert "password" in data
+    assert "host" not in data
+    assert "port" not in data
+
+
+@mock_aws
+def test_set_rds_database_url_with_env_fallback(use_toml):
+    """_set_rds_database_url がシークレットに host がない場合に環境変数で補完する"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+
+    os.environ["POCKET_RDS_SECRET_ARN"] = rds.master_user_secret_arn
+    os.environ["POCKET_RDS_ENDPOINT"] = rds.endpoint
+    os.environ["POCKET_RDS_PORT"] = str(rds.port)
+    os.environ["POCKET_RDS_DBNAME"] = rds.database_name
+
+    try:
+        from pocket.runtime import _set_rds_database_url
+
+        _set_rds_database_url()
+
+        database_url = os.environ.get("DATABASE_URL", "")
+        assert database_url.startswith("postgres://")
+        assert rds.endpoint in database_url
+        assert str(rds.port) in database_url
+        assert rds.database_name in database_url
+    finally:
+        os.environ.pop("POCKET_RDS_SECRET_ARN", None)
+        os.environ.pop("POCKET_RDS_ENDPOINT", None)
+        os.environ.pop("POCKET_RDS_PORT", None)
+        os.environ.pop("POCKET_RDS_DBNAME", None)
+        os.environ.pop("DATABASE_URL", None)
