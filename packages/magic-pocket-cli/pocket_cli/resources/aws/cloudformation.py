@@ -81,16 +81,17 @@ class Stack:
         noexist_count = 0
         for i in range(timeout // interval):
             self.clear_status()
-            if self.status == status:
+            current = self.cfn_status
+            if current == status:
                 print("")
                 return
-            if self.status in error_statuses:
+            if current in error_statuses:
                 print(self.description)
                 raise RuntimeError(
-                    f"Stack status is {self.status}. Please check the console."
+                    f"Stack status is {current}. Please check the console."
                 )
             # COMPLETED を待っているのにスタックが見つからない場合
-            if status != "NOEXIST" and self.status == "NOEXIST":
+            if status != "NOEXIST" and current == "NOEXIST":
                 noexist_count += 1
                 if noexist_count >= 3:
                     raise RuntimeError(
@@ -136,7 +137,11 @@ class Stack:
         return self.status != "NOEXIST"
 
     @property
-    def status(self) -> ResourceStatus:
+    def cfn_status(self) -> ResourceStatus:
+        """CloudFormation のステータスのみで判定する（yaml_synced を含まない）。
+
+        wait_status 等、スタック操作の完了待ちに使用する。
+        """
         if self.status_detail == "NOT_CREATED":
             return "NOEXIST"
         action = self.status_detail.split("_")[0]
@@ -151,10 +156,21 @@ class Stack:
             elif action == "ROLLBACK":
                 if self.deleted_at:
                     return "FAILED"
-                return "COMPLETED" if self.yaml_synced else "REQUIRE_UPDATE"
+                return "COMPLETED"
             elif action in {"IMPORT", "REVIEW", "UPDATE", "CREATE"}:
-                return "COMPLETED" if self.yaml_synced else "REQUIRE_UPDATE"
-        raise Exception("unknown status")
+                return "COMPLETED"
+        raise RuntimeError("unknown status: %s" % self.status_detail)
+
+    @property
+    def status(self) -> ResourceStatus:
+        """deploy_resources 等で使うステータス。yaml_synced も考慮する。"""
+        cfn = self.cfn_status
+        if cfn in ("NOEXIST", "PROGRESS", "FAILED"):
+            return cfn
+        # COMPLETED だが yaml が同期していなければ更新が必要
+        if cfn == "COMPLETED" and not self.yaml_synced:
+            return "REQUIRE_UPDATE"
+        return cfn
 
     @property
     def yaml(self) -> str:
@@ -176,10 +192,33 @@ class Stack:
         )
 
     @property
+    def _template_hash(self) -> str:
+        """現在のテンプレートの SHA256 ハッシュ"""
+        import hashlib
+
+        return hashlib.sha256(self.yaml.encode()).hexdigest()[:16]
+
+    @property
+    def _deployed_template_hash(self) -> str | None:
+        """デプロイ済みスタックのタグから template hash を取得"""
+        if not self.description:
+            return None
+        for tag in self.description.get("Tags", []):
+            if tag["Key"] == "pocket:template_hash":
+                return tag["Value"]
+        return None
+
+    @property
     def yaml_synced(self):
-        if self.yaml_diff == {}:
-            return True
-        return False
+        deployed_hash = self._deployed_template_hash
+        if deployed_hash is None:
+            if self.cfn_status not in ("NOEXIST",):
+                print(
+                    "pocket:template_hash タグがありません: %s\n"
+                    "pocket migrate --stage=<stage> を実行してください。" % self.name
+                )
+            return False
+        return deployed_hash == self._template_hash
 
     @property
     def yaml_diff(self):
@@ -189,20 +228,27 @@ class Stack:
             ignore_order=True,
         )
 
+    def _build_tags(self) -> list[dict]:
+        tags = list(self.stack_tags)
+        tags.append({"Key": "pocket:template_hash", "Value": self._template_hash})
+        return tags
+
     def create(self):
         kwargs: dict[str, Any] = {
             "StackName": self.name,
             "TemplateBody": self.yaml,
             "Capabilities": self.capabilities,
+            "Tags": self._build_tags(),
         }
-        if self.stack_tags:
-            kwargs["Tags"] = self.stack_tags
         return self.client.create_stack(**kwargs)
 
     def update(self):
         print("Update stack")
         return self.client.update_stack(
-            StackName=self.name, TemplateBody=self.yaml, Capabilities=self.capabilities
+            StackName=self.name,
+            TemplateBody=self.yaml,
+            Capabilities=self.capabilities,
+            Tags=self._build_tags(),
         )
 
     def delete(self):
