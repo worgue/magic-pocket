@@ -4,7 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
+      day: "monday"
     open-pull-requests-limit: 10
     groups:
       aws-sdk:
@@ -15,6 +15,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "friday"
+      day: "monday"
     open-pull-requests-limit: 10
     versioning-strategy: increase-if-necessary
