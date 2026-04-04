@@ -2,7 +2,7 @@ name: Update uv.lock
 
 on:
   schedule:
-    - cron: "0 9 * * 5" # Every Friday at 9:00 UTC
+    - cron: "0 9 * * 1" # Every Monday at 9:00 UTC
   workflow_dispatch:
 
 permissions:
@@ -17,11 +17,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Update uv.lock files
-        run: |
-          uv lock --upgrade
-          cd example-tidb && uv lock --upgrade && cd ..
-          cd example-neon && uv lock --upgrade && cd ..
+      - name: Update uv.lock
+        run: uv lock --upgrade
 
       - uses: peter-evans/create-pull-request@v7
         with:
