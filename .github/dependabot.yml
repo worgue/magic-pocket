@@ -3,7 +3,8 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "friday"
     open-pull-requests-limit: 10
     groups:
       aws-sdk:
@@ -13,5 +14,7 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "friday"
     open-pull-requests-limit: 10
+    versioning-strategy: increase-if-necessary
