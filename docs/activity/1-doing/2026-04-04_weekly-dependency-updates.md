@@ -15,10 +15,10 @@
 - magic-pocket はライブラリとして広めの依存範囲を持つため、`pyproject.toml` の更新は必要最小限（`increase-if-necessary`）にする
 
 ## タスクリスト
-- [ ] `dependabot.yml` を更新
+- [x] `dependabot.yml` を更新
   - `pip` と `cargo` の schedule を `weekly` / `day: friday` に変更
   - `pip` に `versioning-strategy: increase-if-necessary` を追加
-- [ ] GitHub Actions ワークフローを作成（`.github/workflows/uv-lock-update.yml`）
+- [x] GitHub Actions ワークフローを作成（`.github/workflows/uv-lock-update.yml`）
   - cron で毎週金曜日に実行
   - ルート・`example-tidb/`・`example-neon/` の `uv.lock` を `uv lock --upgrade` で更新
   - 変更があれば PR を自動作成
@@ -66,3 +66,4 @@ updates:
 
 ## 更新履歴
 - 2026-04-04: 作成
+- 2026-04-04: dependabot.yml 更新、uv-lock-update.yml 作成

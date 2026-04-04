@@ -1,0 +1,33 @@
+name: Update uv.lock
+
+on:
+  schedule:
+    - cron: "0 9 * * 5" # Every Friday at 9:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Update uv.lock files
+        run: |
+          uv lock --upgrade
+          cd example-tidb && uv lock --upgrade && cd ..
+          cd example-neon && uv lock --upgrade && cd ..
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "Update uv.lock files"
+          title: "Update uv.lock files"
+          body: |
+            Automated weekly update of `uv.lock` files via `uv lock --upgrade`.
+          branch: automated/uv-lock-update
+          delete-branch: true
