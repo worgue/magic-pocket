@@ -75,6 +75,8 @@ class S3:
             return "NOEXIST"
         if self.public_access_block_require_update:
             return "REQUIRE_UPDATE"
+        if self.cors_require_update:
+            return "REQUIRE_UPDATE"
         return "COMPLETED"
 
     @cached_property
@@ -126,14 +128,14 @@ class S3:
                 origins.append("https://*.cloudfront.net")
         return origins
 
-    def _ensure_cors(self):
-        """S3 バケットの CORS 設定を適用する"""
+    def _desired_cors_rules(self) -> list[dict] | None:
+        """期待する CORS ルールを返す。CORS 未設定なら None。"""
         if not self.context.cors:
-            return
+            return None
         origins = self._resolve_cors_origins()
         if not origins:
-            return
-        cors_rules = [
+            return None
+        return [
             {
                 "AllowedOrigins": origins,
                 "AllowedMethods": self.context.cors.methods,
@@ -141,8 +143,36 @@ class S3:
                 "MaxAgeSeconds": 3600,
             }
         ]
+
+    @cached_property
+    def current_cors_rules(self) -> list[dict] | None:
+        """現在の S3 バケット CORS ルールを返す。未設定なら None。"""
+        try:
+            res = self.client.get_bucket_cors(Bucket=self.context.bucket_name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "NoSuchCORSConfiguration":
+                return None
+            raise
+        return res.get("CORSRules")
+
+    @property
+    def cors_require_update(self) -> bool:
+        """期待する CORS ルールと現状が一致しなければ True"""
+        desired = self._desired_cors_rules()
+        current = self.current_cors_rules
+        if desired is None and current is None:
+            return False
+        return desired != current
+
+    def _ensure_cors(self):
+        """S3 バケットの CORS 設定を適用する"""
+        desired = self._desired_cors_rules()
+        if desired is None:
+            return
         self.client.put_bucket_cors(
             Bucket=self.context.bucket_name,
-            CORSConfiguration={"CORSRules": cors_rules},
+            CORSConfiguration={"CORSRules": desired},
         )
-        echo.info("CORS 設定を適用しました: %s" % origins)
+        # キャッシュを無効化して再取得できるようにする
+        self.__dict__.pop("current_cors_rules", None)
+        echo.info("CORS 設定を適用しました: %s" % desired[0]["AllowedOrigins"])
