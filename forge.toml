@@ -1,21 +1,21 @@
-kits = ["core", "git", "uv", "just", "postgres", "docker", "infra", "claude", "mysql", "redis", "depot"]
+kits = ["core", "vmgit", "uv", "just", "postgres", "docker", "infra", "claude", "mysql", "redis", "depot", "rust"]
 aws_region = "ap-northeast-1"
 
 [[mounts]]
 type = "overlay"
 path = ".git"
 is_file = "auto"
-kit_managed = "core"
+managed = "forge"
 
 [[mounts]]
 type = "overlay"
 path = ".venv"
-kit_managed = "uv"
+managed = "uv"
 
 [[mounts]]
 type = "overlay"
 path = "node_modules"
-kit_managed = "bun"
+managed = "bun"
 
 [[mounts]]
 type = "overlay"
@@ -27,10 +27,14 @@ path = "example-neon/.venv"
 [[mounts]]
 type = "overlay"
 path = ".forge/workspace"
-kit_managed = "core"
+managed = "forge"
+[[mounts]]
+type = "overlay"
+path = "target"
+managed = "rust"
 [[mounts]]
 type = "inject"
-source = ".forge/vm/.claude/settings.json"
-target = ".claude/settings.json"
+source = ".forge/vm/.claude/settings.local.json"
+target = ".claude/settings.local.json"
 is_file = true
-kit_managed = "claude"
+managed = "claude"
