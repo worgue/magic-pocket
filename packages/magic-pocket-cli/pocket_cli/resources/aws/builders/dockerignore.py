@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import fnmatch
 from pathlib import Path
+
+import pathspec
 
 DEFAULT_EXCLUDES = [
     ".git",
@@ -17,50 +18,27 @@ DEFAULT_EXCLUDES = [
 ]
 
 
-def parse_dockerignore(dockerfile_dir: Path) -> list[str]:
+def load_dockerignore(dockerfile_dir: Path) -> pathspec.PathSpec:
     """
-    .dockerignore を読み込み、パターンリストを返す。
-    ファイルがなければデフォルトの除外パターンを返す。
+    .dockerignore を読み込み、PathSpec を返す。
+    ファイルがなければデフォルトの除外パターンを使う。
+
+    pathspec の gitignore を使用。dockerignore は gitignore とほぼ同一の
+    パターン仕様（`**`、末尾 `/`、否定 `!`、文字クラス等）を持つため、
+    pathspec の gitignore で実用上問題なくカバーできる。
     """
     dockerignore_path = dockerfile_dir / ".dockerignore"
     if not dockerignore_path.exists():
-        return list(DEFAULT_EXCLUDES)
+        lines = list(DEFAULT_EXCLUDES)
+    else:
+        lines = [
+            stripped
+            for line in dockerignore_path.read_text().splitlines()
+            if (stripped := line.strip()) and not stripped.startswith("#")
+        ]
+    return pathspec.PathSpec.from_lines("gitignore", lines)
 
-    patterns: list[str] = []
-    for line in dockerignore_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        patterns.append(line)
-    return patterns
 
-
-def should_include(path: str, patterns: list[str]) -> bool:
-    """
-    パスがパターンにマッチするか判定。
-    '!' で始まるパターンは除外の例外（再包含）。
-    最後にマッチしたパターンが採用される。
-    """
-    included = True
-    for pattern in patterns:
-        negate = pattern.startswith("!")
-        if negate:
-            pattern = pattern[1:]
-
-        # ディレクトリ名の部分一致
-        parts = path.split("/")
-        matched = False
-        if "/" not in pattern:
-            # パターンにスラッシュがなければ各パス要素と照合
-            for part in parts:
-                if fnmatch.fnmatch(part, pattern):
-                    matched = True
-                    break
-        else:
-            # スラッシュがあればパス全体と照合
-            matched = fnmatch.fnmatch(path, pattern)
-
-        if matched:
-            included = negate
-
-    return included
+def should_include(path: str, spec: pathspec.PathSpec) -> bool:
+    """パスがパターンにマッチしないか（= 含めるべきか）を判定する。"""
+    return not spec.match_file(path)

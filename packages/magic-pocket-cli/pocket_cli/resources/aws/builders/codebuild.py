@@ -11,7 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from pocket_cli.resources.aws.builders.dockerignore import (
-    parse_dockerignore,
+    load_dockerignore,
     should_include,
 )
 
@@ -267,7 +267,7 @@ class CodeBuildBuilder:
         print("  ソースをS3にアップロード中...")
         # Dockerfileの親ディレクトリを基準にコンテキスト決定
         context_dir = Path(".").resolve()
-        patterns = parse_dockerignore(context_dir)
+        spec = load_dockerignore(context_dir)
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -275,7 +275,7 @@ class CodeBuildBuilder:
                 if path.is_dir():
                     continue
                 rel = str(path.relative_to(context_dir))
-                if not should_include(rel, patterns):
+                if not should_include(rel, spec):
                     continue
                 zf.write(path, rel)
 
