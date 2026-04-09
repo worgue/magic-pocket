@@ -61,7 +61,7 @@ staticfiles = { store = "s3", distribution = "web", route = "static", static = t
 routes = [
     { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", is_versioned = true, origin_path = "/web" },
-    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
 
 # メディア（署名付きURL）
@@ -166,7 +166,7 @@ token_secret = "SPA_TOKEN_SECRET"
 routes = [
     { is_default = true, is_spa = true, require_token = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", is_versioned = true, origin_path = "/web" },
-    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
 ```
 

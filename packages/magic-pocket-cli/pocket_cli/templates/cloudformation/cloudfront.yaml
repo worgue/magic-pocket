@@ -60,7 +60,7 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
-  # {% if has_any_api_route %}
+  # {% if has_lambda_route %}
   ApiHostFunction:
     Type: AWS::CloudFront::Function
     Properties:
@@ -85,7 +85,7 @@ Resources:
       - ResponseHeadersPolicy{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
-      # {% if has_any_api_route %}
+      # {% if has_lambda_route %}
       - ApiHostFunction
       # {% endif %}
     Properties:
@@ -97,7 +97,7 @@ Resources:
         Enabled: true
         Origins:
           # {% for route in routes %}
-          # {% if not route.is_api %}
+          # {% if not route.is_lambda %}
           - Id: "{{ resource_prefix }}{{ route.name }}"
             DomainName: "{{ bucket_name }}.s3.{{ s3_region }}.amazonaws.com"
             OriginPath: "{{ route.origin_path }}"
@@ -123,7 +123,7 @@ Resources:
             S3OriginConfig:
               OriginAccessIdentity: ""
           # {% endif %}
-        # {% if default_route.is_api %}
+        # {% if default_route.is_lambda %}
         DefaultCacheBehavior:
           CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
           OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
@@ -161,9 +161,9 @@ Resources:
             - Fn::ImportValue: "{{ export.key_group_id }}"
           # {% endif %}
         # {% endif %}
-        # {% if extra_routes or api_routes or managed_asset_files %}
+        # {% if extra_s3_routes or extra_lambda_routes or managed_asset_files %}
         CacheBehaviors:
-          # {% for route in extra_routes %}
+          # {% for route in extra_s3_routes %}
           - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
             TargetOriginId: "{{ resource_prefix }}{{ route.name }}"
             ViewerProtocolPolicy: "redirect-to-https"
@@ -183,7 +183,7 @@ Resources:
               - Fn::ImportValue: "{{ export.key_group_id }}"
             # {% endif %}
           # {% endfor %}
-          # {% for route in api_routes %}
+          # {% for route in extra_lambda_routes %}
           - CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
             OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
             TargetOriginId: "{{ resource_prefix }}api-{{ route.handler }}"

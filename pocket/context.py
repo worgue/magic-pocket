@@ -552,7 +552,7 @@ class RedirectFromContext(BaseModel):
 
 
 class RouteContext(BaseModel):
-    type: Literal["s3", "api"] = "s3"
+    type: Literal["s3", "lambda"] = "s3"
     handler: str | None = None
     path_pattern: str = ""
     is_default: bool = False
@@ -570,8 +570,8 @@ class RouteContext(BaseModel):
 
     @computed_field
     @property
-    def is_api(self) -> bool:
-        return self.type == "api"
+    def is_lambda(self) -> bool:
+        return self.type == "lambda"
 
     @computed_field
     @property
@@ -638,7 +638,7 @@ class CloudFrontContext(BaseModel):
     @property
     def bucket_policy_prefix(self) -> str:
         prefixes = [
-            r.origin_path for r in self.routes if not r.is_api and r.origin_path
+            r.origin_path for r in self.routes if not r.is_lambda and r.origin_path
         ]
         if self.managed_assets:
             prefixes.append("/pocket_managed")
@@ -674,20 +674,24 @@ class CloudFrontContext(BaseModel):
 
     @computed_field
     @property
-    def extra_routes(self) -> list[RouteContext]:
+    def extra_s3_routes(self) -> list[RouteContext]:
         return [
-            route for route in self.routes if not route.is_default and not route.is_api
+            route
+            for route in self.routes
+            if not route.is_default and not route.is_lambda
         ]
 
     @computed_field
     @property
-    def api_routes(self) -> list[RouteContext]:
-        return [route for route in self.routes if route.is_api and not route.is_default]
+    def extra_lambda_routes(self) -> list[RouteContext]:
+        return [
+            route for route in self.routes if route.is_lambda and not route.is_default
+        ]
 
     @computed_field
     @property
-    def has_any_api_route(self) -> bool:
-        return any(route.is_api for route in self.routes)
+    def has_lambda_route(self) -> bool:
+        return any(route.is_lambda for route in self.routes)
 
     @computed_field
     @property
@@ -790,7 +794,7 @@ class Context(BaseModel):
         for cf_name, cf_ctx in cloudfront_ctx.items():
             api_origins: dict[str, str] = {}
             for route in cf_ctx.routes:
-                if not (route.is_api and route.handler):
+                if not (route.is_lambda and route.handler):
                     continue
                 export_name = f"{slug}-{route.handler}-api-domain"
                 api_origins[route.handler] = export_name
