@@ -861,10 +861,30 @@ routes = [
     - `is_spa` と `is_versioned` は同時に `true` にできません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `is_default`, `require_token`, `build`, `build_dir` は使用できません。
+    - `type = "api"` のルートでは `is_spa`, `is_versioned`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` を指定する場合は `build_dir` が必須です。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
+
+### Django 単体構成（CloudFront → API Gateway のみ）
+
+SPA を持たず、Django テンプレートで完結するプロジェクトを CloudFront 経由で配信する構成です。
+`is_default = true` の API ルートを 1 つだけ定義します。
+
+```toml
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[prod.cloudfront.web]
+domain = "www.example.com"
+routes = [
+    { is_default = true, type = "api", handler = "wsgi" },
+]
+```
+
+CloudFront の `DefaultCacheBehavior` が API Gateway オリジンを直接ターゲットにし、`X-Forwarded-Host`
+が付与されるため、Django 側ではカスタムドメインがそのまま `request.get_host()` で取得できます。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 

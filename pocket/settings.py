@@ -281,16 +281,10 @@ class Route(BaseSettings):
         if self.type == "api":
             if not self.handler:
                 raise ValueError("handler is required when type = 'api'")
-            if (
-                self.is_spa
-                or self.is_versioned
-                or self.signed
-                or self.is_default
-                or self.require_token
-            ):
+            if self.is_spa or self.is_versioned or self.signed or self.require_token:
                 raise ValueError(
                     "type = 'api' cannot use "
-                    "is_spa, is_versioned, signed, is_default, or require_token"
+                    "is_spa, is_versioned, signed, or require_token"
                 )
             if self.build or self.build_dir:
                 raise ValueError("type = 'api' cannot use build or build_dir")
@@ -312,8 +306,6 @@ class Route(BaseSettings):
 
     @model_validator(mode="after")
     def check_is_default(self):
-        if self.type == "api":
-            return self
         if self.is_default and self.path_pattern:
             raise ValueError("is_default route must have empty path_pattern")
         if not self.is_default and not self.path_pattern:

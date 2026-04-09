@@ -60,7 +60,7 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
-  # {% if api_routes %}
+  # {% if has_any_api_route %}
   ApiHostFunction:
     Type: AWS::CloudFront::Function
     Properties:
@@ -85,7 +85,7 @@ Resources:
       - ResponseHeadersPolicy{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
-      # {% if api_routes %}
+      # {% if has_any_api_route %}
       - ApiHostFunction
       # {% endif %}
     Properties:
@@ -123,6 +123,25 @@ Resources:
             S3OriginConfig:
               OriginAccessIdentity: ""
           # {% endif %}
+        # {% if default_route.is_api %}
+        DefaultCacheBehavior:
+          CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+          OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
+          TargetOriginId: "{{ resource_prefix }}api-{{ default_route.handler }}"
+          ViewerProtocolPolicy: "redirect-to-https"
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt: ApiHostFunction.FunctionMetadata.FunctionARN
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+        # {% else %}
         DefaultCacheBehavior:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
           TargetOriginId: "{{ resource_prefix }}{{ default_route.name }}"
@@ -141,6 +160,7 @@ Resources:
           TrustedKeyGroups:
             - Fn::ImportValue: "{{ export.key_group_id }}"
           # {% endif %}
+        # {% endif %}
         # {% if extra_routes or api_routes or managed_asset_files %}
         CacheBehaviors:
           # {% for route in extra_routes %}
