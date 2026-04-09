@@ -382,6 +382,51 @@ Resources:
   # {% endif %}
   # {% endfor %}
 
+  # {% if scheduler and scheduler.has_schedules %}
+  SchedulerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "{{ scheduler.role_name }}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: "sts:AssumeRole"
+      Policies:
+        - PolicyName: invoke-handlers
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  # {% for arn in scheduler.invoked_function_arns %}
+                  - Fn::Sub: "{{ arn }}"
+                  # {% endfor %}
+
+  # {% for entry in scheduler.schedules %}
+  "{{ entry.yaml_key }}Schedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "{{ entry.handler|capitalize }}LambdaFunction"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "{{ entry.name }}"
+      ScheduleExpression: "{{ entry.schedule_expression }}"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn:
+          Fn::GetAtt: "{{ entry.handler|capitalize }}LambdaFunction.Arn"
+        RoleArn:
+          Fn::GetAtt: SchedulerExecutionRole.Arn
+        Input: {{ entry.input_json|tojson }}
+  # {% endfor %}
+  # {% endif %}
+
   # {% if use_efs %}
   LambdaEFSAccess:
     Type: AWS::EC2::SecurityGroupIngress
