@@ -16,13 +16,13 @@
 
 ## タスクリスト
 - [x] `dependabot.yml` を更新
-  - `pip` と `cargo` の schedule を `weekly` / `day: friday` に変更
+  - `pip` と `cargo` の schedule を `weekly` / `day: monday` に変更
   - `pip` に `versioning-strategy: increase-if-necessary` を追加
 - [x] GitHub Actions ワークフローを作成（`.github/workflows/uv-lock-update.yml`）
-  - cron で毎週金曜日に実行
-  - ルート・`example-tidb/`・`example-neon/` の `uv.lock` を `uv lock --upgrade` で更新
+  - cron で毎週月曜 9:00 UTC に実行
+  - ルートの `uv.lock` のみを `uv lock --upgrade` で更新（example-tidb / example-neon は vendor 依存で CI 不可のため対象外）
   - 変更があれば PR を自動作成
-- [ ] 動作確認（手動トリガーで試す）
+- [x] 動作確認（手動トリガー / 月曜スケジュール実行ともに success、差分なしのため `pull-request-operation = none`）
 
 ## 設計メモ
 
@@ -67,3 +67,4 @@ updates:
 ## 更新履歴
 - 2026-04-04: 作成
 - 2026-04-04: dependabot.yml 更新、uv-lock-update.yml 作成
+- 2026-04-06: 曜日を friday → monday に変更（週末に問題が出ても対応できないため）。uv-lock-update.yml は example-tidb/neon の vendor 依存で CI が落ちたため、対象をルートのみに縮小。Rust 側は hmac 0.13 / sha2 0.11 への更新を手動で実施しビルド確認済み。残るは workflow_dispatch での手動動作確認のみ。
