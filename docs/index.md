@@ -57,7 +57,7 @@ apigateway = {}
 domain = "example.com"
 routes = [
     { is_default = true, is_spa = true },
-    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
 ```
 

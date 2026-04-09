@@ -45,12 +45,12 @@ def test_require_token_with_is_spa_ok():
     assert route.is_spa is True
 
 
-def test_api_route_cannot_use_require_token():
-    """type='api' では require_token 禁止"""
+def test_lambda_route_cannot_use_require_token():
+    """type='lambda' では require_token 禁止"""
     with pytest.raises(ValueError, match="require_token"):
         Route.model_validate(
             {
-                "type": "api",
+                "type": "lambda",
                 "handler": "wsgi",
                 "path_pattern": "/api/*",
                 "require_token": True,

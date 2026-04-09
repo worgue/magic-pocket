@@ -48,7 +48,7 @@ def test_signing_key_imports(use_toml):
 
 
 @mock_aws
-def test_api_route_context(use_toml):
+def test_lambda_route_context(use_toml):
     use_toml("tests/data/toml/cloudfront_api_route.toml")
     context = Context.from_toml(stage="dev")
     assert context.cloudfront
@@ -56,36 +56,48 @@ def test_api_route_context(use_toml):
     # api_origins が正しく構築されること
     assert "wsgi" in cf.api_origins
     assert cf.api_origins["wsgi"] == "dev-testprj-wsgi-api-domain"
-    # api_routes が正しく取得できること
-    assert len(cf.api_routes) == 1
-    assert cf.api_routes[0].is_api
-    assert cf.api_routes[0].handler == "wsgi"
-    assert cf.api_routes[0].path_pattern == "/api/*"
-    # extra_routes に api route が含まれないこと
-    assert all(not r.is_api for r in cf.extra_routes)
+    # extra_lambda_routes が正しく取得できること
+    assert len(cf.extra_lambda_routes) == 1
+    assert cf.extra_lambda_routes[0].is_lambda
+    assert cf.extra_lambda_routes[0].handler == "wsgi"
+    assert cf.extra_lambda_routes[0].path_pattern == "/api/*"
+    # extra_s3_routes に lambda route が含まれないこと
+    assert all(not r.is_lambda for r in cf.extra_s3_routes)
 
 
 @mock_aws
-def test_api_default_route_context(use_toml):
-    """Django 単体構成（is_default = true で type = api）が設定可能なこと"""
+def test_lambda_default_route_context(use_toml):
+    """Django 単体構成（is_default = true で type = lambda）が設定可能なこと"""
     use_toml("tests/data/toml/cloudfront_api_default.toml")
     context = Context.from_toml(stage="dev")
     assert context.cloudfront
     cf = context.cloudfront["main"]
-    # default_route が api route になること
-    assert cf.default_route.is_api
+    # default_route が lambda route になること
+    assert cf.default_route.is_lambda
     assert cf.default_route.handler == "wsgi"
     assert cf.default_route.is_default
     # api_origins には default route 由来のエントリも入る
     assert "wsgi" in cf.api_origins
-    # api_routes は default route を除外する（CacheBehaviors への重複防止）
-    assert cf.api_routes == []
-    # has_any_api_route は default route を含めて True
-    assert cf.has_any_api_route
+    # extra_lambda_routes は default route を除外する（CacheBehaviors への重複防止）
+    assert cf.extra_lambda_routes == []
+    # has_lambda_route は default route を含めて True
+    assert cf.has_lambda_route
+
+
+def test_legacy_api_type_rejected():
+    """旧 type = "api" は明示的にエラーになること"""
+    with pytest.raises(ValueError, match='type = "api" は廃止'):
+        Route.model_validate(
+            {
+                "type": "api",
+                "handler": "wsgi",
+                "path_pattern": "/api/*",
+            }
+        )
 
 
 @mock_aws
-def test_api_route_handler_export(use_toml):
+def test_lambda_route_handler_export(use_toml):
     use_toml("tests/data/toml/cloudfront_api_route.toml")
     context = Context.from_toml(stage="dev")
     assert context.awscontainer
@@ -135,11 +147,13 @@ def test_route_build_without_build_dir_fails():
         )
 
 
-def test_api_route_with_build_fails():
-    with pytest.raises(ValueError, match="type = 'api' cannot use build or build_dir"):
+def test_lambda_route_with_build_fails():
+    with pytest.raises(
+        ValueError, match="type = 'lambda' cannot use build or build_dir"
+    ):
         Route.model_validate(
             {
-                "type": "api",
+                "type": "lambda",
                 "handler": "wsgi",
                 "path_pattern": "/api/*",
                 "build_dir": "dist",
@@ -161,11 +175,11 @@ def test_route_origin_path():
     # S3 route: origin_path 必須
     with pytest.raises(ValueError, match="origin_path is required for S3 routes"):
         Route.model_validate({"is_default": True, "is_spa": True})
-    # API route: origin_path 指定禁止
-    with pytest.raises(ValueError, match="type = 'api' cannot use origin_path"):
+    # Lambda route: origin_path 指定禁止
+    with pytest.raises(ValueError, match="type = 'lambda' cannot use origin_path"):
         Route.model_validate(
             {
-                "type": "api",
+                "type": "lambda",
                 "handler": "wsgi",
                 "path_pattern": "/api/*",
                 "origin_path": "/api",
@@ -279,8 +293,8 @@ def test_route_s3_prefix_no_overlap():
     assert len(cf.routes) == 2
 
 
-def test_route_s3_prefix_overlap_with_api_ignored():
-    """API ルートは S3 を使わないので重複チェック対象外"""
+def test_route_s3_prefix_overlap_with_lambda_ignored():
+    """Lambda ルートは S3 を使わないので重複チェック対象外"""
     cf = CloudFront.model_validate(
         {
             "routes": [
@@ -291,7 +305,7 @@ def test_route_s3_prefix_overlap_with_api_ignored():
                 },
                 {
                     "path_pattern": "/api/*",
-                    "type": "api",
+                    "type": "lambda",
                     "handler": "wsgi",
                 },
                 {

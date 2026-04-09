@@ -15,5 +15,5 @@ apigateway = {}
 [cloudfront.main]
 routes = [
     { is_default = true, is_spa = true, origin_path = "/main" },
-    { path_pattern = "/api/*", type = "api", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
