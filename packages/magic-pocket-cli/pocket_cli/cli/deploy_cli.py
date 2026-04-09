@@ -39,6 +39,7 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
                 state_bucket=state_bucket,
                 rds_context=context.rds,
                 dsql_context=context.dsql,
+                scheduler_context=context.scheduler,
             )
         )
 

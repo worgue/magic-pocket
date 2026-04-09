@@ -482,6 +482,97 @@ class RdsContext(BaseModel):
         )
 
 
+def _camel(key: str) -> str:
+    """schedule entry key を CFn logical ID 用 CamelCase に変換する"""
+    return "".join(
+        part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", key) if part
+    )
+
+
+def _kebab(key: str) -> str:
+    """schedule entry key を物理名 (kebab-case) に変換する"""
+    return re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")
+
+
+class ScheduleEntryContext(BaseModel):
+    key: str
+    scheduler: str
+    handler: str
+    schedule_expression: str
+    name: str
+    yaml_key: str
+    input_json: str
+
+    @computed_field
+    @property
+    def is_django_management(self) -> bool:
+        return self.scheduler == "pocket.django.management_lambda_scheduler"
+
+    @classmethod
+    def from_settings(
+        cls,
+        key: str,
+        entry: settings.ScheduleEntry,
+        *,
+        resource_prefix: str,
+    ) -> ScheduleEntryContext:
+        import json
+
+        if isinstance(entry, settings.DjangoManagementScheduleEntry):
+            input_payload: dict = {"manage": entry.manage}
+        else:
+            input_payload = entry.input
+        return cls(
+            key=key,
+            scheduler=entry.scheduler,
+            handler=entry.handler,
+            schedule_expression=entry.schedule_expression,
+            name=f"{resource_prefix}{_kebab(key)}",
+            yaml_key=_camel(key),
+            input_json=json.dumps(input_payload, ensure_ascii=False),
+        )
+
+
+class SchedulerContext(BaseModel):
+    schedules: list[ScheduleEntryContext] = []
+    role_name: str
+    invoked_function_arns: list[str] = []
+
+    @computed_field
+    @property
+    def has_schedules(self) -> bool:
+        return bool(self.schedules)
+
+    @classmethod
+    def from_settings(
+        cls,
+        scheduler: settings.Scheduler,
+        *,
+        root: settings.Settings,
+        awscontainer_ctx: AwsContainerContext,
+    ) -> SchedulerContext:
+        resource_prefix = awscontainer_ctx.resource_prefix
+        schedules = [
+            ScheduleEntryContext.from_settings(
+                key, entry, resource_prefix=resource_prefix
+            )
+            for key, entry in scheduler.schedules.items()
+        ]
+        # Lambda invoke 対象は scheduler.schedules で参照される handler のみ
+        referenced_handlers = {entry.handler for entry in scheduler.schedules.values()}
+        invoked_function_arns = sorted(
+            f"arn:aws:lambda:{root.region}:${{AWS::AccountId}}:function:"
+            + awscontainer_ctx.handlers[h].function_name
+            for h in referenced_handlers
+            if h in awscontainer_ctx.handlers
+        )
+        return cls(
+            schedules=schedules,
+            role_name=f"{resource_prefix}scheduler",
+            invoked_function_arns=invoked_function_arns,
+        )
+
+
 class S3CorsContext(BaseModel):
     methods: list[str]
     cloudfront_names: list[str]
@@ -781,6 +872,7 @@ class Context(BaseModel):
     ses: SesContext | None = None
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
+    scheduler: SchedulerContext | None = None
     project_name: str
     stage: str
 
@@ -857,10 +949,20 @@ class Context(BaseModel):
                 s, awscontainer_ctx, cloudfront_ctx
             )
 
+        scheduler_ctx = None
+        if s.scheduler and s.scheduler.schedules:
+            assert awscontainer_ctx, (
+                "scheduler requires awscontainer (validated in settings)"
+            )
+            scheduler_ctx = SchedulerContext.from_settings(
+                s.scheduler, root=s, awscontainer_ctx=awscontainer_ctx
+            )
+
         return cls(
             general=general_ctx,
             awscontainer=awscontainer_ctx,
             cloudfront=cloudfront_ctx,
+            scheduler=scheduler_ctx,
             project_name=s.project_name,
             stage=s.stage,
             **svc,

@@ -1,0 +1,37 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev", "prod"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 300
+
+[awscontainer.handlers.worker]
+command = "pocket.lambda_handlers.worker_handler"
+timeout = 60
+
+[scheduler.schedules.rotate_logs]
+rate = "1 hour"
+handler = "worker"
+input = { task = "rotate_logs" }
+
+[scheduler.schedules.daily_digest]
+scheduler = "pocket.django.management_lambda_scheduler"
+cron = "0 18 * * ? *"
+handler = "management"
+manage = "send_daily_digest --verbose"
+
+[prod.scheduler.schedules.rotate_logs]
+rate = "10 minutes"
+
+[prod.scheduler.schedules.month_end]
+scheduler = "pocket.django.management_lambda_scheduler"
+cron = "0 0 L * ? *"
+handler = "management"
+manage = "send_monthly_invoice"

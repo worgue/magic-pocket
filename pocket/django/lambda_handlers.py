@@ -31,6 +31,16 @@ def _handle_resetdb():
 
 def management_command_handler(event, context):
     print(event)
+    # EventBridge Scheduler 経由 (pocket.django.management_lambda_scheduler) からは
+    # shell-style 文字列 1 本が "manage" キーで渡る
+    if "manage" in event:
+        import shlex
+
+        tokens = shlex.split(event["manage"])
+        if not tokens:
+            raise ValueError("manage event must contain a non-empty command line")
+        call_command(*tokens)
+        return
     command = event["command"]
     args = event.get("args") or []
     kwargs = event.get("kwargs") or {}
