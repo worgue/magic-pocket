@@ -240,7 +240,7 @@ class RedirectFrom(BaseSettings):
 
 
 class Route(BaseSettings):
-    type: Literal["s3", "api"] = "s3"
+    type: Literal["s3", "lambda"] = "s3"
     handler: str | None = None
     path_pattern: str = ""
     is_default: bool = False
@@ -256,11 +256,23 @@ class Route(BaseSettings):
     require_token: bool = False
     login_path: str = "/api/auth/login"
 
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_api_type(cls, data):
+        """旧 type = "api" の使用を明示エラーにする(#2 での破壊的リネーム)"""
+        if isinstance(data, dict) and data.get("type") == "api":
+            raise ValueError(
+                'type = "api" は廃止されました。type = "lambda" を使ってください。'
+                " あわせて旧 api の制約が解除され、is_default = true も含めて"
+                " すべての route オプションが利用可能になっています。"
+            )
+        return data
+
     @model_validator(mode="after")
     def check_origin_path(self):
-        if self.type == "api":
+        if self.type == "lambda":
             if self.origin_path is not None:
-                raise ValueError("type = 'api' cannot use origin_path")
+                raise ValueError("type = 'lambda' cannot use origin_path")
         else:
             if self.origin_path is None:
                 raise ValueError("origin_path is required for S3 routes")
@@ -277,19 +289,19 @@ class Route(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def check_api_route(self):
-        if self.type == "api":
+    def check_lambda_route(self):
+        if self.type == "lambda":
             if not self.handler:
-                raise ValueError("handler is required when type = 'api'")
+                raise ValueError("handler is required when type = 'lambda'")
             if self.is_spa or self.is_versioned or self.signed or self.require_token:
                 raise ValueError(
-                    "type = 'api' cannot use "
+                    "type = 'lambda' cannot use "
                     "is_spa, is_versioned, signed, or require_token"
                 )
             if self.build or self.build_dir:
-                raise ValueError("type = 'api' cannot use build or build_dir")
-        if self.handler and self.type != "api":
-            raise ValueError("handler requires type = 'api'")
+                raise ValueError("type = 'lambda' cannot use build or build_dir")
+        if self.handler and self.type != "lambda":
+            raise ValueError("handler requires type = 'lambda'")
         return self
 
     @model_validator(mode="after")
@@ -470,12 +482,12 @@ class Settings(BaseSettings):
                     f"cloudfront.{name}: signing_key is required "
                     f"when route has signed=true"
                 )
-            if route.type == "api":
+            if route.type == "lambda":
                 assert route.handler
                 if not self.awscontainer:
                     raise ValueError(
                         f"cloudfront.{name}: awscontainer is required "
-                        f"when route has type='api'"
+                        f"when route has type='lambda'"
                     )
                 if route.handler not in self.awscontainer.handlers:
                     raise ValueError(
@@ -486,7 +498,7 @@ class Settings(BaseSettings):
                 if not handler.apigateway:
                     raise ValueError(
                         f"cloudfront.{name}: handler '{route.handler}' "
-                        f"must have apigateway configured for api route"
+                        f"must have apigateway configured for lambda route"
                     )
         self._check_cloudfront_token_secret(name, cf)
 
