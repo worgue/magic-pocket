@@ -66,6 +66,25 @@ def test_api_route_context(use_toml):
 
 
 @mock_aws
+def test_api_default_route_context(use_toml):
+    """Django 単体構成（is_default = true で type = api）が設定可能なこと"""
+    use_toml("tests/data/toml/cloudfront_api_default.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.cloudfront
+    cf = context.cloudfront["main"]
+    # default_route が api route になること
+    assert cf.default_route.is_api
+    assert cf.default_route.handler == "wsgi"
+    assert cf.default_route.is_default
+    # api_origins には default route 由来のエントリも入る
+    assert "wsgi" in cf.api_origins
+    # api_routes は default route を除外する（CacheBehaviors への重複防止）
+    assert cf.api_routes == []
+    # has_any_api_route は default route を含めて True
+    assert cf.has_any_api_route
+
+
+@mock_aws
 def test_api_route_handler_export(use_toml):
     use_toml("tests/data/toml/cloudfront_api_route.toml")
     context = Context.from_toml(stage="dev")

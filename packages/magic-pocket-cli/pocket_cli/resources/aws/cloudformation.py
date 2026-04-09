@@ -485,7 +485,7 @@ class CloudFrontStack(Stack):
         acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
         function_codes = self._build_function_codes()
         api_host_function_code = ""
-        if self.context.api_routes:
+        if self.context.has_any_api_route:
             api_host_function_code = self._generate_api_host_function()
 
         from jinja2 import Environment, PackageLoader, select_autoescape
