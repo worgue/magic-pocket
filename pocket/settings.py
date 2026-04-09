@@ -169,6 +169,84 @@ class ApiGateway(BaseSettings):
     hosted_zone_id_override: str | None = None
 
 
+_LAMBDA_SCHEDULER = "pocket.lambda_scheduler"
+_DJANGO_MANAGEMENT_SCHEDULER = "pocket.django.management_lambda_scheduler"
+_BUILTIN_SCHEDULERS = (_LAMBDA_SCHEDULER, _DJANGO_MANAGEMENT_SCHEDULER)
+
+
+class _ScheduleEntryBase(BaseModel):
+    cron: str | None = None
+    rate: str | None = None
+    handler: str
+
+    @model_validator(mode="after")
+    def check_cron_or_rate(self):
+        if bool(self.cron) == bool(self.rate):
+            raise ValueError("schedule entry must specify exactly one of cron / rate")
+        return self
+
+    @computed_field
+    @property
+    def schedule_expression(self) -> str:
+        if self.cron:
+            return f"cron({self.cron})"
+        assert self.rate
+        return f"rate({self.rate})"
+
+
+class LambdaScheduleEntry(_ScheduleEntryBase):
+    """汎用 Lambda 向け scheduler entry。任意の input dict をそのまま渡す。"""
+
+    scheduler: Literal["pocket.lambda_scheduler"] = "pocket.lambda_scheduler"
+    input: dict = {}
+
+
+class DjangoManagementScheduleEntry(_ScheduleEntryBase):
+    """Django management command を呼び出すショートカット scheduler entry。
+
+    handler は management_command_handler を指す必要がある。
+    Lambda には {"manage": "<shell-style command line>"} が渡され、
+    handler 側で shlex.split + call_command が行われる。
+    """
+
+    scheduler: Literal["pocket.django.management_lambda_scheduler"]
+    manage: str
+
+    @model_validator(mode="after")
+    def check_manage_not_empty(self):
+        if not self.manage.strip():
+            raise ValueError("manage must be a non-empty shell-style command")
+        return self
+
+
+ScheduleEntry = Annotated[
+    LambdaScheduleEntry | DjangoManagementScheduleEntry,
+    Field(discriminator="scheduler"),
+]
+
+
+class Scheduler(BaseModel):
+    schedules: dict[str, ScheduleEntry] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_entries(cls, data):
+        """schedules entry に scheduler が省略されている場合 default を補う。
+
+        discriminated union は discriminator が無いと validation できないため、
+        scheduler フィールドが未指定なら lambda_scheduler を埋める。
+        """
+        if not isinstance(data, dict):
+            return data
+        schedules = data.get("schedules")
+        if not isinstance(schedules, dict):
+            return data
+        for entry in schedules.values():
+            if isinstance(entry, dict) and "scheduler" not in entry:
+                entry["scheduler"] = _LAMBDA_SCHEDULER
+        return data
+
+
 class Sqs(BaseModel):
     batch_size: int = 10
     message_retention_period: int = 345600
@@ -434,6 +512,7 @@ class Settings(BaseSettings):
     ses: Ses | None = None
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
+    scheduler: Scheduler | None = None
 
     @property
     def project_name(self):
@@ -520,6 +599,33 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def check_scheduler_handlers(self):
+        if not self.scheduler or not self.scheduler.schedules:
+            return self
+        if not self.awscontainer:
+            raise ValueError("scheduler is configured but awscontainer is missing")
+        management_handler_command = (
+            "pocket.django.lambda_handlers.management_command_handler"
+        )
+        for key, entry in self.scheduler.schedules.items():
+            if entry.handler not in self.awscontainer.handlers:
+                raise ValueError(
+                    f"scheduler.schedules.{key}: handler '{entry.handler}' "
+                    f"not found in awscontainer.handlers"
+                )
+            if isinstance(entry, DjangoManagementScheduleEntry):
+                handler = self.awscontainer.handlers[entry.handler]
+                if handler.command != management_handler_command:
+                    raise ValueError(
+                        f"scheduler.schedules.{key}: scheduler="
+                        f"'{_DJANGO_MANAGEMENT_SCHEDULER}' requires the target "
+                        f"handler '{entry.handler}' to use command="
+                        f"'{management_handler_command}', "
+                        f"got '{handler.command}'"
+                    )
+        return self
+
+    @model_validator(mode="after")
     def check_cloudfront_requires_s3(self):
         if self.cloudfront and not self.s3:
             raise ValueError("s3 is required when cloudfront is configured")
@@ -571,6 +677,7 @@ class Settings(BaseSettings):
             "ses",
             "s3",
             "cloudfront",
+            "scheduler",
         ]
         valid_keys += data["general"]["stages"]
         for key in data:

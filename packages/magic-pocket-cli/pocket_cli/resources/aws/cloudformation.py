@@ -18,6 +18,7 @@ if TYPE_CHECKING:
         CloudFrontContext,
         DsqlContext,
         RdsContext,
+        SchedulerContext,
     )
     from pocket.general_context import VpcContext
 
@@ -528,9 +529,11 @@ class ContainerStack(Stack):
         *,
         rds_context: RdsContext | None = None,
         dsql_context: DsqlContext | None = None,
+        scheduler_context: SchedulerContext | None = None,
     ):
         self._rds_context = rds_context
         self._dsql_context = dsql_context
+        self._scheduler_context = scheduler_context
         super().__init__(context)
 
     def _resolve_rds(self) -> dict:
@@ -617,6 +620,11 @@ class ContainerStack(Stack):
             dsql_region=dsql_region,
             dsql_cluster_arn=dsql_cluster_arn,
             use_dsql=dsql_endpoint is not None,
+            scheduler=(
+                self._scheduler_context.model_dump()
+                if self._scheduler_context
+                else None
+            ),
             **context_dump,
         )
         return "\n".join(
