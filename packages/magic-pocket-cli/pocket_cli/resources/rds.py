@@ -213,23 +213,46 @@ class Rds:
         )
         sg_id = sg_res["GroupId"]
 
-        # 3. Aurora クラスター作成
-        echo.log("Creating Aurora cluster: %s" % self.context.cluster_identifier)
-        self._rds_client.create_db_cluster(
-            DBClusterIdentifier=self.context.cluster_identifier,
-            Engine="aurora-postgresql",
-            EngineMode="provisioned",
-            DatabaseName=self.context.database_name,
-            MasterUsername=self.context.master_username,
-            ManageMasterUserPassword=True,
-            DBSubnetGroupName=self.context.subnet_group_name,
-            VpcSecurityGroupIds=[sg_id],
-            ServerlessV2ScalingConfiguration={
-                "MinCapacity": self.context.min_capacity,
-                "MaxCapacity": self.context.max_capacity,
-            },
-            Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
-        )
+        # 3. Aurora クラスター作成 (snapshot_identifier があれば復元)
+        if self.context.snapshot_identifier:
+            echo.log(
+                "Restoring Aurora cluster %s from snapshot %s"
+                % (
+                    self.context.cluster_identifier,
+                    self.context.snapshot_identifier,
+                )
+            )
+            self._rds_client.restore_db_cluster_from_snapshot(
+                DBClusterIdentifier=self.context.cluster_identifier,
+                SnapshotIdentifier=self.context.snapshot_identifier,
+                Engine="aurora-postgresql",
+                EngineMode="provisioned",
+                DatabaseName=self.context.database_name,
+                DBSubnetGroupName=self.context.subnet_group_name,
+                VpcSecurityGroupIds=[sg_id],
+                ServerlessV2ScalingConfiguration={
+                    "MinCapacity": self.context.min_capacity,
+                    "MaxCapacity": self.context.max_capacity,
+                },
+                Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
+            )
+        else:
+            echo.log("Creating Aurora cluster: %s" % self.context.cluster_identifier)
+            self._rds_client.create_db_cluster(
+                DBClusterIdentifier=self.context.cluster_identifier,
+                Engine="aurora-postgresql",
+                EngineMode="provisioned",
+                DatabaseName=self.context.database_name,
+                MasterUsername=self.context.master_username,
+                ManageMasterUserPassword=True,
+                DBSubnetGroupName=self.context.subnet_group_name,
+                VpcSecurityGroupIds=[sg_id],
+                ServerlessV2ScalingConfiguration={
+                    "MinCapacity": self.context.min_capacity,
+                    "MaxCapacity": self.context.max_capacity,
+                },
+                Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
+            )
 
         # 4. Aurora インスタンス作成
         echo.log("Creating Aurora instance: %s" % self.context.instance_identifier)
@@ -244,6 +267,22 @@ class Rds:
         # 5. クラスター available を待機（最大30分）
         echo.log("Waiting for Aurora cluster to become available...")
         self._wait_cluster_available(timeout=1800)
+
+        # 6. snapshot から復元した場合、マスターパスワードを AWS 管理に切り替える
+        # (RestoreDBClusterFromSnapshot は snapshot の元パスワードを引き継ぐため、
+        # pocket が参照する MasterUserSecret を生成させる必要がある)
+        if self.context.snapshot_identifier:
+            echo.log(
+                "Switching master password to AWS-managed secret "
+                "(ManageMasterUserPassword=True)..."
+            )
+            self._rds_client.modify_db_cluster(
+                DBClusterIdentifier=self.context.cluster_identifier,
+                ManageMasterUserPassword=True,
+                ApplyImmediately=True,
+            )
+            self._wait_cluster_available(timeout=600)
+
         echo.success("Aurora cluster is now available.")
 
     def update(self):

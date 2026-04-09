@@ -80,6 +80,56 @@ def test_rds_none_when_not_configured(use_toml):
     assert context.rds is None
 
 
+def test_rds_snapshot_identifier_field():
+    """snapshot_identifier が settings/context に正しく伝搬する"""
+    settings = Settings.model_validate(
+        {
+            "stage": "dev",
+            "general": {
+                "region": "ap-northeast-1",
+                "project_name": "testprj",
+                "stages": ["dev"],
+            },
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "rds": {
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                "snapshot_identifier": "signage-prod-20260410",
+            },
+            "awscontainer": {
+                "dockerfile_path": "Dockerfile",
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            },
+        }
+    )
+    assert settings.rds is not None
+    assert settings.rds.snapshot_identifier == "signage-prod-20260410"
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.snapshot_identifier == "signage-prod-20260410"
+
+
+def test_rds_snapshot_identifier_default_none():
+    """snapshot_identifier 未指定時は None"""
+    settings = Settings.model_validate(
+        {
+            "stage": "dev",
+            "general": {
+                "region": "ap-northeast-1",
+                "project_name": "testprj",
+                "stages": ["dev"],
+            },
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}},
+            "awscontainer": {
+                "dockerfile_path": "Dockerfile",
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            },
+        }
+    )
+    assert settings.rds is not None
+    assert settings.rds.snapshot_identifier is None
+
+
 def test_rds_custom_capacity():
     """カスタム min/max capacity の設定"""
     settings = Settings.model_validate(

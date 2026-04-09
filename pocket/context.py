@@ -449,6 +449,7 @@ class RdsContext(BaseModel):
     vpc: VpcContext
     min_capacity: float = 0.5
     max_capacity: float = 2.0
+    snapshot_identifier: str | None = None
     region: str
     cluster_identifier: str
     instance_identifier: str
@@ -472,6 +473,7 @@ class RdsContext(BaseModel):
             vpc=vpc_ctx,
             min_capacity=rds.min_capacity,
             max_capacity=rds.max_capacity,
+            snapshot_identifier=rds.snapshot_identifier,
             region=root.region,
             cluster_identifier=f"{resource_prefix}aurora",
             instance_identifier=f"{resource_prefix}aurora-1",
