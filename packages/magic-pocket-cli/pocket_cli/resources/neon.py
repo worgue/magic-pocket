@@ -27,6 +27,16 @@ class NeonResourceIsNotReady(Exception):
     pass
 
 
+class NeonNotFound(Exception):
+    """Neon API が 404 を返したことを示す例外。
+
+    `branch` / `role` などの個別取得で対象が存在しない場合にこの例外を投げる。
+    呼び出し側は存在しないことを明示的に判定できる。
+    """
+
+    pass
+
+
 class Project(BaseModel):
     id: str
     name: str
@@ -75,6 +85,8 @@ class NeonApi:
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
             return res
+        if res.status_code == 404:
+            raise NeonNotFound("%s: %s" % (res.status_code, res.json()["message"]))
         if res.status_code == 401:
             print("Used API key: %s" % (self.key[:5] + "..." + self.key[-5:]))
             print("API key length: %s" % len(self.key))
@@ -165,11 +177,13 @@ class Neon:
 
     @cached_property
     def role(self) -> Role | None:
-        if self.branch:
+        if not self.branch:
+            return None
+        try:
             res = self.get("roles", self.context.role_name)
-            if res.status_code == 404:
-                return None
-            return Role(**res.json()["role"])
+        except NeonNotFound:
+            return None
+        return Role(**res.json()["role"])
 
     @cached_property
     def project(self) -> Project:
