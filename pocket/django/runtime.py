@@ -58,7 +58,9 @@ def get_django_settings(
         django_context = general_context.django_fallback
     result = dict(django_context.settings)
     # CloudFront の API ルートがある場合、X-Forwarded-Host を有効化
-    has_api_route = any(cf_ctx.api_routes for cf_ctx in context.cloudfront.values())
+    has_api_route = any(
+        cf_ctx.has_any_api_route for cf_ctx in context.cloudfront.values()
+    )
     if has_api_route:
         result.setdefault("USE_X_FORWARDED_HOST", True)
     return result

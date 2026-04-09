@@ -682,7 +682,12 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @property
     def api_routes(self) -> list[RouteContext]:
-        return [route for route in self.routes if route.is_api]
+        return [route for route in self.routes if route.is_api and not route.is_default]
+
+    @computed_field
+    @property
+    def has_any_api_route(self) -> bool:
+        return any(route.is_api for route in self.routes)
 
     @computed_field
     @property
