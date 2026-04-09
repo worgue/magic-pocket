@@ -294,6 +294,14 @@ class Rds(BaseModel):
     vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
     max_capacity: float = 2.0
+    snapshot_identifier: str | None = None
+    """初回作成時に指定されていれば、この snapshot/arn から Aurora クラスタを復元する。
+
+    - Aurora cluster snapshot の ID または ARN を指定可能
+    - クラスタが既に存在する場合は無視される (drift 防止)
+    - 復元後、pocket が ModifyDBCluster で ManageMasterUserPassword=True に
+      切り替えるため、DATABASE_URL は引き続き AWS 管理シークレットから組み立てられる
+    """
 
 
 class Ses(BaseSettings):

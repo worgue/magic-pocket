@@ -338,6 +338,7 @@ dockerfile_path = "pocket.Dockerfile"
 |-----------|------|----------|------|
 | `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU） |
 | `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU） |
+| `snapshot_identifier` | str \| None | None | 初回作成時に復元する Aurora cluster snapshot の ID または ARN |
 
 !!! info "DATABASE_URL の設定"
     `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
@@ -355,6 +356,66 @@ dockerfile_path = "pocket.Dockerfile"
     min_capacity = 1.0
     max_capacity = 8.0
     ```
+
+### snapshot からの復元
+
+既存の RDS / Aurora データを新クラスタに持ち込みたい場合、`snapshot_identifier` を指定すると **初回作成時のみ** snapshot から復元されます。awsde などの他ツールからの本番移行、手動バックアップからの起動に利用できます。
+
+```toml
+[prod.rds]
+snapshot_identifier = "signage-prod-migration-20260410"
+```
+
+#### ID でも ARN でも指定可能
+
+`snapshot_identifier` は **1 フィールドで ID / ARN 両対応** です。AWS の `RestoreDBClusterFromSnapshot` API が同じパラメータに ID・ARN どちらも受け付けるため、用途に応じて書き分けてください。
+
+| 用途 | 書き方 | 例 |
+|---|---|---|
+| 同一アカウントの snapshot | **ID** | `"signage-prod-20260410"` |
+| 別アカウントの snapshot（クロスアカウント） | **ARN** | `"arn:aws:rds:ap-northeast-1:123456789012:cluster-snapshot:signage-prod-20260410"` |
+| 自動バックアップ snapshot | **ARN** | `"arn:aws:rds:ap-northeast-1:123456789012:cluster-snapshot:rds:signage-prod-2026-04-10-03-07"` |
+
+#### 初回作成のみ / 2 回目以降は無視される
+
+!!! tip "復元が終わったら pocket.toml から消して良い"
+    `snapshot_identifier` は **クラスタがまだ存在しないときだけ** 読まれます。
+
+    - 1 回目の `pocket deploy` で snapshot から復元 → クラスタ作成
+    - 2 回目以降の `pocket deploy` では `snapshot_identifier` の値は **一切読まれません**
+    - そのため、復元が完了したら `pocket.toml` から `snapshot_identifier` を **削除して OK** です（残しておいても害はありません）
+    - 復元済みクラスタに別の snapshot ID を書いても **クラスタは再作成されません**（安全側の挙動で drift も起きません）
+
+    これが可能なのは、pocket が RDS を CloudFormation ではなく boto3 で直接管理しているためです。CloudFormation ベースのツールでは `SnapshotIdentifier` を後から消すとリソース置換が起きる（＝本番クラスタが吹き飛ぶ）典型的な罠がありますが、pocket ではその心配はありません。
+
+#### マスターパスワードの扱い
+
+snapshot から復元すると Aurora のマスターパスワードは snapshot 内のものが引き継がれます。pocket はこれを検出し、**復元直後に自動で AWS 管理シークレットに切り替え**ます:
+
+1. `RestoreDBClusterFromSnapshot` で復元
+2. クラスタ available まで待機
+3. `ModifyDBCluster(ManageMasterUserPassword=True, ApplyImmediately=True)` を実行
+4. 再度 available まで待機
+
+この結果、`DATABASE_URL` は引き続き Secrets Manager から動的に構築され、パスワードローテーションも有効になります。ユーザー側で追加の手順は不要です。
+
+#### 復元で注意すべきこと
+
+!!! warning "バージョン互換性"
+    復元されたクラスタの Aurora / Postgres バージョンは **snapshot 側のもの**です。古いバージョンから復元した場合、そのまま運用するかバージョンアップするかは別途判断してください。バージョンアップする場合は復元完了後に `aws rds modify-db-cluster --engine-version ...` を手動で実行します。
+
+!!! warning "本番移行は必ず staging で先に試す"
+    本番の snapshot を使う前に、必ず staging 環境で以下の流れを通してください:
+
+    1. staging 用の snapshot を取得
+    2. `[stg.rds]` に `snapshot_identifier` を設定して deploy
+    3. クラスタ起動、マスターパスワード切替、DATABASE_URL 動作、アプリから DB アクセスまでの一連動作を確認
+    4. 問題なければ本番 snapshot で prod を deploy
+
+    Postgres バージョン互換性、VPC/SG 疎通、Secrets Manager 切替など、実環境で初めて顕在化する問題が複数あります。
+
+!!! info "VPC / Subnet Group は別物で OK"
+    snapshot の元クラスタと、pocket が作る新クラスタの VPC / Subnet Group は **別物で構いません**。`[vpc]` で指定した pocket 管理の VPC にそのまま復元されます。
 
 ---
 
