@@ -104,6 +104,12 @@ domain = "media.example.com"
     SPA の HTML は `no-cache`、アセットは `max-age=1年` のキャッシュヘッダーが設定されます。
     インフラのみ更新したい場合は `--skip-frontend` で抑制できます。
 
+**SPA の画像・フォントはビルドパイプラインを通す**
+:   Vite / SvelteKit 等の `public/` (`static/`) に置いたファイルはビルドを通らずファイル名にハッシュが付きません。
+    CloudFront やブラウザのキャッシュが残り、画像を差し替えても古い内容が表示される原因になります。
+    画像・フォントなどの静的アセットは `src/` 配下に置き、`import` や `import.meta.glob` 経由で参照してください。
+    ビルド時に自動でハッシュ付きファイル名が生成され、`is_versioned` route の長期キャッシュと安全に共存できます。
+
 **staticfiles は `pocket django deploystatic` で管理**
 :   Django の静的ファイル（admin CSS 等）はローカルで `collectstatic` → S3 アップロードする仕組みです。
     Lambda コンテナに静的ファイルを含めないため、イメージサイズを抑えられます。
