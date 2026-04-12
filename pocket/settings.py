@@ -463,6 +463,20 @@ class CloudFront(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def check_route_ref_unique(self):
+        refs = [r.ref for r in self.routes if r.ref]
+        seen: set[str] = set()
+        for ref in refs:
+            if ref in seen:
+                raise ValueError(
+                    f"routes の ref '{ref}' が重複しています。"
+                    "ref は route を一意に識別するため、同じ値を複数の route に"
+                    "設定することはできません。"
+                )
+            seen.add(ref)
+        return self
+
+    @model_validator(mode="after")
     def check_route_s3_prefix_overlap(self):
         """S3 ルート同士の S3 prefix が重複していないことを検証する。
 

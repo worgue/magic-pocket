@@ -224,6 +224,33 @@ def test_storage_route_requires_distribution():
         )
 
 
+def test_route_ref_duplicate_rejected():
+    """同じ ref を複数 route に設定するとエラーになること"""
+    with pytest.raises(ValueError, match="ref 'static' が重複"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {
+                        "is_default": True,
+                        "is_spa": True,
+                        "origin_path": "/web",
+                    },
+                    {
+                        "path_pattern": "/static/*",
+                        "ref": "static",
+                        "is_versioned": True,
+                        "origin_path": "/static",
+                    },
+                    {
+                        "path_pattern": "/app/*",
+                        "ref": "static",
+                        "origin_path": "/app",
+                    },
+                ],
+            }
+        )
+
+
 def test_route_s3_prefix_overlap_parent_child():
     """SPA ルートと static ルートの S3 prefix が親子関係の場合エラー"""
     # 今回のインシデント: staticfiles に route 未指定で
