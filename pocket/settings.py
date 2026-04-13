@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 from typing import Annotated, Literal
 
-import mergedeep
 from pydantic import BaseModel, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +14,17 @@ if sys.version_info >= (3, 11):
     import tomllib
 else:
     import tomli as tomllib
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """dict を再帰的に deep merge する。list やスカラーは上書き (replace)。"""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
 
 # Restrict string to a valid environment variable name
 EnvStr = Annotated[str, Field(pattern="^[a-zA-Z0-9_]+$")]
@@ -772,7 +782,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def merge_stage_data(cls, stage: str, data: dict):
-        mergedeep.merge(data, data.get(stage, {}))
+        _deep_merge(data, data.get(stage, {}))
 
     @classmethod
     def remove_stages_data(cls, stage: str, data: dict):
