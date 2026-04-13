@@ -46,7 +46,7 @@ Resources:
               Fn::GetAtt: TokenKvs.Arn
         # {% endif %}
   # {% endif %}
-  # {% if route.is_versioned %}
+  # {% if route.versioning %}
   ResponseHeadersPolicy{{ route.yaml_key }}:
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
@@ -57,6 +57,18 @@ Resources:
             - Header: "cache-control"
               Value: "max-age={{ route.versioned_max_age }}"
               Override: true
+  # {% endif %}
+  # {% if route.is_deploy_hash %}
+  DeployHashStripFunction{{ route.yaml_key }}:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "{{ slug }}-{{ route.name }}-deploy-hash-strip"
+      AutoPublish: true
+      FunctionCode: |
+        {{ deploy_hash_function_codes[route.yaml_key] }}
+      FunctionConfig:
+        Comment: "Strip deploy hash prefix for {{ route.name }}"
+        Runtime: cloudfront-js-2.0
   # {% endif %}
   # {% endfor %}
 
@@ -81,8 +93,11 @@ Resources:
       # {% if route.is_spa %}
       - UrlFallbackFunction{{ route.yaml_key }}
       # {% endif %}
-      # {% if route.is_versioned %}
+      # {% if route.versioning %}
       - ResponseHeadersPolicy{{ route.yaml_key }}
+      # {% endif %}
+      # {% if route.is_deploy_hash %}
+      - DeployHashStripFunction{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
       # {% if has_lambda_route %}
@@ -152,7 +167,7 @@ Resources:
               FunctionARN:
                 Fn::GetAtt: UrlFallbackFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
           # {% endif %}
-          # {% if default_route.is_versioned %}
+          # {% if default_route.versioning %}
           ResponseHeadersPolicyId:
             Ref: ResponseHeadersPolicy{{ default_route.yaml_key }}
           # {% endif %}
@@ -174,7 +189,13 @@ Resources:
                 FunctionARN:
                   Fn::GetAtt: UrlFallbackFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
             # {% endif %}
-            # {% if route.is_versioned %}
+            # {% if route.is_deploy_hash %}
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: DeployHashStripFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
+            # {% endif %}
+            # {% if route.versioning %}
             ResponseHeadersPolicyId:
               Ref: ResponseHeadersPolicy{{ route.yaml_key }}
             # {% endif %}

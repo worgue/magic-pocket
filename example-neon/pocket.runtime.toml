@@ -1,0 +1,50 @@
+[general]
+region = "ap-northeast-1"
+stages = ["dev", "sandbox"]
+project_name = "pocket-example-neon"
+
+[neon]
+project_name = "dev-magic-pocket"
+
+[s3]
+
+
+[awscontainer]
+dockerfile_path = "__runtime__"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[awscontainer.handlers.wsgi.apigateway]
+
+
+[awscontainer.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[awscontainer.secrets]
+store = "ssm"
+
+[awscontainer.secrets.managed.SECRET_KEY]
+type = "password"
+
+[awscontainer.secrets.managed.SECRET_KEY.options]
+length = 50
+
+[awscontainer.secrets.managed.DJANGO_SUPERUSER_PASSWORD]
+type = "password"
+
+[awscontainer.secrets.managed.DJANGO_SUPERUSER_PASSWORD.options]
+length = 16
+
+[awscontainer.secrets.managed.DATABASE_URL]
+type = "neon_database_url"
+
+[sandbox.cloudfront]
+
+[sandbox.cloudfront.web]
+domain = "sandbox.magic-pocket.example.com"
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+    { path_pattern = "/static/*", versioning = "deploy_hash", origin_path = "/static" },
+]

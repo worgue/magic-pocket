@@ -8,7 +8,6 @@ project_name = "dev-magic-pocket"
 
 [awscontainer]
 dockerfile_path = "pocket.Dockerfile"
-permissions_boundary = "arn:aws:iam::123456789012:policy/example-permissions-boundary"
 
 [awscontainer.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"

@@ -268,7 +268,7 @@ class CloudFront:
                     origin[1:],
                 )
                 echo.info("e.g) " + eg_cmd)
-            elif route.is_versioned:
+            elif route.versioning:
                 echo.info("This is a versioned route.")
                 echo.info(
                     "Just upload your files. CloudFront will set cache-control headers."
