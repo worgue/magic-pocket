@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 
 import boto3
-import mergedeep
 from botocore.exceptions import ClientError
 
+from pocket.settings import _deep_merge
 from pocket_cli.resources.aws.s3_utils import (
     bucket_exists,
     create_bucket,
@@ -64,9 +64,9 @@ class StateStore:
         )
 
     def record(self, info: dict):
-        """リソース情報をmerge（mergedeep使用）して保存"""
+        """リソース情報を deep merge して保存"""
         state = self.load()
-        mergedeep.merge(state["resources"], info)
+        _deep_merge(state["resources"], info)
         self.save()
 
     def delete_bucket(self):
