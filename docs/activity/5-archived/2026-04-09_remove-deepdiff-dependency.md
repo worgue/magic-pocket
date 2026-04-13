@@ -32,3 +32,4 @@
 
 ## 更新履歴
 - 2026-04-09: 作成（MEMORY.md の TODO を Activity Doc 化）
+- 2026-04-14: 調査完了。yaml_synced は既にタグベースに移行済みだが、yaml_diff は CLI 表示に加え awscontainer.py の ACM 手動更新判定 (_require_acm_manual_update) で DeepDiff の構造化結果 (dictionary_item_added, values_changed 等) をプログラム的に参照しているため、削除不可。依存は orderly-set のみで軽量なため、このまま維持する。アーカイブ。
