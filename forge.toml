@@ -38,3 +38,6 @@ source = ".forge/vm/.claude/settings.local.json"
 target = ".claude/settings.local.json"
 is_file = true
 managed = "claude"
+
+[llm.aws.env_aliases]
+POCKET_PERMISSIONS_BOUNDARY_ARN = "FORGE_PERMISSIONS_BOUNDARY_ARN"

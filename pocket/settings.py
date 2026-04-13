@@ -325,13 +325,16 @@ class RedirectFrom(BaseSettings):
     hosted_zone_id_override: str | None = None
 
 
+Versioning = Literal["content_hash", "deploy_hash"]
+
+
 class Route(BaseSettings):
     type: Literal["s3", "lambda"] = "s3"
     handler: str | None = None
     path_pattern: str = ""
     is_default: bool = False
     is_spa: bool = False
-    is_versioned: bool = False
+    versioning: Versioning | None = None
     spa_fallback_html: str = "index.html"
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
@@ -341,6 +344,17 @@ class Route(BaseSettings):
     origin_path: str | None = None
     require_token: bool = False
     login_path: str = "/api/auth/login"
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_is_versioned(cls, data):
+        """旧 is_versioned を明示エラーにする (#8 で versioning に統合)"""
+        if isinstance(data, dict) and data.get("is_versioned"):
+            raise ValueError(
+                "is_versioned は廃止されました。"
+                'versioning = "content_hash" を使ってください。'
+            )
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -379,10 +393,10 @@ class Route(BaseSettings):
         if self.type == "lambda":
             if not self.handler:
                 raise ValueError("handler is required when type = 'lambda'")
-            if self.is_spa or self.is_versioned or self.signed or self.require_token:
+            if self.is_spa or self.versioning or self.signed or self.require_token:
                 raise ValueError(
                     "type = 'lambda' cannot use "
-                    "is_spa, is_versioned, signed, or require_token"
+                    "is_spa, versioning, signed, or require_token"
                 )
             if self.build or self.build_dir:
                 raise ValueError("type = 'lambda' cannot use build or build_dir")
@@ -398,8 +412,8 @@ class Route(BaseSettings):
 
     @model_validator(mode="after")
     def check_flags(self):
-        if self.is_spa and self.is_versioned:
-            raise ValueError("is_spa and is_versioned cannot be True at the same time")
+        if self.is_spa and self.versioning:
+            raise ValueError("is_spa と versioning は同時に設定できません")
         return self
 
     @model_validator(mode="after")

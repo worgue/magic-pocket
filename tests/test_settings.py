@@ -238,7 +238,7 @@ def test_route_ref_duplicate_rejected():
                     {
                         "path_pattern": "/static/*",
                         "ref": "static",
-                        "is_versioned": True,
+                        "versioning": "content_hash",
                         "origin_path": "/static",
                     },
                     {
@@ -268,7 +268,7 @@ def test_route_s3_prefix_overlap_parent_child():
                     },
                     {
                         "path_pattern": "/static/*",
-                        "is_versioned": True,
+                        "versioning": "content_hash",
                         "origin_path": "/web/app",
                     },
                 ],
@@ -289,7 +289,7 @@ def test_route_s3_prefix_overlap_same():
                     },
                     {
                         "path_pattern": "/app/*",
-                        "is_versioned": True,
+                        "versioning": "content_hash",
                         "origin_path": "/web",
                     },
                 ],
@@ -311,7 +311,7 @@ def test_route_s3_prefix_no_overlap():
                 {
                     "path_pattern": "/static/*",
                     "ref": "static",
-                    "is_versioned": True,
+                    "versioning": "content_hash",
                     "origin_path": "/web",
                 },
             ],
@@ -338,7 +338,7 @@ def test_route_s3_prefix_overlap_with_lambda_ignored():
                 {
                     "path_pattern": "/static/*",
                     "ref": "static",
-                    "is_versioned": True,
+                    "versioning": "content_hash",
                     "origin_path": "/web",
                 },
             ],

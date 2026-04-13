@@ -22,5 +22,8 @@ wheels/
 # Zensical build output
 site/
 
+# Vendor wheels (built locally for examples)
+vendor/
+
 # Forge
 forge.local.toml

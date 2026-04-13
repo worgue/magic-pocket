@@ -650,7 +650,7 @@ class RouteContext(BaseModel):
     path_pattern: str = ""
     is_default: bool = False
     is_spa: bool = False
-    is_versioned: bool = False
+    versioning: settings.Versioning | None = None
     spa_fallback_html: str = "index.html"
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
@@ -665,6 +665,16 @@ class RouteContext(BaseModel):
     @property
     def is_lambda(self) -> bool:
         return self.type == "lambda"
+
+    @computed_field
+    @property
+    def is_content_hash(self) -> bool:
+        return self.versioning == "content_hash"
+
+    @computed_field
+    @property
+    def is_deploy_hash(self) -> bool:
+        return self.versioning == "deploy_hash"
 
     @computed_field
     @property
@@ -692,7 +702,7 @@ class RouteContext(BaseModel):
             path_pattern=route.path_pattern,
             is_default=route.is_default,
             is_spa=route.is_spa,
-            is_versioned=route.is_versioned,
+            versioning=route.versioning,
             spa_fallback_html=route.spa_fallback_html,
             versioned_max_age=route.versioned_max_age,
             ref=route.ref,
@@ -721,6 +731,7 @@ class CloudFrontContext(BaseModel):
     token_secret: str | None = None
     api_origins: dict[str, str] = {}
     managed_assets: str | None = None
+    deploy_hash: str = ""
 
     @computed_field
     @property
@@ -830,6 +841,10 @@ class CloudFrontContext(BaseModel):
             project=root.project_name,
             namespace=root.namespace,
         )
+        routes = [RouteContext.from_settings(r) for r in cf.routes]
+        deploy_hash = ""
+        if any(r.is_deploy_hash for r in routes):
+            deploy_hash = _get_deploy_hash()
         return cls(
             name=name,
             region=root.region,
@@ -843,11 +858,29 @@ class CloudFrontContext(BaseModel):
             redirect_from=[
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from
             ],
-            routes=[RouteContext.from_settings(r) for r in cf.routes],
+            routes=routes,
+            deploy_hash=deploy_hash,
             signing_key=cf.signing_key,
             token_secret=cf.token_secret,
             managed_assets=cf.managed_assets,
         )
+
+
+def _get_deploy_hash() -> str:
+    """git の short hash を取得する。DEPLOY_HASH 環境変数があればそちらを優先。"""
+    import subprocess
+
+    env_hash = os.environ.get("DEPLOY_HASH")
+    if env_hash:
+        return env_hash
+    result = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return "unknown"
 
 
 def _build_service_contexts(s: settings.Settings) -> dict:
@@ -930,6 +963,17 @@ class Context(BaseModel):
                 awscontainer_ctx = awscontainer_ctx.model_copy(
                     update={"signing_key_imports": signing_key_imports}
                 )
+
+        # deploy_hash route があれば DEPLOY_HASH を envs に追加
+        deploy_hashes = [
+            cf_ctx.deploy_hash
+            for cf_ctx in cloudfront_ctx.values()
+            if cf_ctx.deploy_hash
+        ]
+        if deploy_hashes:
+            envs = dict(awscontainer_ctx.envs)
+            envs.setdefault("DEPLOY_HASH", deploy_hashes[0])
+            awscontainer_ctx = awscontainer_ctx.model_copy(update={"envs": envs})
 
         return awscontainer_ctx
 

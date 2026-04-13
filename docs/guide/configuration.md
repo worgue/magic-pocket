@@ -809,7 +809,7 @@ domain = "www.example.com"
 origin_path = "/spa"
 routes = [
     { is_default = true, is_spa = true },
-    { path_pattern = "/static/*", ref = "static", is_versioned = true },
+    { path_pattern = "/static/*", ref = "static", versioning = "content_hash" },
 ]
 
 [cloudfront.media]
@@ -896,7 +896,7 @@ CloudFrontのキャッシュ動作ルーティングを定義します。
 domain = "www.example.com"
 routes = [
     { is_default = true, is_spa = true },
-    { path_pattern = "/assets/*", is_versioned = true },
+    { path_pattern = "/assets/*", versioning = "content_hash" },
 ]
 ```
 
@@ -907,7 +907,7 @@ routes = [
 | `path_pattern` | str | `""` | パスパターン |
 | `is_default` | bool | `false` | CloudFront の DefaultCacheBehavior として使用 |
 | `is_spa` | bool | `false` | SPA用の設定（フォールバックHTML対応） |
-| `is_versioned` | bool | `false` | バージョン付きアセット用（長期キャッシュ） |
+| `versioning` | `"content_hash"` \| `"deploy_hash"` \| None | None | バージョニング方式。`content_hash` = ファイル内容ハッシュ (ManifestStaticFilesStorage)、`deploy_hash` = git hash で URL prefix 付与 |
 | `spa_fallback_html` | str | `"index.html"` | SPAフォールバック先のHTML |
 | `versioned_max_age` | int | `31536000` | バージョン付きアセットのmax-age（秒、デフォルト1年） |
 | `ref` | str | `""` | ルートの参照名（Django storage の route で参照） |
@@ -920,11 +920,12 @@ routes = [
 !!! note "制約"
     - `routes` には `is_default = true` のルートが1つ必要です。
     - `is_default = true` のルートは `path_pattern` を空にする必要があります。
-    - `is_spa` と `is_versioned` は同時に `true` にできません。
+    - `is_spa` と `versioning` は同時に設定できません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "lambda"` のルートでは `is_spa`, `is_versioned`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
+    - `type = "lambda"` のルートでは `is_spa`, `versioning`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
     - 旧 `type = "api"` は廃止されました。`type = "lambda"` を使ってください（起動時に分かりやすいエラーが出ます）。
+    - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` を指定する場合は `build_dir` が必須です。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
@@ -948,6 +949,51 @@ routes = [
 
 CloudFront の `DefaultCacheBehavior` が API Gateway オリジンを直接ターゲットにし、`X-Forwarded-Host`
 が付与されるため、Django 側ではカスタムドメインがそのまま `request.get_host()` で取得できます。
+
+### バージョニング（キャッシュバスティング）
+
+`versioning` フィールドで静的アセットのキャッシュバスティング方式を選択できます。
+
+#### `content_hash` — ファイル内容ハッシュ
+
+Django の `ManifestStaticFilesStorage` と組み合わせる方式。`collectstatic` 時にファイル名にハッシュが付与されるため、ファイル名が変わればキャッシュが自然に更新されます。
+
+```toml
+[cloudfront.web]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/app" },
+    { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/static" },
+]
+```
+
+#### `deploy_hash` — デプロイ時 git hash
+
+`ManifestStaticFilesStorage` を使わず、デプロイ時の git hash を URL prefix に付与する方式。manifest 計算が不要で高速、動画など大きなファイルにも適しています。
+
+```toml
+[cloudfront.web]
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
+]
+```
+
+動作:
+
+1. pocket がデプロイ時に `git rev-parse --short HEAD` で hash を取得（`DEPLOY_HASH` 環境変数があればそちらを優先）
+2. Lambda 環境変数 `DEPLOY_HASH` に自動注入
+3. CloudFront Function が自動生成され、`/static/{hash}/foo.js` → `/static/foo.js` に変換してオリジンに転送
+4. CloudFront のキャッシュキーはフル URL (hash 込み) なので、デプロイごとにキャッシュが自然に更新される
+5. `versioned_max_age`（デフォルト 1 年）の長期キャッシュが付与される
+
+Django 側は settings.py に以下を書くだけです:
+
+```python
+DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
+STATIC_URL = f"static/{DEPLOY_HASH}/"
+```
+
+S3 へのアップロードは hash prefix なし（`/static/foo.js`）のまま行います。`collectstatic` は通常の `StaticFilesStorage` で OK です。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 
