@@ -129,7 +129,7 @@ dependencies = [
     { name = "rich" },
 ]
 wheels = [
-    { filename = "magic_pocket-0.1.1-py3-none-any.whl", hash = "sha256:e84ec264250b5b0e1da2e7a297dabc00e6c5efb8f4d4cdaf267e3721e353a49e" },
+    { filename = "magic_pocket-0.1.1-py3-none-any.whl", hash = "sha256:132f91bb6273758f340d6998ab99b7bcf2d032d58bb3d6ce0511ee54c92dded4" },
 ]
 
 [package.optional-dependencies]

@@ -998,13 +998,61 @@ routes = [
 
 `ManifestStaticFilesStorage` を使わず、デプロイ時の git hash を URL prefix に付与する方式。manifest 計算が不要で高速、動画など大きなファイルにも適しています。
 
-```toml
-[cloudfront.web]
-routes = [
-    { type = "lambda", handler = "wsgi", is_default = true },
-    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
-]
-```
+??? example "deploy_hash の完全な pocket.toml 例"
+    ```toml
+    [general]
+    region = "ap-northeast-1"
+    stages = ["sandbox", "prod"]
+    project_name = "myproject"
+
+    [s3]
+
+    [awscontainer]
+    dockerfile_path = "pocket.Dockerfile"
+
+    [awscontainer.handlers.wsgi]
+    command = "pocket.django.lambda_handlers.wsgi_handler"
+    apigateway = {}
+
+    [awscontainer.handlers.management]
+    command = "pocket.django.lambda_handlers.management_command_handler"
+    timeout = 600
+
+    [awscontainer.django.storages]
+    default = { store = "filesystem" }
+    staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
+
+    [awscontainer.secrets]
+    store = "ssm"
+
+    [awscontainer.secrets.managed]
+    SECRET_KEY = { type = "password", options = { length = 50 } }
+
+    [sandbox.cloudfront.web]
+    domain = "sandbox.myproject.example.com"
+    routes = [
+        { type = "lambda", handler = "wsgi", is_default = true },
+        { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
+    ]
+    ```
+
+    Django settings.py:
+
+    ```python
+    import os
+
+    DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
+    STATIC_URL = f"static/{DEPLOY_HASH}/"
+
+    from pocket.django.utils import get_storages
+    STORAGES = get_storages()
+    ```
+
+    デプロイ:
+
+    ```bash
+    pocket django deploy --stage sandbox -y
+    ```
 
 動作:
 
@@ -1019,9 +1067,14 @@ Django 側は settings.py に以下を書くだけです:
 ```python
 DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
 STATIC_URL = f"static/{DEPLOY_HASH}/"
+
+from pocket.django.utils import get_storages
+STORAGES = get_storages()
 ```
 
-S3 へのアップロードは hash prefix なし（`/static/foo.js`）のまま行います。`collectstatic` は通常の `StaticFilesStorage` で OK です。
+`get_storages()` は deploy_hash route を検出し、Lambda 上では自動的に `StaticFilesStorage` を選択します（`STATIC_URL` のパスがそのまま `{% static %}` タグの出力になります）。`deploystatic` 時は S3 backend が使われるため、アップロードは正常に動作します。
+
+S3 へのアップロードは hash prefix なし（`/static/foo.js`）のまま行います。`collectstatic` は通常の `StaticFilesStorage` で OK です（`manifest = true` は不要）。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 

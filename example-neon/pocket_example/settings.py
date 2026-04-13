@@ -76,8 +76,13 @@ TIME_ZONE = "Asia/Tokyo"
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = "static/"
+_DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
+STATIC_URL = f"static/{_DEPLOY_HASH}/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+from pocket.django.utils import get_storages
+
+STORAGES = get_storages()
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
