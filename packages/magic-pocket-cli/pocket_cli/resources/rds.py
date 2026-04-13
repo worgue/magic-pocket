@@ -107,6 +107,8 @@ class Rds:
 
     @property
     def status(self) -> ResourceStatus:
+        if not self.context.managed:
+            return "COMPLETED"
         if self.cluster is None:
             return "NOEXIST"
         cluster_status = self.cluster["Status"]
@@ -120,6 +122,8 @@ class Rds:
 
     @property
     def description(self):
+        if not self.context.managed:
+            return "Reference existing RDS (secret_arn: %s)" % self.context.secret_arn
         return (
             "Create Aurora PostgreSQL Serverless v2 cluster: %s"
             % self.context.cluster_identifier
@@ -161,14 +165,26 @@ class Rds:
         return output[export["vpc_id"]]
 
     def state_info(self):
+        if not self.context.managed:
+            return {
+                "rds": {
+                    "managed": False,
+                    "secret_arn": self.context.secret_arn,
+                    "security_group_id": self.context.security_group_id,
+                }
+            }
         return {
             "rds": {
+                "managed": True,
                 "cluster_identifier": self.context.cluster_identifier,
                 "security_group_id": self.security_group_id,
             }
         }
 
     def deploy_init(self):
+        if not self.context.managed:
+            return
+        assert self.context.vpc
         vpc_stack = Vpc(self.context.vpc).stack
         if not self.context.vpc.manage:
             if vpc_stack.status == "NOEXIST":

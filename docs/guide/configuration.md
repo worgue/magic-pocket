@@ -336,9 +336,12 @@ dockerfile_path = "pocket.Dockerfile"
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU） |
-| `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU） |
-| `snapshot_identifier` | str \| None | None | 初回作成時に復元する Aurora cluster snapshot の ID または ARN |
+| `managed` | bool | `true` | `true` = pocket がクラスタを作成・管理、`false` = 既存クラスタを参照 |
+| `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU）。`managed = true` のみ |
+| `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU）。`managed = true` のみ |
+| `snapshot_identifier` | str \| None | None | 初回作成時に復元する snapshot の ID / ARN。`managed = true` のみ |
+| `secret_arn` | str \| None | None | 既存 RDS の Secrets Manager ARN。`managed = false` 時必須 |
+| `security_group_id` | str \| None | None | 既存 RDS の SG ID。`managed = false` 時必須 |
 
 !!! info "DATABASE_URL の設定"
     `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
@@ -416,6 +419,31 @@ snapshot から復元すると Aurora のマスターパスワードは snapshot
 
 !!! info "VPC / Subnet Group は別物で OK"
     snapshot の元クラスタと、pocket が作る新クラスタの VPC / Subnet Group は **別物で構いません**。`[vpc]` で指定した pocket 管理の VPC にそのまま復元されます。
+
+### 既存 RDS への接続 (`managed = false`)
+
+pocket が作成・管理しない既存の RDS クラスタに Lambda から接続する場合、`managed = false` を指定します。pocket はクラスタの作成・削除を行わず、IAM と SG ingress のみを設定します。
+
+```toml
+[rds]
+managed = false
+secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-db-secret"
+security_group_id = "sg-0123456789abcdef0"
+```
+
+| フィールド | 型 | 必須 | 説明 |
+|---|---|---|---|
+| `managed` | bool | - | `false` で既存参照モード。デフォルト `true` |
+| `secret_arn` | str | `managed=false` 時必須 | RDS の Secrets Manager シークレット ARN。host/port/username/password/dbname を含むこと |
+| `security_group_id` | str | `managed=false` 時必須 | RDS のセキュリティグループ ID。Lambda SG → この SG への ingress が追加される |
+
+!!! info "DATABASE_URL の構築"
+    `managed = false` でも `managed = true` と同じく、Lambda 起動時に `POCKET_RDS_SECRET_ARN` から `DATABASE_URL` が動的に構築されます。`[awscontainer.secrets.managed]` に `DATABASE_URL` を定義する必要はありません（pocket が自動で注入します）。
+
+!!! warning "制約"
+    - `managed = false` では `min_capacity`, `max_capacity`, `snapshot_identifier` は使用できません
+    - `secret_arn` と `security_group_id` は `managed = false` でのみ使用可能です（`managed = true` で指定するとエラー）
+    - VPC 設定 (`[vpc]`) は不要です（Lambda と RDS が同一 VPC にいる前提で、SG ingress のみで接続します）
 
 ---
 
