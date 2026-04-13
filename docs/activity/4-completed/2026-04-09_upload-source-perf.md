@@ -21,15 +21,16 @@
 zip ソース全体をメモリに乗せて `s3.put_object(Body=buf.read())` するため、巨大ソース (例: 19 GB 規模) だと Python プロセスが OOM Kill される (exit 137)。
 
 ## タスクリスト
-- [ ] `os.walk` ベースに書き換え、`dirnames[:] = [...]` で除外ディレクトリを in-place に枝刈り
+- [x] `os.walk` ベースに書き換え、`dirnames[:] = [...]` で除外ディレクトリを in-place に枝刈り
   - PathSpec での判定が「ディレクトリ単位」でも動くか確認（pathspec の `match_file` は末尾スラッシュの扱いに注意）
-- [ ] zip バッファを `tempfile.SpooledTemporaryFile(max_size=...)` に変更し、メモリ閾値を超えたらディスクへ自動フォールバック
-- [ ] `s3.upload_fileobj` でストリーミングアップロードに切り替え（`put_object(Body=read())` をやめる）
-- [ ] テスト追加: 大量ファイルを含む context での walk 時間 / メモリ使用量の回帰防止（簡易的に「除外ディレクトリは stat されない」ことを spy で検証）
-- [ ] ruff / pyright / pytest を通す
+- [x] zip バッファを `tempfile.SpooledTemporaryFile(max_size=...)` に変更し、メモリ閾値を超えたらディスクへ自動フォールバック
+- [x] `s3.upload_fileobj` でストリーミングアップロードに切り替え（`put_object(Body=read())` をやめる）
+- [x] テスト追加: 大量ファイルを含む context での walk 時間 / メモリ使用量の回帰防止（簡易的に「除外ディレクトリは stat されない」ことを spy で検証）
+- [x] ruff / pyright / pytest を通す
 
 ## 次のステップ
 - 利用者から実害が出ていないので優先度 low。手が空いたとき、もしくは他に大規模プロジェクト由来の事故が出たら着手
 
 ## 更新履歴
 - 2026-04-09: 作成（dockerignore フィードバックの関連項目として切り出し）
+- 2026-04-13: 実装完了。rglob → os.walk + dirnames 枝刈り、BytesIO → SpooledTemporaryFile (50MB)、put_object → upload_fileobj に置換。テスト 1 件追加。138 tests pass。
