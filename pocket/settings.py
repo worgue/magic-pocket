@@ -731,8 +731,13 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):
-        if stage not in data["general"]["stages"]:
-            raise ValueError(f"stage {stage} not found in {data['general']['stages']}")
+        stages = data["general"]["stages"]
+        if stage not in stages:
+            raise ValueError(
+                f"ステージ '{stage}' は pocket.toml に定義されていません。\n"
+                f"  定義済みステージ: {stages}\n"
+                f"  --stage オプションまたは POCKET_STAGE 環境変数を確認してください。"
+            )
 
     @classmethod
     def merge_stage_data(cls, stage: str, data: dict):
