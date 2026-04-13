@@ -419,6 +419,31 @@ class CloudFrontStack(Stack):
                 codes[route.yaml_key] = self._generate_spa_fallback_function(route)
         return codes
 
+    def _build_deploy_hash_function_codes(self) -> dict[str, str]:
+        """deploy_hash route 用の hash prefix strip Function コードを生成する"""
+        codes: dict[str, str] = {}
+        deploy_hash = self.context.deploy_hash
+        if not deploy_hash:
+            return codes
+        for route in self.context.routes:
+            if not route.is_deploy_hash:
+                continue
+            code = (
+                "function handler(event) {\n"
+                "    var request = event.request;\n"
+                '    request.uri = request.uri.replace("/%s/", "/");\n'
+                "    return request;\n"
+                "}" % deploy_hash
+            )
+            lines = []
+            for i, line in enumerate(code.splitlines()):
+                if i == 0:
+                    lines.append(line)
+                else:
+                    lines.append(" " * 8 + line)
+            codes[route.yaml_key] = "\n".join(lines)
+        return codes
+
     def _generate_spa_fallback_function(self, route) -> str:  # type: ignore
         """SPA URL フォールバック用 CloudFront Function コードを生成する"""
         fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
@@ -485,6 +510,7 @@ class CloudFrontStack(Stack):
         resolved_api_origins = self._resolve_api_origins()
         acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
         function_codes = self._build_function_codes()
+        deploy_hash_function_codes = self._build_deploy_hash_function_codes()
         api_host_function_code = ""
         if self.context.has_lambda_route:
             api_host_function_code = self._generate_api_host_function()
@@ -506,6 +532,7 @@ class CloudFrontStack(Stack):
             acm_certificate_arn=acm_certificate_arn,
             acm_redirect_arns=acm_redirect_arns,
             function_codes=function_codes,
+            deploy_hash_function_codes=deploy_hash_function_codes,
             api_host_function_code=api_host_function_code,
             has_token_kvs=self._has_token_kvs,
             **context_data,

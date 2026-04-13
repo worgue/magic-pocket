@@ -8,5 +8,5 @@ stages = ["dev"]
 [cloudfront.web]
 routes = [
     { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
-    { path_pattern = "/static/*", is_versioned = true, origin_path = "/web" },
+    { path_pattern = "/static/*", versioning = "content_hash", origin_path = "/web" },
 ]

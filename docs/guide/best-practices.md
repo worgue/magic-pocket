@@ -60,7 +60,7 @@ staticfiles = { store = "s3", distribution = "web", route = "static", static = t
 [cloudfront.web]
 routes = [
     { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
-    { path_pattern = "/static/*", ref = "static", is_versioned = true, origin_path = "/web" },
+    { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
     { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
 
@@ -108,7 +108,7 @@ domain = "media.example.com"
 :   Vite / SvelteKit 等の `public/` (`static/`) に置いたファイルはビルドを通らずファイル名にハッシュが付きません。
     CloudFront やブラウザのキャッシュが残り、画像を差し替えても古い内容が表示される原因になります。
     画像・フォントなどの静的アセットは `src/` 配下に置き、`import` や `import.meta.glob` 経由で参照してください。
-    ビルド時に自動でハッシュ付きファイル名が生成され、`is_versioned` route の長期キャッシュと安全に共存できます。
+    ビルド時に自動でハッシュ付きファイル名が生成され、`versioning` route の長期キャッシュと安全に共存できます。
 
 **staticfiles は `pocket django deploystatic` で管理**
 :   Django の静的ファイル（admin CSS 等）はローカルで `collectstatic` → S3 アップロードする仕組みです。
@@ -171,7 +171,7 @@ SPA_TOKEN_SECRET = { type = "spa_token_secret" }
 token_secret = "SPA_TOKEN_SECRET"
 routes = [
     { is_default = true, is_spa = true, require_token = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
-    { path_pattern = "/static/*", ref = "static", is_versioned = true, origin_path = "/web" },
+    { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
     { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
 ```

@@ -38,18 +38,19 @@ Route の `is_versioned: bool` を `versioning: Literal["content_hash", "deploy_
 7. CloudFront のキャッシュキーはフル URL (hash 込み) → デプロイごとにキャッシュ自然更新
 
 ## タスクリスト
-- [ ] `pocket/settings.py`: Route に `versioning` フィールド追加、`is_versioned` を deprecation 扱い（pre-validator で `versioning = "content_hash"` に変換）
-- [ ] `pocket/context.py`: RouteContext に `versioning` を反映、deploy_hash 用の computed fields
-- [ ] `cloudfront.yaml`: deploy_hash route に CF Function (hash prefix strip) を生成するテンプレート追加
-- [ ] `cloudformation.py` / deploy 時: git hash 取得 → `DEPLOY_HASH` 環境変数として awscontainer に注入
-- [ ] `awscontainer.yaml`: `DEPLOY_HASH` 環境変数を Lambda に渡す
-- [ ] `pocket/django/runtime.py` or docs: Django settings での `DEPLOY_HASH` → `STATIC_URL` の利用ガイド
-- [ ] テスト: settings バリデーション、CF Function レンダリング、deploy_hash 注入のテスト
-- [ ] `docs/guide/configuration.md`: `versioning` フィールドの説明、`deploy_hash` 方式のサンプルと動作解説
-- [ ] ruff / pyright / pytest
+- [x] `pocket/settings.py`: Route に `versioning` フィールド追加、`is_versioned` を deprecation 扱い（pre-validator で `versioning = "content_hash"` に変換）
+- [x] `pocket/context.py`: RouteContext に `versioning` を反映、deploy_hash 用の computed fields
+- [x] `cloudfront.yaml`: deploy_hash route に CF Function (hash prefix strip) を生成するテンプレート追加
+- [x] `cloudformation.py` / deploy 時: git hash 取得 → `DEPLOY_HASH` 環境変数として awscontainer に注入
+- [x] `awscontainer.yaml`: `DEPLOY_HASH` 環境変数を Lambda に渡す
+- [x] `pocket/django/runtime.py` or docs: Django settings での `DEPLOY_HASH` → `STATIC_URL` の利用ガイド
+- [x] テスト: settings バリデーション、CF Function レンダリング、deploy_hash 注入のテスト
+- [x] `docs/guide/configuration.md`: `versioning` フィールドの説明、`deploy_hash` 方式のサンプルと動作解説
+- [x] ruff / pyright / pytest
 
 ## 次のステップ
 - 設計の詳細詰め（CF Function のコード、DEPLOY_HASH 注入タイミング、is_versioned との併用制約）→ 実装着手
 
 ## 更新履歴
 - 2026-04-12: 作成（フィードバック #20260412-signage-static-versioning-deploy-hash への対応として）
+- 2026-04-12: 実装完了。is_versioned を廃止し versioning フィールドに統一 (content_hash / deploy_hash)。deploy_hash 用 CF Function (パターン C: hash 完全一致 replace) を生成。DEPLOY_HASH 環境変数を自動注入 (git hash or 環境変数)。テスト 7 件追加、docs 全面更新。131 tests pass, ruff/pyright clean。
