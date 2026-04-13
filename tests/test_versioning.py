@@ -105,6 +105,34 @@ def test_deploy_hash_cf_function_rendering(use_toml):
     assert "ResponseHeadersPolicyStatic" in yaml
 
 
+def test_deploy_hash_storage_backend():
+    """deploy_hash route の storage は StaticFilesStorage を返すこと"""
+    from pocket.django.context import DjangoStorageContext
+
+    ctx = DjangoStorageContext(
+        store="s3",
+        static=True,
+        distribution="web",
+        route="static",
+        deploy_hash=True,
+    )
+    assert ctx.backend == "django.contrib.staticfiles.storage.StaticFilesStorage"
+
+
+def test_content_hash_storage_backend():
+    """deploy_hash なしの S3 static storage は CloudFrontS3StaticStorage"""
+    from pocket.django.context import DjangoStorageContext
+
+    ctx = DjangoStorageContext(
+        store="s3",
+        static=True,
+        distribution="web",
+        route="static",
+        deploy_hash=False,
+    )
+    assert ctx.backend == "pocket.django.storages.CloudFrontS3StaticStorage"
+
+
 @mock_aws
 def test_content_hash_no_deploy_hash_function(use_toml):
     """content_hash route では DeployHashStripFunction は生成されないこと"""
