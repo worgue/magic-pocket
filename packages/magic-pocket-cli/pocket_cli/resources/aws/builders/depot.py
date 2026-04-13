@@ -71,6 +71,10 @@ class DepotBuilder:
         ):
             if key in os.environ:
                 env[key] = os.environ[key]
+        # DEPOT_ prefix の環境変数を一括 passthrough
+        for key, value in os.environ.items():
+            if key.startswith("DEPOT_") and key not in env:
+                env[key] = value
         if self.project_id:
             env["DEPOT_PROJECT_ID"] = self.project_id
         subprocess.run(cmd, check=True, env=env)
