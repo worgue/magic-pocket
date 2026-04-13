@@ -291,17 +291,48 @@ class Dsql(BaseModel):
 
 
 class Rds(BaseModel):
+    managed: bool = True
     vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
-    """初回作成時に指定されていれば、この snapshot/arn から Aurora クラスタを復元する。
+    # managed = false (既存参照モード) 用フィールド
+    secret_arn: str | None = None
+    security_group_id: str | None = None
 
-    - Aurora cluster snapshot の ID または ARN を指定可能
-    - クラスタが既に存在する場合は無視される (drift 防止)
-    - 復元後、pocket が ModifyDBCluster で ManageMasterUserPassword=True に
-      切り替えるため、DATABASE_URL は引き続き AWS 管理シークレットから組み立てられる
-    """
+    @model_validator(mode="after")
+    def check_managed_mode(self):
+        unmanaged_fields = {
+            "secret_arn": self.secret_arn,
+            "security_group_id": self.security_group_id,
+        }
+        has_unmanaged = any(v is not None for v in unmanaged_fields.values())
+        managed_fields = {
+            "min_capacity (非デフォルト)": self.min_capacity != 0.5,
+            "max_capacity (非デフォルト)": self.max_capacity != 2.0,
+            "snapshot_identifier": self.snapshot_identifier is not None,
+        }
+        has_managed_custom = any(managed_fields.values())
+
+        if self.managed and has_unmanaged:
+            set_fields = [k for k, v in unmanaged_fields.items() if v is not None]
+            raise ValueError(
+                f"{', '.join(set_fields)} は managed = false でのみ使用できます。"
+                " 既存の RDS を参照する場合は managed = false を指定してください。"
+            )
+        if not self.managed:
+            if self.secret_arn is None:
+                raise ValueError("managed = false の場合、secret_arn は必須です。")
+            if self.security_group_id is None:
+                raise ValueError(
+                    "managed = false の場合、security_group_id は必須です。"
+                )
+            if has_managed_custom:
+                set_fields = [k for k, v in managed_fields.items() if v]
+                raise ValueError(
+                    f"managed = false では {', '.join(set_fields)} は 使用できません。"
+                )
+        return self
 
 
 class Ses(BaseSettings):

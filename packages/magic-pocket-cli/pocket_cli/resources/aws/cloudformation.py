@@ -567,6 +567,16 @@ class ContainerStack(Stack):
         """RDS の接続情報を動的に取得"""
         if self._rds_context is None:
             return {}
+        # managed = false: 接続情報は context に直接入っている
+        if not self._rds_context.managed:
+            return {
+                "rds_security_group_id": self._rds_context.security_group_id,
+                "rds_secret_arn": self._rds_context.secret_arn,
+                "rds_kms_key_id": None,
+                "rds_endpoint": None,
+                "rds_port": None,
+                "rds_dbname": None,
+            }
         from pocket_cli.resources.rds import Rds
 
         rds = Rds(self._rds_context)
