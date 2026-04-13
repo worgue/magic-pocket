@@ -60,6 +60,45 @@ node_modules/
     assert should_include("src/main.py", spec)
 
 
+def test_os_walk_prunes_excluded_directories(tmp_path):
+    """os.walk での枝刈りが正しく動作すること (rglob の代替検証)"""
+    import os
+
+    # 構造: src/main.py, node_modules/pkg/index.js, .git/HEAD
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "main.py").write_text("print()")
+    (tmp_path / "node_modules" / "pkg").mkdir(parents=True)
+    (tmp_path / "node_modules" / "pkg" / "index.js").write_text("x")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "HEAD").write_text("ref")
+    _write(tmp_path, "node_modules\n.git\n")
+    spec = load_dockerignore(tmp_path)
+
+    walked_dirs: list[str] = []
+    included_files: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(tmp_path):
+        rel_dir = os.path.relpath(dirpath, tmp_path)
+        if rel_dir == ".":
+            rel_dir = ""
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if should_include(os.path.join(rel_dir, d) if rel_dir else d, spec)
+        ]
+        walked_dirs.append(rel_dir)
+        for f in filenames:
+            rel = os.path.join(rel_dir, f) if rel_dir else f
+            if should_include(rel, spec):
+                included_files.append(rel)
+    # node_modules と .git は walk されていないこと
+    assert "node_modules" not in walked_dirs
+    assert ".git" not in walked_dirs
+    assert "src" in walked_dirs
+    assert "src/main.py" in included_files
+    assert all("node_modules" not in f for f in included_files)
+    assert all(".git" not in f for f in included_files)
+
+
 def test_default_excludes_when_no_dockerignore(tmp_path):
     """`.dockerignore` が無い場合はデフォルト除外が適用されること。"""
     spec = load_dockerignore(tmp_path)

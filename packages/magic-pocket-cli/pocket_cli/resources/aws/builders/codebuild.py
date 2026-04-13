@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import time
@@ -264,28 +263,37 @@ class CodeBuildBuilder:
     # --- ソースアップロード ---
 
     def _upload_source(self, dockerfile_path: str) -> None:
+        import tempfile
+
         print("  ソースをS3にアップロード中...")
-        # Dockerfileの親ディレクトリを基準にコンテキスト決定
         context_dir = Path(".").resolve()
         spec = load_dockerignore(context_dir)
 
-        buf = io.BytesIO()
+        # SpooledTemporaryFile: 50MB までメモリ、超えたらディスクへ自動退避
+        buf = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024)
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for path in sorted(context_dir.rglob("*")):
-                if path.is_dir():
-                    continue
-                rel = str(path.relative_to(context_dir))
-                if not should_include(rel, spec):
-                    continue
-                zf.write(path, rel)
+            # os.walk でディレクトリ単位の枝刈り (rglob より高速)
+            for dirpath, dirnames, filenames in os.walk(context_dir):
+                rel_dir = os.path.relpath(dirpath, context_dir)
+                if rel_dir == ".":
+                    rel_dir = ""
+                # 除外ディレクトリを in-place で枝刈り
+                dirnames[:] = sorted(
+                    d
+                    for d in dirnames
+                    if should_include(os.path.join(rel_dir, d) if rel_dir else d, spec)
+                )
+                for filename in sorted(filenames):
+                    rel = os.path.join(rel_dir, filename) if rel_dir else filename
+                    if not should_include(rel, spec):
+                        continue
+                    zf.write(os.path.join(dirpath, filename), rel)
 
-        buf.seek(0)
-        self.s3.put_object(
-            Bucket=self.state_bucket,
-            Key=self._source_key,
-            Body=buf.read(),
-        )
         zip_size_mb = buf.tell() / (1024 * 1024)
+        buf.seek(0)
+        # upload_fileobj でストリーミングアップロード
+        self.s3.upload_fileobj(buf, self.state_bucket, self._source_key)
+        buf.close()
         print("  アップロード完了 (%.1f MB)" % zip_size_mb)
 
     # --- ビルド実行 ---
