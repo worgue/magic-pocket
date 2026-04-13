@@ -20,7 +20,16 @@ from pocket_cli.cli import (
 )
 
 
-@click.group()
+class PocketCLI(click.Group):
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except ValueError as e:
+            click.echo(f"エラー: {e}", err=True)
+            ctx.exit(1)
+
+
+@click.group(cls=PocketCLI)
 def main():
     pass
 
@@ -29,6 +38,26 @@ def main():
 def version():
     """Print the version number."""
     click.echo(__version__)
+
+
+@main.command()
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+def context(stage):
+    """Context を JSON で出力する（AWS API 呼び出しを伴う）。"""
+    from pocket.context import Context
+
+    ctx = Context.from_toml(stage=stage)
+    print(ctx.model_dump_json(indent=2))
+
+
+@main.command()
+@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+def settings(stage):
+    """Settings を JSON で出力する（pocket.toml のみ、AWS 不要）。"""
+    from pocket.settings import Settings
+
+    s = Settings.from_toml(stage=stage)
+    print(s.model_dump_json(indent=2))
 
 
 main.add_command(deploy_cli.deploy)
