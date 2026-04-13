@@ -130,6 +130,100 @@ def test_rds_snapshot_identifier_default_none():
     assert settings.rds.snapshot_identifier is None
 
 
+def test_rds_unmanaged_mode():
+    """managed = false で secret_arn / security_group_id を指定できること"""
+    settings = Settings.model_validate(
+        {
+            "stage": "dev",
+            "general": {
+                "region": "ap-northeast-1",
+                "project_name": "testprj",
+                "stages": ["dev"],
+            },
+            "rds": {
+                "managed": False,
+                "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:my-db",
+                "security_group_id": "sg-0123456789abcdef0",
+            },
+            "awscontainer": {
+                "dockerfile_path": "Dockerfile",
+            },
+        }
+    )
+    assert settings.rds is not None
+    assert not settings.rds.managed
+    assert settings.rds.secret_arn is not None
+    assert settings.rds.security_group_id is not None
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert not context.rds.managed
+    assert context.rds.secret_arn == settings.rds.secret_arn
+    assert context.rds.security_group_id == settings.rds.security_group_id
+    assert context.rds.vpc is None
+
+
+def test_rds_unmanaged_requires_managed_false():
+    """secret_arn 指定時に managed = false がないとエラー"""
+    with pytest.raises(ValueError, match="managed = false"):
+        Settings.model_validate(
+            {
+                "stage": "dev",
+                "general": {
+                    "region": "ap-northeast-1",
+                    "project_name": "testprj",
+                    "stages": ["dev"],
+                },
+                "rds": {
+                    "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:x",
+                    "security_group_id": "sg-xxx",
+                },
+                "awscontainer": {"dockerfile_path": "Dockerfile"},
+            }
+        )
+
+
+def test_rds_unmanaged_rejects_managed_fields():
+    """managed = false で作成系オプションはエラー"""
+    with pytest.raises(ValueError, match="managed = false では"):
+        Settings.model_validate(
+            {
+                "stage": "dev",
+                "general": {
+                    "region": "ap-northeast-1",
+                    "project_name": "testprj",
+                    "stages": ["dev"],
+                },
+                "rds": {
+                    "managed": False,
+                    "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:x",
+                    "security_group_id": "sg-xxx",
+                    "min_capacity": 1.0,
+                },
+                "awscontainer": {"dockerfile_path": "Dockerfile"},
+            }
+        )
+
+
+def test_rds_unmanaged_requires_secret_arn():
+    """managed = false で secret_arn 必須"""
+    with pytest.raises(ValueError, match="secret_arn は必須"):
+        Settings.model_validate(
+            {
+                "stage": "dev",
+                "general": {
+                    "region": "ap-northeast-1",
+                    "project_name": "testprj",
+                    "stages": ["dev"],
+                },
+                "rds": {
+                    "managed": False,
+                    "security_group_id": "sg-xxx",
+                },
+                "awscontainer": {"dockerfile_path": "Dockerfile"},
+            }
+        )
+
+
 def test_rds_custom_capacity():
     """カスタム min/max capacity の設定"""
     settings = Settings.model_validate(

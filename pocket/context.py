@@ -446,21 +446,32 @@ class DsqlContext(BaseModel):
 
 
 class RdsContext(BaseModel):
-    vpc: VpcContext
+    managed: bool = True
+    vpc: VpcContext | None = None
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
     region: str
-    cluster_identifier: str
-    instance_identifier: str
-    database_name: str
+    cluster_identifier: str = ""
+    instance_identifier: str = ""
+    database_name: str = ""
     master_username: str = "postgres"
-    subnet_group_name: str
-    security_group_name: str
-    slug: str
+    subnet_group_name: str = ""
+    security_group_name: str = ""
+    slug: str = ""
+    # managed = false 用
+    secret_arn: str | None = None
+    security_group_id: str | None = None
 
     @classmethod
     def from_settings(cls, rds: settings.Rds, root: settings.Settings) -> RdsContext:
+        if not rds.managed:
+            return cls(
+                managed=False,
+                region=root.region,
+                secret_arn=rds.secret_arn,
+                security_group_id=rds.security_group_id,
+            )
         assert rds.vpc, "rds.vpc must be resolved by resolve_vpc"
         vpc_ctx = VpcContext.from_settings(rds.vpc, root.general)
         resource_prefix = root.prefix_template.format(
