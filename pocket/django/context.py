@@ -7,6 +7,11 @@ from pydantic import BaseModel
 
 from . import settings
 
+_STATIC_FILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
+_MANIFEST_STATIC_FILES_STORAGE = (
+    "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+)
+
 
 class DjangoStorageContext(BaseModel):
     store: Literal["s3", "filesystem"]
@@ -16,29 +21,40 @@ class DjangoStorageContext(BaseModel):
     options: dict[str, Any] = {}
     distribution: str | None = None
     route: str | None = None
+    deploy_hash: bool = False
 
     @property
     def backend(self):
+        # deploy_hash: STATIC_URL ベースで URL を生成
+        if self.deploy_hash and self.static:
+            return _STATIC_FILES_STORAGE
         if self.store == "s3":
-            if self.distribution:
-                if self.static and self.manifest:
-                    return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
-                if self.static:
-                    return "pocket.django.storages.CloudFrontS3StaticStorage"
-                return "pocket.django.storages.CloudFrontS3Boto3Storage"
-            else:
-                if self.static and self.manifest:
-                    return "storages.backends.s3boto3.S3ManifestStaticStorage"
-                if self.static:
-                    return "storages.backends.s3boto3.S3StaticStorage"
-                return "storages.backends.s3boto3.S3Boto3Storage"
-        elif self.store == "filesystem":
-            if self.static and self.manifest:
-                return "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
-            if self.static:
-                return "django.contrib.staticfiles.storage.StaticFilesStorage"
-            return "django.core.files.storage.FileSystemStorage"
+            return self._s3_backend
+        if self.store == "filesystem":
+            return self._filesystem_backend
         raise ValueError("Unknown store")
+
+    @property
+    def _s3_backend(self) -> str:
+        if self.distribution:
+            if self.static and self.manifest:
+                return "pocket.django.storages.CloudFrontS3ManifestStaticStorage"
+            if self.static:
+                return "pocket.django.storages.CloudFrontS3StaticStorage"
+            return "pocket.django.storages.CloudFrontS3Boto3Storage"
+        if self.static and self.manifest:
+            return "storages.backends.s3boto3.S3ManifestStaticStorage"
+        if self.static:
+            return "storages.backends.s3boto3.S3StaticStorage"
+        return "storages.backends.s3boto3.S3Boto3Storage"
+
+    @property
+    def _filesystem_backend(self) -> str:
+        if self.static and self.manifest:
+            return _MANIFEST_STATIC_FILES_STORAGE
+        if self.static:
+            return _STATIC_FILES_STORAGE
+        return "django.core.files.storage.FileSystemStorage"
 
     @classmethod
     def from_settings(
@@ -60,6 +76,15 @@ class DjangoStorageContext(BaseModel):
                         "route ref '%s' not found in cloudfront.%s"
                         % (storage.route, storage.distribution)
                     )
+        # route の versioning が deploy_hash かどうかを判定
+        is_deploy_hash = False
+        if storage.distribution and storage.route and cloudfront_distributions:
+            cf = cloudfront_distributions.get(storage.distribution)
+            if cf:
+                for r in cf.routes:
+                    if r.ref == storage.route and r.versioning == "deploy_hash":
+                        is_deploy_hash = True
+                        break
         return cls(
             store=storage.store,
             location=storage.location,
@@ -68,6 +93,7 @@ class DjangoStorageContext(BaseModel):
             options=storage.options,
             distribution=storage.distribution,
             route=storage.route,
+            deploy_hash=is_deploy_hash,
         )
 
 
