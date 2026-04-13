@@ -139,6 +139,10 @@ def get_storages(*, stage: str | None = None) -> dict:
             storages[key] = {"BACKEND": backend, "OPTIONS": {"location": location}}
             continue
         storages[key] = {"BACKEND": storage.backend}
+        # deploy_hash の staticfiles は StaticFilesStorage なので
+        # S3 用 OPTIONS (bucket_name 等) を渡してはいけない
+        if storage.deploy_hash and storage.static:
+            continue
         options = _build_storage_options(storage, context, general_context)
         if options is not None:
             storages[key]["OPTIONS"] = options
@@ -152,6 +156,25 @@ def get_storages(*, stage: str | None = None) -> dict:
 def get_static_storage(*, stage: str | None = None):
     storages = get_storages(stage=stage)
     return storages["staticfiles"]  # must be available
+
+
+def get_static_storage_s3_options(*, stage: str | None = None) -> dict:
+    """staticfiles の S3 アップロード先情報を返す。
+
+    deploy_hash モードでは get_storages() が StaticFilesStorage を返すため
+    bucket_name 等が含まれない。この関数は storage 設定の原情報から
+    S3 の bucket_name / location を常に取得する (deploystatic 用)。
+    """
+    stage = stage or os.environ.get("POCKET_STAGE")
+    general_context, context = _get_django_context_for_storages(stage)
+    django_context = _resolve_storage_django_context(general_context, context)
+    storage = django_context.storages.get("staticfiles")
+    if not storage or storage.store != "s3":
+        raise ValueError("deploystatic requires staticfiles with store = 's3'")
+    options = _build_storage_options(storage, context, general_context)
+    if options is None:
+        raise ValueError("Failed to build S3 options for staticfiles")
+    return options
 
 
 def get_email_backend(*, stage: str | None = None) -> dict[str, Any]:
