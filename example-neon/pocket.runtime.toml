@@ -22,6 +22,17 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
+[awscontainer.django.storages]
+
+[awscontainer.django.storages.default]
+store = "filesystem"
+
+[awscontainer.django.storages.staticfiles]
+store = "s3"
+static = true
+distribution = "web"
+route = "static"
+
 [awscontainer.secrets]
 store = "ssm"
 
@@ -46,5 +57,5 @@ type = "neon_database_url"
 domain = "sandbox.magic-pocket.example.com"
 routes = [
     { type = "lambda", handler = "wsgi", is_default = true },
-    { path_pattern = "/static/*", versioning = "deploy_hash", origin_path = "/static" },
+    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
 ]

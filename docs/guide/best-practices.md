@@ -116,6 +116,16 @@ domain = "media.example.com"
     `distribution = "web"` と `route = "static"` を指定することで、CloudFront 経由（`example.com/static/...`）で配信されます。
     S3 上の location（`web/static`）は route の `origin_path` と `path_pattern` から自動計算されるため、`location` の手動指定は不要です。
 
+**Lambda 上の staticfiles Storage は S3 backend を使う**
+:   `versioning = "deploy_hash"` の場合のみ Lambda 上で `StaticFilesStorage` を使い、
+    それ以外では `CloudFrontS3StaticStorage` 等の S3 backend を使います。
+    理論上、`manifest = false` かつ `signed = false` なら S3 backend は URL 生成に不要
+    （`StaticFilesStorage` + `STATIC_URL` で同じ URL が出る）ですが、
+    S3 backend を外すとユーザーに `STATIC_URL` の明示設定を要求することになるため、
+    deploy_hash 以外では S3 backend を利用しています。
+    S3 backend が Lambda 上で必須なのは `manifest = true`（S3 上の manifest を読む）と
+    `signed = true`（署名付き URL を生成する）の 2 ケースです。
+
 **メディアを別 CloudFront + 署名付き URL で保護**
 :   ユーザーがアップロードした画像・ファイル等は `media.example.com` 経由で配信します。
     `signing_key` による署名付き URL により、Django が生成した URL でのみアクセス可能です。

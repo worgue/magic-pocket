@@ -13,7 +13,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from pocket.context import Context
 from pocket.django import django_installed
-from pocket.django.utils import get_static_storage, get_storages
+from pocket.django.utils import get_storages
 from pocket.utils import echo
 from pocket_cli.resources.awscontainer import AwsContainer
 
@@ -135,16 +135,21 @@ def get_deploystatic_local_storage(stage: str):
     if "staticfiles" not in stage_storages:
         raise Exception("staticfiles storage not found in the stage %s" % stage)
     storage = stage_storages["staticfiles"]
-    if storage["BACKEND"] in [
+    _SFS = "django.contrib.staticfiles.storage.StaticFilesStorage"
+    _MSFS = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+    if storage["BACKEND"] in [_SFS, _MSFS]:
+        # deploy_hash モード等で既にローカル backend が返されている
+        local_backend = storage["BACKEND"]
+    elif storage["BACKEND"] in [
         "storages.backends.s3boto3.S3StaticStorage",
         "pocket.django.storages.CloudFrontS3StaticStorage",
     ]:
-        local_backend = "django.contrib.staticfiles.storage.StaticFilesStorage"
+        local_backend = _SFS
     elif storage["BACKEND"] in [
         "storages.backends.s3boto3.S3ManifestStaticStorage",
         "pocket.django.storages.CloudFrontS3ManifestStaticStorage",
     ]:
-        local_backend = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+        local_backend = _MSFS
     else:
         raise DeploystaticConfigError(
             "BACKEND %s is not supported" % storage["BACKEND"]
@@ -179,10 +184,12 @@ def clear_staticfiles_override_env():
 
 
 def upload_collected_staticfiles(stage: str):
-    storage = get_static_storage(stage=stage)
+    from pocket.django.utils import get_static_storage_s3_options
+
+    s3_options = get_static_storage_s3_options(stage=stage)
     local_storage = get_deploystatic_local_storage(stage)
-    s3_bucket_name = storage["OPTIONS"]["bucket_name"]
-    s3_location = storage["OPTIONS"]["location"]
+    s3_bucket_name = s3_options["bucket_name"]
+    s3_location = s3_options["location"]
     echo.info("Bucket: %s" % s3_bucket_name)
     echo.info("Location: %s" % s3_location)
     echo.info("Uploading static files...")
