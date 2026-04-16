@@ -176,6 +176,54 @@ pocket_call_command("my_command", force_sqs=True)
 
 ---
 
+## 公開 PDF / ファイルのダウンロード（非署名 URL）
+
+ユーザー生成の PDF などを、署名なしの固定 URL で公開配信するユースケースです。サイネージで生成した PDF を QR コード経由でスマホにダウンロードさせる、といった用途に使えます。
+
+### 構成
+
+```toml
+[cloudfront.web]
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+    # 公開ダウンロード用 route (signed なし)
+    { path_pattern = "/downloads/*", ref = "downloads", origin_path = "/downloads" },
+]
+
+[awscontainer.django.storages]
+default = { store = "s3" }
+downloads = { store = "s3", distribution = "web", route = "downloads" }
+```
+
+### Django コード
+
+```python
+from django.core.files.base import ContentFile
+from django.core.files.storage import storages
+
+pdf_storage = storages["downloads"]
+pdf_storage.save("session-abc123.pdf", ContentFile(pdf_bytes))
+url = pdf_storage.url("session-abc123.pdf")
+# -> "https://example.com/downloads/session-abc123.pdf"
+```
+
+### 動作
+
+- S3 バケットは PublicAccessBlock で完全ブロックのまま、変更不要
+- CloudFront の OAC で bucket policy が自動設定され、`/downloads/*` を公開配信
+- `signed = false` のため `CloudFrontS3Boto3Storage` は**非署名 URL** を返す
+- URL の推測を防ぐには、ファイル名に UUID や十分なエントロピーの ID を含める
+
+### 署名付き（`signed = true`）との違い
+
+| 項目 | `signed = false` （本セクション） | `signed = true` |
+|---|---|---|
+| URL | 固定（QR やメール埋め込み可） | 有効期限付き、発行ごとに変わる |
+| URL を知る = アクセス可 | Yes | No（期限切れれば不可） |
+| 用途 | 公開 PDF、OGP 画像など | ユーザープライベートファイル |
+
+---
+
 ## ステージ別ファイル配信 (managed_assets)
 
 `favicon.ico` や `robots.txt` など、ステージごとに異なる内容を返したいファイルを Django view 経由で配信できます。
