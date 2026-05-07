@@ -591,10 +591,18 @@ class S3CorsContext(BaseModel):
     cloudfront_names: list[str]
 
 
+class S3LifecycleRuleContext(BaseModel):
+    id: str
+    prefix: str
+    noncurrent_version_expiration_days: int
+
+
 class S3Context(BaseModel):
     region: str
     bucket_name: str
     cors: S3CorsContext | None = None
+    versioning: bool = False
+    lifecycle_rules: list[S3LifecycleRuleContext] = []
 
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
@@ -614,10 +622,20 @@ class S3Context(BaseModel):
                 methods=s3.cors.methods,
                 cloudfront_names=cf_names,
             )
+        lifecycle_ctxs = [
+            S3LifecycleRuleContext(
+                id=rule.id,
+                prefix=rule.prefix,
+                noncurrent_version_expiration_days=rule.noncurrent_version_expiration_days,
+            )
+            for rule in s3.lifecycle_rules
+        ]
         return cls(
             region=root.region,
             bucket_name=s3.bucket_name_format.format(**format_vars),
             cors=cors_ctx,
+            versioning=s3.versioning,
+            lifecycle_rules=lifecycle_ctxs,
         )
 
 

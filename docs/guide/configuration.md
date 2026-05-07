@@ -168,6 +168,8 @@ S3バケットの設定です。
 |-----------|------|----------|------|
 | `bucket_name_format` | str | `"{stage}-{project}-{namespace}"` | バケット名のフォーマット |
 | `cors` | S3Cors \| None | None | CORS 設定（下記参照） |
+| `versioning` | bool | `false` | バケット versioning を有効化する（下記参照） |
+| `lifecycle_rules` | list[S3LifecycleRule] | `[]` | Lifecycle ルール（下記参照） |
 
 `bucket_name_format` で使える変数:
 
@@ -209,6 +211,79 @@ cors = { methods = ["PUT", "GET"], cloudfront = "web" }
     [s3]
     cors = { methods = ["PUT", "GET"], cloudfront = ["web", "media"] }
     ```
+
+!!! note "宣言的に管理されます"
+    `cors` を宣言しない場合、pocket は既存の bucket CORS 設定を**削除**します (`DeleteBucketCors`)。pocket 管理外で手動設定した CORS ルールも次回の `pocket resource s3 create` で削除されるため、手動ルールを残したい場合は toml に取り込んで宣言してください。
+
+### versioning
+
+`versioning = true` で S3 バケットの versioning を有効化します。`pocket resource s3 create` (再実行可能) で既存バケットにも冪等に適用されます。
+
+```toml
+[s3]
+versioning = true
+```
+
+| 設定 | 動作 |
+|------|------|
+| `versioning = true` | `Enabled` に揃える (既に Enabled なら no-op) |
+| `versioning = false` (デフォルト) | 現状が `Enabled` のときのみ `Suspended` に揃える。それ以外 (未設定 / `Suspended`) は no-op |
+
+!!! warning "Suspended は完全な無効化ではない"
+    S3 の仕様上、一度 `Enabled` にしたバケットは「未設定」状態には戻れず、`Suspended` までしか戻せません。`versioning = false` で `Suspended` に切り替えても、既に作成された旧バージョンオブジェクトは保持されます (lifecycle で消すか手動削除してください)。
+
+!!! note "宣言的に管理されます"
+    pocket は toml で宣言された `versioning` の値を bucket の真実 (source of truth) として扱います。pocket 管理外で手動変更した versioning 状態は、次回の `pocket resource s3 create` 実行時に toml の宣言で上書きされます。
+
+### lifecycle_rules
+
+Non-current version expiration を中心とした S3 Lifecycle ルールを宣言できます。`pocket resource s3 create` で冪等に reconcile されます。
+
+```toml
+[[s3.lifecycle_rules]]
+id = "expire-non-current-static"
+prefix = "static/"
+noncurrent_version_expiration_days = 1
+
+[[s3.lifecycle_rules]]
+id = "expire-non-current-media"
+prefix = "media/"
+noncurrent_version_expiration_days = 1
+```
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `id` | str | ルール ID（バケット内で一意） |
+| `prefix` | str | 適用対象の prefix（`""` で全オブジェクト） |
+| `noncurrent_version_expiration_days` | int (≥1) | 旧バージョンを期限切れにするまでの日数 |
+
+| 設定 | 動作 |
+|------|------|
+| `[[s3.lifecycle_rules]]` を 1 件以上宣言 | 宣言したルール群でバケットの Lifecycle 設定を**置き換え** (`PutBucketLifecycleConfiguration`) |
+| 宣言なし (デフォルト) | 既存の Lifecycle 設定を**削除** (`DeleteBucketLifecycle`) |
+
+!!! note "宣言的に管理されます"
+    pocket は toml で宣言された `lifecycle_rules` の内容を bucket の真実として扱います。pocket 管理外で手動追加した Lifecycle ルールは、次回の `pocket resource s3 create` 実行時に削除または上書きされます。手動ルールを残したい場合は toml に取り込んで宣言してください。
+
+??? example "versioning + lifecycle の組み合わせ例"
+    bucket-wide versioning を有効化しつつ、`static/` `media/` の旧バージョンは 1 日で期限切れにする例:
+
+    ```toml
+    [s3]
+    versioning = true
+
+    [[s3.lifecycle_rules]]
+    id = "expire-non-current-static"
+    prefix = "static/"
+    noncurrent_version_expiration_days = 1
+
+    [[s3.lifecycle_rules]]
+    id = "expire-non-current-media"
+    prefix = "media/"
+    noncurrent_version_expiration_days = 1
+    ```
+
+    `projects/` 等の長期保管 prefix は lifecycle ルールを書かないことで版を残します。
 
 ---
 
