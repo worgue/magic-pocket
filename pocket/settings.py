@@ -356,9 +356,17 @@ class S3Cors(BaseModel):
     cloudfront: str | list[str]
 
 
+class S3LifecycleRule(BaseModel):
+    id: str
+    prefix: str
+    noncurrent_version_expiration_days: int = Field(ge=1)
+
+
 class S3(BaseSettings):
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
     cors: S3Cors | None = None
+    versioning: bool = False
+    lifecycle_rules: list[S3LifecycleRule] = []
 
 
 class RedirectFrom(BaseSettings):
