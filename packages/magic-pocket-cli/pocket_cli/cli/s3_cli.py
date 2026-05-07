@@ -30,16 +30,18 @@ def context(stage):
 @s3.command()
 @click.option("--stage", envvar="POCKET_STAGE", prompt=True)
 def create(stage):
+    """S3 バケットを作成、または既存バケットの設定 (PAB / CORS / versioning /
+    lifecycle) を冪等に reconcile する。"""
     storage = get_s3_resource(stage)
-    if storage.exists():
-        echo.warning(
-            "S3 Bucket is already created by you.\n"
-            "Presume this bucket is properly configured.\n"
-            "Please check the bucket.",
-        )
-        return
+    already_exists = storage.exists()
     storage.ensure_exists()
-    echo.success("Created: bucket %s" % storage.context.bucket_name)
+    if already_exists:
+        echo.success(
+            "Reconciled: bucket %s (PAB / CORS / versioning / lifecycle)"
+            % storage.context.bucket_name
+        )
+    else:
+        echo.success("Created: bucket %s" % storage.context.bucket_name)
 
 
 @s3.command()
