@@ -23,7 +23,7 @@ Resources:
       DomainName: "{{ rf.domain }}"
       DomainValidationOptions:
         - DomainName: "{{ rf.domain }}"
-          HostedZoneId: "{{ hosted_zone_id }}"
+          HostedZoneId: "{{ rf.hosted_zone_id }}"
       Tags:
         - Key: Name
           Value: "{{ resource_prefix }}spa-cert-{{ rf.yaml_key }}"
