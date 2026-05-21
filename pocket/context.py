@@ -271,6 +271,11 @@ class SesContext(BaseModel):
         )
 
 
+class AwsContainerIamContext(BaseModel):
+    managed_policy_arns: list[str] = []
+    inline_policies: dict[str, dict] = {}
+
+
 class AwsContainerContext(BaseModel):
     vpc: VpcContext | None = None
     secrets: SecretsContext | None = None
@@ -292,6 +297,7 @@ class AwsContainerContext(BaseModel):
     use_sqs: bool = False
     use_efs: bool = False
     permissions_boundary: str | None = None
+    iam: AwsContainerIamContext = AwsContainerIamContext()
     efs_local_mount_path: str = ""
     build: BuildContext = BuildContext()
 
@@ -357,6 +363,10 @@ class AwsContainerContext(BaseModel):
             permissions_boundary=(
                 os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN")
                 or ac.permissions_boundary
+            ),
+            iam=AwsContainerIamContext(
+                managed_policy_arns=ac.iam.managed_policy_arns,
+                inline_policies=ac.iam.inline_policies,
             ),
             efs_local_mount_path=efs_local_mount_path,
             build=BuildContext.from_settings(ac.build),

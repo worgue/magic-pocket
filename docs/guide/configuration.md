@@ -814,6 +814,36 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 extra_resources = ["arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-prefix-*"]
 ```
 
+### awscontainer.iam
+
+Lambda execution role に追加で IAM 権限を注入します。`use_s3` / `use_route53` / `secrets.allowed_*_resources` 等の built-in な仕組みでカバーできない権限を、ユーザーが宣言的に与えるための逃げ道です。
+
+```toml
+[awscontainer.iam]
+managed_policy_arns = [
+    "arn:aws:iam::aws:policy/AdministratorAccess",
+]
+
+[awscontainer.iam.inline_policies.cross-account-assume]
+Version = "2012-10-17"
+
+[[awscontainer.iam.inline_policies.cross-account-assume.Statement]]
+Effect = "Allow"
+Action = "sts:AssumeRole"
+Resource = "arn:aws:iam::*:role/provisioner-role"
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `managed_policy_arns` | list[str] | `[]` | LambdaRole の ManagedPolicyArns に追加する AWS managed policy ARN の list |
+| `inline_policies` | dict[str, dict] | `{}` | LambdaRole の Policies に追加する inline policy。key は PolicyName の suffix (`resource_prefix` が前置される)、value は PolicyDocument の dict |
+
+inline_policies の value は標準的な IAM PolicyDocument の形式 (`Version` / `Statement` を含む dict) です。TOML の制約から `Statement` を複数行で書く場合は `[[awscontainer.iam.inline_policies.<name>.Statement]]` 形式の table array を使います。
+
+!!! warning "宣言的な仕組みでカバーできない場合の最終手段"
+    まずは `use_s3` / `use_route53` / `use_ses` / `use_sqs` 等の service flag や `[awscontainer.secrets]` の `allowed_sm_resources` / `allowed_ssm_resources` で対応できないかを検討してください。
+    `awscontainer.iam` は admin tool 等で広い権限が必要なケース、もしくは magic-pocket が built-in でサポートしていない AWS サービスへの権限が必要な場合の逃げ道です。
+
 ### awscontainer.django
 
 Lambda環境で利用するDjango設定を記述します。
