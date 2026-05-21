@@ -62,7 +62,6 @@ class CloudFront:
         return {key: {"bucket_name": self.context.bucket_name}}
 
     def deploy_init(self):
-        self._upload_managed_assets()
         self.warn_contents()
 
     @property
@@ -146,8 +145,8 @@ class CloudFront:
         )
         echo.info("KVS にトークンシークレットを書き込みました")
 
-    def _upload_managed_assets(self):
-        """managed_assets のファイルを S3 にアップロードする"""
+    def upload_managed_assets(self):
+        """managed_assets のファイルを S3 に同期する (全件 upload + 不要削除)。"""
         if not self.context.managed_assets:
             return
         base = Path(self.context.managed_assets)
@@ -176,7 +175,6 @@ class CloudFront:
                 ExtraArgs={"ContentType": content_type},
             )
             echo.log("managed_assets: s3://%s/%s" % (bucket, s3_key))
-        # pocket_managed/ 配下の不要ファイルを削除
         paginator = self.s3_client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=bucket, Prefix="pocket_managed/"):
             for obj in page.get("Contents", []):
