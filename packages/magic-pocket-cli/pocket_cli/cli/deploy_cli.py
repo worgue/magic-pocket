@@ -113,7 +113,8 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
     state_store.ensure_bucket()
 
     mediator = Mediator(context)
-    for resource in get_resources(context, state_bucket=state_bucket):
+    resources = get_resources(context, state_bucket=state_bucket)
+    for resource in resources:
         target_name = resource.__class__.__name__
         if resource.status == "NOEXIST":
             echo.log("Creating %s..." % target_name)
@@ -131,6 +132,16 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
             state_store.record(resource.state_info())
         else:
             echo.log("%s is already the latest version." % target_name)
+    # stack 作成/更新が終わった後の後付け状態 (bucket policy / KVS など) を
+    # 冪等に確保する。wait_status が timeout した次の deploy でも復旧できる。
+    for resource in resources:
+        hook = getattr(resource, "ensure_post_deploy_state", None)
+        if hook is None:
+            continue
+        if "mediator" in inspect.signature(hook).parameters:
+            hook(mediator)
+        else:
+            hook()
 
 
 @click.command()
