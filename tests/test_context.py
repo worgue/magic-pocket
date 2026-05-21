@@ -1,4 +1,4 @@
-from pocket.context import Context
+from pocket.context import AwsContainerContext, Context
 from pocket.general_context import GeneralContext
 
 
@@ -52,3 +52,52 @@ namespace = "test"
     assert context.project_name == "test-project"
     assert context.region == "us-east-1"
     assert context.namespace == "test"
+
+
+def _build_awscontainer_context(
+    base_settings, *, permissions_boundary: str | None = None
+) -> AwsContainerContext:
+    """permissions_boundary 検証用の最小 AwsContainerContext を構築する。"""
+    from pocket import settings
+
+    awscontainer = settings.AwsContainer.model_validate(
+        {
+            "dockerfile_path": "Dockerfile",
+            "handlers": {
+                "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
+            },
+            **(
+                {"permissions_boundary": permissions_boundary}
+                if permissions_boundary is not None
+                else {}
+            ),
+        }
+    )
+    base_settings.awscontainer = awscontainer
+    return AwsContainerContext.from_settings(awscontainer, base_settings)
+
+
+def test_awscontainer_permissions_boundary_from_toml(base_settings, monkeypatch):
+    """toml の permissions_boundary が Context に反映されること。"""
+    monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
+    arn = "arn:aws:iam::123456789012:policy/test-boundary"
+    ctx = _build_awscontainer_context(base_settings, permissions_boundary=arn)
+    assert ctx.permissions_boundary == arn
+
+
+def test_awscontainer_permissions_boundary_env_overrides_toml(
+    base_settings, monkeypatch
+):
+    """env が toml より優先されること。"""
+    env_arn = "arn:aws:iam::123456789012:policy/env-boundary"
+    toml_arn = "arn:aws:iam::123456789012:policy/toml-boundary"
+    monkeypatch.setenv("POCKET_PERMISSIONS_BOUNDARY_ARN", env_arn)
+    ctx = _build_awscontainer_context(base_settings, permissions_boundary=toml_arn)
+    assert ctx.permissions_boundary == env_arn
+
+
+def test_awscontainer_permissions_boundary_none(base_settings, monkeypatch):
+    """env も toml も未設定なら None になること。"""
+    monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
+    ctx = _build_awscontainer_context(base_settings)
+    assert ctx.permissions_boundary is None
