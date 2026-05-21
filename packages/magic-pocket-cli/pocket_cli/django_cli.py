@@ -77,7 +77,7 @@ def _update_dotenv(jinja2_env):
 
 
 @django.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
@@ -236,7 +236,7 @@ def collectstatic_locally(stage: str):
 
 
 @django.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--skip-collectstatic", is_flag=True, default=False)
 def deploystatic(stage: str, skip_collectstatic: bool):
     if not skip_collectstatic:
@@ -249,7 +249,7 @@ def deploystatic(stage: str, skip_collectstatic: bool):
         "ignore_unknown_options": True,
     },
 )
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.argument("command")
 @click.argument("args", nargs=-1)
 @click.option("--handler")
@@ -267,7 +267,7 @@ def manage(stage, command, args, handler, timeout_seconds):
 
 
 @django.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
@@ -303,7 +303,7 @@ def _check_upload_backends(from_storage, to_storage):
 
 
 @storage.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--delete", is_flag=True, default=False)
 @click.option("--dryrun", is_flag=True, default=False)
 @click.argument("storage")

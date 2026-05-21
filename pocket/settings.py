@@ -785,7 +785,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"ステージ '{stage}' は pocket.toml に定義されていません。\n"
                 f"  定義済みステージ: {stages}\n"
-                f"  --stage オプションまたは POCKET_STAGE 環境変数を確認してください。"
+                f"  --stage オプションまたは POCKET_DEPLOY_STAGE 環境変数を"
+                f"確認してください。"
             )
 
     @classmethod

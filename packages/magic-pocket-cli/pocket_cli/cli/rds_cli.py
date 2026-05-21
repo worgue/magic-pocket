@@ -18,7 +18,7 @@ def rds():
 
 
 @rds.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def status(stage):
     """クラスター状態表示"""
     r = _get_rds_resource(stage)
@@ -29,7 +29,7 @@ def status(stage):
 
 
 @rds.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def endpoint(stage):
     """接続情報表示"""
     r = _get_rds_resource(stage)
@@ -40,7 +40,7 @@ def endpoint(stage):
 
 
 @rds.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def destroy(stage):
     """確認付き削除"""
     r = _get_rds_resource(stage)

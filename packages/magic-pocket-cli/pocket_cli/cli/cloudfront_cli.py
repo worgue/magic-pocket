@@ -24,7 +24,7 @@ def get_cloudfront_resources(stage, name=None):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -33,7 +33,7 @@ def yaml(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml_diff(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -42,7 +42,7 @@ def yaml_diff(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def context(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -51,7 +51,7 @@ def context(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def create(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -61,7 +61,7 @@ def create(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def destroy(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -71,7 +71,7 @@ def destroy(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def update(stage, name):
     for cf in get_cloudfront_resources(stage, name):
@@ -91,7 +91,7 @@ def update(stage, name):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 @click.option("--skip-build", is_flag=True, default=False)
 def upload(stage, name, skip_build):
@@ -105,7 +105,7 @@ def upload(stage, name, skip_build):
 
 
 @cloudfront.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def status(stage, name):
     for cf in get_cloudfront_resources(stage, name):

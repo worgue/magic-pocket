@@ -8,12 +8,14 @@ Lambda上のアプリケーションは、`pocket.toml`（または `pocket.runt
 
 ## POCKET_STAGE
 
-`POCKET_STAGE` は2つの用途で使用される環境変数です。
-
-- **Lambda ランタイム**: Lambda環境ではCloudFormationにより自動設定され、実行環境のステージを判定します
-- **CLI デフォルトステージ**: `pocket` コマンドの `--stage` オプションのデフォルト値として参照されます（[CLI](cli.md#pocket_stage-環境変数) を参照）
+`POCKET_STAGE` は **Lambda ランタイムでの実行ステージ判定** に使われる環境変数です。
+CloudFormation が Lambda 関数の環境変数として自動設定するため、通常はユーザーが手動で設定する必要はありません。
 
 各フレームワークのユーティリティ関数（Django の `set_envs()` や Rust の `set_envs()`）は、この変数の有無でローカル環境と Lambda 環境を判別します。`POCKET_STAGE` が未設定の場合、AWS リソースへのアクセスはスキップされます。
+
+!!! note "デプロイ対象指定とは別物です"
+    `pocket` コマンドの `--stage` オプションのデフォルト値は `POCKET_DEPLOY_STAGE` 環境変数から読まれます（[CLI](cli.md#pocket_deploy_stage-環境変数) を参照）。
+    `POCKET_STAGE` をローカルで設定すると、ローカル実行プロセスが「自分は Lambda 上のそのステージで動いている」と誤解する原因になります。デプロイ対象を環境変数で指定したい場合は `POCKET_DEPLOY_STAGE` を使ってください。
 
 ---
 

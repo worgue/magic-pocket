@@ -145,7 +145,7 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
 
 
 @click.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
 def deploy(stage: str, openpath, skip_frontend):
