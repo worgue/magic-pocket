@@ -93,6 +93,19 @@ def deploy_frontend(context: Context, *, skip_build: bool = False):
         cf.upload(skip_build=skip_build)
 
 
+def upload_managed_assets(context: Context):
+    """CloudFront resource ごとに managed_assets を S3 に同期する。
+
+    deploy_resources の後で呼ぶことで、CFn stack の有無に関わらず毎回実行される。
+    差分検知 (ローカル MD5 vs S3 ETag) により変更ファイルのみ PutObject される。
+    """
+    for _name, cf_ctx in context.cloudfront.items():
+        if not cf_ctx.managed_assets:
+            continue
+        cf = CloudFront(cf_ctx)
+        cf.upload_managed_assets()
+
+
 def deploy_resources(context: Context, *, state_bucket: str = ""):
     state_store = _create_state_store(context)
     # state bucket は deploy_init_resources の前に作成済み
@@ -135,6 +148,7 @@ def deploy(stage: str, openpath, skip_frontend):
     state_bucket = state_store.bucket_name
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
+    upload_managed_assets(context)
     if not skip_frontend:
         deploy_frontend(context)
     # デプロイ完了後の URL 表示
