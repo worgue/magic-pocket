@@ -668,6 +668,17 @@ apigateway = { domain = "example.com" }
 | `create_records` | bool | `true` | Route53レコードを自動作成 |
 | `hosted_zone_id_override` | str \| None | None | ホストゾーンIDを明示指定 |
 
+!!! warning "create_records=False 利用時の orphan に注意"
+    `create_records = false` を指定すると、Route53 の A レコードに加えて
+    **ACM 証明書の検証用 CNAME も pocket の CloudFormation 管理外** になります。
+    スタック削除時にこれらが orphan として残るため、必要に応じて手動削除してください。
+
+    - ACM 証明書 (region: API Gateway と同じ): スタック削除後 `InUse: false` で残存（課金なし）
+    - 検証用 CNAME (`_<hash>.<domain>.` → `*.acm-validations.aws.`): Route53 に残存
+
+    デフォルト (`create_records = true`) では検証 CNAME も pocket 管理になるため、
+    スタック削除時に自動で消えます。
+
 #### handlers.`name`.sqs
 
 SQSキューの設定です。マネジメントコマンドの非同期実行に使えます。
