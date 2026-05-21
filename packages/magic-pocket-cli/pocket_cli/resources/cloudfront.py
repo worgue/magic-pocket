@@ -91,11 +91,25 @@ class CloudFront:
         log("Because cloudfront distribution id is required to set s3 bucket policy.")
         info("If you want to exit, you can safely kill this process.")
         info("In that case, run `pocket resource cloudfront update` later.")
-        self.stack.wait_status("COMPLETED", timeout=600, interval=10)
+        self.stack.wait_status("COMPLETED", timeout=1800, interval=10)
         self._ensure_bucket_policy()
         self._write_token_secret_to_kvs()
         log("Bucket for cloudfront is ready.")
         self.warn_contents()
+
+    def ensure_post_deploy_state(self, mediator: Mediator | None = None):
+        """stack 完了後に必要な後付け状態 (bucket policy / KVS) を冪等に確保する。
+
+        update() の wait_status が timeout した場合、stack 自体はその後 COMPLETED
+        になっても次回 deploy で status==COMPLETED と判定され update() が呼ばれず
+        KVS 書き込みなどが永遠にスキップされる、という事故が起きる。これを防ぐため
+        deploy フローの末尾で stack 状態によらず冪等に再実行する。
+        """
+        if self.stack.status != "COMPLETED":
+            return
+        self._prepare_token_secret(mediator)
+        self._ensure_bucket_policy()
+        self._write_token_secret_to_kvs()
 
     def _prepare_token_secret(self, mediator: Mediator | None):
         if not self.context.token_secret:
