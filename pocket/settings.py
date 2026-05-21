@@ -144,6 +144,24 @@ class Secrets(BaseModel):
     require_list_secrets: bool = False
 
 
+class AwsContainerIam(BaseModel):
+    """Lambda execution role に追加注入する IAM 設定。
+
+    built-in な service flag (`use_s3` 等) や `secrets.allowed_*_resources` で
+    カバーできない権限を、ユーザーが宣言的に与えるための逃げ道。
+    """
+
+    managed_policy_arns: list[str] = []
+    """LambdaRole の ManagedPolicyArns に追加する AWS managed policy ARN の list。"""
+
+    inline_policies: dict[str, dict] = {}
+    """LambdaRole の Policies に追加する inline policy。
+
+    key は PolicyName の suffix (resource_prefix が前置される)、
+    value は PolicyDocument の dict (Version / Statement を含む)。
+    """
+
+
 class AwsContainer(BaseModel):
     vpc: Vpc | None = None
     secrets: Secrets | None = None
@@ -153,6 +171,7 @@ class AwsContainer(BaseModel):
     platform: str = "linux/amd64"
     django: Django | None = None
     permissions_boundary: str | None = None
+    iam: AwsContainerIam = AwsContainerIam()
     build: BuildConfig = BuildConfig()
 
     @model_validator(mode="after")

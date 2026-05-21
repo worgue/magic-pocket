@@ -35,6 +35,9 @@ Resources:
         # {% if use_efs %}
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess
         # {% endif %}
+        # {% for arn in iam.managed_policy_arns %}
+        - "{{ arn }}"
+        # {% endfor %}
       Policies:
         # {% if secrets and secrets.allowed_sm_resources %}
         - PolicyName: "{{ resource_prefix }}access-secretsmanager"
@@ -110,6 +113,10 @@ Resources:
                   - "cloudformation:DescribeStacks"
                 Resource:
                   - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
+        # {% for name, doc in iam.inline_policies.items() %}
+        - PolicyName: "{{ resource_prefix }}{{ name }}"
+          PolicyDocument: {{ doc | tojson }}
+        # {% endfor %}
       RoleName: "lambda-{{ slug }}-{{ namespace }}"
       # {% if permissions_boundary %}
       PermissionsBoundary: "{{ permissions_boundary }}"
