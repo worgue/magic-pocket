@@ -29,7 +29,7 @@ def get_cloudfront_keys_resources(stage, name=None):
 
 
 @cloudfront_keys.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml(stage, name):
     for cfk in get_cloudfront_keys_resources(stage, name):
@@ -38,7 +38,7 @@ def yaml(stage, name):
 
 
 @cloudfront_keys.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml_diff(stage, name):
     for cfk in get_cloudfront_keys_resources(stage, name):
@@ -47,7 +47,7 @@ def yaml_diff(stage, name):
 
 
 @cloudfront_keys.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def status(stage, name):
     for cfk in get_cloudfront_keys_resources(stage, name):
@@ -59,7 +59,7 @@ def status(stage, name):
 
 
 @cloudfront_keys.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def destroy(stage, name):
     for cfk in get_cloudfront_keys_resources(stage, name):

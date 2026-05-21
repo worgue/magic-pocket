@@ -21,14 +21,14 @@ def get_s3_resource(stage):
 
 
 @s3.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
     storage = get_s3_resource(stage)
     pprint(storage.context.model_dump())
 
 
 @s3.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def create(stage):
     """S3 バケットを作成、または既存バケットの設定 (PAB / CORS / versioning /
     lifecycle) を冪等に reconcile する。"""
@@ -45,7 +45,7 @@ def create(stage):
 
 
 @s3.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def destroy(stage):
     storage = get_s3_resource(stage)
     if not storage.exists():
@@ -60,7 +60,7 @@ def destroy(stage):
 
 
 @s3.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def status(stage):
     storage = get_s3_resource(stage)
     if storage.exists():

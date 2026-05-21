@@ -41,7 +41,7 @@ def version():
 
 
 @main.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
     """Context を JSON で出力する（AWS API 呼び出しを伴う）。"""
     from pocket.context import Context
@@ -51,7 +51,7 @@ def context(stage):
 
 
 @main.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def settings(stage):
     """Settings を JSON で出力する（pocket.toml のみ、AWS 不要）。"""
     from pocket.settings import Settings

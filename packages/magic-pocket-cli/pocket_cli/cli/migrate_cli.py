@@ -101,7 +101,7 @@ def _check_real_diffs(stacks: list) -> list[str]:
 
 
 @click.command()
-@click.option("--stage", envvar="POCKET_STAGE", prompt=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )

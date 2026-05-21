@@ -7,12 +7,12 @@ magic-pocketは `pocket` コマンドを提供します。
 
 ---
 
-## POCKET_STAGE 環境変数
+## POCKET_DEPLOY_STAGE 環境変数
 
-環境変数 `POCKET_STAGE` を設定すると、`--stage` オプションのデフォルト値として使用されます。
+環境変数 `POCKET_DEPLOY_STAGE` を設定すると、`--stage` オプションのデフォルト値として使用されます。
 
 ```bash
-export POCKET_STAGE=dev
+export POCKET_DEPLOY_STAGE=dev
 
 # 以下は全て --stage=dev と同等
 pocket deploy
@@ -23,17 +23,18 @@ pocket resource s3 status
 `--stage` を明示的に指定すると、環境変数より優先されます。
 
 ```bash
-export POCKET_STAGE=dev
+export POCKET_DEPLOY_STAGE=dev
 
 # 環境変数を上書き
 pocket deploy --stage=prod
 ```
 
-`POCKET_STAGE` も `--stage` も未指定の場合は、プロンプトで入力を求められます。
+`POCKET_DEPLOY_STAGE` も `--stage` も未指定の場合は、プロンプトで入力を求められます。
 
-!!! note "Lambda ランタイムとの共用"
-    `POCKET_STAGE` はLambda上でランタイム環境の判定にも使用されています（[実行環境](runtime.md) を参照）。
-    CLIのデフォルトステージとしても同じ環境変数を共用しているため、変数名を変える必要はありません。
+!!! note "ランタイム用の `POCKET_STAGE` と別物です"
+    Lambda 上のランタイム環境の判定には `POCKET_STAGE` という別の環境変数が使われます（[実行環境](runtime.md) を参照）。
+    `POCKET_DEPLOY_STAGE` は **ローカル側でデプロイ対象を指定する用途専用** で、ローカル実行プロセスの runtime 動作には影響しません。
+    これにより、ローカルで `POCKET_DEPLOY_STAGE=prod` を設定して `pocket deploy` を実行しつつ、`manage.py shell` などの runtime helper は AWS リソースを参照しない、という運用が可能です。
 
 ---
 
