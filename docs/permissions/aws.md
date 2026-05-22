@@ -146,6 +146,24 @@
 }
 ```
 
+## CLI: `pocket permissions list`
+
+`pocket.toml` の構成から、上記の表に基づいて必要な AWS Action 一覧を出力する CLI を提供しています。
+デプロイ用 IAM Role の inline policy を組み立てる際などに使用します。
+
+```bash
+# テキスト形式（1 行 1 Action）
+pocket permissions list --stage=prod
+
+# JSON 形式（{"actions": [...]}）
+pocket permissions list --stage=prod --format=json
+```
+
+出力に含まれる Action は、本ページ上部の「コア権限」「オプション権限」テーブルと同じ粒度
+（`cloudformation:*` `s3:*` などのワイルドカード中心）で、`pocket.toml` 内の `[cloudfront]`
+`[rds]` `[ses]` 等の有無や `secrets.store` / `build.backend` の値に応じて自動的に増減します。
+Action レベルの細かい絞り込み (Least Privilege) は別途検討対象です。
+
 ## Permissions Boundary
 
 組織のセキュリティポリシーで IAM ロールに Permissions Boundary が必要な場合、`pocket.toml` で設定できます。

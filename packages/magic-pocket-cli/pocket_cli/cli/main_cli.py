@@ -11,6 +11,7 @@ from pocket_cli.cli import (
     dsql_cli,
     migrate_cli,
     neon_cli,
+    permissions_cli,
     rds_cli,
     runtime_config_cli,
     s3_cli,
@@ -66,6 +67,7 @@ main.add_command(status_cli.status)
 main.add_command(django_cli.django)
 main.add_command(runtime_config_cli.runtime_config)
 main.add_command(migrate_cli.migrate)
+main.add_command(permissions_cli.permissions)
 
 
 @main.group()
