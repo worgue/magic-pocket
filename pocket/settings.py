@@ -443,7 +443,13 @@ class Route(BaseSettings):
                 raise ValueError("type = 'lambda' cannot use origin_path")
         else:
             if self.origin_path is None:
-                raise ValueError("origin_path is required for S3 routes")
+                raise ValueError(
+                    "S3 route requires `origin_path`. "
+                    'Set "/" for bucket root, or a prefix like "/spa" to separate '
+                    "from other S3 routes (e.g. Django static at /static).\n"
+                    '  Example: { type = "s3", path_pattern = "", '
+                    'is_default = true, origin_path = "/spa" }'
+                )
             if self.origin_path[0] != "/":
                 raise ValueError("origin_path must starts with /")
             if self.origin_path[-1] == "/":
