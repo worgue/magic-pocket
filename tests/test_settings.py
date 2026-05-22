@@ -172,9 +172,15 @@ def test_uploadable_routes(use_toml):
 
 def test_route_origin_path():
     """S3 route に origin_path 必須、API route に禁止"""
-    # S3 route: origin_path 必須
-    with pytest.raises(ValueError, match="origin_path is required for S3 routes"):
+    # S3 route: origin_path 必須。エラー文に具体例 (/" や /spa) と Example 行を含めて
+    # 利用者が次の一手を取れるようにする
+    with pytest.raises(ValueError) as excinfo:
         Route.model_validate({"is_default": True, "is_spa": True})
+    msg = str(excinfo.value)
+    assert "S3 route requires `origin_path`" in msg
+    assert '"/"' in msg  # bucket root の例示
+    assert "/spa" in msg  # prefix 切り出しの例示
+    assert "Example:" in msg
     # Lambda route: origin_path 指定禁止
     with pytest.raises(ValueError, match="type = 'lambda' cannot use origin_path"):
         Route.model_validate(
