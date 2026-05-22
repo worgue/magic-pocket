@@ -27,3 +27,5 @@ vendor/
 
 # Forge
 forge.local.toml
+
+/CLAUDE.md

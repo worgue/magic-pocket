@@ -1,6 +1,7 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+このファイルはコーディングエージェント (Claude Code / Codex 等) 向けの
+プロジェクト共通ルール。リポジトリで作業する際は本ファイルの内容に従うこと。
 
 ## 言語設定
 **このプロジェクトは日本語が基準です。Claude Codeとのやり取りは日本語で行ってください。**
@@ -11,15 +12,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - すべてのファイルは改行（LF）で終わる
 - 行末の空白は削除する
 
-## 重要な制約事項
-- ファイル編集のスコープ（範囲）制限: あなたのファイル編集範囲は、コマンドが実行されたディレクトリによって厳しく制限されます。このルールを必ず遵守してください。
-  - worktree内での作業時: 起動されたディレクトリが .worktrees/ 以下（例: .worktrees/feature/new-feature）の場合、編集対象はそのディレクトリ内部のファイルのみに限定されます。../ を使用して親ディレクトリのファイルにアクセスし、編集することは固く禁止します。
-  - プロジェクトルートでの作業時: 起動されたディレクトリがプロジェクトのルート（.worktreesディレクトリが見える階層）の場合、.worktrees/ ディレクトリ全体を完全に無視してください。このディレクトリは各機能開発用の一時的な作業環境であり、あなたの編集対象ではありません。
-- git操作の制限:
-  - **許可**: `git status`, `git diff`, `git log`, `git show`, `git mv`, `git restore`, `git rm`, `git bisect`, `git grep`（参照・軽微な操作）
-  - **禁止**: `git add`, `git commit`, `git push`, `git pull`, `git checkout`, `git reset`, `git rebase`, `git merge`, `git stash`, `git clone`, `git init`, `git branch`, `git switch`, `git tag`, `git fetch`（変更・履歴操作）
-  - コミット操作はユーザーが手動で行います
-
 ## Python
 
 ### コード品質
@@ -28,8 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `uv add <package>`: パッケージを追加
 - `uv remove <package>`: パッケージを削除
-- `uv sync --all-groups`: 依存関係を同期（venv作成は不要、プロジェクトルートの.venvを使用）
-- `uv venv` は使用しない（既存の.venvを使用）
+- `uv sync --all-groups`: 依存関係を同期
 
 **重要**: Pythonファイル（.py）を編集・作成した後は、必ず以下のチェックを実行してください。
 
@@ -40,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **重要**:
 
-- Ruffエラーを無視する設定（`# noqa`, `# ruff: noqa`, `pyproject.toml`でのignore設定など）は、Claude Codeが勝手に追加してはいけない
+- Ruffエラーを無視する設定（`# noqa`, `# ruff: noqa`, `pyproject.toml`でのignore設定など）は、勝手に追加してはいけない
 - エラーを無視する必要がある場合は、必ずユーザーに報告して判断を委ねること
 - エラーを残したままタスクを完了しないこと
 
