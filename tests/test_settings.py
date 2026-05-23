@@ -107,6 +107,29 @@ def test_lambda_route_handler_export(use_toml):
 
 
 @mock_aws
+def test_cloudfront_yaml_works_without_awscontainer_deployed(use_toml):
+    """lambda route ありの構成で、awscontainer 未 deploy でも CloudFront yaml が
+    render できること (Fn::ImportValue 化の回帰テスト)。
+
+    過去は `_resolve_api_origins` が boto3.list_exports で実値を埋めにいくため、
+    awscontainer stack が未 deploy だと RuntimeError で fail していた。
+    現在は ImportValue で template に書き出すだけなので AWS API 不要、
+    dry-run が機能する。
+    """
+    from pocket_cli.resources.aws.cloudformation import CloudFrontStack
+
+    use_toml("tests/data/toml/cloudfront_api_route.toml")
+    context = Context.from_toml(stage="dev")
+    cf = context.cloudfront["main"]
+    yaml = CloudFrontStack(cf).yaml
+    # API origin は Fn::ImportValue で参照されている (literal domain ではない)
+    assert "Fn::ImportValue" in yaml
+    assert "dev-testprj-wsgi-api-domain" in yaml
+    # boto3.list_exports は呼ばれていない (= AWS account 不要で render 成功)
+    # ImportValue 名が literal で template に出ること、で間接的に確認
+
+
+@mock_aws
 def test_yaml(use_toml):
     use_toml("tests/data/toml/default.toml")
     res = boto3.client("route53").create_hosted_zone(
