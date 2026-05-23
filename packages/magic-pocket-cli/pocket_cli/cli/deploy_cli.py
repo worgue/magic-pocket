@@ -11,6 +11,7 @@ from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
@@ -50,6 +51,10 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     for _name, cf_ctx in context.cloudfront.items():
         if cf_ctx.domain:
             resources.append(CloudFrontAcm(cf_ctx))
+    # WAF (IPSet + WebACL) も us-east-1 必須、CloudFront stack より前に作成
+    for _name, cf_ctx in context.cloudfront.items():
+        if cf_ctx.waf is not None:
+            resources.append(CloudFrontWaf(cf_ctx))
     if context.neon:
         resources.append(Neon(context.neon))
     if context.tidb:

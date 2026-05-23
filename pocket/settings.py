@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
@@ -517,6 +517,37 @@ class Route(BaseSettings):
         return self
 
 
+class CloudFrontWaf(BaseModel):
+    """CloudFront に attach する WAFv2 WebACL の宣言。
+
+    block を書くだけで us-east-1 に WebACL が作成され、CloudFront distribution
+    に attach される。デフォルトは `enable_ip_set = true`、つまり IP allowlist
+    モード (許可済み IP 以外は全 block)。`enable_ip_set = false` に倒すと
+    IPSet 自体を作らず、managed_rule_groups のみで「許可ベース + 怪しい
+    リクエストだけ block」する構成になる。
+
+    `IPSet` の中身 (実際の CIDR 一覧) は `pocket waf ip ...` CLI で投入する
+    (toml には IP リテラルを書けない設計; 真実源を CLI 一本に絞ることで
+    drift 事故を防ぐ)。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enable_ip_set: bool = True
+    managed_rule_groups: list[str] = []
+
+    @model_validator(mode="after")
+    def _must_have_some_rule(self):
+        if not self.enable_ip_set and not self.managed_rule_groups:
+            raise ValueError(
+                "[cloudfront.<name>.waf]: enable_ip_set = false の場合は"
+                " managed_rule_groups を 1 つ以上指定してください。"
+                " どちらも無効だと WebACL が何もしない pass-through 状態に"
+                " なり、WAF を attach する意味がありません。"
+            )
+        return self
+
+
 class CloudFront(BaseSettings):
     domain: str | None = None
     hosted_zone_id_override: str | None = None
@@ -525,6 +556,7 @@ class CloudFront(BaseSettings):
     signing_key: str | None = None
     token_secret: str | None = None
     managed_assets: str | None = None
+    waf: CloudFrontWaf | None = None
 
     @model_validator(mode="after")
     def check_domain_redirect_from(self):

@@ -975,6 +975,7 @@ routes = [
 | `signing_key` | str \| None | None | 署名付きURL用のmanaged secret名 |
 | `token_secret` | str \| None | None | SPA トークン認証用の managed secret 名（`type = "spa_token_secret"`） |
 | `managed_assets` | str \| None | None | ステージ別アセットのディレクトリ（下記参照） |
+| `waf` | dict \| None | None | WAFv2 IP allowlist を attach（下記 [waf](#waf) 参照） |
 
 ### managed_assets
 
@@ -1017,6 +1018,114 @@ assets/managed/
 
 !!! note "Django のみ（CloudFront なし）の場合"
     CloudFront を使用しない構成では、同じディレクトリ形式で Django view から配信できます（[Django連携 - ステージ別ファイル配信](django.md#ステージ別ファイル配信-managed_assets) を参照）。
+
+### waf
+
+CloudFront に WAFv2 の **IP allowlist 専用 WebACL** を attach します。
+`admin.example.com` のような社内向け管理 UI を「固定 IP 以外からは到達不能」
+にする用途を想定しています。
+
+```toml
+[cloudfront.admin]
+domain = "admin.example.com"
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/admin" },
+]
+
+# block を書くだけで WAF が enable になる (デフォルトは IP allowlist モード)
+[cloudfront.admin.waf]
+# (optional) AWS managed rules を併用する場合
+managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `enable_ip_set` | bool | `true` | IPSet + IP allow rule を生成して IP allowlist で運用 |
+| `managed_rule_groups` | list[str] | `[]` | AWS managed rule group 名のリスト |
+
+`[cloudfront.<name>.waf]` block を書くと us-east-1 に `AWS::WAFv2::WebACL` が
+CFn で作成され、CloudFront distribution の `WebACLId` に attach されます。
+block 自体が無い場合は WAF 未 attach (既存挙動と完全互換)。
+
+#### モード 1: IP allowlist (デフォルト)
+
+`enable_ip_set = true` (省略可) の場合、`AWS::WAFv2::IPSet` (Scope=CLOUDFRONT,
+Addresses=`[]`) と「IPSet にマッチしたら Allow」ルールを生成し、
+`DefaultAction = Block` にします。**初回 deploy 直後は IPSet が空なので
+deny-all 状態**。`pocket waf ip add self ...` で CIDR を投入してください。
+
+社内 admin UI を固定 IP から到達可能にする、というのが想定ユースケースです。
+
+#### モード 2: managed rules のみ (`enable_ip_set = false`)
+
+IP 制限はしたくないが AWS managed rules による検査だけ走らせたい場合は:
+
+```toml
+[cloudfront.admin.waf]
+enable_ip_set = false
+managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
+```
+
+このとき:
+
+- `AWS::WAFv2::IPSet` は **生成されない** (`pocket waf ip ...` CLI も使用不可)
+- `DefaultAction = Allow` で、managed rules にマッチした怪しいリクエスト
+  のみ block される (「許可ベース + 攻撃シグネチャだけ弾く」構成)
+
+`enable_ip_set = false` でかつ `managed_rule_groups` も空、という構成は
+WebACL が何もしない pass-through 状態になるので、settings の validator が
+エラーで reject します。
+
+#### IP リテラルは toml に書かない
+
+`ip_allow_list_default` のような「IP アドレスを toml で宣言する」フィールドは
+意図的に提供していません。`pocket.toml` に IP リテラルを書いた場合は
+`extra = "forbid"` で validation エラーになります。
+
+理由は **真実源を一系統に絞るため**:
+
+- 実 IP リストは `pocket waf ip ...` CLI で日常的に更新される (社内 IP 追加、
+  外出先からの一時許可など、操作頻度が高い)
+- toml にも書けるようにすると、toml と IPSet の値が drift し「toml に書いた
+  はずなのに反映されていない」「CLI で消したはずなのに再 deploy で復活」の
+  事故が起きる
+
+CFn template も Addresses=`[]` で固定し、再 deploy のたびに空が出力されます。
+CFn 視点では IPSet の中身は常に drift しますが、これは仕様です。CLI が
+side-channel で書いた CIDR は CFn update で消えません。
+
+#### CLI: `pocket waf ip ...`
+
+IPSet の中身 (実際の CIDR) は専用 CLI で更新します。`update_ip_set` boto3
+を直接叩くため、CFn stack を回さずに秒オーダーで反映されます。
+
+```bash
+# 一覧表示
+pocket waf ip list --name admin --stage prod
+
+# 自分の Global IP を /32 で追加 (checkip.amazonaws.com → ipify fallback)
+pocket waf ip add self --name admin --stage prod
+
+# 任意 CIDR を追加
+pocket waf ip add 203.0.113.0/24 --name admin --stage prod
+
+# 削除
+pocket waf ip remove 203.0.113.0/24 --name admin --stage prod
+
+# 全削除 (deny-all 状態に戻す。確認プロンプトあり)
+pocket waf ip clear --name admin --stage prod
+```
+
+初回 `pocket deploy` の直後は IPSet が空 (deny-all) なので、最低 1 件 CIDR
+を追加するまで CloudFront は全リクエストを 403 で拒否します。デプロイ直後に
+`pocket waf ip add self ...` を実行してください。
+
+#### 必要な IAM 権限
+
+`pocket.toml` に `[cloudfront.<name>.waf]` block を 1 つでも書くと、
+`wafv2:*` が `pocket permissions list` の出力に追加されます
+([AWS 権限](../permissions/aws.md#cloudfront-wafcloudfrontnamewaf-使用時) を
+参照)。
 
 ### redirect_from
 

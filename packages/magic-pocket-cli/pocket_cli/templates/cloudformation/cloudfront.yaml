@@ -237,6 +237,9 @@ Resources:
           # {% else %}
           CloudFrontDefaultCertificate: true
           # {% endif %}
+        # {% if waf_acl_arn %}
+        WebACLId: "{{ waf_acl_arn }}"
+        # {% endif %}
 
   # {% if domain %}
   DNSRecord:

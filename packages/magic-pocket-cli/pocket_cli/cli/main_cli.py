@@ -6,6 +6,7 @@ from pocket_cli.cli import (
     awscontainer_cli,
     cloudfront_cli,
     cloudfront_keys_cli,
+    cloudfront_waf_cli,
     deploy_cli,
     destroy_cli,
     dsql_cli,
@@ -18,6 +19,7 @@ from pocket_cli.cli import (
     status_cli,
     tidb_cli,
     vpc_cli,
+    waf_cli,
 )
 
 
@@ -68,6 +70,7 @@ main.add_command(django_cli.django)
 main.add_command(runtime_config_cli.runtime_config)
 main.add_command(migrate_cli.migrate)
 main.add_command(permissions_cli.permissions)
+main.add_command(waf_cli.waf)
 
 
 @main.group()
@@ -84,3 +87,4 @@ resource.add_command(rds_cli.rds)
 resource.add_command(s3_cli.s3)
 resource.add_command(cloudfront_cli.cloudfront)
 resource.add_command(cloudfront_keys_cli.cloudfront_keys)
+resource.add_command(cloudfront_waf_cli.cloudfront_waf)

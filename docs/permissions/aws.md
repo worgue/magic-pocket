@@ -34,6 +34,12 @@
 | `acm:RequestCertificate`, `acm:DescribeCertificate`, `acm:DeleteCertificate` | カスタムドメインの SSL 証明書 |
 | `route53:ChangeResourceRecordSets`, `route53:GetChange` | DNS レコードの自動作成 |
 
+### CloudFront WAF（`[cloudfront.<name>.waf]` 使用時）
+
+| 権限 | 用途 |
+|------|------|
+| `wafv2:*` | us-east-1 の WebACL / IPSet の管理。`pocket deploy` で CFn 経由作成、`pocket waf ip ...` CLI で IPSet の中身を side-channel 更新 |
+
 ### VPC（`[awscontainer.vpc]` 使用時）
 
 | 権限 | 用途 |

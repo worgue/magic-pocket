@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: WAFv2 IPSet + WebACL for CloudFront (us-east-1)
+
+# Notes:
+# - Scope=CLOUDFRONT requires us-east-1.
+# - waf.enable_ip_set = true (default):
+#   - DefaultAction = Block
+#   - IPSet (Addresses=[]) + ip-allow Rule (Allow on IPSet match) を出力
+#   - 初回 deploy 直後は deny-all。`pocket waf ip add self ...` で CIDR を投入
+#   - IPSet の Addresses は CFn template 上は常に空で、CLI が side-channel
+#     更新する仕様 (CFn 視点では常に drift だが意図的)
+# - waf.enable_ip_set = false:
+#   - DefaultAction = Allow
+#   - IPSet / ip-allow Rule は出力しない
+#   - managed_rule_groups (必須) で「許可ベース + 怪しいリクエストのみ block」
+
+Resources:
+  # {% if waf.enable_ip_set %}
+  IPSet:
+    Type: AWS::WAFv2::IPSet
+    Properties:
+      Name: "{{ slug }}-waf-allow"
+      Description: "CloudFront IP allowlist - managed by pocket waf ip CLI"
+      Scope: CLOUDFRONT
+      IPAddressVersion: IPV4
+      Addresses: []
+      Tags:
+        - Key: Name
+          Value: "{{ resource_prefix }}cloudfront-waf-allow"
+  # {% endif %}
+
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: "{{ slug }}-waf"
+      Description: "CloudFront WAF - IP allowlist plus optional managed rules"
+      Scope: CLOUDFRONT
+      DefaultAction:
+        # {% if waf.enable_ip_set %}
+        Block: {}
+        # {% else %}
+        Allow: {}
+        # {% endif %}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: "{{ slug }}-waf"
+      Rules:
+        # {% if waf.enable_ip_set %}
+        - Name: ip-allow
+          Priority: 0
+          Action:
+            Allow: {}
+          Statement:
+            IPSetReferenceStatement:
+              Arn:
+                Fn::GetAtt: IPSet.Arn
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "{{ slug }}-waf-ip-allow"
+        # {% endif %}
+        # {% for group_name in waf.managed_rule_groups %}
+        - Name: "managed-{{ loop.index0 }}-{{ group_name }}"
+          Priority: {{ loop.index if waf.enable_ip_set else loop.index0 }}
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: "{{ group_name }}"
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "{{ slug }}-waf-managed-{{ loop.index0 }}"
+        # {% endfor %}
+      Tags:
+        - Key: Name
+          Value: "{{ resource_prefix }}cloudfront-waf"
+
+Outputs:
+  WebACLArn:
+    Value:
+      Fn::GetAtt: WebACL.Arn
+  # {% if waf.enable_ip_set %}
+  IPSetArn:
+    Value:
+      Fn::GetAtt: IPSet.Arn
+  IPSetId:
+    Value:
+      Ref: IPSet
+  IPSetName:
+    Value: "{{ slug }}-waf-allow"
+  # {% endif %}
