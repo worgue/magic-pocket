@@ -94,7 +94,6 @@ def test_deploy_hash_cf_function_rendering(use_toml):
 
     cf = context.cloudfront["web"]
     stack = CloudFrontStack(cf)
-    stack._resolve_api_origins = lambda: {"wsgi": "xxx.execute-api.amazonaws.com"}
     stack._resolve_acm_arns = lambda: (None, {})
     yaml = stack.yaml
     assert "DeployHashStripFunctionStatic" in yaml

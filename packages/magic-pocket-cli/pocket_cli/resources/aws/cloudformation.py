@@ -418,31 +418,6 @@ class CloudFrontStack(Stack):
                 redirect_arns[rf.yaml_key] = output[key]
         return cert_arn, redirect_arns
 
-    def _resolve_api_origins(self) -> dict[str, str]:
-        """Container スタックの API ドメインエクスポートをレンダリング時に解決する。
-
-        CloudFront テンプレートに literal 値として埋め込む。
-        """
-        if not self.context.api_origins:
-            return {}
-
-        cf = boto3.client("cloudformation", region_name=self.context.s3_region)
-        exports: dict[str, str] = {}
-        paginator = cf.get_paginator("list_exports")
-        for page in paginator.paginate():
-            for export in page["Exports"]:
-                exports[export["Name"]] = export["Value"]
-
-        resolved: dict[str, str] = {}
-        for handler_key, export_name in self.context.api_origins.items():
-            if export_name not in exports:
-                raise RuntimeError(
-                    f"CloudFormation export '{export_name}' not found in region "
-                    f"'{self.context.s3_region}'. Deploy the Container stack first."
-                )
-            resolved[handler_key] = exports[export_name]
-        return resolved
-
     def _build_function_codes(self) -> dict[str, str]:
         """ルートごとに CloudFront Function コードを生成する"""
         codes: dict[str, str] = {}
@@ -543,7 +518,6 @@ class CloudFrontStack(Stack):
 
     @property
     def yaml(self) -> str:
-        resolved_api_origins = self._resolve_api_origins()
         acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
         waf_acl_arn = self._resolve_waf_arn()
         function_codes = self._build_function_codes()
@@ -557,15 +531,12 @@ class CloudFrontStack(Stack):
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        context_data = self.context.model_dump(
-            exclude={"signing_key", "api_origins", "token_secret"}
-        )
+        context_data = self.context.model_dump(exclude={"signing_key", "token_secret"})
         original_yaml = template.render(
             stack_name=self.name,
             export=self.export,
             resource=self._get_resource(),
             signing_key=bool(self.context.signing_key),
-            api_origins=resolved_api_origins,
             acm_certificate_arn=acm_certificate_arn,
             acm_redirect_arns=acm_redirect_arns,
             waf_acl_arn=waf_acl_arn,

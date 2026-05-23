@@ -122,9 +122,10 @@ Resources:
               OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
           # {% endif %}
           # {% endfor %}
-          # {% for handler_key, domain_name in api_origins.items() %}
+          # {% for handler_key, export_name in api_origins.items() %}
           - Id: "{{ resource_prefix }}api-{{ handler_key }}"
-            DomainName: "{{ domain_name }}"
+            DomainName:
+              Fn::ImportValue: "{{ export_name }}"
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               HTTPSPort: 443
