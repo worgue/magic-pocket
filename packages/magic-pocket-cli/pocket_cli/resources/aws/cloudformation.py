@@ -278,6 +278,29 @@ class AcmStack(Stack):
         return {}
 
 
+class CloudFrontWafStack(Stack):
+    """us-east-1 に WAFv2 IPSet + WebACL を作成するスタック。
+
+    CloudFront に attach する WebACL は Scope=CLOUDFRONT 必須で、これは
+    us-east-1 でしか作成できない。AcmStack と同じく、メインの CloudFront
+    スタックとは別リージョンで管理する。
+    """
+
+    context: CloudFrontContext
+    template_filename = "cloudfront_waf"
+
+    def get_client(self):
+        return boto3.client("cloudformation", region_name="us-east-1")
+
+    @property
+    def name(self):
+        return f"{self.context.slug}-waf"
+
+    @property
+    def export(self):
+        return {}
+
+
 class CloudFrontKeysStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront_keys"
@@ -358,6 +381,19 @@ class CloudFrontStack(Stack):
         if self._has_token_kvs:
             exports["kvs_arn"] = f"{self.context.slug}-token-kvs-arn"
         return exports
+
+    def _resolve_waf_arn(self) -> str | None:
+        """WAF スタック (us-east-1) から WebACL ARN を取得する。"""
+        if not self.context.waf:
+            return None
+        waf_stack = CloudFrontWafStack(self.context)
+        output = waf_stack.output
+        if not output:
+            raise RuntimeError(
+                f"WAF stack '{waf_stack.name}' が見つかりません。"
+                "先に WAF スタックをデプロイしてください。"
+            )
+        return output.get("WebACLArn")
 
     def _resolve_acm_arns(self) -> tuple[str | None, dict[str, str]]:
         """ACM スタック (us-east-1) から証明書 ARN を取得する。
@@ -509,6 +545,7 @@ class CloudFrontStack(Stack):
     def yaml(self) -> str:
         resolved_api_origins = self._resolve_api_origins()
         acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
+        waf_acl_arn = self._resolve_waf_arn()
         function_codes = self._build_function_codes()
         deploy_hash_function_codes = self._build_deploy_hash_function_codes()
         api_host_function_code = ""
@@ -531,6 +568,7 @@ class CloudFrontStack(Stack):
             api_origins=resolved_api_origins,
             acm_certificate_arn=acm_certificate_arn,
             acm_redirect_arns=acm_redirect_arns,
+            waf_acl_arn=waf_acl_arn,
             function_codes=function_codes,
             deploy_hash_function_codes=deploy_hash_function_codes,
             api_host_function_code=api_host_function_code,

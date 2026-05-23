@@ -49,6 +49,10 @@ _CLOUDFRONT_ACTIONS: list[str] = [
     "route53:GetChange",
 ]
 
+# [cloudfront.*.waf] が一つ以上ある時
+# Deploy 時の CFn 経由作成 + `pocket waf ip ...` CLI の update_ip_set を許可
+_WAF_ACTIONS: list[str] = ["wafv2:*"]
+
 # awscontainer.vpc が設定されている時
 _VPC_ACTIONS: list[str] = ["ec2:*"]
 
@@ -82,6 +86,10 @@ def _has_vpc(settings: Settings) -> bool:
     return bool(settings.awscontainer and settings.awscontainer.vpc)
 
 
+def _has_waf(settings: Settings) -> bool:
+    return any(cf.waf is not None for cf in settings.cloudfront.values())
+
+
 def _has_efs(settings: Settings) -> bool:
     ac = settings.awscontainer
     return bool(ac and ac.vpc and ac.vpc.efs)
@@ -103,6 +111,7 @@ def compute_actions(settings: Settings) -> list[str]:
         (_uses_ssm(settings), _SSM_ACTIONS),
         (not _uses_ssm(settings), _SM_ACTIONS),
         (bool(settings.cloudfront), _CLOUDFRONT_ACTIONS),
+        (_has_waf(settings), _WAF_ACTIONS),
         (_has_vpc(settings), _VPC_ACTIONS),
         (settings.rds is not None, _RDS_ACTIONS),
         (_has_efs(settings), _EFS_ACTIONS),

@@ -101,6 +101,26 @@ def test_cloudfront_adds_acm_route53():
     assert "acm:DeleteCertificate" in actions
     assert "route53:ChangeResourceRecordSets" in actions
     assert "route53:GetChange" in actions
+    # waf block 未設定なら wafv2:* は入らない
+    assert "wafv2:*" not in actions
+
+
+def test_cloudfront_waf_adds_wafv2():
+    """[cloudfront.*.waf] block があれば wafv2:* も追加される。"""
+    settings = _build_settings(
+        s3={},
+        awscontainer={"dockerfile_path": "Dockerfile", "handlers": {}},
+        cloudfront={
+            "main": {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/main"},
+                ],
+                "waf": {},
+            },
+        },
+    )
+    actions = compute_actions(settings)
+    assert "wafv2:*" in actions
 
 
 def test_vpc_adds_ec2():

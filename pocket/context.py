@@ -755,6 +755,11 @@ class RouteContext(BaseModel):
         )
 
 
+class CloudFrontWafContext(BaseModel):
+    enable_ip_set: bool = True
+    managed_rule_groups: list[str] = []
+
+
 class CloudFrontContext(BaseModel):
     name: str
     region: str
@@ -772,6 +777,7 @@ class CloudFrontContext(BaseModel):
     api_origins: dict[str, str] = {}
     managed_assets: str | None = None
     deploy_hash: str = ""
+    waf: CloudFrontWafContext | None = None
 
     @computed_field
     @property
@@ -903,6 +909,14 @@ class CloudFrontContext(BaseModel):
             signing_key=cf.signing_key,
             token_secret=cf.token_secret,
             managed_assets=cf.managed_assets,
+            waf=(
+                CloudFrontWafContext(
+                    enable_ip_set=cf.waf.enable_ip_set,
+                    managed_rule_groups=cf.waf.managed_rule_groups,
+                )
+                if cf.waf is not None
+                else None
+            ),
         )
 
 
