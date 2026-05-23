@@ -138,6 +138,20 @@ def test_waf_stack_yaml_contains_ipset_and_webacl():
     assert "IPSetName" in yaml
 
 
+def test_waf_stack_yaml_ip_set_id_uses_getatt_not_ref():
+    """`AWS::WAFv2::IPSet` の Ref は <Name>|<UUID>|<Scope> の合成文字列を返し、
+    WAFv2 API (GetIPSet/UpdateIPSet) は UUID 単体 (36 char) を要求する。
+    `pocket waf ip ...` CLI が IPSetId を直接 API に渡す以上、Output は
+    必ず Fn::GetAtt IPSet.Id (= UUID) でなければならない。"""
+    ctx = _make_cf_context(waf=CloudFrontWafContext())
+    with mock.patch("boto3.client"):
+        yaml = CloudFrontWafStack(ctx).yaml
+    # IPSetId の Output ブロックを抽出して中身を検証
+    ipset_id_section = yaml.split("IPSetId:")[1].split("IPSetName:")[0]
+    assert "Fn::GetAtt: IPSet.Id" in ipset_id_section
+    assert "Ref: IPSet" not in ipset_id_section
+
+
 def test_waf_stack_yaml_includes_managed_rule_groups():
     ctx = _make_cf_context(
         waf=CloudFrontWafContext(
