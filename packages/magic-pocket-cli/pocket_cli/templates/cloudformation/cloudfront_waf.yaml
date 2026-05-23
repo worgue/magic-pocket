@@ -86,9 +86,12 @@ Outputs:
   IPSetArn:
     Value:
       Fn::GetAtt: IPSet.Arn
+  # AWS::WAFv2::IPSet の Ref は "<Name>|<UUID>|<Scope>" の合成 string を返す。
+  # WAFv2 API (GetIPSet / UpdateIPSet) は UUID 単体 (36 char) を要求するので、
+  # ここでは Fn::GetAtt の Id (= UUID) を使う必要がある。
   IPSetId:
     Value:
-      Ref: IPSet
+      Fn::GetAtt: IPSet.Id
   IPSetName:
     Value: "{{ slug }}-waf-allow"
   # {% endif %}
