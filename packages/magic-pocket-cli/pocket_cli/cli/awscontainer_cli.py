@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 import webbrowser
 
 import boto3
 import click
+from botocore.exceptions import ClientError
 
 from pocket.context import Context
+from pocket.runtime import get_secrets
 from pocket.utils import echo
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.awscontainer import AwsContainer
@@ -41,10 +45,10 @@ def secrets():
     pass
 
 
-@secrets.command()
+@secrets.command("list")
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--show-values", is_flag=True, default=False)
-def list(stage, show_values):
+def list_secrets(stage, show_values):
     ac = get_awscontainer_resource(stage)
     sc = ac.context.secrets
     if not sc:
@@ -181,6 +185,128 @@ def status(stage):
         echo.danger("Container has failed. Please check console.")
     else:
         echo.warning("Container stack status: %s" % ac.stack.status)
+
+
+def _resolve_lambda_target_handlers(
+    context: Context, handler_name: str | None
+) -> list[str]:
+    """reload-env / status-env の対象 handler を解決する。"""
+    assert context.awscontainer is not None
+    handlers = context.awscontainer.handlers
+    if handler_name:
+        if handler_name not in handlers:
+            raise click.ClickException(
+                "handler '%s' が見つかりません。利用可能: %s"
+                % (handler_name, ", ".join(sorted(handlers.keys())))
+            )
+        return [handler_name]
+    return list(handlers.keys())
+
+
+def _function_name(context: Context, handler_key: str) -> str:
+    assert context.awscontainer is not None
+    return f"{context.awscontainer.slug}-{handler_key}"
+
+
+def _fetch_lambda_env(client, function_name: str) -> dict[str, str]:
+    """Lambda の現状 Environment.Variables を取得する。"""
+    try:
+        config = client.get_function_configuration(FunctionName=function_name)
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ResourceNotFoundException":
+            raise click.ClickException(
+                "Lambda function '%s' が見つかりません。先に `pocket deploy` を"
+                "実行してください。" % function_name
+            ) from e
+        raise
+    return dict(config.get("Environment", {}).get("Variables", {}))
+
+
+@awscontainer.command("reload-env")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--handler", default=None, help="特定 handler のみ対象 (省略時は全 handler)"
+)
+def reload_env(stage, handler):
+    """SSM/Secrets Manager の最新値で Lambda env を即時更新する (CFn を介さない)。
+
+    deploy 時の CFn snapshot を base に、secrets (managed + user) の最新値を
+    boto3 で取得して上書きし、`update_function_configuration` で Lambda に反映。
+    side-channel update なので container 再生成が即座に走り、warm container
+    内の古い os.environ もリセットされる。
+
+    設計思想は `pocket waf ip` と同じ (CFn template は deploy 時 snapshot、
+    実体は CLI で直接更新、次 deploy で自己治癒)。
+    """
+    context = Context.from_toml(stage=stage)
+    if not context.awscontainer:
+        raise click.ClickException("[awscontainer] が設定されていません")
+
+    fresh_secrets = get_secrets(stage)
+    if not fresh_secrets:
+        echo.warning("secrets が宣言されていません。何もしません。")
+        return
+
+    lambda_client = boto3.client("lambda", region_name=context.awscontainer.region)
+    targets = _resolve_lambda_target_handlers(context, handler)
+
+    for h_name in targets:
+        function_name = _function_name(context, h_name)
+        current = _fetch_lambda_env(lambda_client, function_name)
+        new_env = {**current, **fresh_secrets}
+        if new_env == current:
+            echo.info("[%s] 差分なし (handler 内 env は既に最新)" % h_name)
+            continue
+        changed = sorted(k for k in fresh_secrets if current.get(k) != fresh_secrets[k])
+        lambda_client.update_function_configuration(
+            FunctionName=function_name,
+            Environment={"Variables": new_env},
+        )
+        echo.success(
+            "[%s] env を更新しました (%d/%d 秘密値を反映、warm container は再生成)"
+            % (h_name, len(changed), len(fresh_secrets))
+        )
+        for k in changed:
+            echo.log("  - %s" % k)
+
+
+@awscontainer.command("status-env")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--handler", default=None, help="特定 handler のみ対象 (省略時は全 handler)"
+)
+def status_env(stage, handler):
+    """Lambda の現在 env と SSM/SM 上の宣言値の drift を表示する。"""
+    context = Context.from_toml(stage=stage)
+    if not context.awscontainer:
+        raise click.ClickException("[awscontainer] が設定されていません")
+
+    fresh_secrets = get_secrets(stage)
+    lambda_client = boto3.client("lambda", region_name=context.awscontainer.region)
+    targets = _resolve_lambda_target_handlers(context, handler)
+
+    any_drift = False
+    for h_name in targets:
+        function_name = _function_name(context, h_name)
+        current = _fetch_lambda_env(lambda_client, function_name)
+        drift = [k for k in fresh_secrets if current.get(k) != fresh_secrets[k]]
+        echo.info(
+            "[%s] secret keys: %d declared, drift: %d"
+            % (h_name, len(fresh_secrets), len(drift))
+        )
+        for k in sorted(drift):
+            if k not in current:
+                echo.warning("  + %s (Lambda に未反映、reload-env で投入)" % k)
+            else:
+                echo.warning("  ~ %s (Lambda 値が古い、reload-env で更新)" % k)
+        if drift:
+            any_drift = True
+    if any_drift:
+        echo.warning(
+            "drift があります。`pocket awscontainer reload-env` で同期できます。"
+        )
+    else:
+        echo.success("drift なし。Lambda env と secrets は同期されています。")
 
 
 @awscontainer.command()
