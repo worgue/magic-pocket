@@ -317,3 +317,43 @@ def test_middleware_no_secret_env_is_noop(monkeypatch):
     assert out is resp
     assert COOKIE_NAME not in resp.cookies
     assert COOKIE_NAME not in resp.deleted_cookies
+
+
+# --- SpaTokenCookieMiddleware: override hooks ---
+
+
+def test_middleware_subclass_can_override_should_issue(monkeypatch):
+    """subclass で _should_issue を上書きして発行条件を拡張できる。
+    sliding refresh 相当のユースケース。"""
+    from pocket.django.spa_auth import SpaTokenCookieMiddleware
+
+    class AlwaysIssue(SpaTokenCookieMiddleware):
+        def _should_issue(self, request):
+            return True
+
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    valid = generate_token("42", secret=TEST_SECRET)
+    resp = _FakeResponse()
+    mw = AlwaysIssue(lambda req: resp)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: valid},  # 有効 token があっても上書き発行される
+    )
+    mw(req)
+    assert COOKIE_NAME in resp.cookies
+
+
+def test_middleware_subclass_can_override_max_age(monkeypatch):
+    """subclass で _max_age を上書きして短命 token を発行できる。"""
+    from pocket.django.spa_auth import SpaTokenCookieMiddleware
+
+    class ShortLived(SpaTokenCookieMiddleware):
+        def _max_age(self):
+            return 60  # 1 分
+
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    resp = _FakeResponse()
+    mw = ShortLived(lambda req: resp)
+    req = _FakeRequest(user=_FakeUser(authenticated=True, pk="42"))
+    mw(req)
+    assert resp.cookies[COOKIE_NAME]["max_age"] == 60
