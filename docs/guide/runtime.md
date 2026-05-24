@@ -114,6 +114,41 @@ middleware が 2 の bounce response 経路で必ず token を補填するため
 余分に bounce するだけでループが断ち切られます (ユーザーには visible な
 追加遷移には見えません)。
 
+##### 拡張 (subclass で sliding refresh や短命 token に対応)
+
+`SpaTokenCookieMiddleware` は次の 2 つの拡張点を持ちます:
+
+| メソッド | デフォルト | 用途 |
+|---------|-----------|------|
+| `_should_issue(request) -> bool` | cookie 無 or `verify_token` で失効判定 | 残り寿命が短い時にも発行する sliding refresh 等 |
+| `_max_age() -> int` | `DEFAULT_MAX_AGE` (7 日) | 短命 token を使う場合に settings 等から返す |
+
+例: 残り寿命が半分を切ったら sliding refresh する subclass:
+
+```python
+import time
+from django.conf import settings
+from pocket.django.spa_auth import (
+    COOKIE_NAME,
+    SpaTokenCookieMiddleware as BaseMiddleware,
+)
+
+
+class SpaTokenCookieMiddleware(BaseMiddleware):
+    def _should_issue(self, request):
+        if super()._should_issue(request):
+            return True
+        token = request.COOKIES[COOKIE_NAME]
+        remaining = int(token.split(":")[1]) - time.time()
+        return remaining < self._max_age() / 2
+
+    def _max_age(self):
+        return settings.SPA_TOKEN_MAX_AGE
+```
+
+`MIDDLEWARE` で指定するパスを subclass 側に差し替えれば、デフォルトの
+挙動はそのまま保ちつつ拡張できます。
+
 ### Rust (Loco)
 
 Rust アプリケーションでは `pocket-spa-auth` crate を使用できます。

@@ -101,6 +101,14 @@ class SpaTokenCookieMiddleware:
 
     `SPA_TOKEN_SECRET` 環境変数が未設定の環境 (gating 未 deploy のローカル等)
     では no-op として動く。
+
+    拡張ポイント (subclass で override):
+
+    - `_should_issue(request)`: token を (再) 発行すべきかの判定。デフォルト
+      は「cookie が無い or `verify_token` で失効判定」のみ。残り寿命が短い
+      時にも発行する sliding refresh 等は subclass で表現する
+    - `_max_age()`: 発行時の token 寿命 (秒)。デフォルトは `DEFAULT_MAX_AGE`
+      (7 日)。短命 token を使う場合は subclass で settings 等から返す
     """
 
     def __init__(self, get_response):  # type: ignore
@@ -111,9 +119,28 @@ class SpaTokenCookieMiddleware:
         if not os.environ.get("SPA_TOKEN_SECRET"):
             return response
         if request.user.is_authenticated:
-            existing = request.COOKIES.get(COOKIE_NAME)
-            if existing is None or verify_token(existing) is None:
-                spa_login(response, str(request.user.pk))
+            if self._should_issue(request):
+                spa_login(response, str(request.user.pk), max_age=self._max_age())
         elif COOKIE_NAME in request.COOKIES:
             spa_logout(response)
         return response
+
+    def _should_issue(self, request) -> bool:  # type: ignore
+        """token を (再) 発行すべきかの判定。
+
+        デフォルトは「cookie 無 or 失効」で発行。残り寿命が短いときも発行する
+        sliding refresh が欲しい場合は subclass で:
+
+            def _should_issue(self, request):
+                if super()._should_issue(request):
+                    return True
+                token = request.COOKIES[COOKIE_NAME]
+                remaining = int(token.split(":")[1]) - time.time()
+                return remaining < self._max_age() / 2
+        """
+        token = request.COOKIES.get(COOKIE_NAME)
+        return token is None or verify_token(token) is None
+
+    def _max_age(self) -> int:
+        """発行時の token 寿命 (秒)。subclass で settings 等から返せる。"""
+        return DEFAULT_MAX_AGE
