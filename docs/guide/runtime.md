@@ -74,6 +74,46 @@ def logout_view(request):
     return response
 ```
 
+#### `SpaTokenCookieMiddleware` (必須)
+
+`require_token = true` のルートを公開するときは、`SpaTokenCookieMiddleware`
+を `MIDDLEWARE` に追加してください。**入れないと無限 redirect ループに
+陥ります**。
+
+```python
+# settings.py
+MIDDLEWARE = [
+    # ...
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "pocket.django.spa_auth.SpaTokenCookieMiddleware",
+    # ...
+]
+```
+
+middleware の動作:
+
+- 認証済み response: `pocket-spa-token` cookie が無い / 期限切れなら `spa_login()`
+  で発行 (= self-heal)
+- 未認証 response: 残存 cookie があれば `spa_logout()` で削除
+- `SPA_TOKEN_SECRET` 環境変数が未設定の環境 (gating 未 deploy のローカル等)
+  は no-op
+
+##### なぜ必要か (詳細)
+
+Django session のデフォルト寿命 (`SESSION_COOKIE_AGE` = 14 日) が SPA token
+の寿命 (`DEFAULT_MAX_AGE` = 7 日) より長いため、**8 日目以降に「session 有り
++ token 無し」の状態が全ユーザーに発生**します。この状態で `require_token`
+ルートにアクセスすると:
+
+1. CloudFront Function が token 無を検出 → `login_path` (`/accounts/login/?next=/`) に 302
+2. ログインページが「既にログイン済み」を検出し、ログイン処理を通さずに `next` (`/`) へ 302
+   (`allauth.RedirectAuthenticatedUserMixin` や Django 標準 `LoginView.redirect_authenticated_user=True` の挙動)
+3. → 1 へ戻り **無限ループ**
+
+middleware が 2 の bounce response 経路で必ず token を補填するため、1 往復
+余分に bounce するだけでループが断ち切られます (ユーザーには visible な
+追加遷移には見えません)。
+
 ### Rust (Loco)
 
 Rust アプリケーションでは `pocket-spa-auth` crate を使用できます。
@@ -100,12 +140,13 @@ let delete_cookie = logout_cookie_value();
 
 **Python**
 
-| 関数 | 引数 | 戻り値 | 説明 |
+| 関数 / クラス | 引数 | 戻り値 | 説明 |
 |------|------|--------|------|
 | `generate_token(user_id)` | `user_id: str`, `secret: str\|None`, `max_age: int` | `str` | HMAC-SHA256 トークンを生成 |
 | `verify_token(token)` | `token: str`, `secret: str\|None` | `str\|None` | トークンを検証し、有効なら user_id を返す |
 | `spa_login(response, user_id)` | `response`, `user_id: str`, `secret: str\|None`, `max_age: int` | — | レスポンスにトークン Cookie をセット |
 | `spa_logout(response)` | `response` | — | レスポンスからトークン Cookie を削除 |
+| `SpaTokenCookieMiddleware` | Django middleware | — | 認証済み response に token 自動補填、未認証 response から残存 cookie 削除 (詳細は上記) |
 
 - `secret` を省略すると `os.environ["SPA_TOKEN_SECRET"]` を使用します
 - `max_age` のデフォルトは `604800`（7日間）です

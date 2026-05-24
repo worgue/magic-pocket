@@ -72,3 +72,48 @@ def spa_login(
 def spa_logout(response):  # type: ignore
     """レスポンスから SPA トークン Cookie を削除する"""
     response.delete_cookie(COOKIE_NAME, path="/")
+
+
+class SpaTokenCookieMiddleware:
+    """SPA token cookie の self-heal middleware。
+
+    認証済み response に対しては cookie が無い / 期限切れなら token を発行し、
+    未認証 response に対しては cookie があれば削除する。`AuthenticationMiddleware`
+    の後に配置する。
+
+    これがないと「Django session は生きているが SPA token は期限切れ」の状態
+    (デフォルト設定で SESSION_COOKIE_AGE=14日 vs SPA token DEFAULT_MAX_AGE=7日
+    のため、8日目以降に必ず発生) で `require_token` ルートにアクセスした際、
+    CloudFront Function → login_path → 既ログイン判定で素通り → 元 URL へ
+    bounce → token 無 → login_path へ … の無限 redirect ループに陥る。
+
+    middleware を入れておくと、bounce response 経路に必ず通るため、その 1 往復
+    で token cookie が補充されてループが断ち切れる。
+
+    使い方:
+
+        MIDDLEWARE = [
+            ...,
+            "django.contrib.auth.middleware.AuthenticationMiddleware",
+            "pocket.django.spa_auth.SpaTokenCookieMiddleware",
+            ...,
+        ]
+
+    `SPA_TOKEN_SECRET` 環境変数が未設定の環境 (gating 未 deploy のローカル等)
+    では no-op として動く。
+    """
+
+    def __init__(self, get_response):  # type: ignore
+        self.get_response = get_response
+
+    def __call__(self, request):  # type: ignore
+        response = self.get_response(request)
+        if not os.environ.get("SPA_TOKEN_SECRET"):
+            return response
+        if request.user.is_authenticated:
+            existing = request.COOKIES.get(COOKIE_NAME)
+            if existing is None or verify_token(existing) is None:
+                spa_login(response, str(request.user.pk))
+        elif COOKIE_NAME in request.COOKIES:
+            spa_logout(response)
+        return response

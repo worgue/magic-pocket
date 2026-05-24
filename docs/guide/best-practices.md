@@ -196,6 +196,27 @@ routes = [
 
 **Django 側の実装**
 
+`SpaTokenCookieMiddleware` を **必ず** `MIDDLEWARE` に追加してください
+(`AuthenticationMiddleware` の後)。Django session (デフォルト 14 日) が
+SPA token (デフォルト 7 日) より長生きするため、token 切れ後に session で
+ログインページを素通り redirect されて token が再発行されない
+**無限 redirect ループに陥ります**。middleware が「認証済み response には
+必ず token が乗っている」を担保することでループを断ち切ります。
+
+```python
+# settings.py
+MIDDLEWARE = [
+    # ...
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "pocket.django.spa_auth.SpaTokenCookieMiddleware",
+    # ...
+]
+```
+
+ログイン / ログアウトビュー側は薄く済みます (middleware が後始末するので
+明示的に `spa_login` / `spa_logout` を呼ぶ必要は厳密にはありませんが、
+明示しておくと意図が読み取りやすいです):
+
 ```python
 from django.http import HttpResponseRedirect
 from pocket.django.spa_auth import spa_login, spa_logout
@@ -204,7 +225,7 @@ from pocket.django.spa_auth import spa_login, spa_logout
 def login_view(request):
     # Django 認証でユーザーを検証...
     response = HttpResponseRedirect(request.GET.get("next", "/"))
-    spa_login(response, str(request.user.id))
+    spa_login(response, str(request.user.id))  # middleware でも補填されるが明示推奨
     return response
 ```
 
