@@ -201,3 +201,119 @@ def test_spa_logout_deletes_cookie():
     resp = FakeResponse()
     spa_logout(resp)
     assert COOKIE_NAME in resp.deleted_cookies
+
+
+# --- SpaTokenCookieMiddleware ---
+
+
+class _FakeResponse:
+    """テスト用最小 response。set_cookie / delete_cookie を記録するだけ。"""
+
+    def __init__(self):
+        self.cookies: dict = {}
+        self.deleted_cookies: list = []
+
+    def set_cookie(self, key, value, **kwargs):
+        self.cookies[key] = {"value": value, **kwargs}
+
+    def delete_cookie(self, key, **kwargs):
+        self.deleted_cookies.append(key)
+
+
+class _FakeUser:
+    def __init__(self, *, authenticated: bool, pk: str = "42"):
+        self.is_authenticated = authenticated
+        self.pk = pk
+
+
+class _FakeRequest:
+    def __init__(self, *, user: _FakeUser, cookies: dict | None = None):
+        self.user = user
+        self.COOKIES = cookies or {}
+
+
+def _make_middleware(response, *, secret=TEST_SECRET, monkeypatch):
+    """SPA_TOKEN_SECRET 環境変数を仕込んだ middleware を返す。"""
+    from pocket.django.spa_auth import SpaTokenCookieMiddleware
+
+    monkeypatch.setenv("SPA_TOKEN_SECRET", secret)
+    return SpaTokenCookieMiddleware(lambda req: response)
+
+
+def test_middleware_authenticated_no_cookie_issues_token(monkeypatch):
+    """認証済み + cookie なし → token を発行 (redirect loop 防止の核)。"""
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(user=_FakeUser(authenticated=True, pk="42"))
+    out = mw(req)
+    assert out is resp
+    assert COOKIE_NAME in resp.cookies
+    assert verify_token(resp.cookies[COOKIE_NAME]["value"]) == "42"
+
+
+def test_middleware_authenticated_expired_cookie_reissues(monkeypatch):
+    """認証済み + 期限切れ cookie → 新 token で上書き発行 (現実シナリオ)。"""
+    expired = f"42:{int(time.time()) - 60}:deadbeef"
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: expired},
+    )
+    mw(req)
+    assert COOKIE_NAME in resp.cookies
+    new_token = resp.cookies[COOKIE_NAME]["value"]
+    assert new_token != expired
+    assert verify_token(new_token) == "42"
+
+
+def test_middleware_authenticated_valid_cookie_no_change(monkeypatch):
+    """認証済み + 有効 cookie → 何もしない (毎リクエスト reset しない)。"""
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    valid = generate_token("42", secret=TEST_SECRET)
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: valid},
+    )
+    mw(req)
+    assert COOKIE_NAME not in resp.cookies
+
+
+def test_middleware_unauthenticated_clears_stale_cookie(monkeypatch):
+    """未認証 + cookie 残存 → delete (logout 漏れ対策)。"""
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=False),
+        cookies={COOKIE_NAME: "anything"},
+    )
+    mw(req)
+    assert COOKIE_NAME in resp.deleted_cookies
+
+
+def test_middleware_unauthenticated_no_cookie_noop(monkeypatch):
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(user=_FakeUser(authenticated=False))
+    mw(req)
+    assert COOKIE_NAME not in resp.cookies
+    assert COOKIE_NAME not in resp.deleted_cookies
+
+
+def test_middleware_no_secret_env_is_noop(monkeypatch):
+    """SPA_TOKEN_SECRET 未設定の環境 (gating 未 deploy のローカル等) は no-op。"""
+    from pocket.django.spa_auth import SpaTokenCookieMiddleware
+
+    monkeypatch.delenv("SPA_TOKEN_SECRET", raising=False)
+    resp = _FakeResponse()
+    mw = SpaTokenCookieMiddleware(lambda req: resp)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: "anything"},
+    )
+    out = mw(req)
+    assert out is resp
+    assert COOKIE_NAME not in resp.cookies
+    assert COOKIE_NAME not in resp.deleted_cookies
