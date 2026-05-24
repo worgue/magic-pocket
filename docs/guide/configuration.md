@@ -825,6 +825,48 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 extra_resources = ["arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-prefix-*"]
 ```
 
+#### secrets の即時反映 (`pocket awscontainer reload-env`)
+
+SSM / Secrets Manager 側でシークレット値を更新しても、**warm container は
+旧値を抱えたまま再利用される**ため、新値の反映は次の cold start を待つ
+形になります (典型的には 5〜15 分のラグ)。feature flag の即時切替、secret
+rotation 後の即時反映、hotfix で env 1 つだけ変えたい等のユースケースで
+このラグが許容できない場合は、`pocket awscontainer reload-env` を使います。
+
+```bash
+# 全 handler の env を SSM/SM の最新値で再構築 + 即時反映
+pocket awscontainer reload-env --stage=prod
+
+# 特定 handler のみ
+pocket awscontainer reload-env --stage=prod --handler=wsgi
+
+# 現状確認 (Lambda 側の env と SSM/SM の宣言値が drift してないか)
+pocket awscontainer status-env --stage=prod
+```
+
+仕組み:
+
+1. pocket.toml の `[awscontainer.secrets.managed/user]` から「現在の宣言上の
+   secret キー一式」を構築
+2. SSM / Secrets Manager から最新値を boto3 で取得
+3. Lambda の現在 `Environment.Variables` に secrets を merge して
+   `update_function_configuration` で上書き
+4. AWS Lambda が warm container を **強制的に再生成** するため、新しい値が
+   次の invocation から即座に反映される
+
+**`pocket waf ip` と同じ side-channel pattern** です。CFn template の
+`Environment.Variables` は deploy 時 snapshot として残り、CFn 視点では
+drift しますが、**次の `pocket deploy` で自然と再同期** されます (CFn
+template が SSM の最新値を読み直して再注入するため)。
+
+`status-env` は drift 検出専用 (副作用なし)。Lambda 側の env と SSM/SM
+側の宣言値を比較し、差分のあるキーだけ表示します。
+
+!!! note "secrets 以外の env (POCKET_STAGE / awscontainer.envs / RDS pointers 等)"
+    `reload-env` は **secrets のキーだけ更新** し、その他の env は Lambda の
+    現状値を保持します。POCKET_STAGE 等の静的 env を変更したい場合は通常の
+    `pocket deploy` を使ってください。
+
 ### awscontainer.iam
 
 Lambda execution role に追加で IAM 権限を注入します。`use_s3` / `use_route53` / `secrets.allowed_*_resources` 等の built-in な仕組みでカバーできない権限を、ユーザーが宣言的に与えるための逃げ道です。
