@@ -44,6 +44,19 @@ CloudFormation が Lambda 関数の環境変数として自動設定するため
 CloudFront 配信の SPA にログイン必須機能を追加する場合、SPA トークン認証モジュールを使用します。
 HMAC-SHA256 トークンを Cookie にセットし、CloudFront Function で検証します。
 
+!!! info "gate は default behavior の全リクエストに効く (asset 配信も含む)"
+    CloudFront Function (viewer-request) は `require_token = true` のルートの
+    default behavior に attach されるため、**そのルート配下の全リクエスト**
+    (`/_app/*.js` 等の拡張子付き asset も含む) に対して token 検証が走ります。
+    asset 単位で gate を bypass する設定は入っていません。
+
+    一見「token expired のユーザーは asset の数だけ redirect される
+    (thundering herd 的にループ寸前)」のように見えますが、実際にはなりません:
+    ブラウザは **index.html を先に取得 → パース → 必要な asset を要求** の順で
+    動くため、document 取得時点で middleware が token を refresh すれば、
+    後続の asset リクエストはすべて valid token で 200 を返します。**1 ユーザー
+    につき 1 回の token refresh で済む** モデルです。
+
 ### Python (Django)
 
 ```python
