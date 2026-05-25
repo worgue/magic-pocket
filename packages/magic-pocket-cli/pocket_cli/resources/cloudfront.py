@@ -203,7 +203,21 @@ class CloudFront:
         for route in self.context.uploadable_routes:
             if route.build and not skip_build:
                 echo.info("ビルド実行: %s" % route.build)
-                subprocess.run(route.build, shell=True, check=True)
+                try:
+                    subprocess.run(route.build, shell=True, check=True)
+                except subprocess.CalledProcessError as e:
+                    echo.danger(
+                        "build コマンドが失敗しました (exit %d): %s"
+                        % (e.returncode, route.build)
+                    )
+                    echo.warning(
+                        "deploy ホスト側で依存を入れ直してから再実行してください。"
+                        " 例えば npm/bun の optional dependency (rolldown 等) "
+                        "が materialize されていないと、ロックファイルにあっても"
+                        " import 時に Cannot find module で失敗します"
+                        " (`rm -rf node_modules && npm ci` 等で復旧)。"
+                    )
+                    raise
             self._upload_route(route)
         if self.context.uploadable_routes:
             self._invalidate()
