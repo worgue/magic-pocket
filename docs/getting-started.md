@@ -72,7 +72,19 @@ uv add django-environ psycopg magic-pocket
 
 !!! tip "事前にgit commitしておくと安心"
     `settings.py` が上書きされるので、差分を確認しやすくなります。
-    `.gitignore` に `db.sqlite3` と `.env` を追加しておきましょう。
+    `.gitignore` には次のエントリも追加しておきましょう (deploy のたびに
+    再生成される副産物の誤コミットを防ぐため。詳細は
+    [設定ファイル - pocket runtime-config](guide/configuration.md#pocket-runtime-config)):
+
+    ```gitignore
+    # ローカル開発用
+    db.sqlite3
+    .env
+
+    # magic-pocket: deploy のたび再生成される副産物
+    /pocket.runtime.toml
+    /pocket_cache/
+    ```
 
 ```bash
 uv run pocket django init

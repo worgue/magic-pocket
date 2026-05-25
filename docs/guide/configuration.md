@@ -601,10 +601,30 @@ pocket runtime-config
 pocket runtime-config pocket.runtime.toml
 ```
 
-`pocket deploy` 時にはビルド前に自動生成され、ビルド後に削除されるため、手動で実行する必要はありません。
+`pocket deploy` 時にはビルド前に自動生成され、Lambda image に `COPY` されます。
 手動実行は生成内容の確認やデバッグ用途で使えます。
 
 Lambda 上では `pocket.runtime.toml` が `pocket.toml` より優先して読み込まれます。
+
+!!! warning "生成物は `.gitignore` 推奨"
+    `pocket deploy` (および `pocket django deploy`) は以下のファイルを再生成
+    します。**いずれも `pocket.toml` から都度組み立て直す副産物なので、git
+    管理は不要**です。誤コミットを防ぐため `.gitignore` に登録しておいて
+    ください。
+
+    | パス | 内容 |
+    |------|------|
+    | `pocket.runtime.toml` | `pocket.toml` の runtime 用 sanitized 版。`awscontainer.django.project_dir` が設定されていれば `{project_dir}/pocket.runtime.toml` に出力 |
+    | `pocket_cache/` | `pocket django deploystatic` の中間ビルド成果物 (`static_build/<stage>/`)。S3 アップロード後は不要 |
+
+    `.gitignore` の例:
+
+    ```gitignore
+    # magic-pocket: deploy のたび再生成される副産物 (git 管理不要)
+    /pocket.runtime.toml
+    /src/pocket.runtime.toml   # project_dir = "src" の場合
+    /pocket_cache/
+    ```
 
 !!! info "VPCなしデプロイ"
     `[vpc]` セクションがない場合（または `use_vpc = false`）、LambdaはVPCの外（パブリック）で実行されます。
