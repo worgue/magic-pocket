@@ -55,7 +55,7 @@ Resources:
         CustomHeadersConfig:
           Items:
             - Header: "cache-control"
-              Value: "max-age={{ route.versioned_max_age }}"
+              Value: "public, max-age={{ route.versioned_max_age }}, immutable"
               Override: true
   # {% endif %}
   # {% if route.is_deploy_hash %}
