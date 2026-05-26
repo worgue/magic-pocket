@@ -836,6 +836,16 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 | `name` | str | **必須** | シークレット名またはARN |
 | `store` | `"sm"` \| `"ssm"` \| None | None | 保存先（Noneの場合 `secrets.store` を継承） |
 
+`name` には `{stage}` / `{project}` / `{namespace}` の format 変数が使えます
+（`bucket_name_format` / `pocket_key_format` と同じ仕組み）。ステージ単位で
+SSM パスや SM シークレットを分けたい場合に便利です。
+
+```toml
+[awscontainer.secrets.user]
+# prod stage の Lambda は /svc/prod-token を、dev stage は /svc/dev-token を読む
+SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
+```
+
 #### secrets.extra_resources
 
 追加のシークレットARN（正規表現可）に対してGetSecretValue / GetParameter 権限を付与します。

@@ -230,10 +230,14 @@ class SecretsContext(BaseModel):
             "stage": root.stage,
             "project": root.project_name,
         }
+        user_secrets = {
+            key: spec.model_copy(update={"name": spec.name.format(**format_vars)})
+            for key, spec in secrets.user.items()
+        }
         return cls(
             store=secrets.store,
             managed=secrets.managed,
-            user=secrets.user,
+            user=user_secrets,
             extra_resources=secrets.extra_resources,
             require_list_secrets=secrets.require_list_secrets,
             region=root.region,
