@@ -1,4 +1,4 @@
-from pocket.context import AwsContainerContext, Context
+from pocket.context import AwsContainerContext, Context, SecretsContext
 from pocket.general_context import GeneralContext
 
 
@@ -101,3 +101,29 @@ def test_awscontainer_permissions_boundary_none(base_settings, monkeypatch):
     monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
     ctx = _build_awscontainer_context(base_settings)
     assert ctx.permissions_boundary is None
+
+
+def test_secrets_user_name_format_placeholder(base_settings):
+    """user secret の name に {stage}/{project}/{namespace} が format される。"""
+    from pocket import settings
+
+    secrets = settings.Secrets(
+        user={
+            "TOKEN": settings.UserSecretSpec(name="/svc/{stage}-token", store="ssm"),
+        }
+    )
+    ctx = SecretsContext.from_settings(secrets, base_settings)
+    # base_settings: stage="test", project_name="testprj", namespace="pocket"
+    assert ctx.user["TOKEN"].name == "/svc/test-token"
+
+
+def test_secrets_user_name_plain_is_noop(base_settings):
+    """placeholder を含まない既存 name は format 後も同一 (後方互換)。"""
+    from pocket import settings
+
+    arn = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:my-secret"
+    secrets = settings.Secrets(
+        user={"API_KEY": settings.UserSecretSpec(name=arn, store="sm")},
+    )
+    ctx = SecretsContext.from_settings(secrets, base_settings)
+    assert ctx.user["API_KEY"].name == arn
