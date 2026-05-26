@@ -102,6 +102,8 @@ def test_deploy_hash_cf_function_rendering(use_toml):
     assert 'request.uri.replace("/abc1234/", "/")' in yaml
     # ResponseHeadersPolicy も存在する
     assert "ResponseHeadersPolicyStatic" in yaml
+    # versioned ルートの cache-control は public / immutable 付き
+    assert 'Value: "public, max-age=31536000, immutable"' in yaml
 
 
 def test_deploy_hash_storage_backend():
