@@ -269,7 +269,10 @@ def _detect_engine(stage: str | None, scheme: str) -> str:
         context = get_context(stage=stage)
         if context.tidb:
             return "django_tidb"
-        if context.neon or context.rds:
+        if context.rds:
+            # master password ローテーションに追従する RDS 専用 backend。
+            return "pocket.django.db_backends.rds"
+        if context.neon:
             return "django.db.backends.postgresql"
     if scheme in ("postgres", "postgresql"):
         return "django.db.backends.postgresql"
