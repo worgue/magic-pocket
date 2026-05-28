@@ -420,7 +420,12 @@ dockerfile_path = "pocket.Dockerfile"
 
 !!! info "DATABASE_URL の設定"
     `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
-    Lambda 起動時に `POCKET_RDS_SECRET_ARN` から DATABASE_URL が動的に構築されます（パスワードローテーション対応）。
+    Lambda の cold start 時に `POCKET_RDS_SECRET_ARN` から DATABASE_URL が動的に構築されます。
+
+!!! info "master password 自動ローテーションへの追従"
+    RDS は `ManageMasterUserPassword=True` で作成され、master password は AWS により自動ローテーション（デフォルト 7 日周期）されます。`get_databases()` は `[rds]` 設定時に RDS 専用の DB backend (`pocket.django.db_backends.rds`) を自動選択し、**接続確立時に認証エラー（PostgreSQL SQLSTATE class 28）を検知すると Secrets Manager から最新パスワードを取り直して 1 度だけ自動再接続します**。
+
+    これにより、ローテーション直後に warm Lambda が古いパスワードで失敗し続けることはなく、cold start を待たずに自己修復します（手動介入不要）。既に確立済みの接続は PostgreSQL の仕様上ローテーション後も生き続けるため、影響を受けるのは再接続が必要になった瞬間だけです。
 
 !!! warning "制約事項"
     - managed VPC（`manage=true`）では `zone_suffixes` が 2 つ以上必要です（DB Subnet Group に最低 2AZ 必要）。
