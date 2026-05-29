@@ -389,8 +389,29 @@ Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が
 
 !!! info "認証方式"
     DSQL はパスワード認証ではなく IAM 認証トークンを使用します。
-    トークンは 15 分で失効するため、長時間の接続では定期的に再生成が必要です。
-    `pocket.runtime` の `_set_dsql_token()` は起動時に1回だけトークンを生成します。
+    `POCKET_DSQL_TOKEN` は `set_envs()` 呼び出し時（Lambda の cold start）に **1 回だけ** 生成され、トークンは約 **15 分** で失効します。
+
+!!! warning "warm Lambda での再接続に注意（トークン期限切れ）"
+    `POCKET_DSQL_TOKEN` は cold start で固定されるため、15 分以上稼働した warm Lambda が
+    **新しい接続を張る**と、期限切れトークンで認証に失敗します（既存の確立済み接続は
+    PostgreSQL の仕様上そのまま使えます）。新規接続の直前に `pocket.runtime.refresh_dsql_token()`
+    を呼んでトークンを再生成してください。
+
+    ```python
+    from pocket.runtime import refresh_dsql_token
+
+    token = refresh_dsql_token()  # POCKET_DSQL_TOKEN を最新化し、最新トークンを返す
+    conn = psycopg.connect(
+        host=os.environ["POCKET_DSQL_ENDPOINT"],
+        user="admin",
+        password=token,
+        dbname="postgres",
+        sslmode="require",
+    )
+    ```
+
+    Django の `CONN_MAX_AGE`（接続の再利用時間）を 15 分より十分短くしておくと、期限切れ
+    トークンを掴んだ接続が再利用される時間を抑えられます。
 
 ---
 
