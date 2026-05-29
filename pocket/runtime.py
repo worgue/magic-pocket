@@ -122,15 +122,30 @@ def _set_rds_database_url():
     )
 
 
-def _set_dsql_token():
-    """POCKET_DSQL_ENDPOINT があれば IAM 認証トークンを生成"""
+def _set_dsql_token() -> str | None:
+    """POCKET_DSQL_ENDPOINT があれば IAM 認証トークンを生成し POCKET_DSQL_TOKEN に設定。
+
+    DSQL 未設定 (endpoint/region が無い) 場合は None を返す。
+    """
     dsql_endpoint = os.environ.get("POCKET_DSQL_ENDPOINT")
     dsql_region = os.environ.get("POCKET_DSQL_REGION")
     if not dsql_endpoint or not dsql_region:
-        return
+        return None
     client = boto3.client("dsql", region_name=dsql_region)
     token = client.generate_db_connect_admin_auth_token(dsql_endpoint, dsql_region)
     os.environ["POCKET_DSQL_TOKEN"] = token
+    return token
+
+
+def refresh_dsql_token() -> str | None:
+    """DSQL の IAM 認証トークンを再生成し、POCKET_DSQL_TOKEN を最新化して返す。
+
+    POCKET_DSQL_TOKEN は cold start で 1 回しか生成されず約 15 分で失効する。長時間
+    稼働した warm Lambda が新しい接続を張る直前に本関数を呼ぶと、最新トークンで
+    再接続でき、期限切れトークンによる認証失敗を避けられる。DSQL 未設定の場合は
+    None を返す。
+    """
+    return _set_dsql_token()
 
 
 # 後方互換エイリアス
