@@ -43,11 +43,14 @@ def is_auth_error(exc: BaseException | None) -> bool:
 def refresh_rds_settings(settings_dict: dict[str, Any]) -> bool:
     """RDS シークレットを再取得し、settings_dict の認証情報を最新値で更新する。
 
-    ``POCKET_RDS_SECRET_ARN`` から ``DATABASE_URL`` を再構築し、その値を parse して
+    RDS 認証情報 (Secrets Manager の ``POCKET_RDS_SECRET_ARN`` または SSM の
+    ``POCKET_RDS_SSM_PARAM``) から ``DATABASE_URL`` を再構築し、その値を parse して
     settings_dict を上書きする。これにより以降の再接続は新パスワードで直接成功する。
-    更新できれば True、RDS シークレットが無い (= RDS 以外) 場合は False。
+    更新できれば True、RDS 認証情報が無い (= RDS 以外) 場合は False。
     """
-    if not os.environ.get("POCKET_RDS_SECRET_ARN"):
+    if not os.environ.get("POCKET_RDS_SECRET_ARN") and not os.environ.get(
+        "POCKET_RDS_SSM_PARAM"
+    ):
         return False
     from pocket.runtime import _set_rds_database_url
 

@@ -325,6 +325,13 @@ class Rds(BaseModel):
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
+    # マスターパスワードの管理方式:
+    #   "aws-managed": ManageMasterUserPassword=True。RDS が生成し 7 日周期で自動
+    #                  ローテーション (既定。互換)。
+    #   "static":      pocket がパスワードを生成し自前 secret に保存。ローテーション
+    #                  しない。RDS Proxy 無しでローテーション時ダウンタイムを避けたい
+    #                  環境向け。
+    password_strategy: Literal["aws-managed", "static"] = "aws-managed"
     # managed = false (既存参照モード) 用フィールド
     secret_arn: str | None = None
     security_group_id: str | None = None
@@ -355,6 +362,11 @@ class Rds(BaseModel):
             if self.security_group_id is None:
                 raise ValueError(
                     "managed = false の場合、security_group_id は必須です。"
+                )
+            if self.password_strategy != "aws-managed":
+                raise ValueError(
+                    "password_strategy は managed = true でのみ使用できます。"
+                    " 既存 RDS 参照時のパスワードは secret_arn の secret に従います。"
                 )
             if has_managed_custom:
                 set_fields = [k for k, v in managed_fields.items() if v]

@@ -580,8 +580,11 @@ class ContainerStack(Stack):
         if not self._rds_context.managed:
             return {
                 "rds_security_group_id": self._rds_context.security_group_id,
+                "rds_secret_store": "sm",
                 "rds_secret_arn": self._rds_context.secret_arn,
                 "rds_kms_key_id": None,
+                "rds_ssm_param_name": None,
+                "rds_ssm_param_arn": None,
                 "rds_endpoint": None,
                 "rds_port": None,
                 "rds_dbname": None,
@@ -589,13 +592,33 @@ class ContainerStack(Stack):
         from pocket_cli.resources.rds import Rds
 
         rds = Rds(self._rds_context)
-        return {
+        base = {
             "rds_security_group_id": rds.security_group_id,
-            "rds_secret_arn": rds.master_user_secret_arn,
-            "rds_kms_key_id": rds.master_user_secret_kms_key_id,
             "rds_endpoint": rds.endpoint,
             "rds_port": str(rds.port) if rds.port else None,
             "rds_dbname": rds.database_name,
+        }
+        # static + secret_store=ssm: SSM パラメータを参照する (SM secret は作らない)
+        ssm_param_name = rds.static_ssm_param_name
+        if ssm_param_name is not None:
+            return {
+                **base,
+                "rds_secret_store": "ssm",
+                "rds_secret_arn": None,
+                "rds_kms_key_id": None,
+                "rds_ssm_param_name": ssm_param_name,
+                "rds_ssm_param_arn": (
+                    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/"
+                    + ssm_param_name
+                ),
+            }
+        return {
+            **base,
+            "rds_secret_store": "sm",
+            "rds_secret_arn": rds.master_user_secret_arn,
+            "rds_kms_key_id": rds.master_user_secret_kms_key_id,
+            "rds_ssm_param_name": None,
+            "rds_ssm_param_arn": None,
         }
 
     def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
@@ -656,8 +679,11 @@ class ContainerStack(Stack):
             export=self.export,
             resource=self._get_resource(),
             rds_security_group_id=rds_info.get("rds_security_group_id"),
+            rds_secret_store=rds_info.get("rds_secret_store"),
             rds_secret_arn=rds_info.get("rds_secret_arn"),
             rds_kms_key_id=rds_info.get("rds_kms_key_id"),
+            rds_ssm_param_name=rds_info.get("rds_ssm_param_name"),
+            rds_ssm_param_arn=rds_info.get("rds_ssm_param_arn"),
             rds_endpoint=rds_info.get("rds_endpoint"),
             rds_port=rds_info.get("rds_port"),
             rds_dbname=rds_info.get("rds_dbname"),

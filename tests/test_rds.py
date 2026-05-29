@@ -7,6 +7,7 @@ from moto import mock_aws
 from pocket_cli.resources.rds import Rds
 
 from pocket.context import Context
+from pocket.settings import Rds as RdsSettings
 from pocket.settings import Settings
 
 
@@ -355,3 +356,330 @@ def test_set_rds_database_url_with_env_fallback(use_toml):
         os.environ.pop("POCKET_RDS_PORT", None)
         os.environ.pop("POCKET_RDS_DBNAME", None)
         os.environ.pop("DATABASE_URL", None)
+
+
+# --- password_strategy = "static" ---
+
+
+def test_rds_static_password_strategy_managed_ok():
+    """password_strategy=static は managed=true で受理される"""
+    rds = RdsSettings.model_validate({"password_strategy": "static"})
+    assert rds.managed is True
+    assert rds.password_strategy == "static"
+
+
+def test_rds_static_password_strategy_requires_managed():
+    """password_strategy は managed=false では使用できない"""
+    with pytest.raises(ValueError, match="password_strategy は managed = true"):
+        RdsSettings.model_validate(
+            {
+                "managed": False,
+                "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:1:secret:x",
+                "security_group_id": "sg-123",
+                "password_strategy": "static",
+            }
+        )
+
+
+def test_rds_context_static_secret_name(use_toml):
+    """static でも credentials_secret_name が決まる (既定 aws-managed でも常設)"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    assert (
+        context.rds.credentials_secret_name == "dev-testprj-pocket-aurora-credentials"
+    )
+
+
+@mock_aws
+def test_rds_static_password_creates_pocket_secret(use_toml):
+    """static: pocket 所有の secret に password+host が保存され DATABASE_URL を組める"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+
+    # AWS マネージドの MasterUserSecret ではなく pocket 所有 secret を指す
+    assert rds.master_user_secret_arn is not None
+    assert rds.master_user_secret_kms_key_id is None
+    assert "MasterUserSecret" not in (rds.cluster or {})
+
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    secret = sm.get_secret_value(SecretId=context.rds.credentials_secret_name)
+    data = json.loads(secret["SecretString"])
+    assert data["username"] == context.rds.master_username
+    assert data["password"]
+    assert data["host"]  # static は host も secret に含む
+    assert data["dbname"] == context.rds.database_name
+
+    os.environ["POCKET_RDS_SECRET_ARN"] = rds.master_user_secret_arn
+    try:
+        from pocket.runtime import _set_rds_database_url
+
+        _set_rds_database_url()
+        database_url = os.environ.get("DATABASE_URL", "")
+        assert database_url.startswith("postgres://")
+        assert data["host"] in database_url
+        assert data["dbname"] in database_url
+    finally:
+        os.environ.pop("POCKET_RDS_SECRET_ARN", None)
+        os.environ.pop("DATABASE_URL", None)
+
+
+@mock_aws
+def test_rds_static_password_deletes_pocket_secret(use_toml):
+    """static: delete() で pocket 所有の secret も削除される"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+    assert rds.master_user_secret_arn is not None
+
+    rds.delete()
+
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    with pytest.raises(sm.exceptions.ResourceNotFoundException):
+        sm.describe_secret(SecretId=context.rds.credentials_secret_name)
+
+
+def test_rds_static_secret_store_defaults_sm(use_toml):
+    """awscontainer.secrets 未設定なら static の保存先は sm"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    assert context.rds.secret_store == "sm"
+
+
+def test_rds_static_secret_store_follows_toggle():
+    """awscontainer.secrets.store=ssm のとき static の保存先も ssm になる"""
+    settings = Settings.model_validate(
+        {
+            "stage": "dev",
+            "general": {
+                "region": "ap-northeast-1",
+                "project_name": "testprj",
+                "stages": ["dev"],
+            },
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "rds": {
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                "password_strategy": "static",
+            },
+            "awscontainer": {
+                "dockerfile_path": "Dockerfile",
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                "secrets": {"store": "ssm"},
+            },
+        }
+    )
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.secret_store == "ssm"
+    assert context.rds.password_strategy == "static"
+
+
+@mock_aws
+def test_rds_static_ssm_store_creates_parameter_not_secret(use_toml):
+    """static + store=ssm: SSM パラメータに保存し Secrets Manager には作らない"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "ssm"
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+
+    # Secrets Manager には secret を作らない
+    assert rds.master_user_secret_arn is None
+    assert rds.static_ssm_param_name == context.rds.credentials_secret_name
+
+    ssm = boto3.client("ssm", region_name=context.rds.region)
+    param = ssm.get_parameter(
+        Name=context.rds.credentials_secret_name, WithDecryption=True
+    )
+    assert param["Parameter"]["Type"] == "SecureString"
+    data = json.loads(param["Parameter"]["Value"])
+    assert data["password"]
+    assert data["host"]
+    assert data["dbname"] == context.rds.database_name
+
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    with pytest.raises(sm.exceptions.ResourceNotFoundException):
+        sm.describe_secret(SecretId=context.rds.credentials_secret_name)
+
+    os.environ["POCKET_RDS_SECRET_STORE"] = "ssm"
+    os.environ["POCKET_RDS_SSM_PARAM"] = context.rds.credentials_secret_name
+    try:
+        from pocket.runtime import _set_rds_database_url
+
+        _set_rds_database_url()
+        database_url = os.environ.get("DATABASE_URL", "")
+        assert database_url.startswith("postgres://")
+        assert data["host"] in database_url
+        assert data["dbname"] in database_url
+    finally:
+        os.environ.pop("POCKET_RDS_SECRET_STORE", None)
+        os.environ.pop("POCKET_RDS_SSM_PARAM", None)
+        os.environ.pop("DATABASE_URL", None)
+
+
+@mock_aws
+def test_rds_static_ssm_store_deletes_parameter(use_toml):
+    """static + store=ssm: delete() で SSM パラメータも削除される"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "ssm"
+
+    from pocket_cli.resources.vpc import Vpc
+
+    vpc = Vpc(context.rds.vpc)
+    vpc.create()
+
+    rds = Rds(context.rds)
+    rds.create()
+    rds.delete()
+
+    ssm = boto3.client("ssm", region_name=context.rds.region)
+    with pytest.raises(ssm.exceptions.ParameterNotFound):
+        ssm.get_parameter(Name=context.rds.credentials_secret_name)
+
+
+# --- password_strategy / store の移行 (pocket deploy で自動修正) ---
+
+
+def _create_vpc_and_cluster(context):
+    from pocket_cli.resources.vpc import Vpc
+
+    Vpc(context.rds.vpc).create()
+    rds = Rds(context.rds)
+    rds.create()
+    return rds
+
+
+@mock_aws
+def test_rds_migration_status_detects_drift(use_toml):
+    """aws-managed で作成後 config を static にすると status が REQUIRE_UPDATE"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    _create_vpc_and_cluster(context)  # 既定 aws-managed で作成
+    assert Rds(context.rds).status == "COMPLETED"
+
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "sm"
+    assert Rds(context.rds).status == "REQUIRE_UPDATE"
+
+
+@mock_aws
+def test_rds_migration_managed_to_static_sm(use_toml):
+    """aws-managed → static(sm): update() でクラスタの managed を解除し secret を作成"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    _create_vpc_and_cluster(context)  # aws-managed
+    assert "MasterUserSecret" in (Rds(context.rds).cluster or {})
+
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "sm"
+    Rds(context.rds).update()
+
+    after = Rds(context.rds)
+    assert after.status == "COMPLETED"
+    # クラスタは managed 解除済み、pocket 所有 secret を参照
+    assert "MasterUserSecret" not in (after.cluster or {})
+    assert after.master_user_secret_arn is not None
+
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    data = json.loads(
+        sm.get_secret_value(SecretId=context.rds.credentials_secret_name)[
+            "SecretString"
+        ]
+    )
+    assert data["password"]
+
+
+@mock_aws
+def test_rds_migration_static_to_managed(use_toml):
+    """static(sm) → aws-managed: update() で managed に戻し pocket secret を削除"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "sm"
+
+    _create_vpc_and_cluster(context)  # static(sm)
+    assert Rds(context.rds).master_user_secret_arn is not None
+
+    context.rds.password_strategy = "aws-managed"
+    Rds(context.rds).update()
+
+    after = Rds(context.rds)
+    assert after.status == "COMPLETED"
+    assert "MasterUserSecret" in (after.cluster or {})
+
+    # pocket 所有 secret は削除されている
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    with pytest.raises(sm.exceptions.ResourceNotFoundException):
+        sm.describe_secret(SecretId=context.rds.credentials_secret_name)
+
+
+@mock_aws
+def test_rds_migration_sm_to_ssm_preserves_password(use_toml):
+    """static の sm → ssm 切替: パスワードを変えず credential を移送する"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.password_strategy = "static"
+    context.rds.secret_store = "sm"
+
+    _create_vpc_and_cluster(context)  # static(sm)
+    sm = boto3.client("secretsmanager", region_name=context.rds.region)
+    before = json.loads(
+        sm.get_secret_value(SecretId=context.rds.credentials_secret_name)[
+            "SecretString"
+        ]
+    )
+
+    context.rds.secret_store = "ssm"
+    assert Rds(context.rds).status == "REQUIRE_UPDATE"
+    Rds(context.rds).update()
+
+    after = Rds(context.rds)
+    assert after.status == "COMPLETED"
+
+    # SSM にパスワード変更なしで移送、SM 側は削除
+    ssm = boto3.client("ssm", region_name=context.rds.region)
+    moved = json.loads(
+        ssm.get_parameter(
+            Name=context.rds.credentials_secret_name, WithDecryption=True
+        )["Parameter"]["Value"]
+    )
+    assert moved["password"] == before["password"]
+    with pytest.raises(sm.exceptions.ResourceNotFoundException):
+        sm.describe_secret(SecretId=context.rds.credentials_secret_name)

@@ -474,6 +474,13 @@ class RdsContext(BaseModel):
     subnet_group_name: str = ""
     security_group_name: str = ""
     slug: str = ""
+    password_strategy: str = "aws-managed"
+    # password_strategy = "static" 用: pocket が生成・保存する認証情報の名前
+    # (secret_store=sm なら Secrets Manager の secret 名、ssm なら SSM パラメータ名)
+    credentials_secret_name: str = ""
+    # static 認証情報の保存先。awscontainer.secrets.store のトグルに従う。
+    # aws-managed では常に RDS マネージド secret (sm) なので参照されない。
+    secret_store: StoreType = "sm"
     # managed = false 用
     secret_arn: str | None = None
     security_group_id: str | None = None
@@ -495,6 +502,11 @@ class RdsContext(BaseModel):
             namespace=root.namespace,
         )
         database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
+        # static パスワードの保存先は awscontainer.secrets.store に合わせる
+        # (未設定時は "sm")。
+        secret_store: StoreType = "sm"
+        if root.awscontainer and root.awscontainer.secrets:
+            secret_store = root.awscontainer.secrets.store
         return cls(
             vpc=vpc_ctx,
             min_capacity=rds.min_capacity,
@@ -507,6 +519,9 @@ class RdsContext(BaseModel):
             subnet_group_name=f"{resource_prefix}aurora",
             security_group_name=f"{resource_prefix}aurora-rds",
             slug=root.slug,
+            password_strategy=rds.password_strategy,
+            credentials_secret_name=f"{resource_prefix}aurora-credentials",
+            secret_store=secret_store,
         )
 
 
