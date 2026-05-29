@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import secrets
+import string
 import time
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -20,6 +23,17 @@ class RdsResourceIsNotReady(Exception):
     pass
 
 
+def _generate_master_password(length: int = 32) -> str:
+    """Aurora PostgreSQL マスターパスワードとして安全なランダム文字列を生成する。
+
+    マスターパスワードは ``/`` ``"`` ``@`` スペースを使えない。
+    さらにクォート事故を避けるため ``'`` ``\\`` `` ` `` も除外し、
+    URL 安全な英数字 + 限定記号から ``secrets`` で選ぶ。
+    """
+    alphabet = string.ascii_letters + string.digits + "-_.!#%+="
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 class Rds:
     context: RdsContext
 
@@ -28,6 +42,7 @@ class Rds:
         self._rds_client = boto3.client("rds", region_name=context.region)
         self._ec2_client = boto3.client("ec2", region_name=context.region)
         self._sm_client = boto3.client("secretsmanager", region_name=context.region)
+        self._ssm_client = boto3.client("ssm", region_name=context.region)
 
     @cached_property
     def cluster(self) -> dict | None:
@@ -77,14 +92,44 @@ class Rds:
             return self._security_group["GroupId"]
         return None
 
+    @cached_property
+    def _static_secret(self) -> dict | None:
+        """password_strategy = "static" で pocket が作成した認証情報 secret。"""
+        try:
+            return self._sm_client.describe_secret(
+                SecretId=self.context.credentials_secret_name
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                return None
+            raise
+
     @property
     def master_user_secret_arn(self) -> str | None:
+        if self.context.password_strategy == "static":
+            # secret_store=ssm の場合は Secrets Manager に secret を作らない。
+            if self.context.secret_store != "sm":
+                return None
+            return self._static_secret["ARN"] if self._static_secret else None
         if self.cluster and "MasterUserSecret" in self.cluster:
             return self.cluster["MasterUserSecret"]["SecretArn"]
         return None
 
     @property
+    def static_ssm_param_name(self) -> str | None:
+        """static + secret_store=ssm のとき、認証情報を保存する SSM パラメータ名。"""
+        if self.context.password_strategy == "static" and (
+            self.context.secret_store == "ssm"
+        ):
+            return self.context.credentials_secret_name
+        return None
+
+    @property
     def master_user_secret_kms_key_id(self) -> str | None:
+        # static は既定の aws/secretsmanager キーで暗号化するため、
+        # secretsmanager:GetSecretValue のみで復号でき KMS の明示付与は不要。
+        if self.context.password_strategy == "static":
+            return None
         if self.cluster and "MasterUserSecret" in self.cluster:
             return self.cluster["MasterUserSecret"].get("KmsKeyId")
         return None
@@ -115,9 +160,11 @@ class Rds:
         if cluster_status in ("creating", "modifying", "deleting"):
             return "PROGRESS"
         if cluster_status == "available":
-            if self._scaling_config_matches():
-                return "COMPLETED"
-            return "REQUIRE_UPDATE"
+            if not self._scaling_config_matches():
+                return "REQUIRE_UPDATE"
+            if not self._password_state_matches():
+                return "REQUIRE_UPDATE"
+            return "COMPLETED"
         return "FAILED"
 
     @property
@@ -137,6 +184,35 @@ class Rds:
             config.get("MinCapacity") == self.context.min_capacity
             and config.get("MaxCapacity") == self.context.max_capacity
         )
+
+    def _actual_is_managed(self) -> bool:
+        """クラスタが現状 ManageMasterUserPassword 管理かどうか。"""
+        return bool(self.cluster and "MasterUserSecret" in self.cluster)
+
+    def _store_has_credential(self, store: str) -> bool:
+        name = self.context.credentials_secret_name
+        if store == "ssm":
+            try:
+                self._ssm_client.get_parameter(Name=name)
+                return True
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ParameterNotFound":
+                    return False
+                raise
+        return self._static_secret is not None
+
+    def _password_state_matches(self) -> bool:
+        """クラスタの現状が望む password_strategy / secret_store と一致するか。
+
+        不一致なら status が REQUIRE_UPDATE を返し、update() が移行する。
+        """
+        if self.context.password_strategy == "aws-managed":
+            return self._actual_is_managed()
+        # 望む = static
+        if self._actual_is_managed():
+            return False  # aws-managed → static の移行が必要
+        # クラスタは static。望む store に認証情報が在るか
+        return self._store_has_credential(self.context.secret_store)
 
     def _get_vpc_stack(self) -> VpcStack:
         return VpcStack(self.context.vpc)
@@ -229,6 +305,10 @@ class Rds:
         )
         sg_id = sg_res["GroupId"]
 
+        static = self.context.password_strategy == "static"
+        # static の場合、ここで設定した平文パスワードを後段で secret に保存する。
+        password: str | None = None
+
         # 3. Aurora クラスター作成 (snapshot_identifier があれば復元)
         if self.context.snapshot_identifier:
             echo.log(
@@ -254,13 +334,18 @@ class Rds:
             )
         else:
             echo.log("Creating Aurora cluster: %s" % self.context.cluster_identifier)
+            password_kwargs: dict = {}
+            if static:
+                password = _generate_master_password()
+                password_kwargs["MasterUserPassword"] = password
+            else:
+                password_kwargs["ManageMasterUserPassword"] = True
             self._rds_client.create_db_cluster(
                 DBClusterIdentifier=self.context.cluster_identifier,
                 Engine="aurora-postgresql",
                 EngineMode="provisioned",
                 DatabaseName=self.context.database_name,
                 MasterUsername=self.context.master_username,
-                ManageMasterUserPassword=True,
                 DBSubnetGroupName=self.context.subnet_group_name,
                 VpcSecurityGroupIds=[sg_id],
                 ServerlessV2ScalingConfiguration={
@@ -268,6 +353,7 @@ class Rds:
                     "MaxCapacity": self.context.max_capacity,
                 },
                 Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
+                **password_kwargs,
             )
 
         # 4. Aurora インスタンス作成
@@ -284,36 +370,192 @@ class Rds:
         echo.log("Waiting for Aurora cluster to become available...")
         self._wait_cluster_available(timeout=1800)
 
-        # 6. snapshot から復元した場合、マスターパスワードを AWS 管理に切り替える
+        # 6. snapshot から復元した場合、マスターパスワードを設定し直す。
         # (RestoreDBClusterFromSnapshot は snapshot の元パスワードを引き継ぐため、
-        # pocket が参照する MasterUserSecret を生成させる必要がある)
+        # pocket が参照できる認証情報を改めて確立する必要がある)
         if self.context.snapshot_identifier:
-            echo.log(
-                "Switching master password to AWS-managed secret "
-                "(ManageMasterUserPassword=True)..."
-            )
-            self._rds_client.modify_db_cluster(
-                DBClusterIdentifier=self.context.cluster_identifier,
-                ManageMasterUserPassword=True,
-                ApplyImmediately=True,
-            )
+            if static:
+                echo.log("Setting a pocket-managed static master password...")
+                password = _generate_master_password()
+                self._rds_client.modify_db_cluster(
+                    DBClusterIdentifier=self.context.cluster_identifier,
+                    MasterUserPassword=password,
+                    ApplyImmediately=True,
+                )
+            else:
+                echo.log(
+                    "Switching master password to AWS-managed secret "
+                    "(ManageMasterUserPassword=True)..."
+                )
+                self._rds_client.modify_db_cluster(
+                    DBClusterIdentifier=self.context.cluster_identifier,
+                    ManageMasterUserPassword=True,
+                    ApplyImmediately=True,
+                )
             self._wait_cluster_available(timeout=600)
+
+        # 7. static: 生成したパスワードを pocket 所有の secret に保存する。
+        # この secret を MasterUserSecret 相当として Lambda へ渡すため、ローテーション
+        # 用 Lambda は付けない (= 自動ローテーションしない)。
+        if static:
+            assert password is not None
+            self._store_static_credentials(password)
 
         echo.success("Aurora cluster is now available.")
 
-    def update(self):
-        if self._scaling_config_matches():
-            echo.log("RDS scaling configuration is up to date.")
+    def _store_static_credentials(self, password: str) -> None:
+        """static パスワードと接続情報を pocket 所有の store に保存する。
+
+        保存先は awscontainer.secrets.store のトグル (sm / ssm) に従う。
+        MasterUserSecret (ManageMasterUserPassword) と同じ username/password 形に
+        host/port/dbname も加えるため、Lambda 側は環境変数フォールバック無しでも
+        DATABASE_URL を組み立てられる。ローテーション用 Lambda は付けない。
+        """
+        self.clear_cache()  # endpoint/port を最新のクラスタ情報から取得する
+        secret_string = json.dumps(
+            {
+                "username": self.context.master_username,
+                "password": password,
+                "host": self.endpoint,
+                "port": self.port,
+                "dbname": self.database_name,
+                "engine": "postgres",
+                "dbClusterIdentifier": self.context.cluster_identifier,
+            }
+        )
+        self._write_credential_to_store(self.context.secret_store, secret_string)
+        self.clear_cache()
+
+    def _write_credential_to_store(self, store: str, secret_string: str) -> None:
+        name = self.context.credentials_secret_name
+        if store == "ssm":
+            self._ssm_client.put_parameter(
+                Name=name, Value=secret_string, Type="SecureString", Overwrite=True
+            )
+            echo.success("Stored static DB credentials in SSM parameter: %s" % name)
             return
-        echo.log("Updating RDS scaling configuration...")
+        try:
+            self._sm_client.create_secret(
+                Name=name,
+                SecretString=secret_string,
+                Tags=[{"Key": "Name", "Value": name}],
+            )
+            echo.success("Stored static DB credentials secret: %s" % name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceExistsException":
+                self._sm_client.put_secret_value(
+                    SecretId=name, SecretString=secret_string
+                )
+                echo.success("Updated static DB credentials secret: %s" % name)
+            else:
+                raise
+
+    def _read_credential_from_store(self, store: str) -> str | None:
+        name = self.context.credentials_secret_name
+        try:
+            if store == "ssm":
+                res = self._ssm_client.get_parameter(Name=name, WithDecryption=True)
+                return res["Parameter"]["Value"]
+            return self._sm_client.get_secret_value(SecretId=name)["SecretString"]
+        except ClientError as e:
+            not_found = ("ParameterNotFound", "ResourceNotFoundException")
+            if e.response["Error"]["Code"] in not_found:
+                return None
+            raise
+
+    def _delete_credential_from_store(self, store: str) -> None:
+        name = self.context.credentials_secret_name
+        try:
+            if store == "ssm":
+                self._ssm_client.delete_parameter(Name=name)
+            else:
+                self._sm_client.delete_secret(
+                    SecretId=name, ForceDeleteWithoutRecovery=True
+                )
+        except ClientError as e:
+            not_found = ("ParameterNotFound", "ResourceNotFoundException")
+            if e.response["Error"]["Code"] not in not_found:
+                raise
+
+    def update(self):
+        self.clear_cache()
+        scaling_changed = not self._scaling_config_matches()
+        if scaling_changed:
+            echo.log("Updating RDS scaling configuration...")
+            self._rds_client.modify_db_cluster(
+                DBClusterIdentifier=self.context.cluster_identifier,
+                ServerlessV2ScalingConfiguration={
+                    "MinCapacity": self.context.min_capacity,
+                    "MaxCapacity": self.context.max_capacity,
+                },
+            )
+            echo.success("RDS scaling configuration updated.")
+        if not self._password_state_matches():
+            if scaling_changed:
+                self._wait_cluster_available(timeout=600)
+            self._migrate_password()
+
+    def _migrate_password(self) -> None:
+        """クラスタを望む password_strategy / secret_store に合わせて移行する。"""
+        if self.context.password_strategy == "aws-managed":
+            self._migrate_to_managed()
+        else:
+            self._migrate_to_static()
+
+    def _migrate_to_managed(self) -> None:
+        echo.log("Migrating master password to AWS-managed...")
         self._rds_client.modify_db_cluster(
             DBClusterIdentifier=self.context.cluster_identifier,
-            ServerlessV2ScalingConfiguration={
-                "MinCapacity": self.context.min_capacity,
-                "MaxCapacity": self.context.max_capacity,
-            },
+            ManageMasterUserPassword=True,
+            ApplyImmediately=True,
         )
-        echo.success("RDS scaling configuration updated.")
+        self._wait_cluster_available(timeout=600)
+        # pocket 所有の認証情報は不要になるので両 store から除去
+        for store in ("sm", "ssm"):
+            self._delete_credential_from_store(store)
+        self.clear_cache()
+        echo.success("Master password is now AWS-managed.")
+
+    def _migrate_to_static(self) -> None:
+        if self._actual_is_managed():
+            # aws-managed → static: managed を切り、既知パスワードを設定。
+            # (Manage=False + MasterUserPassword 指定で RDS が managed secret を削除)
+            echo.log("Migrating master password to pocket-managed static...")
+            password = _generate_master_password()
+            self._rds_client.modify_db_cluster(
+                DBClusterIdentifier=self.context.cluster_identifier,
+                ManageMasterUserPassword=False,
+                MasterUserPassword=password,
+                ApplyImmediately=True,
+            )
+            self._wait_cluster_available(timeout=600)
+            self._store_static_credentials(password)
+            echo.success("Master password is now pocket-managed (static).")
+            return
+        # クラスタは既に static。store 変更 (sm⇄ssm) を試みる (パスワード変更なし)。
+        other = "sm" if self.context.secret_store == "ssm" else "ssm"
+        existing = self._read_credential_from_store(other)
+        if existing is not None:
+            echo.log(
+                "Moving static DB credentials to %s store..."
+                % (self.context.secret_store)
+            )
+            self._write_credential_to_store(self.context.secret_store, existing)
+            self._delete_credential_from_store(other)
+            self.clear_cache()
+            return
+        # どの store にも認証情報が無い: パスワードを再設定して保存し直す。
+        echo.warning(
+            "Static credential not found in any store; resetting master password."
+        )
+        password = _generate_master_password()
+        self._rds_client.modify_db_cluster(
+            DBClusterIdentifier=self.context.cluster_identifier,
+            MasterUserPassword=password,
+            ApplyImmediately=True,
+        )
+        self._wait_cluster_available(timeout=600)
+        self._store_static_credentials(password)
 
     def delete(self):
         # 1. インスタンス削除
@@ -357,6 +599,23 @@ class Rds:
         except ClientError as e:
             if e.response["Error"]["Code"] != "DBSubnetGroupNotFoundFault":
                 raise
+
+        # 5. static: pocket 所有の認証情報を store から削除
+        if self.context.password_strategy == "static":
+            self._delete_static_credentials()
+
+    def _delete_static_credentials(self) -> None:
+        """static の認証情報を保存先 store (sm / ssm) から削除する。"""
+        name = self.context.credentials_secret_name
+        echo.log(
+            "Deleting static DB credentials (%s): %s"
+            % (
+                self.context.secret_store,
+                name,
+            )
+        )
+        self._delete_credential_from_store(self.context.secret_store)
+        echo.success("Static DB credentials deleted.")
 
     def _wait_cluster_available(self, timeout: int = 1800, interval: int = 10):
         for i in range(timeout // interval):
@@ -416,6 +675,6 @@ class Rds:
         raise TimeoutError("Cluster not deleted within %s seconds" % timeout)
 
     def clear_cache(self):
-        for attr in ("cluster", "instance", "_security_group"):
+        for attr in ("cluster", "instance", "_security_group", "_static_secret"):
             if attr in self.__dict__:
                 del self.__dict__[attr]

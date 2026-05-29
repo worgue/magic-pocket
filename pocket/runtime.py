@@ -98,8 +98,29 @@ def set_envs_from_secrets(stage: str | None = None):
     _set_dsql_token()
 
 
+def _read_rds_secret_string() -> str | None:
+    """RDS 認証情報の JSON 文字列を store (sm / ssm) から取得する。
+
+    POCKET_RDS_SECRET_STORE = "ssm" のときは POCKET_RDS_SSM_PARAM の SecureString を、
+    それ以外は POCKET_RDS_SECRET_ARN の Secrets Manager secret を読む。どちらも未設定
+    なら None (= RDS 以外)。
+    """
+    if os.environ.get("POCKET_RDS_SECRET_STORE") == "ssm":
+        param_name = os.environ.get("POCKET_RDS_SSM_PARAM")
+        if not param_name:
+            return None
+        ssm = boto3.client("ssm")
+        res = ssm.get_parameter(Name=param_name, WithDecryption=True)
+        return res["Parameter"]["Value"]
+    rds_secret_arn = os.environ.get("POCKET_RDS_SECRET_ARN")
+    if not rds_secret_arn:
+        return None
+    sm = boto3.client("secretsmanager")
+    return sm.get_secret_value(SecretId=rds_secret_arn)["SecretString"]
+
+
 def _set_rds_database_url():
-    """POCKET_RDS_SECRET_ARN があれば RDS シークレットから DATABASE_URL を構築。
+    """RDS 認証情報 (sm / ssm) から DATABASE_URL を構築する。
 
     ManageMasterUserPassword のシークレットには host/port/dbname が
     含まれない場合があるため、Lambda 環境変数で補完する。
@@ -107,11 +128,10 @@ def _set_rds_database_url():
     import json
     import urllib.parse
 
-    rds_secret_arn = os.environ.get("POCKET_RDS_SECRET_ARN")
-    if not rds_secret_arn:
+    secret_string = _read_rds_secret_string()
+    if secret_string is None:
         return
-    sm = boto3.client("secretsmanager")
-    data = json.loads(sm.get_secret_value(SecretId=rds_secret_arn)["SecretString"])
+    data = json.loads(secret_string)
     password = urllib.parse.quote(data["password"], safe="")
     username = data.get("username", "postgres")
     host = data.get("host") or os.environ.get("POCKET_RDS_ENDPOINT", "")
