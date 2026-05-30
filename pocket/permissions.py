@@ -45,6 +45,7 @@ _CLOUDFRONT_ACTIONS: list[str] = [
     "acm:RequestCertificate",
     "acm:DescribeCertificate",
     "acm:DeleteCertificate",
+    "route53:ListHostedZones",
     "route53:ChangeResourceRecordSets",
     "route53:GetChange",
 ]

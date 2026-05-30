@@ -99,6 +99,7 @@ def test_cloudfront_adds_acm_route53():
     assert "acm:RequestCertificate" in actions
     assert "acm:DescribeCertificate" in actions
     assert "acm:DeleteCertificate" in actions
+    assert "route53:ListHostedZones" in actions
     assert "route53:ChangeResourceRecordSets" in actions
     assert "route53:GetChange" in actions
     # waf block 未設定なら wafv2:* は入らない
