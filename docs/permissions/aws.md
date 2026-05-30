@@ -32,6 +32,7 @@
 |------|------|
 | `cloudfront:*` | ディストリビューション・Function・KVS の管理 |
 | `acm:RequestCertificate`, `acm:DescribeCertificate`, `acm:DeleteCertificate` | カスタムドメインの SSL 証明書 |
+| `route53:ListHostedZones` | ドメインから hosted zone の自動検索（`hosted_zone_id_override` 未設定時） |
 | `route53:ChangeResourceRecordSets`, `route53:GetChange` | DNS レコードの自動作成 |
 
 ### CloudFront WAF（`[cloudfront.<name>.waf]` 使用時）
