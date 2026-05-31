@@ -5,6 +5,21 @@
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
 ## [?.?.?](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - unreleased
+### Breaking Changes
+- **AWS リソース系コマンドを `resource` group 配下へ再配置しました。** 旧トップレベル
+  コマンド `pocket awscontainer` / `neon` / `tidb` / `dsql` / `rds` / `s3` / `vpc` /
+  `cloudfront` 等は廃止され、`pocket resource awscontainer ...` のように `resource` を
+  挟む新 path になりました（旧 path には alias を残していないため `No such command`
+  で失敗します）。CLI を呼び出すスクリプト・上位ツールは新 path への追従が必要です。
+  例: `pocket awscontainer reload-env` → `pocket resource awscontainer reload-env`。
+
+### Bug Fixes
+- `pocket resource awscontainer reload-env` / `status-env` が Lambda 関数名から
+  namespace（既定 `pocket`）を取りこぼし、default namespace のデプロイで常に
+  「Lambda function が見つかりません」で失敗していたのを修正（deploy 側と同じ
+  正準 `function_name` を参照）。あわせて `status-env` の drift 警告が案内する
+  コマンドが旧 path のままだったのを新 path に修正。
+
 ### Features
 - :material-console: `pocket django deploy`でデプロイ + マイグレーションなどの管理コマンド実行。実行内容が決まらないためUnreleases。
 - :material-console: `pocket django resetdb`でデータベースの public スキーマをリセット（`DROP SCHEMA public CASCADE`）

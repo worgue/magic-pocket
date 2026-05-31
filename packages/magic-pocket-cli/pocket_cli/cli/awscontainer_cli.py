@@ -205,7 +205,10 @@ def _resolve_lambda_target_handlers(
 
 def _function_name(context: Context, handler_key: str) -> str:
     assert context.awscontainer is not None
-    return f"{context.awscontainer.slug}-{handler_key}"
+    # deploy 側 (LambdaHandlerContext.function_name = resource_prefix + key) と同じ
+    # 正準名を参照する。slug から再構成すると prefix_template / namespace
+    # (既定 `pocket`) を取りこぼすため、handler context の値をそのまま使う。
+    return context.awscontainer.handlers[handler_key].function_name
 
 
 def _fetch_lambda_env(client, function_name: str) -> dict[str, str]:
@@ -303,7 +306,7 @@ def status_env(stage, handler):
             any_drift = True
     if any_drift:
         echo.warning(
-            "drift があります。`pocket awscontainer reload-env` で同期できます。"
+            "drift があります。`pocket resource awscontainer reload-env` で同期できます。"
         )
     else:
         echo.success("drift なし。Lambda env と secrets は同期されています。")
