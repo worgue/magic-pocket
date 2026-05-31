@@ -881,23 +881,23 @@ SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
 extra_resources = ["arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-prefix-*"]
 ```
 
-#### secrets の即時反映 (`pocket awscontainer reload-env`)
+#### secrets の即時反映 (`pocket resource awscontainer reload-env`)
 
 SSM / Secrets Manager 側でシークレット値を更新しても、**warm container は
 旧値を抱えたまま再利用される**ため、新値の反映は次の cold start を待つ
 形になります (典型的には 5〜15 分のラグ)。feature flag の即時切替、secret
 rotation 後の即時反映、hotfix で env 1 つだけ変えたい等のユースケースで
-このラグが許容できない場合は、`pocket awscontainer reload-env` を使います。
+このラグが許容できない場合は、`pocket resource awscontainer reload-env` を使います。
 
 ```bash
 # 全 handler の env を SSM/SM の最新値で再構築 + 即時反映
-pocket awscontainer reload-env --stage=prod
+pocket resource awscontainer reload-env --stage=prod
 
 # 特定 handler のみ
-pocket awscontainer reload-env --stage=prod --handler=wsgi
+pocket resource awscontainer reload-env --stage=prod --handler=wsgi
 
 # 現状確認 (Lambda 側の env と SSM/SM の宣言値が drift してないか)
-pocket awscontainer status-env --stage=prod
+pocket resource awscontainer status-env --stage=prod
 ```
 
 仕組み:

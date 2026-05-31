@@ -93,8 +93,10 @@ def test_reload_env_handler_filter(use_toml, monkeypatch):
     assert result.exit_code == 0, result.output
     # wsgi 1 handler だけ呼ばれる
     assert len(client._updates) == 1
-    # FunctionName は {slug}-{handler} の形式 (dev-testprj-pocket-wsgi)
-    assert client._updates[0]["FunctionName"].endswith("-wsgi")
+    # FunctionName は deploy 側と同じ正準名 resource_prefix + key
+    # (= {stage}-{project}-{namespace}-{handler})。namespace (既定 `pocket`) を
+    # 取りこぼさないことを検証する (旧実装は {slug}-{handler} で `-pocket-` が欠落)。
+    assert client._updates[0]["FunctionName"] == "dev-testprj-pocket-wsgi"
 
 
 def test_reload_env_handler_filter_invalid(use_toml, monkeypatch):

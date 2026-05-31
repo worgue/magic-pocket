@@ -10,7 +10,7 @@
 |----------|------|------|
 | **CloudFormation** | `cloudformation:*` | インフラの作成・更新・削除 |
 | **ECR** | `ecr:*` | コンテナイメージの管理・プッシュ |
-| **Lambda** | `lambda:*` | 関数の作成・更新・実行。`pocket awscontainer reload-env` の side-channel env 更新 (`UpdateFunctionConfiguration`) も含む |
+| **Lambda** | `lambda:*` | 関数の作成・更新・実行。`pocket resource awscontainer reload-env` の side-channel env 更新 (`UpdateFunctionConfiguration`) も含む |
 | **API Gateway V2** | `apigateway:*` | HTTP エンドポイントの管理 |
 | **S3** | `s3:*` | ステートバケット・静的ファイル |
 | **IAM** | `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PassRole` | Lambda 実行ロールの管理 |
