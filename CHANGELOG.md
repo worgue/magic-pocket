@@ -12,6 +12,11 @@
   挟む新 path になりました（旧 path には alias を残していないため `No such command`
   で失敗します）。CLI を呼び出すスクリプト・上位ツールは新 path への追従が必要です。
   例: `pocket awscontainer reload-env` → `pocket resource awscontainer reload-env`。
+- **`pocket.django.lambda_handlers.shell_handler` を `dangerous_shell_handler` に
+  リネームしました。** 任意文字列を `shell=True` で実行する危険な handler である
+  ことを名前で明示する目的です（capability 自体は維持）。`pocket.toml` の handler
+  に旧名を指定している場合は新名への追従が必要です。SQS 駆動でコマンドを安全に
+  完走させる用途には新設の `BaseCommandHandler` を利用してください。
 
 ### Bug Fixes
 - `pocket resource awscontainer reload-env` / `status-env` が Lambda 関数名から
@@ -21,6 +26,14 @@
   コマンドが旧 path のままだったのを新 path に修正。
 
 ### Features
+- SQS 駆動の安全な command worker 基盤 `pocket.command_handler.BaseCommandHandler`
+  を追加。SQS イベントを別 Lambda invocation の本体として受け、`build_argv` で固定
+  した実行ファイルを `shell=False` の list argv で完走させ、出力 / ステータスを sink
+  hook（`on_start` / `on_output` / `on_finish` / `on_crash`）に委譲します。long-running
+  job を wsgi tier から worker tier に逃がす定石を共通化し、Lambda の freeze による
+  「ステータスが running 固着」を構造的に防ぎます。crash 時は `try/finally` で
+  `on_crash` を呼んでから例外を re-raise（握りつぶさない）。`dangerous_shell_handler`
+  の安全な後継です。
 - :material-console: `pocket django deploy`でデプロイ + マイグレーションなどの管理コマンド実行。実行内容が決まらないためUnreleases。
 - :material-console: `pocket django resetdb`でデータベースの public スキーマをリセット（`DROP SCHEMA public CASCADE`）
 - Neon接続時のIP制限
