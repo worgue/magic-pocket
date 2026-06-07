@@ -82,7 +82,18 @@ def sqs_management_command_report_failuers_handler(event, context):
     return sqs_batch_response
 
 
-def shell_handler(event, context):
+def dangerous_shell_handler(event, context):
+    """event["command_line"] を ``shell=True`` でそのまま実行する危険な handler.
+
+    **任意の文字列を shell で実行できる**ため、event source に untrusted な入力が
+    (直接・間接問わず) 到達すると即 RCE になる。output capture も job-state 連携も
+    無い。本当に任意 shell が必要な、信頼できる呼び出し元 (= 既に同等の権限を持つ
+    オペレータが手動 invoke する等) でのみ使うこと。
+
+    SQS 駆動でコマンドを安全に完走させたい用途には :class:`pocket.command_handler.
+    BaseCommandHandler` を使う (実行ファイル固定 + list argv + ``shell=False`` +
+    出力 / ステータスの sink + crash 時 finalize)。
+    """
     print(event)
     command_line = event["command_line"]
     run(command_line, shell=True, check=True)
