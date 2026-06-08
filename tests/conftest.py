@@ -54,3 +54,21 @@ def cleaned_cache():
     get_hosted_zone_id_from_domain.cache_clear()
     get_context.cache_clear()
     return True
+
+
+@pytest.fixture(autouse=True)
+def aws_test_env(monkeypatch):
+    """テストを AWS 環境変数に依存させない (hermetic 化)。
+
+    製品コードには Lambda runtime が `AWS_REGION` を注入する前提で region 未指定の
+    boto3 クライアントを作るパスがあり、AWS env の無い環境 (CI runner 等) では
+    NoRegionError になる。region を固定し、あわせて dummy credentials を設定して
+    moto 外で実 AWS に触れる事故も防ぐ。
+
+    region はこのパスを通すテストが使う tests/data/toml/rds.toml の region に
+    合わせる (Lambda runtime では AWS_REGION = デプロイ region になるため)。
+    """
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-1")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
