@@ -293,6 +293,10 @@ class Neon(BaseSettings):
     project_name: str
     pg_version: int = 15
     api_key: str | None = Field(alias="neon_api_key", default=None)
+    # 立てると status を常に COMPLETED 返却し、deploy 中の存在確認 API call を
+    # 一切行わない。GHA deploy ロールに外部 SaaS の credentials を渡さず deploy を
+    # 完走させるためのフラグ (リソースは host から `pocket neon ...` で管理する想定)。
+    skip_check_existing: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -303,6 +307,8 @@ class TiDb(BaseSettings):
     project: str | None = None
     cluster: str | None = None
     region: str = "ap-northeast-1"
+    # Neon.skip_check_existing と同義。deploy 中の TiDB API 存在確認を skip する。
+    skip_check_existing: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -311,6 +317,8 @@ class Upstash(BaseSettings):
     email: str | None = Field(alias="upstash_email", default=None)
     api_key: str | None = Field(alias="upstash_api_key", default=None)
     budget: int = 20
+    # Neon.skip_check_existing と同義。deploy 中の Upstash API 存在確認を skip する。
+    skip_check_existing: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

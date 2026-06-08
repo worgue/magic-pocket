@@ -303,8 +303,45 @@ project_name = "prod-myproject"
 |-----------|------|----------|------|
 | `project_name` | str | **必須** | Neonプロジェクト名 |
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
+| `skip_check_existing` | bool | `false` | デプロイ中の Neon API 存在確認を skip する（下記参照） |
 
 `NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
+
+!!! info "skip_check_existing — デプロイロールから DB credentials を切り離す"
+    通常、`pocket django deploy` はデプロイ中に Neon API を叩いてブランチ・データベース・
+    ロール・エンドポイントの存在を確認します。このため CI/CD のデプロイロールに Neon の
+    API キーを渡す必要があり、「デプロイは AWS 操作のみ・DB レイヤの credentials は渡さない」
+    という責務分離をしたい場合に支障になります。
+
+    `skip_check_existing = true` を立てると、リソースの存在確認 API call を一切行わず、
+    常に「最新の状態」とみなしてデプロイを通過します（create/update もスキップ）。
+    結果として **デプロイ中の Neon API call はゼロ** になります。
+
+    ```toml
+    [dev.neon]
+    project_name = "dev-myproject"
+    skip_check_existing = true
+    ```
+
+    運用フロー:
+
+    | タイミング | 場所 | コマンド |
+    |----------|------|---------|
+    | 初回 / ロール・パスワードのローテ後 | host | `pocket awscontainer secrets create-pocket-managed --stage=dev` で SSM に `DATABASE_URL` を投入 |
+    | 通常デプロイ | CI/CD | `pocket django deploy --stage=dev`（Neon API を叩かない） |
+    | Neon リソース操作 | host | `pocket neon create / status / branch-out / ...` を引き続き利用 |
+
+    Neon リソースの作成・管理は引き続き host 側から `pocket neon ...` で行う想定です。
+    同じフラグは `[<stage>.tidb]` / `[<stage>.upstash]` でも利用できます（AWS ネイティブな
+    `rds` / `dsql` はデプロイロールが元々 AWS credentials を持つため対象外）。
+
+    pocket.toml を編集したくない場合は、デプロイ時の CLI フラグで同じ挙動を一時的に
+    有効化できます（その実行に限り neon/tidb/upstash の存在確認 API を skip）:
+
+    ```console
+    $ pocket deploy --stage=dev --skip-check-existing
+    $ pocket django deploy --stage=dev --skip-check-existing
+    ```
 
 !!! warning "Neon プロジェクトのリージョン"
     Neon プロジェクトは `[general].region` と同じリージョン（または近いリージョン）で作成してください。
@@ -328,6 +365,7 @@ project = "9876543210987654321"
 |-----------|------|----------|------|
 | `project` | str | **必須** | TiDB Cloud のプロジェクト ID |
 | `region` | str | `"ap-northeast-1"` | TiDB クラスターのリージョン |
+| `skip_check_existing` | bool | `false` | デプロイ中の TiDB API 存在確認を skip する（[neon](#neon) の同名フィールド参照） |
 
 `TIDB_PUBLIC_KEY` と `TIDB_PRIVATE_KEY` 環境変数（または `.env`）が必要です。TiDB Cloud のコンソールから API キーを取得してください。
 
@@ -353,6 +391,7 @@ default = { store = "redis" }
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `budget` | int | `20` | 月額上限（ドル）。最低値の $20 がデフォルト |
+| `skip_check_existing` | bool | `false` | デプロイ中の Upstash API 存在確認を skip する（[neon](#neon) の同名フィールド参照） |
 
 `UPSTASH_EMAIL` と `UPSTASH_API_KEY` 環境変数（または `.env`）が必要です。Upstash Console の Account > Management API で API Key を取得してください。これらはデプロイ時のみ必要で、Lambda 実行時には不要です。
 

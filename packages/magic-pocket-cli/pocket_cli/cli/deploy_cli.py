@@ -149,15 +149,36 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
             hook()
 
 
+def apply_skip_check_existing(context: Context) -> None:
+    """DB リソース (neon/tidb/upstash) の存在確認を一律 skip させる。
+
+    `--skip-check-existing` 指定時に呼ぶ。pocket.toml を編集せず、その deploy
+    実行に限り外部 SaaS API への存在確認 call を回避する (deploy ロールに
+    DB credentials を渡さず deploy を完走させる用途)。toml 側の
+    `skip_check_existing` フラグと同義で、こちらは実行時上書き。
+    """
+    for db_ctx in (context.neon, context.tidb, context.upstash):
+        if db_ctx is not None:
+            db_ctx.skip_check_existing = True
+
+
 @click.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
-def deploy(stage: str, openpath, skip_frontend):
+@click.option(
+    "--skip-check-existing",
+    is_flag=True,
+    default=False,
+    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
+)
+def deploy(stage: str, openpath, skip_frontend, skip_check_existing):
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
+    if skip_check_existing:
+        apply_skip_check_existing(context)
     # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
     state_store = _create_state_store(context)
     state_store.ensure_bucket()

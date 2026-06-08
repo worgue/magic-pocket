@@ -82,12 +82,24 @@ def _update_dotenv(jinja2_env):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
-def deploy(stage: str, openpath, yes):
+@click.option(
+    "--skip-check-existing",
+    is_flag=True,
+    default=False,
+    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
+)
+def deploy(stage: str, openpath, yes, skip_check_existing):
     from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
 
     # pocket deploy を実行（インフラ + SPA フロントエンド）
     ctx = click.Context(pocket_deploy)
-    ctx.invoke(pocket_deploy, stage=stage, openpath=None, skip_frontend=False)
+    ctx.invoke(
+        pocket_deploy,
+        stage=stage,
+        openpath=None,
+        skip_frontend=False,
+        skip_check_existing=skip_check_existing,
+    )
 
     # Django 固有: collectstatic + migrate
     context = Context.from_toml(stage=stage)

@@ -37,6 +37,30 @@ def test_neon_api_get_returns_response_on_200():
         assert res.json() == {"role": {"name": "foo"}}
 
 
+def test_neon_status_completed_when_skip_check_existing():
+    """skip_check_existing=True のとき status が API を叩かず COMPLETED を返す"""
+    from pocket_cli.resources.neon import Neon
+
+    from pocket.context import NeonContext
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key=None,
+        project_name="dev-myapp",
+        branch_name="sandbox",
+        name="myapp",
+        role_name="myapp",
+        skip_check_existing=True,
+    )
+    neon = Neon(ctx)
+
+    # working を参照すると branch/database/... の API call が走るため、
+    # short-circuit していれば requests は一度も呼ばれない。
+    with patch("requests.get") as mock_get:
+        assert neon.status == "COMPLETED"
+        mock_get.assert_not_called()
+
+
 def test_neon_role_returns_none_when_role_missing():
     """branch はあるが role が 404 のとき role プロパティが None を返すこと"""
     from pocket_cli.resources.neon import Branch, Neon
