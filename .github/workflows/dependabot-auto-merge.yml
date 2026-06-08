@@ -30,7 +30,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v4
       - run: uv sync --all-groups
       - run: just test
       # --- App token でマージ (GITHUB_TOKEN だと後続 workflow を起動しないため) ---
