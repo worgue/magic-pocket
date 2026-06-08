@@ -3,6 +3,16 @@
 `docs/permissions/aws.md` のテーブルをコード化したもの。
 外部ツール側の GitHub Actions デプロイ用 IAM Role 等が、`*:*` を避けて
 必要最小限の Action を inline policy に組み込めるようにするためのデータソース。
+
+## public API
+
+外部ツールが安定して参照できる public API:
+
+- `compute_actions(settings)`: settings から必要 Action を算出する (従来どおり)。
+- `action_groups()`: feature group ごとの Action を settings 非依存で名前付きで
+  返す。外部ツール側の deploy ロール baseline が magic-pocket の付与群を被覆できて
+  いるかを guard する用途を想定。**キー名は安定 (rename しない) ことを保証する**
+  ので、`_`-prefixed の内部定数を直接 import せず本関数を使うこと。
 """
 
 from __future__ import annotations
@@ -108,32 +118,61 @@ def _uses_codebuild(settings: Settings) -> bool:
     return bool(ac and ac.build.backend == "codebuild")
 
 
+def action_groups() -> dict[str, list[str]]:
+    """feature group ごとの Action 一覧を settings 非依存で名前付きで返す。
+
+    キーは安定した group 名 (public API。rename しない)、値はその group が
+    付与する Action の list (呼び出し側が変更しても内部状態に影響しないよう
+    都度コピーを返す)。出現順は `compute_actions` / `docs/permissions/aws.md`
+    のテーブル順に一致する。
+
+    `"core"` のみ常時付与群で、残りは pocket.toml の設定に応じて付与される
+    feature-gated 群。`compute_actions` はこの dict を単一のソースとして
+    条件に合致した group だけを連結する。
+    """
+    return {
+        "core": list(_CORE_ACTIONS),
+        "ssm": list(_SSM_ACTIONS),
+        "secretsmanager": list(_SM_ACTIONS),
+        "cloudfront": list(_CLOUDFRONT_ACTIONS),
+        "waf": list(_WAF_ACTIONS),
+        "vpc": list(_VPC_ACTIONS),
+        "rds": list(_RDS_ACTIONS),
+        "efs": list(_EFS_ACTIONS),
+        "sqs": list(_SQS_ACTIONS),
+        "ses": list(_SES_ACTIONS),
+        "codebuild": list(_CODEBUILD_ACTIONS),
+    }
+
+
 def compute_actions(settings: Settings) -> list[str]:
     """settings から必要な AWS Action 一覧を算出する。
 
     順序は `docs/permissions/aws.md` のテーブル順を踏襲し、出力は決定的。
-    重複は最初の出現位置を保ったまま除去する。
+    重複は最初の出現位置を保ったまま除去する。group の中身は
+    `action_groups()` を単一のソースとして参照する。
     """
-    rules: list[tuple[bool, list[str]]] = [
-        (True, _CORE_ACTIONS),
-        (_uses_ssm(settings), _SSM_ACTIONS),
-        (not _uses_ssm(settings), _SM_ACTIONS),
-        (bool(settings.cloudfront), _CLOUDFRONT_ACTIONS),
-        (_has_waf(settings), _WAF_ACTIONS),
-        (_has_vpc(settings), _VPC_ACTIONS),
-        (settings.rds is not None, _RDS_ACTIONS),
-        (_has_efs(settings), _EFS_ACTIONS),
-        (_has_sqs_handler(settings), _SQS_ACTIONS),
-        (settings.ses is not None, _SES_ACTIONS),
-        (_uses_codebuild(settings), _CODEBUILD_ACTIONS),
+    groups = action_groups()
+    rules: list[tuple[str, bool]] = [
+        ("core", True),
+        ("ssm", _uses_ssm(settings)),
+        ("secretsmanager", not _uses_ssm(settings)),
+        ("cloudfront", bool(settings.cloudfront)),
+        ("waf", _has_waf(settings)),
+        ("vpc", _has_vpc(settings)),
+        ("rds", settings.rds is not None),
+        ("efs", _has_efs(settings)),
+        ("sqs", _has_sqs_handler(settings)),
+        ("ses", settings.ses is not None),
+        ("codebuild", _uses_codebuild(settings)),
     ]
 
     seen: set[str] = set()
     deduped: list[str] = []
-    for condition, group in rules:
+    for name, condition in rules:
         if not condition:
             continue
-        for action in group:
+        for action in groups[name]:
             if action not in seen:
                 seen.add(action)
                 deduped.append(action)

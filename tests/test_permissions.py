@@ -7,7 +7,7 @@ import json
 from click.testing import CliRunner
 from pocket_cli.cli.permissions_cli import permissions
 
-from pocket.permissions import compute_actions
+from pocket.permissions import action_groups, compute_actions
 from pocket.settings import Settings
 
 # 長いハンドラ command を test 内で 90 列に収めるための定数化
@@ -267,6 +267,70 @@ def test_no_duplicates():
     )
     actions = compute_actions(settings)
     assert len(actions) == len(set(actions))
+
+
+def test_action_groups_public_keys_stable():
+    """public API: action_groups() のキー集合が安定した group 名であること。"""
+    groups = action_groups()
+    assert set(groups.keys()) == {
+        "core",
+        "ssm",
+        "secretsmanager",
+        "cloudfront",
+        "waf",
+        "vpc",
+        "rds",
+        "efs",
+        "sqs",
+        "ses",
+        "codebuild",
+    }
+    # core は常時付与群。代表的な Action を含む
+    assert "cloudformation:*" in groups["core"]
+    assert "iam:TagRole" in groups["core"]
+    # 二層ずれの再発防止対象だった Action も group 経由で参照できる
+    assert "route53:ListHostedZones" in groups["cloudfront"]
+    assert "cloudfront-keyvaluestore:*" in groups["cloudfront"]
+
+
+def test_action_groups_returns_copies():
+    """呼び出し側が返り値を変更しても内部状態・後続呼び出しに影響しないこと。"""
+    groups = action_groups()
+    groups["core"].append("mutated:*")
+    assert "mutated:*" not in action_groups()["core"]
+
+
+def test_action_groups_is_single_source_for_compute_actions():
+    """compute_actions の出力が action_groups() の group 内容に被覆されること。
+
+    外部ツール側 guard test (BASELINE_ACTIONS が常時付与群を被覆しているか) が
+    依存する不変条件: compute_actions が返す Action はすべて
+    action_groups() のいずれかの group に属する。
+    """
+    groups = action_groups()
+    union = {action for actions in groups.values() for action in actions}
+    settings = _build_settings(
+        vpc={"ref": "main", "zone_suffixes": ["a", "c"]},
+        s3={},
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"], "efs": {}},
+            "handlers": {
+                "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
+                "worker": {"command": _SQS_HANDLER_CMD, "sqs": {}},
+            },
+        },
+        rds={},
+        ses={"from_email": "noreply@example.com"},
+        cloudfront={
+            "main": {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/main"},
+                ],
+            },
+        },
+    )
+    assert set(compute_actions(settings)).issubset(union)
 
 
 def test_cli_text_output(use_toml):
