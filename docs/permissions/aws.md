@@ -179,6 +179,37 @@ pocket permissions list --stage=prod --format=json
 `[rds]` `[ses]` 等の有無や `secrets.store` / `build.backend` の値に応じて自動的に増減します。
 Action レベルの細かい絞り込み (Least Privilege) は別途検討対象です。
 
+## Python API
+
+CLI と同じ計算ロジックを Python から直接呼び出せます。デプロイ用 IAM Role を
+プロビジョニングする外部ツールが、inline policy の Action を組み立てる用途を想定した
+public API です。
+
+| 関数 | 役割 |
+|------|------|
+| `pocket.permissions.compute_actions(settings)` | `Settings` から必要 Action 一覧 (`list[str]`) を算出する。CLI `pocket permissions list` の実体。 |
+| `pocket.permissions.action_groups()` | feature group ごとの Action を `settings` 非依存で名前付きで返す (`dict[str, list[str]]`)。 |
+
+`action_groups()` は、外部ツール側で「自分が常時付与している baseline 権限が
+magic-pocket の付与群を被覆できているか」を CI で guard したい場合などに使います。
+
+```python
+import pocket.permissions as perms
+
+groups = perms.action_groups()
+# {"core": [...], "ssm": [...], "secretsmanager": [...], "cloudfront": [...],
+#  "waf": [...], "vpc": [...], "rds": [...], "efs": [...], "sqs": [...],
+#  "ses": [...], "codebuild": [...]}
+
+baseline = set(groups["core"]) | set(groups["cloudfront"])  # 例: 被覆対象の group を選ぶ
+```
+
+- キー名は **安定 (rename しない) ことを public API として保証** しています。
+  `_`-prefixed の内部定数を直接 import せず、本関数を使ってください。
+- `"core"` のみ常時付与群で、残りは `pocket.toml` の設定に応じて付与される
+  feature-gated 群です（`compute_actions` はこの dict を単一のソースとして条件連結します）。
+- 返り値は都度コピーなので、呼び出し側が変更しても本体に影響しません。
+
 ## Permissions Boundary
 
 組織のセキュリティポリシーで IAM ロールに Permissions Boundary が必要な場合、`pocket.toml` で設定できます。
