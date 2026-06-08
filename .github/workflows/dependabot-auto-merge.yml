@@ -15,7 +15,7 @@ jobs:
     outputs:
       automerge: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
     steps:
-      - uses: dependabot/fetch-metadata@v2
+      - uses: dependabot/fetch-metadata@v3
         id: meta
 
   # patch/minor のみ: just test (pytest + cargo test) を回し green なら squash merge。
