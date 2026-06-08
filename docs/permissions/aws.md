@@ -30,7 +30,8 @@
 
 | 権限 | 用途 |
 |------|------|
-| `cloudfront:*` | ディストリビューション・Function・KVS の管理 |
+| `cloudfront:*` | ディストリビューション・Function・KVS リソースの管理 |
+| `cloudfront-keyvaluestore:*` | SPA token gating（`require_token`）構成で deploy が KVS へ `token_secret` を書き込む（`DescribeKeyValueStore` / `PutKey`）。`cloudfront:*` とは別 service prefix のため別途必要 |
 | `acm:RequestCertificate`, `acm:DescribeCertificate`, `acm:DeleteCertificate` | カスタムドメインの SSL 証明書 |
 | `route53:ListHostedZones` | ドメインから hosted zone の自動検索（`hosted_zone_id_override` 未設定時） |
 | `route53:ChangeResourceRecordSets`, `route53:GetChange` | DNS レコードの自動作成 |
@@ -144,6 +145,7 @@
         "secretsmanager:*",
         "sts:GetCallerIdentity",
         "cloudfront:*",
+        "cloudfront-keyvaluestore:*",
         "acm:*",
         "route53:*",
         "ec2:*",

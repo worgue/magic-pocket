@@ -100,6 +100,8 @@ def test_cloudfront_adds_acm_route53():
     )
     actions = compute_actions(settings)
     assert "cloudfront:*" in actions
+    # KVS への token_secret 書込みは別 service prefix のため明示的に必要
+    assert "cloudfront-keyvaluestore:*" in actions
     assert "acm:RequestCertificate" in actions
     assert "acm:DescribeCertificate" in actions
     assert "acm:DeleteCertificate" in actions

@@ -45,6 +45,10 @@ _SSM_ACTIONS: list[str] = [
 # [cloudfront.*] が一つ以上ある時
 _CLOUDFRONT_ACTIONS: list[str] = [
     "cloudfront:*",
+    # cloudfront-keyvaluestore は cloudfront とは別 service prefix のため
+    # cloudfront:* ではカバーされない。SPA token gating (require_token) 構成で
+    # deploy フローが KVS へ token_secret を書き込む際に必要。
+    "cloudfront-keyvaluestore:*",
     "acm:RequestCertificate",
     "acm:DescribeCertificate",
     "acm:DeleteCertificate",
