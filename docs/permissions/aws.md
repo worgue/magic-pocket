@@ -13,7 +13,7 @@
 | **Lambda** | `lambda:*` | 関数の作成・更新・実行。`pocket resource awscontainer reload-env` の side-channel env 更新 (`UpdateFunctionConfiguration`) も含む |
 | **API Gateway V2** | `apigateway:*` | HTTP エンドポイントの管理 |
 | **S3** | `s3:*` | ステートバケット・静的ファイル |
-| **IAM** | `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PassRole` | Lambda 実行ロールの管理 |
+| **IAM** | `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PassRole`, `iam:TagRole`, `iam:UntagRole`, `iam:ListRoleTags` | Lambda 実行ロールの管理（CFn が LambdaRole に Tag を付与するため Tag 系 Action も必要） |
 | **CloudWatch Logs** | `logs:*` | ログの作成・参照 |
 | **Secrets Manager** | `secretsmanager:*` | シークレットの生成・保存・取得 |
 | **SSM Parameter Store** | `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameters`, `ssm:GetParametersByPath` | パラメータストア利用時 |
@@ -102,6 +102,9 @@
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:PassRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:ListRoleTags",
         "logs:*",
         "secretsmanager:*",
         "sts:GetCallerIdentity"
@@ -134,6 +137,9 @@
         "iam:AttachRolePolicy",
         "iam:DetachRolePolicy",
         "iam:PassRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:ListRoleTags",
         "logs:*",
         "secretsmanager:*",
         "sts:GetCallerIdentity",
