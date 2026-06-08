@@ -1,20 +1,28 @@
 version: 2
 updates:
-  - package-ecosystem: "cargo"
-    directory: "/"
+  - package-ecosystem: uv # Python (pyproject.toml / uv.lock を直接更新)
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 10
     groups:
-      aws-sdk:
-        patterns:
-          - "aws-*"
-
-  - package-ecosystem: "pip"
-    directory: "/"
+      python:
+        update-types: [minor, patch]
+  - package-ecosystem: cargo
+    directory: /
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: weekly
+      day: monday
     open-pull-requests-limit: 10
-    versioning-strategy: increase-if-necessary
+    groups:
+      rust:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        update-types: [minor, patch]

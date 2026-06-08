@@ -1,0 +1,48 @@
+name: Dependabot auto-merge
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # patch / minor だけを auto-merge 対象として判定するゲート。
+  # group 更新は group 内の最大 semver 変更が update-type になるため、
+  # major が混ざった group はここを通らず人手レビューに回る。
+  meta:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      automerge: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: meta
+
+  # patch/minor のみ: just test (pytest + cargo test) を回し green なら squash merge。
+  # branch protection に依存せず workflow 内で検証する。
+  # major は 人手レビューする。
+  test-and-merge:
+    needs: meta
+    if: needs.meta.outputs.automerge == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: extractions/setup-just@v2
+      - run: uv sync --all-groups
+      - run: just test
+      # --- App token でマージ (GITHUB_TOKEN だと後続 workflow を起動しないため) ---
+      # app-id は直書き (Dependabot トリガの run では Actions vars が見えない。App ID は公開情報)。
+      # private-key は Dependabot secret (Actions secret も Dependabot run では見えない)。
+      - uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: "3993238" # auto-merge 用 GitHub App
+          private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+      - name: Squash merge (tests passed)
+        run: gh pr merge --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
