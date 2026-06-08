@@ -54,6 +54,52 @@ namespace = "test"
     assert context.namespace == "test"
 
 
+def _toml_with_neon(skip: bool) -> str:
+    flag = "\nskip_check_existing = true" if skip else ""
+    return f"""
+[general]
+region = "us-east-1"
+project_name = "test-project"
+stages = ["dev"]
+namespace = "test"
+
+[dev.neon]
+project_name = "dev-test-project"{flag}
+"""
+
+
+def test_neon_skip_check_existing_defaults_false(use_toml, tmp_path):
+    toml_path = tmp_path / "pocket.toml"
+    toml_path.write_text(_toml_with_neon(skip=False))
+    use_toml(str(toml_path))
+    context = Context.from_toml(stage="dev")
+    assert context.neon is not None
+    assert context.neon.skip_check_existing is False
+
+
+def test_neon_skip_check_existing_from_toml(use_toml, tmp_path):
+    toml_path = tmp_path / "pocket.toml"
+    toml_path.write_text(_toml_with_neon(skip=True))
+    use_toml(str(toml_path))
+    context = Context.from_toml(stage="dev")
+    assert context.neon is not None
+    assert context.neon.skip_check_existing is True
+
+
+def test_apply_skip_check_existing_overrides_at_runtime(use_toml, tmp_path):
+    """--skip-check-existing 相当の実行時上書きが toml の false を True にする"""
+    from pocket_cli.cli.deploy_cli import apply_skip_check_existing
+
+    toml_path = tmp_path / "pocket.toml"
+    toml_path.write_text(_toml_with_neon(skip=False))
+    use_toml(str(toml_path))
+    context = Context.from_toml(stage="dev")
+    assert context.neon is not None and context.neon.skip_check_existing is False
+
+    apply_skip_check_existing(context)
+    assert context.neon.skip_check_existing is True
+
+
 def _build_awscontainer_context(
     base_settings, *, permissions_boundary: str | None = None
 ) -> AwsContainerContext:

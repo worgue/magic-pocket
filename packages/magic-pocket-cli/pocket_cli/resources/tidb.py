@@ -160,6 +160,9 @@ class TiDb:
 
     @property
     def status(self) -> ResourceStatus:
+        if self.context.skip_check_existing:
+            # 存在確認の TiDB API call を skip し COMPLETED 固定 (settings 参照)。
+            return "COMPLETED"
         if not self.context.public_key or not self.context.private_key:
             return "NOEXIST"
         if self.cluster and self.cluster.status == "ACTIVE":
