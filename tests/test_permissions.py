@@ -36,6 +36,10 @@ def test_minimal_no_awscontainer():
     actions = compute_actions(settings)
     assert "cloudformation:*" in actions
     assert "secretsmanager:*" in actions
+    # CFn が LambdaRole に Tag を付与するため Tag 系 IAM Action も core に含む
+    assert "iam:TagRole" in actions
+    assert "iam:UntagRole" in actions
+    assert "iam:ListRoleTags" in actions
     # オプション系は一切含まれない
     assert "cloudfront:*" not in actions
     assert "ec2:*" not in actions

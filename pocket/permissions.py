@@ -24,6 +24,9 @@ _CORE_ACTIONS: list[str] = [
     "iam:AttachRolePolicy",
     "iam:DetachRolePolicy",
     "iam:PassRole",
+    "iam:TagRole",
+    "iam:UntagRole",
+    "iam:ListRoleTags",
     "logs:*",
     "sts:GetCallerIdentity",
 ]
