@@ -4,8 +4,16 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [?.?.?](https://github.com/worgue/magic-pocket/releases/tag/0.1.0) - unreleased
+## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - Unreleased
+
+0.1.1 以降の全面的な機能拡張リリースです。runtime ライブラリ (`magic-pocket`) と
+deploy CLI (`magic-pocket-cli`) の 2 パッケージ構成になりました。
+
 ### Breaking Changes
+- **パッケージを 2 分割しました。** deploy CLI (`pocket` コマンド) は新パッケージ
+  `magic-pocket-cli` に移動し、`magic-pocket` は Lambda runtime ライブラリのみに
+  なりました。デプロイ環境には `magic-pocket-cli` を、Lambda image には従来どおり
+  `magic-pocket` をインストールしてください。
 - **AWS リソース系コマンドを `resource` group 配下へ再配置しました。** 旧トップレベル
   コマンド `pocket awscontainer` / `neon` / `tidb` / `dsql` / `rds` / `s3` / `vpc` /
   `cloudfront` 等は廃止され、`pocket resource awscontainer ...` のように `resource` を
@@ -17,6 +25,78 @@
   ことを名前で明示する目的です（capability 自体は維持）。`pocket.toml` の handler
   に旧名を指定している場合は新名への追従が必要です。SQS 駆動でコマンドを安全に
   完走させる用途には新設の `BaseCommandHandler` を利用してください。
+- **deploy 時の stage 指定環境変数を `POCKET_DEPLOY_STAGE` に分離しました。**
+  `POCKET_STAGE` は Lambda runtime 専用になり、ローカルで runtime helper と
+  deploy CLI の stage 指定が干渉しなくなりました。
+- **Route の `type = "api"` を `type = "lambda"` にリネームしました**（旧値は起動時に
+  分かりやすいエラーで失敗します）。
+- **`is_versioned` を廃止し `versioning` に統一しました**（`"content_hash"` = 旧
+  `is_versioned = true` 相当 / `"deploy_hash"` = git hash を URL prefix に付与する
+  方式を新設）。
+- **VPC 設定をトップレベル `[vpc]` セクションへ移動しました。** 外部 VPC 参照
+  (`manage = false`) と VPC 共有 (`sharable = true` + consumer タグ管理) も
+  サポートします。
+- **Route に `origin_path` を導入し、storage の location を自動計算するように
+  しました**（旧 `spa.origin_path_format` の設定体系は廃止）。
+- **CloudFront 専用 S3 バケットを廃止し、プロジェクトの S3 バケットに統合しました。**
+- **Neon の `project_name` を pocket.toml で必須指定に変更しました。**
+- **secrets セクションを再編しました**:
+  `[awscontainer.secretsmanager.pocket_secrets]` → `[awscontainer.secrets.managed]`、
+  `[awscontainer.secretsmanager.secrets]` → `[awscontainer.secrets.user]`。
+  保存先 store として Secrets Manager に加え SSM Parameter Store
+  (`store = "ssm"`) を選択可能になりました。
+
+### Features
+- **データベース / キャッシュの選択肢を拡張**: Neon に加えて TiDB Serverless
+  (`[tidb]`) / RDS Aurora Serverless v2 (`[rds]`、既存クラスター参照可・static
+  パスワード管理対応) / Aurora DSQL (`[dsql]`、IAM 認証・VPC 不要) /
+  Upstash Redis (`[upstash]`) をサポート。
+- **Rust (Loco) 対応**: `magic-pocket-rs` crate を追加し、Django 以外に Loco app を
+  同じ pocket.toml 体系でデプロイできるようになりました。
+- **CloudFront 統合を全面拡張**: `[cloudfront.<name>]` で複数ディストリビューション、
+  routes (S3 / lambda)、SPA ルーティング、署名付き URL (`signing_key`)、SPA トークン
+  認証 (`require_token` + CloudFront Function + KeyValueStore)、WAF IP allowlist
+  (`waf`)、ステージ別アセット配信 (`managed_assets`)、`deploy_hash` versioning に
+  よるキャッシュバスティングをサポート。
+- :material-console: build once + commit hash 昇格をサポート。`pocket django build` で
+  作業ツリーを一度ビルドして git commit hash（full）タグで ECR へ push し、
+  `pocket promote` / `pocket django promote --commit-hash <sha>` で同一イメージを
+  再ビルドなしで各ステージへ昇格できます（`:<stage>` タグの付け替え + Lambda 更新）。
+  `[awscontainer].ecr_name` で ECR リポジトリ名を上書きでき、同一アカウント内の
+  ステージ間でリポジトリを共有可能（明示指定したリポジトリは `pocket destroy` で
+  削除されません）。通常の `pocket django deploy` の挙動は不変です。
+- SQS 駆動の安全な command worker 基盤 `pocket.command_handler.BaseCommandHandler`
+  を追加。SQS イベントを別 Lambda invocation の本体として受け、`build_argv` で固定
+  した実行ファイルを `shell=False` の list argv で完走させ、出力 / ステータスを sink
+  hook（`on_start` / `on_output` / `on_finish` / `on_crash`）に委譲します。long-running
+  job を wsgi tier から worker tier に逃がす定石を共通化し、Lambda の freeze による
+  「ステータスが running 固着」を構造的に防ぎます。crash 時は `try/finally` で
+  `on_crash` を呼んでから例外を re-raise（握りつぶさない）。`dangerous_shell_handler`
+  の安全な後継です。
+- **EventBridge Scheduler サポート** (`[scheduler]`): cron / rate での定期実行を
+  CloudFormation 管理で構成。Django management command を呼ぶショートカット
+  entry (`pocket.django.management_lambda_scheduler`) もあります。
+- **VPC + EFS サポート**: NAT / Internet Gateway 構成、EFS マウント、Django
+  キャッシュの EFS 利用 (`store = "efs"`)。
+- **デプロイ権限の可視化**: `pocket permissions list` CLI と Python API
+  (`pocket.permissions.compute_actions()` / `action_groups()`) で、pocket.toml の
+  構成に必要な IAM Action 一覧を機械可読に提供。デプロイ用 IAM Role の最小権限
+  プロビジョニングに使えます。
+- **ビルドバックエンドの選択**: `[awscontainer.build]` で codebuild（既定）/
+  docker / depot を選択可能。ローカル Docker なしでデプロイできます。
+- **IAM Permissions Boundary 対応** (`[awscontainer].permissions_boundary`)。
+  Lambda 実行ロールと CodeBuild ロールに適用されます。
+- **`pocket runtime-config`**: ビルド専用設定を除外した `pocket.runtime.toml` を
+  生成し、Lambda image に焼き込む仕組みを導入。
+- **SES メール送信** (`[ses]`): Django email backend の自動構成つき。
+- **`pocket waf ip` CLI**: WAF IPSet の side-channel 即時更新（add / remove / list）。
+- **`pocket resource awscontainer reload-env` / `status-env`**: SSM / Secrets Manager
+  の最新値で Lambda 環境変数を即時更新（CFn を介さない）/ 宣言値との drift 表示。
+- :material-console: `pocket django deploy` でインフラデプロイ + ローカル
+  collectstatic + Lambda 上での migrate を対話形式で一括実行。
+- :material-console: `pocket django resetdb`でデータベースの public スキーマをリセット（`DROP SCHEMA public CASCADE`）
+- S3 バケット名のカスタマイズ (`[s3].bucket_name_format`) とステージ別
+  `[<stage>.general]` 上書き（region 等）。
 
 ### Bug Fixes
 - `pocket permissions list` / `compute_actions()` に deploy が実際に必要とする
@@ -41,27 +121,6 @@
   正準 `function_name` を参照）。あわせて `status-env` の drift 警告が案内する
   コマンドが旧 path のままだったのを新 path に修正。
 
-### Features
-- :material-console: build once + commit hash 昇格をサポート。`pocket django build` で
-  作業ツリーを一度ビルドして git commit hash（full）タグで ECR へ push し、
-  `pocket promote` / `pocket django promote --commit-hash <sha>` で同一イメージを
-  再ビルドなしで各ステージへ昇格できます（`:<stage>` タグの付け替え + Lambda 更新）。
-  `[awscontainer].ecr_name` で ECR リポジトリ名を上書きでき、同一アカウント内の
-  ステージ間でリポジトリを共有可能（明示指定したリポジトリは `pocket destroy` で
-  削除されません）。通常の `pocket django deploy` の挙動は不変です。
-- SQS 駆動の安全な command worker 基盤 `pocket.command_handler.BaseCommandHandler`
-  を追加。SQS イベントを別 Lambda invocation の本体として受け、`build_argv` で固定
-  した実行ファイルを `shell=False` の list argv で完走させ、出力 / ステータスを sink
-  hook（`on_start` / `on_output` / `on_finish` / `on_crash`）に委譲します。long-running
-  job を wsgi tier から worker tier に逃がす定石を共通化し、Lambda の freeze による
-  「ステータスが running 固着」を構造的に防ぎます。crash 時は `try/finally` で
-  `on_crash` を呼んでから例外を re-raise（握りつぶさない）。`dangerous_shell_handler`
-  の安全な後継です。
-- :material-console: `pocket django deploy`でデプロイ + マイグレーションなどの管理コマンド実行。実行内容が決まらないためUnreleases。
-- :material-console: `pocket django resetdb`でデータベースの public スキーマをリセット（`DROP SCHEMA public CASCADE`）
-- Neon接続時のIP制限
-- RDSの利用
-
 ### Improvements
 - deploy コードと `compute_actions()` の同期検証テストを追加
   (`tests/test_permissions_sync.py`)。boto3 呼び出しの AST 静的解析と
@@ -74,22 +133,6 @@
 - `pocket destroy`がデフォルトでシークレットも削除するように変更（`--without-secrets`で残す）
 - `pocket destroy`でCloudFrontスタック削除の完了を待機するように修正
 - `pocket deploy`時にSSM/SMの不要なシークレットを自動クリーンアップ
-- 環境ごとに異なるファイルを返すurlsの作成（`robots.txt`と`favicon.ico`用）
-- :material-console: `pocket deploy`でデプロイ（以下全て`pocket.toml`に設定がある場合のみ）
-    - EFSの作成
-    - Lambdaに関わるCloudFormation作成
-        - SecurityGroupIngress(LambdaからEFSへのアクセス権限)の作成
-    - SQSを利用したdjango managementコマンドのバッチ処理
-        - Queue, Dead letter queue, EventSourceMappingの作成
-- :material-console: `pocket remove`でデプロイした環境を出来る限り削除し、削除できないものは表示
-
-## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - Unreleased
-### Breaking Changes
-- pocket.tomlの`[spa.origin_path_format]`のデフォルト値が変更されました。空文字から`/{stage}`に変更されました。
-
-### Documentation
-- Features/pocket.tomlを追加
-- Features/コマンドライン、Tutorial/Simple Projectの説明を改善
 
 ## [0.1.1](https://github.com/worgue/magic-pocket/releases/tag/0.1.1) - 2024-10-16
 
