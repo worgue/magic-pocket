@@ -1,8 +1,8 @@
 """`pocket permissions` サブコマンド群。
 
 `pocket.toml` の構成から必要な AWS IAM Action を算出して出力する。
-外部ツール側で GitHub Actions デプロイ用 IAM Role を作る際の inline policy 生成に
-使用することを想定。
+外部の IAM Role プロビジョニング処理が GitHub Actions デプロイ用 IAM Role を
+作る際の inline policy 生成に使用することを想定。
 """
 
 from __future__ import annotations

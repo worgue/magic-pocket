@@ -1,8 +1,9 @@
 """pocket.toml の構成から必要な AWS IAM Action 一覧を算出する。
 
 `docs/permissions/aws.md` のテーブルをコード化したもの。
-外部ツール側の GitHub Actions デプロイ用 IAM Role 等が、`*:*` を避けて
-必要最小限の Action を inline policy に組み込めるようにするためのデータソース。
+外部の IAM Role プロビジョニング処理 (GitHub Actions デプロイ用 IAM Role 等) が、
+`*:*` を避けて必要最小限の Action を inline policy に組み込めるようにするための
+データソース。
 
 ## public API
 

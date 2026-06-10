@@ -357,8 +357,8 @@ def test_action_groups_returns_copies():
 def test_action_groups_is_single_source_for_compute_actions():
     """compute_actions の出力が action_groups() の group 内容に被覆されること。
 
-    外部ツール側 guard test (BASELINE_ACTIONS が常時付与群を被覆しているか) が
-    依存する不変条件: compute_actions が返す Action はすべて
+    外部ツール側 guard test (deploy ロール baseline が常時付与群を被覆して
+    いるか) が依存する不変条件: compute_actions が返す Action はすべて
     action_groups() のいずれかの group に属する。
     """
     groups = action_groups()
