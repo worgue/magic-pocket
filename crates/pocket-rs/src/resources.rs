@@ -40,7 +40,8 @@ pub async fn set_envs_from_resources(config: &PocketConfig) -> Result<()> {
     }
 
     unsafe {
-        std::env::set_var("POCKET_HOSTS", hosts.join(""));
+        // カンマ区切り (Python 版 runtime.py と同じ形式)
+        std::env::set_var("POCKET_HOSTS", hosts.join(","));
     }
 
     let queueurls_map = get_queueurls(config).await?;

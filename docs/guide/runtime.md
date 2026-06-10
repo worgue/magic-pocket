@@ -27,7 +27,7 @@ CloudFormation が Lambda 関数の環境変数として自動設定するため
 |----------|------|
 | `POCKET_PROJECT_NAME` | プロジェクト名 |
 | `POCKET_REGION` | AWS リージョン |
-| `POCKET_HOSTS` | API Gateway ホスト一覧 |
+| `POCKET_HOSTS` | API Gateway ホスト一覧（カンマ区切り。Django では `ALLOWED_HOSTS` に追加される） |
 | `POCKET_{HANDLER}_HOST` | 各ハンドラーのホスト |
 | `POCKET_{HANDLER}_ENDPOINT` | 各ハンドラーの URL |
 | `POCKET_{HANDLER}_QUEUEURL` | SQS キュー URL |

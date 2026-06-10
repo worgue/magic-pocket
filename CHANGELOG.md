@@ -19,6 +19,12 @@
   完走させる用途には新設の `BaseCommandHandler` を利用してください。
 
 ### Bug Fixes
+- `POCKET_HOSTS` 環境変数が複数ホストをセパレータなしで連結していたのを
+  カンマ区切りに修正（Python / Rust 両ランタイム）。apigateway 付き handler を
+  2 つ以上定義すると、Django の `ALLOWED_HOSTS` に壊れたホスト名が入り
+  2 つ目以降のホストが `DisallowedHost` になっていました（消費側の
+  `add_or_append_env` は元々カンマ結合を前提としており、handler 1 つの構成では
+  影響ありません）。
 - `pocket resource awscontainer reload-env` / `status-env` が Lambda 関数名から
   namespace（既定 `pocket`）を取りこぼし、default namespace のデプロイで常に
   「Lambda function が見つかりません」で失敗していたのを修正（deploy 側と同じ

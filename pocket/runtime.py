@@ -259,7 +259,8 @@ def set_envs_from_aws_resources(
                 os.environ["POCKET_%s_ENDPOINT" % lambda_key.upper()] = (
                     "https://%s" % host
                 )
-        os.environ["POCKET_HOSTS"] = "".join(hosts)
+        # カンマ区切り。django/runtime.py が ALLOWED_HOSTS へカンマ結合で append する
+        os.environ["POCKET_HOSTS"] = ",".join(hosts)
         queueurls_map = _get_queueurls(context.awscontainer)
         for lambda_key, queueurl in queueurls_map.items():
             if queueurl:
