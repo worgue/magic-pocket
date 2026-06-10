@@ -4,6 +4,13 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.2.1](https://github.com/worgue/magic-pocket/releases/tag/0.2.1) - 2026-06-10
+
+### Bug Fixes
+- `pocket version` が古いバージョン (0.1.1) を表示する問題を修正しました。
+  `__version__` を手書き定数からパッケージメタデータ由来に変更し、
+  pyproject.toml との二重管理を廃止しています (同期の回帰テスト付き)。
+
 ## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - 2026-06-10
 
 0.1.1 以降の全面的な機能拡張リリースです。runtime ライブラリ (`magic-pocket`) と

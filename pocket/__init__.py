@@ -1,3 +1,5 @@
 """Deploy system for Django projects."""
 
-__version__ = "0.1.1"
+from importlib.metadata import version
+
+__version__ = version("magic-pocket")
