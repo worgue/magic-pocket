@@ -628,6 +628,28 @@ dockerfile_path = "pocket.Dockerfile"
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
 | `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
 | `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-lambda` |
+| `build` | str \| dict | `"codebuild"` | コンテナイメージのビルドバックエンド（下記参照） |
+| `permissions_boundary` | str \| None | None | Lambda 実行ロール / CodeBuild ロールに適用する IAM Permissions Boundary の ARN（[IAM 権限](../permissions/aws.md) 参照） |
+
+### build（ビルドバックエンド）
+
+コンテナイメージのビルド方法を指定します。文字列で backend のみ指定するショートハンドと、テーブルでの詳細指定の両方が使えます。
+
+```toml
+[awscontainer]
+build = "docker"   # ショートハンド
+
+# または詳細指定
+[awscontainer.build]
+backend = "codebuild"
+compute_type = "BUILD_GENERAL1_MEDIUM"
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `backend` | `"codebuild"` \| `"docker"` \| `"depot"` | `"codebuild"` | ビルドバックエンド。`codebuild` = AWS CodeBuild 上でビルド（ローカル Docker 不要）、`docker` = ローカルの Docker でビルド、`depot` = [Depot](https://depot.dev/) でビルド |
+| `compute_type` | str | `"BUILD_GENERAL1_MEDIUM"` | CodeBuild のコンピュートタイプ（`backend = "codebuild"` 時のみ） |
+| `depot_project_id` | str \| None | None | Depot のプロジェクトID（`backend = "depot"` 時に必要） |
 
 !!! info "`ecr_name` とステージ間のリポジトリ共有"
     デフォルトの ECR リポジトリ名にはステージ名が含まれるため、ステージごとに別リポジトリになります。
@@ -1114,7 +1136,6 @@ routes = [
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `domain` | str \| None | None | 配信ドメイン（省略時は `xxx.cloudfront.net`） |
-| `origin_path` | str | `"/spa"` | S3 オリジンパス |
 | `hosted_zone_id_override` | str \| None | None | ホストゾーンIDを明示指定 |
 | `redirect_from` | list[RedirectFrom] | `[]` | リダイレクト元ドメイン |
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |
@@ -1303,6 +1324,7 @@ routes = [
 |-----------|------|----------|------|
 | `type` | `"s3"` \| `"lambda"` | `"s3"` | ルートの種類 |
 | `handler` | str \| None | None | Lambda handler 名（`type = "lambda"` 時必須。WSGI / ASGI / Rust / Go 等、API Gateway 経由で公開される Lambda なら何でも） |
+| `origin_path` | str \| None | None | S3 オリジンパス（`type = "s3"` 時**必須**。`type = "lambda"` では指定不可） |
 | `path_pattern` | str | `""` | パスパターン |
 | `is_default` | bool | `false` | CloudFront の DefaultCacheBehavior として使用 |
 | `is_spa` | bool | `false` | SPA用の設定（フォールバックHTML対応） |
@@ -1322,7 +1344,7 @@ routes = [
     - `is_spa` と `versioning` は同時に設定できません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "lambda"` のルートでは `is_spa`, `versioning`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
+    - `type = "lambda"` のルートでは `origin_path`, `is_spa`, `versioning`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
     - 旧 `type = "api"` は廃止されました。`type = "lambda"` を使ってください（起動時に分かりやすいエラーが出ます）。
     - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。

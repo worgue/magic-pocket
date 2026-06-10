@@ -73,7 +73,7 @@
 |------|------|
 | `ses:SendEmail`, `ses:SendRawEmail` | メール送信（Lambda 実行ロールに付与） |
 
-### CodeBuild（`build.type = "codebuild"` 使用時）
+### CodeBuild（`build.backend = "codebuild"` 使用時）
 
 | 権限 | 用途 |
 |------|------|

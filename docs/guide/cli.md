@@ -60,6 +60,7 @@ pocket deploy --stage=dev
 
 - Neonへのデータベース作成（`[neon]` 設定時）
 - TiDB クラスターの作成（`[tidb]` 設定時）
+- Upstash Redis データベースの作成（`[upstash]` 設定時）
 - RDS Aurora クラスターの作成（`[rds]` 設定時）
 - Secrets Managerへのシークレット登録
 - S3バケットの作成と権限設定
@@ -126,14 +127,20 @@ pocket destroy --stage=dev
 
 削除は以下の順序（デプロイの逆順）で行われます:
 
-1. CloudFront（CFNスタック + バケットポリシー）
-2. AwsContainer（CFNスタック + ECR + CloudWatch Logs + secrets）
-3. RDS Aurora クラスター（Final Snapshot 付き）
-4. VPC（CFNスタック + EFS）
-5. S3 バケット
-6. TiDB クラスタ
-7. Neon ブランチ
-8. ステートバケット（`--with-state-bucket` 指定時のみ）
+1. CloudFront（CFNスタック + バケットポリシー）+ ACM 証明書
+2. AwsContainer（CFNスタック + ECR + CodeBuild + CloudWatch Logs + secrets）+ VPC（CFNスタック + EFS）
+3. DSQL クラスター
+4. RDS Aurora クラスター（Final Snapshot 付き）
+5. CloudFront 署名鍵（`signing_key` 設定時）
+6. S3 バケット
+7. TiDB クラスタ
+8. Upstash Redis
+9. Neon ブランチ
+10. ステートバケット（`--with-state-bucket` 指定時のみ）
+
+!!! note "ECR リポジトリの扱い"
+    [`[awscontainer].ecr_name`](configuration.md#awscontainer) を明示指定している場合、
+    ECR リポジトリは他ステージと共有されている可能性があるため削除されません（警告を表示してスキップ）。
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
 
@@ -184,7 +191,8 @@ pocket django deploy --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--openpath` | デプロイ後にブラウザで開くパス |
-| `--force` | 確認プロンプトをスキップ |
+| `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 !!! note "`pocket deploy` との違い"
     `pocket deploy` はインフラのデプロイのみ行います。
@@ -364,6 +372,16 @@ pocket resource awscontainer yaml --stage=dev
 # CloudFormation YAMLの差分を確認
 pocket resource awscontainer yaml-diff --stage=dev
 
+# CFNスタックの作成 / 更新（通常は pocket deploy 経由で実行）
+pocket resource awscontainer create --stage=dev
+pocket resource awscontainer update --stage=dev
+
+# SSM/Secrets Manager の最新値で Lambda 環境変数を即時更新（CFNを介さない）
+pocket resource awscontainer reload-env --stage=dev
+
+# Lambda の現在の環境変数と SSM/Secrets Manager 上の宣言値の差分を表示
+pocket resource awscontainer status-env --stage=dev
+
 # リソース削除（CFNスタック + ECRリポジトリ）
 pocket resource awscontainer destroy --stage=dev
 
@@ -390,7 +408,23 @@ pocket resource awscontainer secrets delete-pocket-managed --stage=dev
 ### neon
 
 ```bash
+# Neon ブランチの状態確認
 pocket resource neon status --stage=dev
+
+# コンテキスト（テンプレートに渡される変数）を表示
+pocket resource neon context --stage=dev
+
+# ブランチの作成（通常は pocket deploy 経由で実行）
+pocket resource neon create --stage=dev
+
+# データベースの削除 + 再作成
+pocket resource neon reset-database --stage=dev
+
+# 別ステージのブランチから分岐して作成
+pocket resource neon branch-out --stage=feature1 --base-stage=dev
+
+# ブランチの削除
+pocket resource neon delete --stage=dev
 ```
 
 ### tidb
@@ -398,6 +432,18 @@ pocket resource neon status --stage=dev
 ```bash
 # TiDB クラスターの状態確認
 pocket resource tidb status --stage=dev
+
+# コンテキストを表示
+pocket resource tidb context --stage=dev
+
+# クラスターの作成（通常は pocket deploy 経由で実行）
+pocket resource tidb create --stage=dev
+
+# データベースの削除 + 再作成
+pocket resource tidb reset-database --stage=dev
+
+# クラスターの削除
+pocket resource tidb delete --stage=dev
 ```
 
 ### dsql
@@ -432,6 +478,12 @@ pocket resource rds destroy --stage=dev
 # S3バケットの状態確認
 pocket resource s3 status --stage=dev
 
+# コンテキストを表示
+pocket resource s3 context --stage=dev
+
+# バケットの作成（通常は pocket deploy 経由で実行）
+pocket resource s3 create --stage=dev
+
 # S3バケットを中身ごと削除
 pocket resource s3 destroy --stage=dev
 ```
@@ -453,6 +505,11 @@ pocket resource cloudfront context --stage=dev
 
 # 特定のディストリビューションのみ
 pocket resource cloudfront yaml --stage=dev --name=main
+
+# CFNスタックの作成 / 更新 / 削除（通常は pocket deploy / destroy 経由で実行）
+pocket resource cloudfront create --stage=dev
+pocket resource cloudfront update --stage=dev
+pocket resource cloudfront destroy --stage=dev
 
 # フロントエンドのビルド・S3アップロード・キャッシュ無効化
 pocket resource cloudfront upload --stage=dev
@@ -481,8 +538,29 @@ pocket resource cloudfront-keys yaml-diff --stage=dev
 # 状態確認
 pocket resource cloudfront-keys status --stage=dev
 
+# 鍵リソースの削除
+pocket resource cloudfront-keys destroy --stage=dev
+
 # 特定のディストリビューションのみ
 pocket resource cloudfront-keys yaml --stage=dev --name=media
+```
+
+### cloudfront_waf
+
+CloudFront にアタッチする WAFv2 (IP allowlist) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。
+
+```bash
+# 状態確認
+pocket resource cloudfront-waf status --stage=dev
+
+# CloudFormation YAMLを表示
+pocket resource cloudfront-waf yaml --stage=dev
+
+# CloudFormation YAMLの差分を確認
+pocket resource cloudfront-waf yaml-diff --stage=dev
+
+# WAFリソースの削除
+pocket resource cloudfront-waf destroy --stage=dev
 ```
 
 ### vpc
@@ -496,6 +574,10 @@ pocket resource vpc yaml
 
 # CloudFormation YAMLの差分を確認
 pocket resource vpc yaml-diff
+
+# CFNスタックの作成 / 更新（通常は pocket deploy 経由で実行）
+pocket resource vpc create
+pocket resource vpc update
 
 # VPCを削除（CFNスタック + EFS）
 pocket resource vpc destroy
