@@ -295,6 +295,12 @@ class AwsContainerContext(BaseModel):
     resource_prefix: str
     handlers: dict[str, LambdaHandlerContext] = {}
     ecr_name: str
+    # ecr_name が toml で明示指定されたか。明示時は他 stage と共有の可能性があるため
+    # destroy で repo を削除しない判断に使う。
+    ecr_name_overridden: bool = False
+    # promote (再ビルドなし deploy) 時に CLI が設定する実行時フラグ。toml からは
+    # 読まない。設定時は build せず :<hash> image へ :<stage> タグを移して deploy する。
+    promote_commit_hash: str | None = None
     use_s3: bool
     use_ses: bool = False
     use_route53: bool = False
@@ -358,7 +364,8 @@ class AwsContainerContext(BaseModel):
             namespace=root.namespace,
             resource_prefix=resource_prefix,
             handlers=handlers,
-            ecr_name=resource_prefix + "lambda",
+            ecr_name=ac.ecr_name or resource_prefix + "lambda",
+            ecr_name_overridden=ac.ecr_name is not None,
             use_s3=root.s3 is not None,
             use_ses=root.ses is not None,
             use_route53=use_route53,
@@ -960,6 +967,50 @@ def _get_deploy_hash() -> str:
     if result.returncode == 0:
         return result.stdout.strip()
     return "unknown"
+
+
+def get_commit_hash() -> str:
+    """git のフル commit hash を取得する。COMMIT_HASH 環境変数があればそちらを優先。
+
+    build once 用のイメージタグに使う (CI では github.sha 等を COMMIT_HASH で渡せる)。
+    deploy_hash (short hash) と違い、取得失敗時は黙って "unknown" にせず例外で落とす
+    (誤ったタグで build/push してしまうのを防ぐため)。
+    """
+    import subprocess
+
+    env_hash = os.environ.get("COMMIT_HASH")
+    if env_hash:
+        return env_hash
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            "git commit hash の取得に失敗しました (git リポジトリ外?)。"
+            " COMMIT_HASH 環境変数で明示指定もできます。"
+        )
+    return result.stdout.strip()
+
+
+def is_working_tree_dirty() -> bool:
+    """git working tree に未コミットの変更があるか。
+
+    build once では commit hash = image 内容 の同一性が前提なので、dirty な
+    tree からの build を検知するために使う。git リポジトリ外など判定不能な
+    場合は False (dirty 扱いしない。hash 取得側のエラーに任せる)。
+    """
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    return bool(result.stdout.strip())
 
 
 def _build_service_contexts(s: settings.Settings) -> dict:

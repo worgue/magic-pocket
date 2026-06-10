@@ -82,6 +82,18 @@ class AwsContainer:
             builder=self.builder,
         )
 
+    def build(self, tag: str):
+        """指定 tag (commit hash 等) で image を build & push する (deploy はしない)。
+
+        build once 用。`:stage` タグは付けない。昇格は deploy 側で行う。
+        pocket.runtime.toml は Dockerfile の COPY で image に焼き込まれるため、
+        deploy_init と同様に build 前へ生成する。
+        """
+        generate_runtime_config(self._runtime_toml_path())
+        ecr = self.ecr
+        ecr.ensure_exists()
+        ecr.build_and_push(tag=tag)
+
     @property
     def stack(self):
         return ContainerStack(
@@ -173,8 +185,13 @@ class AwsContainer:
         return Path("pocket.runtime.toml")
 
     def deploy_init(self):
-        generate_runtime_config(self._runtime_toml_path())
-        self.ecr.sync()
+        if self.context.promote_commit_hash:
+            # 昇格 (promote): 既存 :<hash> image へ :<stage> タグを移す。build しない。
+            # runtime config は build 時に image へ焼き込み済みのため生成もしない。
+            self.ecr.retag(self.context.promote_commit_hash, self.context.stage)
+        else:
+            generate_runtime_config(self._runtime_toml_path())
+            self.ecr.sync()
         if self.context.vpc and not self.context.vpc.manage:
             vpc_stack = Vpc(self.context.vpc).stack
             if vpc_stack.status == "NOEXIST":

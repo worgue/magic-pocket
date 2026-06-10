@@ -75,7 +75,10 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     ac = AwsContainer(context.awscontainer)
     parts = ["CFNスタック"]
     if ac.ecr.exists():
-        parts.append("ECR")
+        if context.awscontainer.ecr_name_overridden:
+            parts.append("ECR は ecr_name 明示指定のため削除対象外")
+        else:
+            parts.append("ECR")
     if with_secrets and context.awscontainer.secrets:
         parts.append("secrets")
 
@@ -172,9 +175,16 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
         echo.success("AwsContainer stack was destroyed.")
 
     if ac.ecr.exists():
-        echo.log("Destroying ECR repository...")
-        ac.ecr.delete()
-        echo.success("ECR repository was deleted.")
+        if context.awscontainer.ecr_name_overridden:
+            echo.warning(
+                "ECR repository '%s' は ecr_name で明示指定されているため削除"
+                "しません (他 stage と共有の可能性があります)。"
+                "不要な場合は手動で削除してください。" % context.awscontainer.ecr_name
+            )
+        else:
+            echo.log("Destroying ECR repository...")
+            ac.ecr.delete()
+            echo.success("ECR repository was deleted.")
 
     _destroy_codebuild(context)
 

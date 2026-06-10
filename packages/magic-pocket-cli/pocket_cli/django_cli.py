@@ -100,8 +100,11 @@ def deploy(stage: str, openpath, yes, skip_check_existing):
         skip_frontend=False,
         skip_check_existing=skip_check_existing,
     )
+    _django_post_deploy(stage, yes=yes, openpath=openpath)
 
-    # Django 固有: collectstatic + migrate
+
+def _django_post_deploy(stage: str, *, yes: bool, openpath):
+    """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。"""
     context = Context.from_toml(stage=stage)
     if yes or click.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
@@ -117,6 +120,79 @@ def deploy(stage: str, openpath, yes, skip_check_existing):
         echo.success(f"url: {url}")
         if openpath:
             webbrowser.open(url + "/" + openpath)
+
+
+@django.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option("--commit-hash", required=True, help="昇格する image の git commit hash")
+@click.option("--openpath")
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+@click.option(
+    "--skip-check-existing",
+    is_flag=True,
+    default=False,
+    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
+)
+def promote(stage: str, commit_hash, openpath, yes, skip_check_existing):
+    """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
+
+    `pocket django build` で push した image に :<stage> タグを移し、インフラ/Lambda
+    を更新する。image build は行わない (build once の昇格)。静的アセットは deploy 時
+    と同様にローカルでビルドして upload する。
+    """
+    from pocket_cli.cli.deploy_cli import promote as pocket_promote
+
+    ctx = click.Context(pocket_promote)
+    ctx.invoke(
+        pocket_promote,
+        stage=stage,
+        commit_hash=commit_hash,
+        openpath=None,
+        skip_frontend=False,
+        skip_check_existing=skip_check_existing,
+    )
+    _django_post_deploy(stage, yes=yes, openpath=openpath)
+
+
+@django.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--allow-dirty",
+    is_flag=True,
+    default=False,
+    help="working tree が dirty でも build する (ローカル検証用)",
+)
+def build(stage: str, allow_dirty: bool):
+    """現在の作業ツリーを build し、git commit hash をタグにして ECR へ push する。
+
+    deploy はしない (build once)。`pocket django promote --commit-hash <sha>` で
+    このイメージへ昇格する。タグは COMMIT_HASH 環境変数があればそれを、なければ
+    `git rev-parse HEAD` を使う。
+
+    commit hash = image 内容 の同一性が前提のため、working tree が dirty の場合は
+    エラーになる (--allow-dirty で回避可能)。
+    """
+    from pocket.context import get_commit_hash, is_working_tree_dirty
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+    from pocket_cli.cli.deploy_cli import build_image
+
+    check_aws_credentials()
+    if not allow_dirty and is_working_tree_dirty():
+        raise click.ClickException(
+            "working tree に未コミットの変更があります。build once では"
+            " commit hash と image 内容の一致が前提のため、commit してから"
+            " build してください (--allow-dirty で回避できますが、その image の"
+            " 昇格は推奨しません)。"
+        )
+    try:
+        tag = get_commit_hash()
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
+    context = Context.from_toml(stage=stage)
+    target = build_image(context, tag=tag)
+    echo.success("built and pushed: %s" % target)
 
 
 def _get_management_command_handler(context: Context, key: str | None = None):

@@ -173,6 +173,10 @@ class AwsContainer(BaseModel):
     permissions_boundary: str | None = None
     iam: AwsContainerIam = AwsContainerIam()
     build: BuildConfig = BuildConfig()
+    # ECR repository 名の上書き。省略時は resource_prefix + "lambda" を使う。
+    # 同一 AWS アカウント内で複数 stage が同じ repo を共有したい場合に指定する
+    # (build once + commit-hash 昇格で再ビルドなし deploy を成立させるため)。
+    ecr_name: str | None = None
 
     @model_validator(mode="after")
     def check_handlers(self):

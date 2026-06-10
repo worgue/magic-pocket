@@ -162,6 +162,44 @@ def apply_skip_check_existing(context: Context) -> None:
             db_ctx.skip_check_existing = True
 
 
+def build_image(context: Context, *, tag: str) -> str:
+    """awscontainer image を指定 tag で build & push する (deploy はしない)。
+
+    build once 用。codebuild backend は source upload に state bucket を要するため、
+    deploy と同様に先に state bucket を確保してから build する。戻り値は ecr_name:tag。
+    """
+    if context.awscontainer is None:
+        raise click.ClickException("awscontainer がこの stage に設定されていません。")
+    state_store = _create_state_store(context)
+    state_store.ensure_bucket()
+    ac = AwsContainer(context.awscontainer, state_bucket=state_store.bucket_name)
+    ac.build(tag)
+    return f"{context.awscontainer.ecr_name}:{tag}"
+
+
+def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
+    """deploy / promote 共通のパイプライン本体。
+
+    promote 時は context.awscontainer.promote_commit_hash が設定済みで、
+    deploy_init 内の image build が retag に置き換わる以外は deploy と同一。
+    """
+    # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
+    state_store = _create_state_store(context)
+    state_store.ensure_bucket()
+    state_bucket = state_store.bucket_name
+    deploy_init_resources(context, state_bucket=state_bucket)
+    deploy_resources(context, state_bucket=state_bucket)
+    upload_managed_assets(context)
+    if not skip_frontend:
+        deploy_frontend(context)
+    # デプロイ完了後の URL 表示
+    url = _get_deploy_url(context)
+    if url:
+        echo.success(f"url: {url}")
+        if openpath:
+            webbrowser.open(url + "/" + openpath)
+
+
 @click.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
@@ -179,21 +217,36 @@ def deploy(stage: str, openpath, skip_frontend, skip_check_existing):
     context = Context.from_toml(stage=stage)
     if skip_check_existing:
         apply_skip_check_existing(context)
-    # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
-    state_store = _create_state_store(context)
-    state_store.ensure_bucket()
-    state_bucket = state_store.bucket_name
-    deploy_init_resources(context, state_bucket=state_bucket)
-    deploy_resources(context, state_bucket=state_bucket)
-    upload_managed_assets(context)
-    if not skip_frontend:
-        deploy_frontend(context)
-    # デプロイ完了後の URL 表示
-    url = _get_deploy_url(context)
-    if url:
-        echo.success(f"url: {url}")
-        if openpath:
-            webbrowser.open(url + "/" + openpath)
+    _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
+
+
+@click.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option("--commit-hash", required=True, help="昇格する image の git commit hash")
+@click.option("--openpath")
+@click.option("--skip-frontend", is_flag=True, default=False)
+@click.option(
+    "--skip-check-existing",
+    is_flag=True,
+    default=False,
+    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
+)
+def promote(stage: str, commit_hash, openpath, skip_frontend, skip_check_existing):
+    """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
+
+    `pocket django build` で push した image に :<stage> タグを移し、
+    インフラ/Lambda を更新する。image build は行わない (build once の昇格)。
+    """
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
+    context = Context.from_toml(stage=stage)
+    if context.awscontainer is None:
+        raise click.ClickException("awscontainer がこの stage に設定されていません。")
+    if skip_check_existing:
+        apply_skip_check_existing(context)
+    context.awscontainer.promote_commit_hash = commit_hash
+    _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
 
 
 def _get_deploy_url(context: Context) -> str | None:

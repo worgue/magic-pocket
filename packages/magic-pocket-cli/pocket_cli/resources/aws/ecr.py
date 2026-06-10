@@ -85,16 +85,50 @@ class Ecr:
         if not self.info.uri:
             self.create()
 
-    def build_and_push(self):
-        if self.target is None:
+    def build_and_push(self, tag: str | None = None):
+        if self.uri is None:
             raise ValueError("target is not defined")
+        # tag 省略時は self.tag (= stage) を使う。build once 用に commit hash 等を
+        # 焼きたい場合は tag を明示する。
+        target = self.uri + ":" + (tag or self.tag)
         if self._builder is None:
             raise ValueError("builder is not configured")
         self._builder.build_and_push(
-            target=self.target,
+            target=target,
             dockerfile_path=self.dockerfile_path,
             platform=self.platform,
         )
+
+    def retag(self, source_tag: str, dest_tag: str):
+        """source_tag の image に dest_tag を付与する (タグの付け替え。build しない)。
+
+        build once の昇格用: `:<commit hash>` の image へ `:<stage>` タグを移す。
+        source_tag の image が存在しない場合は ValueError。
+        """
+        try:
+            images = self.client.batch_get_image(
+                repositoryName=self.name,
+                imageIds=[{"imageTag": source_tag}],
+            )["images"]
+        except self.client.exceptions.RepositoryNotFoundException:
+            raise ValueError(
+                "ECR repository '%s' が存在しません。"
+                "先に `pocket django build` を実行してください。" % self.name
+            )
+        if not images:
+            raise ValueError(
+                "image :%s が ECR repository '%s' に存在しません。"
+                "先に `pocket django build` を実行してください。"
+                % (source_tag, self.name)
+            )
+        try:
+            self.client.put_image(
+                repositoryName=self.name,
+                imageManifest=images[0]["imageManifest"],
+                imageTag=dest_tag,
+            )
+        except self.client.exceptions.ImageAlreadyExistsException:
+            pass  # dest_tag が既に同じ digest を指している (再昇格の冪等性)
 
     def exists(self) -> bool:
         return self.info.uri is not None
