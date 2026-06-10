@@ -20,7 +20,7 @@ jobs:
 
   # patch/minor のみ: just test (pytest + cargo test) を回し green なら squash merge。
   # branch protection に依存せず workflow 内で検証する。
-  # major は 人手レビューする。
+  # major は人手レビューする。
   test-and-merge:
     needs: meta
     if: needs.meta.outputs.automerge == 'true'
