@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - Unreleased
+## [0.2.0](https://github.com/worgue/magic-pocket/releases/tag/0.2.0) - 2026-06-10
 
 0.1.1 以降の全面的な機能拡張リリースです。runtime ライブラリ (`magic-pocket`) と
 deploy CLI (`magic-pocket-cli`) の 2 パッケージ構成になりました。
