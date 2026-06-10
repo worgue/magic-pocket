@@ -1,0 +1,77 @@
+# gitleaks の履歴スキャンで検知済み・対応判断済みの fingerprint 一覧。
+# fingerprint 形式: <commit>:<file>:<rule-id>:<line>
+
+# テスト用ダミー値 (誤検知)
+5457f4835da951e999ed8994ac172bfff3356739:tests/test_spa_auth.py:generic-api-key:16
+
+# 著者表記 (LICENSE / pyproject の意図的な公開情報)
+615d05ae11a7fdc5e2499b59eb1ffb58c5cbdccd:pyproject.toml:org-person:7
+9dce4801ee393c098be8165e055643d4f0c69aff:LICENSE:org-person:3
+9dce4801ee393c098be8165e055643d4f0c69aff:pyproject.toml:org-person:7
+
+# リポジトリ URL 等に含まれる org 名、および履歴上の検知 (HEAD では一般名に置換済)
+0267d608236671887e7eb781c9fc5a56b1624d8d:tests/test_awscontainer_iam.py:org-vocab:126
+0267d608236671887e7eb781c9fc5a56b1624d8d:tests/test_awscontainer_iam.py:org-vocab:83
+0267d608236671887e7eb781c9fc5a56b1624d8d:tests/test_awscontainer_iam.py:org-vocab:97
+20fcdeabe04ec0a22291e40f22173f5ce1e67fe4:CHANGELOG.md:org-vocab:21
+2356d657e13b2e6eafb94a5154cb859f03ff77e6:docs/getting-started.md:org-vocab:56
+2356d657e13b2e6eafb94a5154cb859f03ff77e6:docs/guide/runtime.md:org-vocab:267
+2356d657e13b2e6eafb94a5154cb859f03ff77e6:docs/index.md:org-vocab:37
+28f111792a0d2be9891eb07a23a165fd4f2b9ea7:mkdocs.yml:org-vocab:2
+2b4afd2f89ef688907237f25f40712cf71d16ec3:example-neon/pocket.runtime.toml:org-vocab:46
+3be73f2015852a54450e89a518f301fb46c7a6d8:zensical.toml:org-vocab:4
+3be73f2015852a54450e89a518f301fb46c7a6d8:zensical.toml:org-vocab:5
+5c4602cfa68dd9e560cb40b3b9e680af23f8bf10:docs/changelog.md:org-vocab:20
+5c4602cfa68dd9e560cb40b3b9e680af23f8bf10:docs/changelog.md:org-vocab:7
+5c4602cfa68dd9e560cb40b3b9e680af23f8bf10:mkdocs.yml:org-vocab:3
+615d05ae11a7fdc5e2499b59eb1ffb58c5cbdccd:pyproject.toml:org-vocab:7
+70b8457db179bf24dba18dacfc3667e9aea6b6af:CHANGELOG.md:org-vocab:21
+70b8457db179bf24dba18dacfc3667e9aea6b6af:CHANGELOG.md:org-vocab:23
+8213aed90eb8277daaf68d7bcdd7ce5aa05ba21d:CHANGELOG.md:org-vocab:21
+822b980ee24b53e98da4c08bf3ed2aba7fdeedce:tests/test_neon.py:org-vocab:49
+822b980ee24b53e98da4c08bf3ed2aba7fdeedce:tests/test_neon.py:org-vocab:51
+822b980ee24b53e98da4c08bf3ed2aba7fdeedce:tests/test_neon.py:org-vocab:52
+822b980ee24b53e98da4c08bf3ed2aba7fdeedce:tests/test_neon.py:org-vocab:66
+822c5ba50824190914fd26091aab1e5150f23de9:pocket/permissions.py:org-vocab:13
+822c5ba50824190914fd26091aab1e5150f23de9:pocket/permissions.py:org-vocab:9
+822c5ba50824190914fd26091aab1e5150f23de9:tests/test_permissions.py:org-vocab:306
+85e091a5c61d7648dd807239089120798d689219:CHANGELOG.md:org-vocab:21
+85e091a5c61d7648dd807239089120798d689219:CHANGELOG.md:org-vocab:23
+866ddde250272f6cb4d875d0e1c123ea00312754:CHANGELOG.md:org-vocab:21
+9372c3d4df81b0131a65e31b56273d757f495ea1:pyproject.toml:org-vocab:30
+9372c3d4df81b0131a65e31b56273d757f495ea1:pyproject.toml:org-vocab:31
+9dce4801ee393c098be8165e055643d4f0c69aff:pyproject.toml:org-vocab:7
+a678d06599ef115c92372ea3fdfba6bb7b5cd3ab:CHANGELOG.md:org-vocab:7
+a8725a9a547f6b266669ca2e3254ec81d721fa7f:.github/workflows/dependabot-auto-merge.yml:org-vocab:22
+a8725a9a547f6b266669ca2e3254ec81d721fa7f:.github/workflows/dependabot-auto-merge.yml:org-vocab:23
+a8725a9a547f6b266669ca2e3254ec81d721fa7f:.github/workflows/dependabot-auto-merge.yml:org-vocab:42
+a9e0a74ffb2992ef547662454988567fe38ef3da:tests/test_neon.py:org-vocab:49
+a9e0a74ffb2992ef547662454988567fe38ef3da:tests/test_neon.py:org-vocab:51
+a9e0a74ffb2992ef547662454988567fe38ef3da:tests/test_neon.py:org-vocab:52
+d548eef2820c31a7a040a0d447b612c587237ad9:docs/guide/configuration.md:org-vocab:366
+d548eef2820c31a7a040a0d447b612c587237ad9:docs/guide/configuration.md:org-vocab:375
+d548eef2820c31a7a040a0d447b612c587237ad9:docs/guide/configuration.md:org-vocab:376
+d548eef2820c31a7a040a0d447b612c587237ad9:docs/guide/configuration.md:org-vocab:377
+d548eef2820c31a7a040a0d447b612c587237ad9:tests/test_rds.py:org-vocab:105
+d548eef2820c31a7a040a0d447b612c587237ad9:tests/test_rds.py:org-vocab:108
+d548eef2820c31a7a040a0d447b612c587237ad9:tests/test_rds.py:org-vocab:96
+e0880ef89df3b703eb1fb26626f54289119f6a21:packages/magic-pocket-cli/pocket_cli/cli/permissions_cli.py:org-vocab:4
+e0880ef89df3b703eb1fb26626f54289119f6a21:pocket/permissions.py:org-vocab:4
+f2261a6060715660e1905873a84e60baf4f2e898:CHANGELOG.md:org-vocab:21
+f2261a6060715660e1905873a84e60baf4f2e898:CHANGELOG.md:org-vocab:7
+f2261a6060715660e1905873a84e60baf4f2e898:README.md:org-vocab:4
+fa7f8f18ebdc9129c5af1645390a96cee39abb09:docs/guide/loco.md:org-vocab:14
+
+# 内部タスク管理 ID への参照 (HEAD では除去済。履歴の書き換えは不要と判断)
+0675a5934ca924b42843aad030fe9a16ce6ba0e6:tests/test_build_command.py:org-tool-vocab:1
+0675a5934ca924b42843aad030fe9a16ce6ba0e6:tests/test_ecr_name_override.py:org-tool-vocab:5
+0675a5934ca924b42843aad030fe9a16ce6ba0e6:tests/test_promote.py:org-tool-vocab:1
+965dfe4be1ced2899cc6b17bb75fa09760d8f4c0:tests/test_permissions_sync.py:org-tool-vocab:1
+965dfe4be1ced2899cc6b17bb75fa09760d8f4c0:tests/test_permissions_sync.py:org-tool-vocab:461
+dd696af2039907617e4e23158bb51622c3cbf2a5:tests/test_cloudfront_acm.py:org-tool-vocab:32
+
+# 暫定: 履歴上の検知 (HEAD ではダミー値に置換済。履歴からの除去要否は別途判断)
+7685c579bde6636b245372cf976d3d68e4af7a51:example-neon/pocket.toml:org-account-id:11
+7ee81cc6c8347d62929f3fdf979a2b4a2bc9d48d:example-neon/pocket.toml:org-account-id:11
+abdaa3ec999d57ed2f0883f0cb2ddf29a493af0f:example/pocket.toml:org-account-id:10
+d66a08fe5e1b841836709c482b54fe762beeda25:example/pocket.toml:org-account-id:10
