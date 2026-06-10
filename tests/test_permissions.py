@@ -206,6 +206,57 @@ def test_build_backend_docker_drops_codebuild():
     assert "codebuild:*" not in actions
 
 
+def test_dsql_adds_dsql():
+    settings = _build_settings(dsql={})
+    actions = compute_actions(settings)
+    assert "dsql:*" in actions
+    # dsql 無しでは入らない
+    assert "dsql:*" not in compute_actions(_build_settings())
+
+
+def test_scheduler_adds_scheduler():
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "handlers": {
+                "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
+            },
+        },
+        scheduler={"schedules": {"daily": {"rate": "1 day", "handler": "wsgi"}}},
+    )
+    actions = compute_actions(settings)
+    assert "scheduler:*" in actions
+    # scheduler 無しでは入らない
+    assert "scheduler:*" not in compute_actions(_build_settings())
+
+
+def test_external_vpc_adds_tag_actions():
+    """外部 VPC 参照 (manage=false) — consumer タグ付け外し用の tag 系が入る。"""
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "vpc": {"ref": "shared", "manage": False},
+            "handlers": {},
+        },
+    )
+    actions = compute_actions(settings)
+    assert "tag:TagResources" in actions
+    assert "tag:UntagResources" in actions
+
+
+def test_managed_vpc_has_no_tag_actions():
+    """managed VPC では consumer タグ操作は行わないため tag 系は入らない。"""
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "handlers": {},
+        },
+    )
+    actions = compute_actions(settings)
+    assert "tag:TagResources" not in actions
+
+
 def test_full_config_contains_everything():
     """フル構成 — docs/permissions/aws.md のすべての項目が含まれる。"""
     settings = _build_settings(
@@ -284,6 +335,9 @@ def test_action_groups_public_keys_stable():
         "sqs",
         "ses",
         "codebuild",
+        "dsql",
+        "scheduler",
+        "tag",
     }
     # core は常時付与群。代表的な Action を含む
     assert "cloudformation:*" in groups["core"]

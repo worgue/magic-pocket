@@ -37,6 +37,8 @@ _CORE_ACTIONS: list[str] = [
     "iam:TagRole",
     "iam:UntagRole",
     "iam:ListRoleTags",
+    # CodeBuild ロール削除時の inline policy 列挙 (codebuild.py)
+    "iam:ListRolePolicies",
     "logs:*",
     "sts:GetCallerIdentity",
 ]
@@ -74,8 +76,16 @@ _WAF_ACTIONS: list[str] = ["wafv2:*"]
 # awscontainer.vpc が設定されている時
 _VPC_ACTIONS: list[str] = ["ec2:*"]
 
-# [rds] が設定されている時
-_RDS_ACTIONS: list[str] = ["rds:*", "ec2:*SecurityGroup*"]
+# [rds] が設定されている時。
+# ssm:* は static master password の SSM パラメータ管理用
+# (secrets.store とは独立に rds.py が直接 SSM を読み書きする)
+_RDS_ACTIONS: list[str] = [
+    "rds:*",
+    "ec2:*SecurityGroup*",
+    "ssm:GetParameter",
+    "ssm:PutParameter",
+    "ssm:DeleteParameter",
+]
 
 # awscontainer.vpc.efs が設定されている時
 _EFS_ACTIONS: list[str] = ["elasticfilesystem:*"]
@@ -88,6 +98,17 @@ _SES_ACTIONS: list[str] = ["ses:SendEmail", "ses:SendRawEmail"]
 
 # awscontainer.build.backend == "codebuild" (デフォルト) 時
 _CODEBUILD_ACTIONS: list[str] = ["codebuild:*"]
+
+# [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)
+_DSQL_ACTIONS: list[str] = ["dsql:*"]
+
+# [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
+_SCHEDULER_ACTIONS: list[str] = ["scheduler:*"]
+
+# awscontainer.vpc が外部 VPC 参照 (manage = false) の時。
+# deploy_init / destroy が VPC スタックへ consumer タグを付け外しする
+# (resourcegroupstaggingapi。IAM service prefix は "tag")
+_TAG_ACTIONS: list[str] = ["tag:TagResources", "tag:UntagResources"]
 
 
 def _uses_ssm(settings: Settings) -> bool:
@@ -118,6 +139,15 @@ def _uses_codebuild(settings: Settings) -> bool:
     return bool(ac and ac.build.backend == "codebuild")
 
 
+def _has_scheduler(settings: Settings) -> bool:
+    return bool(settings.scheduler and settings.scheduler.schedules)
+
+
+def _uses_external_vpc(settings: Settings) -> bool:
+    ac = settings.awscontainer
+    return bool(ac and ac.vpc and not ac.vpc.manage)
+
+
 def action_groups() -> dict[str, list[str]]:
     """feature group ごとの Action 一覧を settings 非依存で名前付きで返す。
 
@@ -142,6 +172,9 @@ def action_groups() -> dict[str, list[str]]:
         "sqs": list(_SQS_ACTIONS),
         "ses": list(_SES_ACTIONS),
         "codebuild": list(_CODEBUILD_ACTIONS),
+        "dsql": list(_DSQL_ACTIONS),
+        "scheduler": list(_SCHEDULER_ACTIONS),
+        "tag": list(_TAG_ACTIONS),
     }
 
 
@@ -165,6 +198,9 @@ def compute_actions(settings: Settings) -> list[str]:
         ("sqs", _has_sqs_handler(settings)),
         ("ses", settings.ses is not None),
         ("codebuild", _uses_codebuild(settings)),
+        ("dsql", settings.dsql is not None),
+        ("scheduler", _has_scheduler(settings)),
+        ("tag", _uses_external_vpc(settings)),
     ]
 
     seen: set[str] = set()

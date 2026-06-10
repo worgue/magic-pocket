@@ -19,6 +19,16 @@
   完走させる用途には新設の `BaseCommandHandler` を利用してください。
 
 ### Bug Fixes
+- `pocket permissions list` / `compute_actions()` に deploy が実際に必要とする
+  Action の宣言漏れが 5 件あったのを修正。権限を絞ったデプロイ用ロールで
+  該当構成を deploy すると `AccessDenied` になっていた:
+  `dsql:*`（`[dsql]` 構成の cluster 操作）/ `scheduler:*`（`[scheduler]` 構成の
+  CFn `AWS::Scheduler::Schedule` 作成）/ `tag:TagResources`・`tag:UntagResources`
+  （外部 VPC 参照時の consumer タグ付け外し）/ `iam:ListRolePolicies`
+  （CodeBuild ロール削除時の inline policy 列挙）/ `ssm:GetParameter`・
+  `ssm:PutParameter`・`ssm:DeleteParameter`（`[rds]` の static master password
+  管理。`secrets.store` とは独立に必要）。`action_groups()` に `dsql` /
+  `scheduler` / `tag` グループを追加（キー追加のみの非破壊変更）。
 - `POCKET_HOSTS` 環境変数が複数ホストをセパレータなしで連結していたのを
   カンマ区切りに修正（Python / Rust 両ランタイム）。apigateway 付き handler を
   2 つ以上定義すると、Django の `ALLOWED_HOSTS` に壊れたホスト名が入り
@@ -53,6 +63,13 @@
 - RDSの利用
 
 ### Improvements
+- deploy コードと `compute_actions()` の同期検証テストを追加
+  (`tests/test_permissions_sync.py`)。boto3 呼び出しの AST 静的解析と
+  CloudFormation テンプレートのリソース型解析の 2 系統で、deploy が必要とする
+  Action の宣言漏れを CI で検知する（過去に 3 回再発した「権限を絞った deploy
+  ロールが本番で AccessDenied」の構造的な再発防止。未知の CFn リソース型の
+  追加時はテストが fail し権限の検討を強制する）。同期方針は
+  `docs/permissions/aws.md` に記載。
 - S3バケットのCORS設定を`pocket.toml`で宣言可能に（CloudFrontドメイン自動解決）
 - `pocket destroy`がデフォルトでシークレットも削除するように変更（`--without-secrets`で残す）
 - `pocket destroy`でCloudFrontスタック削除の完了を待機するように修正
