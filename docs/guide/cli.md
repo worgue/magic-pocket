@@ -73,6 +73,30 @@ pocket deploy --stage=dev
 | `--stage` | 対象ステージ |
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
+
+### pocket promote
+
+ビルド済みのコンテナイメージへステージを向けてデプロイします（再ビルドなし）。
+
+```bash
+pocket promote --stage=stg --commit-hash=<full-sha>
+```
+
+[`pocket django build`](#pocket-django-build) で push した `:<commit hash>` イメージに
+`:<stage>` タグを付け替え、インフラ / Lambda を更新します。イメージのビルドは行いません。
+指定した commit hash のイメージが ECR に存在しない場合はエラーになります（勝手にビルドしません）。
+
+一度ビルドした同一イメージを複数ステージへ昇格させる build once 運用に使います。
+詳細は「[build once と昇格](#build-once)」を参照してください。
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--commit-hash` | 昇格するイメージの git commit hash（**必須**） |
+| `--openpath` | デプロイ後にブラウザで開くパス |
+| `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 ### pocket status
 
@@ -165,6 +189,72 @@ pocket django deploy --stage=dev
 !!! note "`pocket deploy` との違い"
     `pocket deploy` はインフラのデプロイのみ行います。
     `pocket django deploy` はインフラデプロイに加え、ローカルでの `collectstatic` + S3アップロード、Lambda上での `migrate` も対話形式で実行します。
+
+### pocket django build
+
+現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして
+ECR へ push します。デプロイは行いません。
+
+```bash
+pocket django build --stage=dev
+```
+
+- タグは `COMMIT_HASH` 環境変数があればそれを、なければ `git rev-parse HEAD` を使います
+  （CI では `COMMIT_HASH=${{ github.sha }}` のように渡せます）
+- commit hash とイメージ内容の一致が前提のため、作業ツリーに未コミットの変更がある
+  場合はエラーになります（`--allow-dirty` で回避できますが、そのイメージの昇格は
+  推奨しません）
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
+
+### pocket django promote
+
+[`pocket promote`](#pocket-promote) に加え、ローカルでの `collectstatic` + S3アップロード、
+Lambda 上での `migrate` も対話形式で実行します（`pocket django deploy` の昇格版）。
+
+```bash
+pocket django promote --stage=stg --commit-hash=<full-sha>
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--commit-hash` | 昇格するイメージの git commit hash（**必須**） |
+| `--openpath` | デプロイ後にブラウザで開くパス |
+| `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
+
+### build once と昇格 {#build-once}
+
+`pocket django deploy` は実行のたびにイメージをビルドしますが、`build` + `promote` を
+使うと **一度ビルドした同一イメージを複数ステージへ再ビルドなしで昇格**できます
+（build once）。
+
+```bash
+# 1. 一度だけビルド（:<full-sha> タグで push）
+pocket django build --stage=dev
+
+# 2. 同じイメージを各ステージへ昇格（再ビルドなし）
+pocket django promote --stage=dev --commit-hash=<full-sha>
+pocket django promote --stage=stg --commit-hash=<full-sha>
+```
+
+- **イメージはステージ非依存です。** `pocket.runtime.toml` は全ステージの設定を含んで
+  イメージに焼き込まれ、ステージは Lambda の `POCKET_STAGE` 環境変数で実行時に解決
+  されます。`build --stage=dev` の `--stage` は ECR リポジトリ等の対象を決めるだけで、
+  生成されるイメージ自体はどのステージでも動きます。
+- **ステージ間で ECR リポジトリを共有するには** [`[awscontainer].ecr_name`](configuration.md#awscontainer)
+  を設定します。デフォルトでは ECR リポジトリ名にステージ名が含まれるため、
+  ステージごとに別リポジトリになり昇格が成立しません。同一 AWS アカウント内の
+  ステージで同じ `ecr_name` を指定すると、昇格がタグの付け替えだけで完結します。
+- **静的アセット（SPA ビルド + collectstatic）は昇格時も再ビルドされます。**
+  build once の対象はコンテナイメージのみです。
+- 通常の `pocket django deploy` の挙動は変わりません（commit hash タグも付きません）。
+  開発ループでは従来どおり `deploy` を、リリースフローでは `build` + `promote` を
+  使い分けてください。
 
 ### pocket django manage
 

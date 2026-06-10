@@ -627,6 +627,15 @@ dockerfile_path = "pocket.Dockerfile"
 | `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム |
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
 | `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
+| `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-lambda` |
+
+!!! info "`ecr_name` とステージ間のリポジトリ共有"
+    デフォルトの ECR リポジトリ名にはステージ名が含まれるため、ステージごとに別リポジトリになります。
+    同一 AWS アカウント内の複数ステージで同じ `ecr_name` を指定するとリポジトリを共有でき、
+    [build once の昇格](cli.md#build-once)（`pocket django build` + `promote`）がタグの付け替えだけで成立します。
+
+    `ecr_name` を明示指定したリポジトリは、他ステージと共有されている可能性があるため
+    `pocket destroy` では削除されません（警告を表示してスキップします）。不要になった場合は手動で削除してください。
 
 !!! info "Docker ビルドコンテキスト"
     Docker ビルドコンテキストは **pocket.toml のあるディレクトリ**（= `pocket deploy` を実行するディレクトリ）です。

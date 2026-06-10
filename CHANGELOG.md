@@ -26,6 +26,13 @@
   コマンドが旧 path のままだったのを新 path に修正。
 
 ### Features
+- :material-console: build once + commit hash 昇格をサポート。`pocket django build` で
+  作業ツリーを一度ビルドして git commit hash（full）タグで ECR へ push し、
+  `pocket promote` / `pocket django promote --commit-hash <sha>` で同一イメージを
+  再ビルドなしで各ステージへ昇格できます（`:<stage>` タグの付け替え + Lambda 更新）。
+  `[awscontainer].ecr_name` で ECR リポジトリ名を上書きでき、同一アカウント内の
+  ステージ間でリポジトリを共有可能（明示指定したリポジトリは `pocket destroy` で
+  削除されません）。通常の `pocket django deploy` の挙動は不変です。
 - SQS 駆動の安全な command worker 基盤 `pocket.command_handler.BaseCommandHandler`
   を追加。SQS イベントを別 Lambda invocation の本体として受け、`build_argv` で固定
   した実行ファイルを `shell=False` の list argv で完走させ、出力 / ステータスを sink
