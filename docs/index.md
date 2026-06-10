@@ -86,10 +86,8 @@ graph LR
 
 ```bash
 # インストール（PyPI）
-uv add magic-pocket
-
-# または、ソースからインストール（最新の開発版）
-uv add git+https://github.com/worgue/magic-pocket.git
+uv add magic-pocket              # runtime ライブラリ
+uv add --dev magic-pocket-cli    # deploy CLI (`pocket` コマンド)
 
 # Djangoプロジェクトで初期設定を生成
 pocket django init

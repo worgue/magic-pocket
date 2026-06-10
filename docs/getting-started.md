@@ -52,11 +52,16 @@ localhost:8000 でDjangoが動くことを確認してください。
 ## 2. 依存パッケージの追加
 
 ```bash
+# runtime ライブラリ (Lambda image にも入る)
 uv add django-environ psycopg magic-pocket
 
-# PyPI のバージョンが古い場合は、GitHub から直接インストールできます
-# uv add django-environ psycopg "magic-pocket @ git+https://github.com/worgue/magic-pocket.git"
+# deploy CLI (`pocket` コマンド)。デプロイ時のみ必要なので dev グループ推奨
+uv add --dev magic-pocket-cli
 ```
+
+!!! note "パッケージ構成"
+    `magic-pocket` は Lambda runtime ライブラリ、`magic-pocket-cli` は
+    `pocket` コマンドを提供する deploy CLI です。CLI は Lambda image には不要です。
 
 !!! note "psycopgについて"
     macで開発している場合、`uv add "psycopg[binary]"` が必要になることがあります。

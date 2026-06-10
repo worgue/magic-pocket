@@ -1,0 +1,34 @@
+name: release
+# tag push (例: 0.2.0) で magic-pocket / magic-pocket-cli を PyPI へ publish する。
+# 認証は PyPI の Trusted Publishing (OIDC)。両 PyPI プロジェクトに、この repo /
+# この workflow ファイル名 / environment "pypi" を Trusted Publisher として登録する。
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+permissions: {}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write # Trusted Publishing (OIDC) に必要
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - name: Check tag matches package versions
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          tag = os.environ["GITHUB_REF_NAME"]
+          for p in ("pyproject.toml", "packages/magic-pocket-cli/pyproject.toml"):
+              v = re.search(r'^version = "([^"]+)"', open(p).read(), re.M).group(1)
+              if v != tag:
+                  sys.exit(f"{p} の version {v} が tag {tag} と一致しません")
+          print(f"ok: {tag}")
+          PY
+      - name: Build both packages
+        run: uv build --all-packages
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
