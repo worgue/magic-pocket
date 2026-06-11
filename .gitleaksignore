@@ -4,10 +4,6 @@
 # テスト用ダミー値 (誤検知)
 e42056f7cdc6bb9dead149f5ad8d1562d174acb1:tests/test_spa_auth.py:generic-api-key:16
 
-# 公開ホスト先の自 org URL / 著者連絡先 (意図的な公開情報)
-28f111792a0d2be9891eb07a23a165fd4f2b9ea7:mkdocs.yml:org-vocab:2
+# 著者連絡先 (意図的な公開情報)
 615d05ae11a7fdc5e2499b59eb1ffb58c5cbdccd:pyproject.toml:org-vocab:7
-9372c3d4df81b0131a65e31b56273d757f495ea1:pyproject.toml:org-vocab:30
 9dce4801ee393c098be8165e055643d4f0c69aff:pyproject.toml:org-vocab:7
-cc22eedc210dab529b8a1ca8f0cb8a0ba30b1c52:zensical.toml:org-vocab:4
-f2261a6060715660e1905873a84e60baf4f2e898:README.md:org-vocab:4
