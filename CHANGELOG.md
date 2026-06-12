@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## Unreleased
+
+### Security
+- Rust crate (`magic-pocket-rs`) の依存ツリーから legacy TLS スタック
+  (rustls 0.21 / hyper 0.14 系) を除去しました。`aws-sdk-*` の default feature
+  `rustls` を無効化し、既定の HTTP client (rustls 0.23 + aws-lc) のみを使用します。
+  動作は変わりません。git 依存で利用している場合は `cargo update magic-pocket-rs`
+  で取り込めます。
+
 ## [0.2.1](https://github.com/worgue/magic-pocket/releases/tag/0.2.1) - 2026-06-10
 
 ### Bug Fixes
