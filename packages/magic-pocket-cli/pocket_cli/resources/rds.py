@@ -215,6 +215,8 @@ class Rds:
         return self._store_has_credential(self.context.secret_store)
 
     def _get_vpc_stack(self) -> VpcStack:
+        if not self.context.vpc:
+            raise RuntimeError("vpc context is not configured")
         return VpcStack(self.context.vpc)
 
     def _get_vpc_subnet_ids(self) -> list[str]:
@@ -276,6 +278,8 @@ class Rds:
 
     def create(self):
         # VPC スタックの完了を待つ
+        if not self.context.vpc:
+            raise RuntimeError("vpc context is not configured")
         if self.context.vpc.manage:
             Vpc(self.context.vpc).stack.wait_status("COMPLETED")
         subnet_ids = self._get_vpc_subnet_ids()

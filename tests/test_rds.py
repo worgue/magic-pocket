@@ -32,6 +32,7 @@ def test_rds_context(use_toml):
     assert context.rds.subnet_group_name == "dev-testprj-pocket-aurora"
     assert context.rds.security_group_name == "dev-testprj-pocket-aurora-rds"
     assert context.rds.region == "ap-northeast-1"
+    assert context.rds.vpc is not None
     assert context.rds.vpc.ref == "main"
     assert len(context.rds.vpc.zone_suffixes) == 2
 
@@ -282,6 +283,7 @@ def test_rds_master_user_secret_properties(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
@@ -304,6 +306,7 @@ def test_rds_secret_lacks_host(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
@@ -329,12 +332,15 @@ def test_set_rds_database_url_with_env_fallback(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
     rds = Rds(context.rds)
     rds.create()
 
+    assert rds.master_user_secret_arn is not None
+    assert rds.endpoint is not None
     os.environ["POCKET_RDS_SECRET_ARN"] = rds.master_user_secret_arn
     os.environ["POCKET_RDS_ENDPOINT"] = rds.endpoint
     os.environ["POCKET_RDS_PORT"] = str(rds.port)
@@ -401,6 +407,7 @@ def test_rds_static_password_creates_pocket_secret(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
@@ -444,6 +451,7 @@ def test_rds_static_password_deletes_pocket_secret(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
@@ -505,6 +513,7 @@ def test_rds_static_ssm_store_creates_parameter_not_secret(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
@@ -556,6 +565,7 @@ def test_rds_static_ssm_store_deletes_parameter(use_toml):
 
     from pocket_cli.resources.vpc import Vpc
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 

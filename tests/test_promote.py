@@ -162,7 +162,8 @@ def test_is_working_tree_dirty(monkeypatch):
 
     def _fake(stdout, returncode=0):
         class _Result:
-            pass
+            stdout: str
+            returncode: int
 
         r = _Result()
         r.stdout = stdout

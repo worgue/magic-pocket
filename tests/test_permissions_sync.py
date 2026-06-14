@@ -238,7 +238,7 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
             for service in resolved:
                 if method == "get_paginator":
                     if node.args and isinstance(node.args[0], ast.Constant):
-                        calls.add((service, node.args[0].value))
+                        calls.add((service, str(node.args[0].value)))
                 elif method not in _META_METHODS:
                     calls.add((service, method))
 

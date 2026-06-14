@@ -2,7 +2,7 @@ default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.2.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
@@ -11,17 +11,17 @@ repos:
         exclude: "mkdocs.yml|pocket_cli/templates/cloudformation/.*\\.yaml"
       - id: check-added-large-files
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.1
+    rev: v0.15.17
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
         exclude: "pocket/templates/init/django-settings.py"
   - repo: https://github.com/semgrep/pre-commit
-    rev: v1.99.0
+    rev: v1.166.0
     hooks:
       - id: semgrep
-        # semgrep 1.99 の opentelemetry 計装が pkg_resources を import するが
+        # semgrep の opentelemetry 計装が pkg_resources を import するが
         # Python 3.12 env に無いため補う。setuptools>=81 は pkg_resources を
         # 削除したので旧版にピンする
         additional_dependencies: ["setuptools<81"]
@@ -37,6 +37,12 @@ repos:
         stages: [pre-push]
   - repo: local
     hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        types: [python]
+        pass_filenames: false
       - id: pytest
         name: pytest
         entry: uv run pytest

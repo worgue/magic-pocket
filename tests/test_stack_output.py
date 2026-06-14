@@ -58,6 +58,7 @@ def test_rds_can_resolve_vpc_subnets(use_toml):
 
     from pocket_cli.resources.rds import Rds
 
+    assert context.rds.vpc is not None
     vpc = Vpc(context.rds.vpc)
     vpc.create()
 
