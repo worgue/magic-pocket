@@ -80,7 +80,7 @@ class NeonApi:
 
     def get(self, path):
         logger.info("GET %s" % self.endpoint + path)
-        res = requests.get(self.endpoint + path, headers=self.header)
+        res = requests.get(self.endpoint + path, headers=self.header, timeout=30)
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
@@ -95,7 +95,9 @@ class NeonApi:
     def post(self, path, data=None):
         logger.warning("POST %s" % self.endpoint + path)
         logger.debug(json.dumps(data, indent=2))
-        res = requests.post(self.endpoint + path, headers=self.header, json=data)
+        res = requests.post(
+            self.endpoint + path, headers=self.header, json=data, timeout=30
+        )
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
@@ -109,7 +111,9 @@ class NeonApi:
     def delete(self, path, data=None):
         logger.warning("DELETE %s" % self.endpoint + path)
         logger.debug(json.dumps(data, indent=2))
-        res = requests.delete(self.endpoint + path, headers=self.header, json=data)
+        res = requests.delete(
+            self.endpoint + path, headers=self.header, json=data, timeout=30
+        )
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
@@ -192,7 +196,9 @@ class Neon:
         組織キー: GET /projects で一覧取得し name で検索。
         プロジェクトスコープキー: エラーから project_id を取得し直接アクセス。
         """
-        res = requests.get(self.api.endpoint + "projects", headers=self.api.header)
+        res = requests.get(
+            self.api.endpoint + "projects", headers=self.api.header, timeout=30
+        )
         if 200 <= res.status_code < 300:
             for p in res.json().get("projects", []):
                 if p["name"] == self.context.project_name:

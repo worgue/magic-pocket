@@ -204,7 +204,9 @@ class CloudFront:
             if route.build and not skip_build:
                 echo.info("ビルド実行: %s" % route.build)
                 try:
-                    subprocess.run(route.build, shell=True, check=True)
+                    # route.build は pocket.toml の build コマンド (設定者 =
+                    # デプロイ実行者)。意図的な shell 実行のため S602 / semgrep を抑制。
+                    subprocess.run(route.build, shell=True, check=True)  # noqa: S602  # nosemgrep
                 except subprocess.CalledProcessError as e:
                     echo.danger(
                         "build コマンドが失敗しました (exit %d): %s"
@@ -224,7 +226,8 @@ class CloudFront:
 
     def _upload_route(self, route: RouteContext):
         s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
-        assert route.build_dir
+        if not route.build_dir:
+            raise RuntimeError("route.build_dir is not set")
         local_dir = Path(route.build_dir)
         uploaded_keys: set[str] = set()
         for file in local_dir.rglob("*"):
@@ -338,7 +341,8 @@ class CloudFront:
     def _ensure_redirect_from_website(self):
         if not self.context.redirect_from:
             return
-        assert self.context.domain, "domain is required when redirect_from is set"
+        if not self.context.domain:
+            raise RuntimeError("domain is required when redirect_from is set")
         for redirect_from in self.context.redirect_from:
             self.s3_client.put_bucket_website(
                 Bucket=redirect_from.domain,

@@ -189,7 +189,7 @@ def build(stage: str, allow_dirty: bool):
     try:
         tag = get_commit_hash()
     except RuntimeError as e:
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
     context = Context.from_toml(stage=stage)
     target = build_image(context, tag=tag)
     echo.success("built and pushed: %s" % target)
@@ -281,10 +281,10 @@ def upload_collected_staticfiles(stage: str):
     echo.info("Bucket: %s" % s3_bucket_name)
     echo.info("Location: %s" % s3_location)
     echo.info("Uploading static files...")
-    run(
+    run(  # noqa: S602 aws s3 sync を pocket.toml 設定値から構築 (信頼境界内)
         "aws s3 sync %s s3://%s/%s/ --delete"
         % (local_storage["OPTIONS"]["location"], s3_bucket_name, s3_location),
-        shell=True,
+        shell=True,  # nosemgrep
         check=True,
     )
 
@@ -319,7 +319,7 @@ def collectstatic_locally(stage: str):
     set_staticfiles_override_env(local_storage)
     cmd = _build_python_command(["manage.py", "collectstatic", "--noinput"])
     project_dir = _get_project_dir(stage)
-    run(cmd, check=True, cwd=project_dir)
+    run(cmd, check=True, cwd=project_dir)  # noqa: S603 shell=False + 制御された引数
     clear_staticfiles_override_env()
 
 
@@ -409,4 +409,4 @@ def upload(storage, stage, delete, dryrun):
     if dryrun:
         cmd += " --dryrun"
     print(cmd)
-    run(cmd, shell=True, check=True)
+    run(cmd, shell=True, check=True)  # noqa: S602 aws s3 sync を pocket.toml 設定値から構築 (信頼境界内)  # nosemgrep

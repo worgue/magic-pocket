@@ -14,9 +14,27 @@ repos:
     rev: v0.15.1
     hooks:
       - id: ruff
-        args: [--select, I, --fix]
+        args: [--fix]
       - id: ruff-format
         exclude: "pocket/templates/init/django-settings.py"
+  - repo: https://github.com/semgrep/pre-commit
+    rev: v1.99.0
+    hooks:
+      - id: semgrep
+        # semgrep 1.99 の opentelemetry 計装が pkg_resources を import するが
+        # Python 3.12 env に無いため補う。setuptools>=81 は pkg_resources を
+        # 削除したので旧版にピンする
+        additional_dependencies: ["setuptools<81"]
+        args:
+          [
+            "--config",
+            "p/python",
+            "--config",
+            "p/django",
+            "--error",
+            "--skip-unknown-extensions",
+          ]
+        stages: [pre-push]
   - repo: local
     hooks:
       - id: pytest

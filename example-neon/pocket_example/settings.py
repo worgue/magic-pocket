@@ -64,7 +64,7 @@ DATABASES = get_databases()
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"  # noqa: E501 Django 既定の検証器パス
     },
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
@@ -80,7 +80,7 @@ _DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
 STATIC_URL = f"static/{_DEPLOY_HASH}/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-from pocket.django.utils import get_storages
+from pocket.django.utils import get_storages  # noqa: E402 設定値確定後に解決
 
 STORAGES = get_storages()
 

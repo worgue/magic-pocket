@@ -645,10 +645,14 @@ class ContainerStack(Stack):
         return {}
 
     def _resolve_vpc_zone_count(self) -> int:
-        assert self.context.vpc, "VPC context is required"
+        if not self.context.vpc:
+            raise RuntimeError("VPC context is required")
         vpc_stack = VpcStack(self.context.vpc)
         output = vpc_stack.output
-        assert output, f"VPC stack '{vpc_stack.name}' の output が取得できません"
+        if not output:
+            raise RuntimeError(
+                f"VPC stack '{vpc_stack.name}' の output が取得できません"
+            )
         prefix = vpc_stack.export["private_subnet_"]
         count = 0
         for i in range(1, 20):

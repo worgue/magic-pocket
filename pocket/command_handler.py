@@ -68,7 +68,7 @@ class BaseCommandHandler(ABC):
             # PYTHONUNBUFFERED=1: subprocess 側の stdout を即 flush させ、Pipe 経由の
             # block buffering でエラー時にログが消える事故を避ける。
             env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-            proc = subprocess.Popen(
+            proc = subprocess.Popen(  # noqa: S603 shell=False + 制御された引数
                 argv,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -76,7 +76,8 @@ class BaseCommandHandler(ABC):
                 bufsize=1,
                 env=env,
             )
-            assert proc.stdout is not None
+            if proc.stdout is None:
+                raise RuntimeError("subprocess stdout is not available")
 
             last_flush = 0.0
             for line in proc.stdout:

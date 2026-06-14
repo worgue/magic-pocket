@@ -34,19 +34,21 @@ class UpstashApi:
         self.auth = (email, api_key)
 
     def get(self, path: str) -> requests.Response:
-        res = requests.get(f"{self.base_url}/{path}", auth=self.auth)
+        res = requests.get(f"{self.base_url}/{path}", auth=self.auth, timeout=30)
         if 200 <= res.status_code < 300:
             return res
         raise RuntimeError("Upstash API error: %s %s" % (res.status_code, res.text))
 
     def post(self, path: str, data: dict) -> requests.Response:
-        res = requests.post(f"{self.base_url}/{path}", auth=self.auth, json=data)
+        res = requests.post(
+            f"{self.base_url}/{path}", auth=self.auth, json=data, timeout=30
+        )
         if 200 <= res.status_code < 300:
             return res
         raise RuntimeError("Upstash API error: %s %s" % (res.status_code, res.text))
 
     def delete(self, path: str) -> requests.Response:
-        res = requests.delete(f"{self.base_url}/{path}", auth=self.auth)
+        res = requests.delete(f"{self.base_url}/{path}", auth=self.auth, timeout=30)
         if 200 <= res.status_code < 300:
             return res
         raise RuntimeError("Upstash API error: %s %s" % (res.status_code, res.text))

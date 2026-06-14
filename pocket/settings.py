@@ -223,7 +223,8 @@ class _ScheduleEntryBase(BaseModel):
     def schedule_expression(self) -> str:
         if self.cron:
             return f"cron({self.cron})"
-        assert self.rate
+        if not self.rate:
+            raise RuntimeError("rate must be set (validated by check_cron_or_rate)")
         return f"rate({self.rate})"
 
 
@@ -343,7 +344,7 @@ class Rds(BaseModel):
     #   "static":      pocket がパスワードを生成し自前 secret に保存。ローテーション
     #                  しない。RDS Proxy 無しでローテーション時ダウンタイムを避けたい
     #                  環境向け。
-    password_strategy: Literal["aws-managed", "static"] = "aws-managed"
+    password_strategy: Literal["aws-managed", "static"] = "aws-managed"  # noqa: S105 戦略名であって secret 値ではない
     # managed = false (既存参照モード) 用フィールド
     secret_arn: str | None = None
     security_group_id: str | None = None
@@ -375,7 +376,7 @@ class Rds(BaseModel):
                 raise ValueError(
                     "managed = false の場合、security_group_id は必須です。"
                 )
-            if self.password_strategy != "aws-managed":
+            if self.password_strategy != "aws-managed":  # noqa: S105 戦略名であって secret 値ではない
                 raise ValueError(
                     "password_strategy は managed = true でのみ使用できます。"
                     " 既存 RDS 参照時のパスワードは secret_arn の secret に従います。"
@@ -728,7 +729,11 @@ class Settings(BaseSettings):
                     f"when route has signed=true"
                 )
             if route.type == "lambda":
-                assert route.handler
+                if not route.handler:
+                    raise ValueError(
+                        f"cloudfront.{name}: handler is required "
+                        f"when route has type='lambda'"
+                    )
                 if not self.awscontainer:
                     raise ValueError(
                         f"cloudfront.{name}: awscontainer is required "

@@ -91,7 +91,7 @@ def _detect_self_ipv4() -> str:
     """1 次: AWS checkip、fallback: ipify。/32 を付けた CIDR を返す。"""
     for url in ("https://checkip.amazonaws.com", "https://api.ipify.org"):
         try:
-            with urllib.request.urlopen(url, timeout=5) as r:
+            with urllib.request.urlopen(url, timeout=5) as r:  # noqa: S310 固定 URL (checkip/ipify) + timeout 済
                 ip = r.read().decode("utf-8").strip()
             if ip:
                 return f"{ip}/32"

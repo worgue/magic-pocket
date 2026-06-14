@@ -487,13 +487,13 @@ class RdsContext(BaseModel):
     subnet_group_name: str = ""
     security_group_name: str = ""
     slug: str = ""
-    password_strategy: str = "aws-managed"
+    password_strategy: str = "aws-managed"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
     # password_strategy = "static" 用: pocket が生成・保存する認証情報の名前
     # (secret_store=sm なら Secrets Manager の secret 名、ssm なら SSM パラメータ名)
     credentials_secret_name: str = ""
     # static 認証情報の保存先。awscontainer.secrets.store のトグルに従う。
     # aws-managed では常に RDS マネージド secret (sm) なので参照されない。
-    secret_store: StoreType = "sm"
+    secret_store: StoreType = "sm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
     # managed = false 用
     secret_arn: str | None = None
     security_group_id: str | None = None
@@ -507,7 +507,8 @@ class RdsContext(BaseModel):
                 secret_arn=rds.secret_arn,
                 security_group_id=rds.security_group_id,
             )
-        assert rds.vpc, "rds.vpc must be resolved by resolve_vpc"
+        if not rds.vpc:
+            raise RuntimeError("rds.vpc must be resolved by resolve_vpc")
         vpc_ctx = VpcContext.from_settings(rds.vpc, root.general)
         resource_prefix = root.prefix_template.format(
             stage=root.stage,
@@ -517,7 +518,7 @@ class RdsContext(BaseModel):
         database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
         # static パスワードの保存先は awscontainer.secrets.store に合わせる
         # (未設定時は "sm")。
-        secret_store: StoreType = "sm"
+        secret_store: StoreType = "sm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
         if root.awscontainer and root.awscontainer.secrets:
             secret_store = root.awscontainer.secrets.store
         return cls(
@@ -753,7 +754,8 @@ class RouteContext(BaseModel):
     def name(self) -> str:
         if not self.path_pattern:
             return "root"
-        assert self.path_pattern[0] == "/", "Should be validated in settings"
+        if self.path_pattern[0] != "/":
+            raise RuntimeError("Should be validated in settings")
         parts = []
         for part in self.path_pattern.split("/"):
             if part and part != "*":
@@ -908,7 +910,8 @@ class CloudFrontContext(BaseModel):
     def from_settings(
         cls, cf: settings.CloudFront, root: settings.Settings, *, name: str
     ) -> CloudFrontContext:
-        assert root.s3, "s3 is required when cloudfront is configured"
+        if not root.s3:
+            raise RuntimeError("s3 is required when cloudfront is configured")
         format_vars = {
             "namespace": root.namespace,
             "stage": root.stage,
@@ -960,7 +963,7 @@ def _get_deploy_hash() -> str:
     if env_hash:
         return env_hash
     result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
+        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 git は PATH 前提の標準ツール
         capture_output=True,
         text=True,
     )
@@ -982,7 +985,7 @@ def get_commit_hash() -> str:
     if env_hash:
         return env_hash
     result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        ["git", "rev-parse", "HEAD"],  # noqa: S607 git は PATH 前提の標準ツール
         capture_output=True,
         text=True,
     )
@@ -1004,7 +1007,7 @@ def is_working_tree_dirty() -> bool:
     import subprocess
 
     result = subprocess.run(
-        ["git", "status", "--porcelain"],
+        ["git", "status", "--porcelain"],  # noqa: S607 git は PATH 前提の標準ツール
         capture_output=True,
         text=True,
     )
@@ -1127,9 +1130,10 @@ class Context(BaseModel):
 
         scheduler_ctx = None
         if s.scheduler and s.scheduler.schedules:
-            assert awscontainer_ctx, (
-                "scheduler requires awscontainer (validated in settings)"
-            )
+            if not awscontainer_ctx:
+                raise RuntimeError(
+                    "scheduler requires awscontainer (validated in settings)"
+                )
             scheduler_ctx = SchedulerContext.from_settings(
                 s.scheduler, root=s, awscontainer_ctx=awscontainer_ctx
             )

@@ -191,7 +191,8 @@ def _resolve_lambda_target_handlers(
     context: Context, handler_name: str | None
 ) -> list[str]:
     """reload-env / status-env の対象 handler を解決する。"""
-    assert context.awscontainer is not None
+    if context.awscontainer is None:
+        raise RuntimeError("awscontainer is not configured")
     handlers = context.awscontainer.handlers
     if handler_name:
         if handler_name not in handlers:
@@ -204,7 +205,8 @@ def _resolve_lambda_target_handlers(
 
 
 def _function_name(context: Context, handler_key: str) -> str:
-    assert context.awscontainer is not None
+    if context.awscontainer is None:
+        raise RuntimeError("awscontainer is not configured")
     # deploy 側 (LambdaHandlerContext.function_name = resource_prefix + key) と同じ
     # 正準名を参照する。slug から再構成すると prefix_template / namespace
     # (既定 `pocket`) を取りこぼすため、handler context の値をそのまま使う。
@@ -306,7 +308,8 @@ def status_env(stage, handler):
             any_drift = True
     if any_drift:
         echo.warning(
-            "drift があります。`pocket resource awscontainer reload-env` で同期できます。"
+            "drift があります。"
+            "`pocket resource awscontainer reload-env` で同期できます。"
         )
     else:
         echo.success("drift なし。Lambda env と secrets は同期されています。")

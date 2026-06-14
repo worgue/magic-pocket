@@ -110,11 +110,11 @@ class Ecr:
                 repositoryName=self.name,
                 imageIds=[{"imageTag": source_tag}],
             )["images"]
-        except self.client.exceptions.RepositoryNotFoundException:
+        except self.client.exceptions.RepositoryNotFoundException as e:
             raise ValueError(
                 "ECR repository '%s' が存在しません。"
                 "先に `pocket django build` を実行してください。" % self.name
-            )
+            ) from e
         if not images:
             raise ValueError(
                 "image :%s が ECR repository '%s' に存在しません。"

@@ -53,7 +53,7 @@ class TiDbApi:
         logger.info("%s %s" % (method, url))
         if data:
             logger.debug(json.dumps(data, indent=2))
-        res = requests.request(method, url, auth=self.auth, json=data)
+        res = requests.request(method, url, auth=self.auth, json=data, timeout=30)
         logger.debug(res.status_code)
         logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
@@ -226,7 +226,7 @@ class TiDb:
                 "public": {
                     "authorizedNetworks": [
                         {
-                            "startIpAddress": "0.0.0.0",
+                            "startIpAddress": "0.0.0.0",  # noqa: S104 TiDB 許可ネットワークの設定値 (socket bind ではない)
                             "endIpAddress": "255.255.255.255",
                             "displayName": "Allow all",
                         }

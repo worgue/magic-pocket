@@ -45,9 +45,8 @@ def get_django_settings(
 ) -> dict[str, Any]:
     stage = stage or os.environ.get("POCKET_STAGE")
     general_context = GeneralContext.from_toml()
-    assert general_context.django_fallback, (
-        "Never happen because of context validation."
-    )
+    if not general_context.django_fallback:
+        raise RuntimeError("Never happen because of context validation.")
     if not stage:
         django_context = general_context.django_fallback
         return django_context.settings

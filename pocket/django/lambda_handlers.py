@@ -96,4 +96,4 @@ def dangerous_shell_handler(event, context):
     """
     print(event)
     command_line = event["command_line"]
-    run(command_line, shell=True, check=True)
+    run(command_line, shell=True, check=True)  # noqa: S602 docstring 参照: 信頼できる呼び出し元限定の危険 handler  # nosemgrep

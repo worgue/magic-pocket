@@ -106,9 +106,9 @@ class Rds:
 
     @property
     def master_user_secret_arn(self) -> str | None:
-        if self.context.password_strategy == "static":
+        if self.context.password_strategy == "static":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
             # secret_store=ssm の場合は Secrets Manager に secret を作らない。
-            if self.context.secret_store != "sm":
+            if self.context.secret_store != "sm":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
                 return None
             return self._static_secret["ARN"] if self._static_secret else None
         if self.cluster and "MasterUserSecret" in self.cluster:
@@ -118,8 +118,8 @@ class Rds:
     @property
     def static_ssm_param_name(self) -> str | None:
         """static + secret_store=ssm のとき、認証情報を保存する SSM パラメータ名。"""
-        if self.context.password_strategy == "static" and (
-            self.context.secret_store == "ssm"
+        if self.context.password_strategy == "static" and (  # noqa: S105 戦略名/保存先種別であって secret 値ではない
+            self.context.secret_store == "ssm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
         ):
             return self.context.credentials_secret_name
         return None
@@ -128,7 +128,7 @@ class Rds:
     def master_user_secret_kms_key_id(self) -> str | None:
         # static は既定の aws/secretsmanager キーで暗号化するため、
         # secretsmanager:GetSecretValue のみで復号でき KMS の明示付与は不要。
-        if self.context.password_strategy == "static":
+        if self.context.password_strategy == "static":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
             return None
         if self.cluster and "MasterUserSecret" in self.cluster:
             return self.cluster["MasterUserSecret"].get("KmsKeyId")
@@ -206,7 +206,7 @@ class Rds:
 
         不一致なら status が REQUIRE_UPDATE を返し、update() が移行する。
         """
-        if self.context.password_strategy == "aws-managed":
+        if self.context.password_strategy == "aws-managed":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
             return self._actual_is_managed()
         # 望む = static
         if self._actual_is_managed():
@@ -221,7 +221,8 @@ class Rds:
         vpc_stack = self._get_vpc_stack()
         output = vpc_stack.output
         export = vpc_stack.export
-        assert output, "VPC stack output is not available"
+        if not output:
+            raise RuntimeError("VPC stack output is not available")
         prefix = export["private_subnet_"]
         subnet_ids = []
         for i in range(1, 20):
@@ -230,14 +231,16 @@ class Rds:
                 subnet_ids.append(output[key])
             else:
                 break
-        assert subnet_ids, "No private subnets found in VPC stack"
+        if not subnet_ids:
+            raise RuntimeError("No private subnets found in VPC stack")
         return subnet_ids
 
     def _get_vpc_id(self) -> str:
         vpc_stack = self._get_vpc_stack()
         output = vpc_stack.output
         export = vpc_stack.export
-        assert output, "VPC stack output is not available"
+        if not output:
+            raise RuntimeError("VPC stack output is not available")
         return output[export["vpc_id"]]
 
     def state_info(self):
@@ -260,7 +263,8 @@ class Rds:
     def deploy_init(self):
         if not self.context.managed:
             return
-        assert self.context.vpc
+        if not self.context.vpc:
+            raise RuntimeError("vpc context is not configured")
         vpc_stack = Vpc(self.context.vpc).stack
         if not self.context.vpc.manage:
             if vpc_stack.status == "NOEXIST":
@@ -305,7 +309,7 @@ class Rds:
         )
         sg_id = sg_res["GroupId"]
 
-        static = self.context.password_strategy == "static"
+        static = self.context.password_strategy == "static"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
         # static の場合、ここで設定した平文パスワードを後段で secret に保存する。
         password: str | None = None
 
@@ -398,7 +402,8 @@ class Rds:
         # この secret を MasterUserSecret 相当として Lambda へ渡すため、ローテーション
         # 用 Lambda は付けない (= 自動ローテーションしない)。
         if static:
-            assert password is not None
+            if password is None:
+                raise RuntimeError("password must be set for static credentials")
             self._store_static_credentials(password)
 
         echo.success("Aurora cluster is now available.")
@@ -497,7 +502,7 @@ class Rds:
 
     def _migrate_password(self) -> None:
         """クラスタを望む password_strategy / secret_store に合わせて移行する。"""
-        if self.context.password_strategy == "aws-managed":
+        if self.context.password_strategy == "aws-managed":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
             self._migrate_to_managed()
         else:
             self._migrate_to_static()
@@ -533,7 +538,7 @@ class Rds:
             echo.success("Master password is now pocket-managed (static).")
             return
         # クラスタは既に static。store 変更 (sm⇄ssm) を試みる (パスワード変更なし)。
-        other = "sm" if self.context.secret_store == "ssm" else "ssm"
+        other = "sm" if self.context.secret_store == "ssm" else "ssm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
         existing = self._read_credential_from_store(other)
         if existing is not None:
             echo.log(
@@ -601,7 +606,7 @@ class Rds:
                 raise
 
         # 5. static: pocket 所有の認証情報を store から削除
-        if self.context.password_strategy == "static":
+        if self.context.password_strategy == "static":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
             self._delete_static_credentials()
 
     def _delete_static_credentials(self) -> None:

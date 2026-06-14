@@ -77,7 +77,7 @@ class DepotBuilder:
                 env[key] = value
         if self.project_id:
             env["DEPOT_PROJECT_ID"] = self.project_id
-        subprocess.run(cmd, check=True, env=env)
+        subprocess.run(cmd, check=True, env=env)  # noqa: S603 shell=False + 制御された引数
         print("Depot ビルド完了")
 
     def delete(self) -> None:

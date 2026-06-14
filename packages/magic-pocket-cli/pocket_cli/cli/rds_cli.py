@@ -56,7 +56,8 @@ def destroy(stage):
 
 
 def _print_endpoint(r: Rds):
-    assert r.cluster
+    if not r.cluster:
+        raise RuntimeError("RDS cluster is not available")
     echo.success("Endpoint: %s" % r.cluster.get("Endpoint", ""))
     echo.success("Port: %s" % r.cluster.get("Port", ""))
     echo.success("Database: %s" % r.context.database_name)

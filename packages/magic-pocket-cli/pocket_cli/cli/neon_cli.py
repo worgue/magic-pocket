@@ -53,7 +53,8 @@ def branch_out(stage, base_stage):
     base_neon = get_neon_resource(base_stage)
     if not base_neon.working:
         raise Exception("Base stage is not working")
-    assert base_neon.branch
+    if not base_neon.branch:
+        raise RuntimeError("base stage branch is not resolved")
     neon.create_branch(base_neon.branch)
     echo.success("New branch was created")
 

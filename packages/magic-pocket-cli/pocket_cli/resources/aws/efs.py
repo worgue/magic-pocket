@@ -123,7 +123,8 @@ class Efs:
     def status(self) -> ResourceStatus:
         if not self.exists():
             return "NOEXIST"
-        assert self.description
+        if not self.description:
+            raise RuntimeError("EFS description is not available")
         if self.description["LifeCycleState"] != "available":
             return "PROGRESS"
         if self.lifecycle_policies != [

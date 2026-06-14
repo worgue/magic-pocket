@@ -120,7 +120,8 @@ class GeneralContext(BaseModel):
 
     @model_validator(mode="after")
     def check_django(self):
-        assert self.django_fallback, "django_fallback should be set by settings."
+        if not self.django_fallback:
+            raise ValueError("django_fallback should be set by settings.")
         for _, storage in self.django_fallback.storages.items():
             if storage.store == "s3" and not self.s3_fallback_bucket_name:
                 raise ValueError(

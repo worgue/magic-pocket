@@ -70,7 +70,8 @@ def get_resources(context: Context, *, state_bucket: str = ""):
 
 
 def _create_state_store(context: Context) -> StateStore:
-    assert context.general
+    if not context.general:
+        raise RuntimeError("general context is not configured")
     resource_prefix = context.general.prefix_template.format(
         stage=context.stage,
         project=context.project_name,

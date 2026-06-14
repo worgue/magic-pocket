@@ -26,7 +26,8 @@ def _resolve_storage_django_context(
 ):
     if not context:
         django_context = general_context.django_fallback
-        assert django_context, "Never happen because of context validation."
+        if not django_context:
+            raise RuntimeError("Never happen because of context validation.")
         return django_context
     if (
         context.awscontainer
@@ -35,7 +36,8 @@ def _resolve_storage_django_context(
     ):
         return context.awscontainer.django
     django_context = general_context.django_fallback
-    assert django_context, "Never happen because of context validation."
+    if not django_context:
+        raise RuntimeError("Never happen because of context validation.")
     return django_context
 
 
@@ -63,7 +65,7 @@ def _create_cloudfront_signer(signing_key_name: str):
     private_key = serialization.load_pem_private_key(pem, password=None)
 
     def rsa_signer(message):
-        return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())  # type: ignore
+        return private_key.sign(message, padding.PKCS1v15(), hashes.SHA1())  # type: ignore  # noqa: S303 CloudFront 署名は AWS 仕様で RSA-SHA1 必須  # nosemgrep
 
     return CloudFrontSigner(key_id, rsa_signer)
 
@@ -77,6 +79,25 @@ def _resolve_cloudfront_domain(cf_name: str, cf_domain: str | None) -> str | Non
     if cf_domain:
         return cf_domain
     return os.environ.get("POCKET_CLOUDFRONT_%s_DOMAIN" % cf_name.upper())
+
+
+def _resolve_s3_direct_options(
+    storage, context: Context | None, general_context: GeneralContext
+) -> dict:
+    """S3 直接ストレージ（ローカル開発用）の bucket_name / location を解決する。"""
+    if context:
+        if not context.s3:
+            raise RuntimeError("Never happen because of context validation.")
+        bucket_name = context.s3.bucket_name
+    else:
+        if not general_context.s3_fallback_bucket_name:
+            raise RuntimeError(
+                "S3 storage is configured but "
+                "s3_fallback_bucket_name is not set in [general]. "
+                "Add it for local development, or set POCKET_STAGE."
+            )
+        bucket_name = general_context.s3_fallback_bucket_name
+    return {"bucket_name": bucket_name, "location": storage.location}
 
 
 def _build_storage_options(
@@ -108,16 +129,7 @@ def _build_storage_options(
             return options
         else:
             # S3 直接（ローカル開発用）
-            if context:
-                assert context.s3, "Never happen because of context validation."
-                bucket_name = context.s3.bucket_name
-            else:
-                assert general_context.s3_fallback_bucket_name, (
-                    "S3 storage is configured but s3_fallback_bucket_name is not set "
-                    "in [general]. Add it for local development, or set POCKET_STAGE."
-                )
-                bucket_name = general_context.s3_fallback_bucket_name
-            return {"bucket_name": bucket_name, "location": storage.location}
+            return _resolve_s3_direct_options(storage, context, general_context)
     elif storage.store == "filesystem":
         if storage.location is not None:
             return {"location": storage.location}
@@ -200,9 +212,8 @@ def get_email_backend(*, stage: str | None = None) -> dict[str, Any]:
 def get_caches(*, stage: str | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     general_context = GeneralContext.from_toml()
-    assert general_context.django_fallback, (
-        "Never happen because of context validation."
-    )
+    if not general_context.django_fallback:
+        raise RuntimeError("Never happen because of context validation.")
     if not stage:
         django_context = general_context.django_fallback
     else:

@@ -122,12 +122,13 @@ class DjangoCacheContext(BaseModel):
         elif cache.store == "redis":
             pass
         elif cache.store == "efs":
-            assert (
+            if not (
                 root
                 and root.awscontainer
                 and root.awscontainer.vpc
                 and root.awscontainer.vpc.efs
-            )
+            ):
+                raise RuntimeError("efs cache requires awscontainer.vpc.efs")
             format_vars = {
                 "namespace": root.namespace,
                 "stage": root.stage,

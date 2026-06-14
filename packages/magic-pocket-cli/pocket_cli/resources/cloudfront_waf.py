@@ -45,7 +45,8 @@ class CloudFrontWaf:
         echo.log("WAF (IPSet + WebACL) を作成中 (us-east-1)...")
         self.stack.create()
         self.stack.wait_status("COMPLETED", timeout=300, interval=10)
-        assert self.context.waf is not None
+        if self.context.waf is None:
+            raise RuntimeError("waf context is not configured")
         if self.context.waf.enable_ip_set:
             echo.info(
                 "WAF を作成しました。`pocket waf ip add self --name %s --stage %s` "

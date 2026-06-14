@@ -207,7 +207,7 @@ def _value_services(node: ast.AST, bound: dict[str, set[str]]) -> set[str]:
     return set()
 
 
-def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:
+def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C901 AST 走査の網羅分岐が本質的に多い検査用ヘルパー
     """(全 service 名, 追跡できた (service, method) ペア) を返す。
 
     追跡対象:

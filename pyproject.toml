@@ -62,4 +62,9 @@ exclude = ["packages/magic-pocket-cli/pocket_cli/templates"]
 [tool.ruff]
 exclude = [".git", ".ruff_cache", ".venv", "frontend", "migrations", "packages/magic-pocket-cli/pocket_cli/templates"]
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "C", "B"]
+# S = flake8-bandit (Python セキュリティアンチパターンの常時検出)
+select = ["E", "W", "F", "I", "C", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+# tests: assert は pytest の正規手段、ダミー token / password はテストデータ
+"tests/**" = ["S101", "S105", "S106"]
