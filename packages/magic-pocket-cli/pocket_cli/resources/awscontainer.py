@@ -232,6 +232,37 @@ class AwsContainer:
         if not self.stack.yaml_synced:
             self.stack.update()
             self.stack.wait_status("COMPLETED", timeout=600, interval=10)
+        self.ensure_post_deploy_state()
+
+    def ensure_post_deploy_state(self, mediator: Mediator | None = None):
+        """deploy 完了後に Lambda env の DEPLOY_HASH を冪等に同期する。
+
+        LambdaHandler.update() は update_function_code (code) のみで Environment を
+        更新しない。Lambda env は CFn stack.update() 経由でしか書き換わらないため、
+        stack が status==COMPLETED / yaml_synced と判定されて update() がスキップ
+        されると DEPLOY_HASH が旧値に固着する。すると Django は古い hash の static
+        URL (/static/<旧hash>/...) を生成する一方、CloudFront の deploy_hash 関数は
+        毎 deploy 追従するため、静的アセットが全滅する (403)。
+
+        cloudfront の KVS 書き込みと同じ philosophy で、deploy フロー末尾で stack
+        状態によらず side-channel で冪等に同期する (reload-env / waf ip と同様)。
+        deploy_resources の post-deploy hook からも呼ばれるため、wait_status が
+        timeout して次 deploy で update() がスキップされた場合でも自己治癒する。
+        """
+        deploy_hash = self.context.envs.get("DEPLOY_HASH")
+        if not deploy_hash:
+            return
+        for key, handler in self.handlers.items():
+            if handler.status == "NOEXIST":
+                continue
+            current = handler.get_environment()
+            if current.get("DEPLOY_HASH") == deploy_hash:
+                continue
+            echo.log(
+                "[%s] Lambda env DEPLOY_HASH を同期します (%s → %s)"
+                % (key, current.get("DEPLOY_HASH"), deploy_hash)
+            )
+            handler.update_environment({**current, "DEPLOY_HASH": deploy_hash})
 
     def get_host(self, key: str):
         handler = self.handlers[key]

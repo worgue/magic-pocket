@@ -4,7 +4,19 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## Unreleased
+## [0.2.2](https://github.com/worgue/magic-pocket/releases/tag/0.2.2) - 2026-06-15
+
+### Bug Fixes
+- `versioning = "deploy_hash"` 構成で 2 回目以降の deploy 時に Lambda の環境変数
+  `DEPLOY_HASH` が旧値に固着し、Django が古い hash の static URL を生成して
+  CloudFront 側 (毎 deploy 追従) と乖離 → 静的アセットが全滅 (403) する不具合を
+  修正しました。`pocket` の Lambda 更新は `update_function_code` (コードのみ) で
+  Environment を更新せず、env は CFn `stack.update()` 経由でしか書き換わらないため、
+  stack 更新が `yaml_synced` / `wait_status` timeout 等でスキップされると env が
+  古いまま残るのが原因でした。deploy フロー末尾の post-deploy hook
+  (`AwsContainer.ensure_post_deploy_state`) で、CloudFront の KVS 書き込みと同じ
+  philosophy により Lambda env の `DEPLOY_HASH` を side-channel で冪等に同期する
+  ようにしています (既存 env / secret は保持)。
 
 ### Security
 - Rust crate (`magic-pocket-rs`) の依存ツリーから legacy TLS スタック

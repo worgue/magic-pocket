@@ -79,6 +79,29 @@ class LambdaHandler:
         if wait:
             self.wait_update()
 
+    def get_environment(self) -> dict[str, str]:
+        """Lambda の現状 Environment.Variables を取得する (ImportValue / secret は
+        解決済みの実値が返る)。function 未作成なら空 dict。"""
+        try:
+            config = self.client.get_function_configuration(FunctionName=self.name)
+        except ClientError:
+            return {}
+        return dict(config.get("Environment", {}).get("Variables", {}))
+
+    def update_environment(self, env: dict[str, str], wait=True):
+        """Environment.Variables を side-channel で直接更新する。
+
+        `update()` は update_function_code (code のみ) で Environment を更新しない。
+        deploy 時に CFn を介さず env を同期したい用途 (DEPLOY_HASH 同期 / reload-env)
+        で使う。
+        """
+        self.client.update_function_configuration(
+            FunctionName=self.name, Environment={"Variables": env}
+        )
+        print(f"lambda function {self.name} environment was updated.")
+        if wait:
+            self.wait_update()
+
     def wait_update(self, interval=3, limit=60):
         print(f"waiting lambda fanction {self.name} update.", end="", flush=True)
         for _i in range(limit // interval):
