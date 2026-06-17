@@ -49,6 +49,7 @@ class CloudFront:
         self.s3_client = boto3.client("s3", region_name=context.s3_region)
         self.cf_client = boto3.client("cloudfront")
         self._token_secret_value: str = ""
+        self._origin_verify_secret_value: str = ""
 
     @property
     def description(self):
@@ -71,7 +72,9 @@ class CloudFront:
     @property
     def stack(self):
         return CloudFrontStack(
-            self.context, token_secret_value=self._token_secret_value
+            self.context,
+            token_secret_value=self._token_secret_value,
+            origin_verify_secret_value=self._origin_verify_secret_value,
         )
 
     def create(self, mediator: Mediator | None = None):
@@ -79,6 +82,7 @@ class CloudFront:
 
     def update(self, mediator: Mediator | None = None):
         self._prepare_token_secret(mediator)
+        self._prepare_origin_verify_secret(mediator)
         self._ensure_redirect_from()
         if not self.stack.exists:
             self.stack.create()
@@ -134,6 +138,33 @@ class CloudFront:
             echo.warning(
                 "token_secret '%s' が managed secrets に見つかりません"
                 % self.context.token_secret
+            )
+
+    def _prepare_origin_verify_secret(self, mediator: Mediator | None):
+        """enable_origin_verify 時に origin verify secret の値を store から読む。
+
+        値は CFn テンプレートの OriginCustomHeaders に焼き込まれる
+        (token_secret の post-deploy KVS とは異なり、distribution config の一部
+        なので create/update 時点で必要)。managed secret なので AwsContainer
+        deploy 時に既に生成済み (get_resources は AwsContainer → CloudFront 順)。
+        """
+        from pocket.context import ORIGIN_VERIFY_SECRET_KEY
+
+        if not self.context.enable_origin_verify:
+            return
+        if not mediator:
+            return
+        ac = mediator.context.awscontainer
+        if not ac or not ac.secrets:
+            return
+        secrets = ac.secrets.pocket_store.secrets
+        value = secrets.get(ORIGIN_VERIFY_SECRET_KEY)
+        if isinstance(value, str):
+            self._origin_verify_secret_value = value
+        else:
+            echo.warning(
+                "origin verify secret '%s' が managed secrets に見つかりません"
+                % ORIGIN_VERIFY_SECRET_KEY
             )
 
     def _write_token_secret_to_kvs(self):

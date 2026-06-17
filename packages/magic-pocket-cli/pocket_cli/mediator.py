@@ -109,7 +109,7 @@ class Mediator:
             return self._generate_rsa_pem()
         elif spec.type == "cloudfront_signing_key":
             return self._generate_rsa_pem()
-        elif spec.type == "spa_token_secret":
+        elif spec.type in ("spa_token_secret", "origin_verify_secret"):
             return secrets.token_hex(32)
         else:
             raise RuntimeError("Unknown secret type: %s" % spec.type)

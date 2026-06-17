@@ -129,6 +129,14 @@ Resources:
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
               HTTPSPort: 443
+            # {% if origin_verify_secret %}
+            # CloudFront → origin にのみ付与する secret header。viewer が同名 header
+            # を送っても CloudFront が上書きするため詐称不可。origin (API GW / Lambda)
+            # 直叩きを検出するために OriginVerifyMiddleware が同値を検証する。
+            OriginCustomHeaders:
+              - HeaderName: "X-Pocket-Origin-Verify"
+                HeaderValue: "{{ origin_verify_secret }}"
+            # {% endif %}
           # {% endfor %}
           # {% if managed_asset_files %}
           - Id: "{{ resource_prefix }}pocket-managed"

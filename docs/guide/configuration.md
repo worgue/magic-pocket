@@ -1143,6 +1143,7 @@ routes = [
 | `token_secret` | str \| None | None | SPA トークン認証用の managed secret 名（`type = "spa_token_secret"`） |
 | `managed_assets` | str \| None | None | ステージ別アセットのディレクトリ（下記参照） |
 | `waf` | dict \| None | None | WAFv2 IP allowlist を attach（下記 [waf](#waf) 参照） |
+| `enable_origin_verify` | bool | `false` | origin 直叩き防止 + 詐称耐性 client IP（下記 [origin verify](#origin-verify-enable_origin_verify) 参照） |
 
 ### managed_assets
 
@@ -1293,6 +1294,84 @@ pocket waf ip clear --name admin --stage prod
 `wafv2:*` が `pocket permissions list` の出力に追加されます
 ([AWS 権限](../permissions/aws.md#cloudfront-wafcloudfrontnamewaf-使用時) を
 参照)。
+
+### origin verify (enable_origin_verify)
+
+CloudFront 配下の origin (lambda / API Gateway、将来は Fargate/ALB) で、
+**アクセス元 client IP を詐称耐性をもって取得**し、かつ **origin への直叩きを
+禁止**する仕組みを一括で有効化します。
+
+```toml
+[cloudfront.web]
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+]
+enable_origin_verify = true
+```
+
+`enable_origin_verify = true` で deploy すると magic-pocket が次の 3 点を turnkey で
+構成します。secret header 名 / env 名 / viewer IP header 名はすべて **magic-pocket の
+内部実装詳細**で、利用者が知る必要はありません (repo 跨ぎの名前合わせを発生させない)。
+
+1. **secret の自動生成・管理**: managed secret `POCKET_ORIGIN_VERIFY_SECRET`
+   (`type = "origin_verify_secret"`) を自動注入し、生成・保存 (SM/SSM)・IAM・Lambda
+   runtime env 注入の既存経路に乗せます。利用者が secret を宣言する必要はありません。
+2. **origin 直叩き禁止**: CloudFront → origin のリクエストに secret custom header
+   (`X-Pocket-Origin-Verify`) を付与します。viewer が同名 header を送っても CloudFront
+   が上書きするため詐称不可。同じ secret 値が Lambda runtime env にも入るので、
+   バックエンドは「自分宛のリクエストが CloudFront 経由か」をバックエンド非依存に
+   判定できます (Lambda でも Fargate でも同じコード)。
+3. **検証 + `REMOTE_ADDR` 正規化 middleware**: 同梱の
+   `pocket.django.origin_verify.OriginVerifyMiddleware` が secret header を検証し、
+   CloudFront 経由のときだけ詐称耐性のある viewer IP を `REMOTE_ADDR` に上書きします。
+
+#### 詐称耐性 client IP (デフォルト ON、flag 非依存)
+
+lambda route には、`enable_origin_verify` の有無に関わらず CloudFront Function が
+`event.viewer.ip` (CloudFront が TCP 接続から取得する viewer IP。viewer が詐称不可) を
+`X-Pocket-Viewer-Ip` header に載せて origin に転送します。これは純粋に加算的で
+キャッシュにも影響しないため、デフォルト挙動です。
+
+- `requestContext.sourceIp` (API GW) は CloudFront エッジの IP で真の client ではなく、
+  API GW 固有なので Fargate 移行で消えます。
+- `X-Forwarded-For` 左端は viewer が prepend して詐称可能です。
+- magic-pocket は managed `AllViewerExceptHostHeader` origin request policy を使い続け
+  (API GW の Host 整合性を壊さないため)、viewer IP は **CloudFront Function が付与する
+  通常 header** として転送します。origin request policy の差し替えは行いません。
+
+#### Django middleware の組み込み
+
+`MIDDLEWARE` の **最前段** に追加してください (`REMOTE_ADDR` を読む django-axes /
+DRF throttling / ratelimit / access log より前に走らせる必要があるため)。
+
+```python
+MIDDLEWARE = [
+    "pocket.django.origin_verify.OriginVerifyMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    # ...
+]
+```
+
+middleware の挙動:
+
+| 状況 | 挙動 |
+|------|------|
+| env secret 未設定 (local/dev、CloudFront 無し) | **no-op**。生の `REMOTE_ADDR` を passthrough |
+| secret header が一致 (CloudFront 経由) | `X-Pocket-Viewer-Ip` を `REMOTE_ADDR` に正規化 |
+| secret header が無い / 不一致 (origin 直叩き) | **403** で拒否 |
+
+!!! note "直叩き時に `REMOTE_ADDR = None` にしない理由"
+    `REMOTE_ADDR` を読む consumer (DRF throttle の `get_ident`、django-axes、access
+    log) は str 前提で、`None` は 500 を誘発します。`enable_origin_verify` 有効 +
+    secret 無しは「origin 直叩き」なので 403 で弾くのが綺麗です (理想は API Gateway
+    段で Django に到達させない)。無効時 (local/dev) は生 `REMOTE_ADDR` を passthrough
+    するので local は壊れません。
+
+!!! note "secret rotation"
+    secret は managed secret なので `pocket` の rotate 経路で再生成し、`pocket deploy`
+    で CloudFront origin header (CFn) と Lambda env (SM/SSM) の両方が同値に更新されます。
+    rotate 直後は、新 header を受け取る warm Lambda がまだ旧 env を保持する一瞬の窓で
+    403 になり得ます (cold start で解消)。無停止 rotation が必要な場合は別途検討します。
 
 ### redirect_from
 

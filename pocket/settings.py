@@ -75,6 +75,7 @@ class ManagedSecretSpec(BaseModel):
         "rsa_pem_base64",
         "cloudfront_signing_key",
         "spa_token_secret",
+        "origin_verify_secret",
     ]
     options: dict[str, str | int] = {}
     # Used in mediator
@@ -582,6 +583,14 @@ class CloudFront(BaseSettings):
     token_secret: str | None = None
     managed_assets: str | None = None
     waf: CloudFrontWaf | None = None
+    # CloudFront → origin に詐称耐性のある client IP / origin 直叩き防止の secret
+    # header を一括で有効化する。secret は magic-pocket が自動生成・管理し
+    # (managed secret `POCKET_ORIGIN_VERIFY_SECRET`)、CloudFront の origin custom
+    # header と Lambda runtime env の両方に同値を供給する。検証 + REMOTE_ADDR 正規化
+    # は同梱の `pocket.django.origin_verify.OriginVerifyMiddleware` が行う。
+    # (`CloudFront-Viewer-Address` 相当の client IP 転送自体は flag に関係なく
+    #  lambda route の CloudFront Function で常時有効。)
+    enable_origin_verify: bool = False
 
     @model_validator(mode="after")
     def check_domain_redirect_from(self):
@@ -751,6 +760,19 @@ class Settings(BaseSettings):
                         f"must have apigateway configured for lambda route"
                     )
         self._check_cloudfront_token_secret(name, cf)
+        self._check_cloudfront_origin_verify(name, cf)
+
+    def _check_cloudfront_origin_verify(self, name: str, cf: CloudFront):
+        if not cf.enable_origin_verify:
+            return
+        # origin verify は CloudFront → origin (lambda / API GW) の HTTP header で
+        # 成立する。保護対象となる lambda route が無い構成では意味がない。
+        if not any(route.type == "lambda" for route in cf.routes):
+            raise ValueError(
+                f"cloudfront.{name}: enable_origin_verify requires at least one "
+                f"lambda route (the origin to protect). S3-only distributions are "
+                f"already protected by OAC."
+            )
 
     @model_validator(mode="after")
     def check_rds_vpc(self):

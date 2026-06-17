@@ -4,6 +4,22 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.3.0](https://github.com/worgue/magic-pocket/releases/tag/0.3.0) - 2026-06-16
+
+### Features
+- `[cloudfront.<name>].enable_origin_verify` を追加しました。CloudFront 配下の
+  origin (lambda / API Gateway) に対し、(1) origin 直叩き防止の secret custom header
+  (`X-Pocket-Origin-Verify`) を CloudFront → origin に付与しつつ同値を Lambda runtime
+  env に注入、(2) 詐称耐性のある client IP (CloudFront が TCP から取得する
+  `event.viewer.ip`) を `X-Pocket-Viewer-Ip` header で origin に転送、(3) 検証 +
+  `REMOTE_ADDR` 正規化を行う Django middleware
+  (`pocket.django.origin_verify.OriginVerifyMiddleware`) の同梱、を一括で有効化します。
+  secret は managed secret (`type = "origin_verify_secret"`) として自動生成・管理され、
+  利用者は flag を立てて middleware を最前段に置くだけで済みます。
+  viewer IP 転送自体は flag 非依存で lambda route に常時入ります (キャッシュ無影響・
+  純加算のため。origin request policy は `AllViewerExceptHostHeader` のまま据え置き、
+  CloudFront Function 経由で付与するので API GW の Host 整合性も壊しません)。
+
 ## [0.2.2](https://github.com/worgue/magic-pocket/releases/tag/0.2.2) - 2026-06-15
 
 ### Bug Fixes

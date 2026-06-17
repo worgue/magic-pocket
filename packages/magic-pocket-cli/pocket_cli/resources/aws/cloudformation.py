@@ -358,8 +358,10 @@ class CloudFrontStack(Stack):
         self,
         context: CloudFrontContext,
         token_secret_value: str = "",
+        origin_verify_secret_value: str = "",
     ):
         self._token_secret_value = token_secret_value
+        self._origin_verify_secret_value = origin_verify_secret_value
         super().__init__(context)
 
     def get_client(self):
@@ -544,6 +546,7 @@ class CloudFrontStack(Stack):
             deploy_hash_function_codes=deploy_hash_function_codes,
             api_host_function_code=api_host_function_code,
             has_token_kvs=self._has_token_kvs,
+            origin_verify_secret=self._origin_verify_secret_value,
             **context_data,
         )
         return "\n".join(

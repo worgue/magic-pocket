@@ -22,6 +22,11 @@ from .settings import (
 )
 from .utils import echo, get_hosted_zone_id_from_domain
 
+# enable_origin_verify 用 managed secret の予約キー。Lambda runtime env 名にも
+# なる (string secret はキー名がそのまま env 名)。pocket.django.origin_verify の
+# ORIGIN_VERIFY_SECRET_ENV と一致させること。
+ORIGIN_VERIFY_SECRET_KEY = "POCKET_ORIGIN_VERIFY_SECRET"  # noqa: S105 secret 値ではなくキー/env 名
+
 
 class ApiGatewayContext(BaseModel):
     domain: str | None = None
@@ -325,9 +330,29 @@ class AwsContainerContext(BaseModel):
         if ac.vpc:
             vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
 
+        # enable_origin_verify が有効な cloudfront があれば、検証用 secret を
+        # managed secret として自動注入する。これにより生成 (mediator) / 保存
+        # (SM/SSM) / IAM / runtime env 注入の既存経路にそのまま乗る。利用者は
+        # secret を宣言する必要がなく、名前は magic-pocket の内部詳細に閉じる。
+        needs_origin_verify = any(
+            cf.enable_origin_verify for cf in root.cloudfront.values()
+        )
+
         secrets_ctx = None
-        if ac.secrets:
-            secrets_ctx = SecretsContext.from_settings(ac.secrets, root)
+        if ac.secrets or needs_origin_verify:
+            secrets_settings = ac.secrets or settings.Secrets()
+            if needs_origin_verify:
+                secrets_settings = secrets_settings.model_copy(
+                    update={
+                        "managed": {
+                            **secrets_settings.managed,
+                            ORIGIN_VERIFY_SECRET_KEY: ManagedSecretSpec(
+                                type="origin_verify_secret"
+                            ),
+                        }
+                    }
+                )
+            secrets_ctx = SecretsContext.from_settings(secrets_settings, root)
 
         handlers = {}
         use_route53 = False
@@ -812,6 +837,7 @@ class CloudFrontContext(BaseModel):
     managed_assets: str | None = None
     deploy_hash: str = ""
     waf: CloudFrontWafContext | None = None
+    enable_origin_verify: bool = False
 
     @computed_field
     @property
@@ -952,6 +978,7 @@ class CloudFrontContext(BaseModel):
                 if cf.waf is not None
                 else None
             ),
+            enable_origin_verify=cf.enable_origin_verify,
         )
 
 
