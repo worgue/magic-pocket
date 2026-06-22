@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.4.0](https://github.com/worgue/magic-pocket/releases/tag/0.4.0) - 2026-06-22
 
 ### Features
 - DB 接続 URL の **stored mode** を追加しました。`[awscontainer.secrets.user]` に
