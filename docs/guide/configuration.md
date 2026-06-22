@@ -865,10 +865,13 @@ DATABASE_URL = { type = "auto_database_url" }
     | `length` | int | `16` | パスワードの長さ |
 
 **type = "neon_database_url"**
-:   NeonのDB接続URLをAPI経由で取得し保存します。オプションはありません。
+:   NeonのDB接続URLをAPI経由で取得し保存します（computed）。オプションはありません。
+    deploy 環境に管理 API key を置きたくない場合は、同じ type を `secrets.user` に置く
+    stored mode も使えます（[DB 接続 URL の computed / stored](#db-接続-url-の-computed-mode-と-stored-mode) 参照）。
 
 **type = "tidb_database_url"**
-:   TiDB ServerlessのDB接続URLを取得し保存します。オプションはありません。
+:   TiDB ServerlessのDB接続URLを取得し保存します（computed）。オプションはありません。
+    stored mode も利用可（[同上](#db-接続-url-の-computed-mode-と-stored-mode)）。
 
 **type = "rds_database_url"**
 :   RDS Aurora の DATABASE_URL を設定します。実際の URL は Lambda 起動時に `POCKET_RDS_SECRET_ARN` から動的に構築されます（パスワードローテーション対応）。オプションはありません。
@@ -929,8 +932,11 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `name` | str | **必須** | シークレット名またはARN |
+| `name` | str \| None | None | シークレット名またはARN。`type` と排他 |
+| `type` | `"neon_database_url"` \| `"tidb_database_url"` \| None | None | DB URL の stored mode（後述）。`name` と排他 |
 | `store` | `"sm"` \| `"ssm"` \| None | None | 保存先（Noneの場合 `secrets.store` を継承） |
+
+`name` と `type` はどちらか一方を指定します（両方／どちらも無しはエラー）。
 
 `name` には `{stage}` / `{project}` / `{namespace}` の format 変数が使えます
 （`bucket_name_format` / `pocket_key_format` と同じ仕組み）。ステージ単位で
@@ -941,6 +947,37 @@ SSM パスや SM シークレットを分けたい場合に便利です。
 # prod stage の Lambda は /svc/prod-token を、dev stage は /svc/dev-token を読む
 SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
 ```
+
+##### DB 接続 URL の computed mode と stored mode
+
+DB の接続 URL (`DATABASE_URL`) は 2 通りの解決方法があります。
+
+| | computed（`secrets.managed`） | stored（`secrets.user`） |
+|---|---|---|
+| 書き方 | `DATABASE_URL = { type = "tidb_database_url" }` を **managed** に | 同じ `type` を **user** に |
+| URL を作るのは | pocket が deploy 時に provider の管理 API を叩いて計算（cluster lookup / password reset） | 利用者が deploy 前に provision して secret store に保存 |
+| deploy 環境に管理 API key | **必要** | **不要** |
+| pocket が値を生成 | する（pocket_store に保存） | しない（既存値を参照するだけ） |
+
+stored mode は「provider の管理 API key を deploy 環境に置きたくない」「provisioning と
+deploy を分離したい」「deploy を外部 API に依存させたくない（CI など）」場合に使います。
+
+```toml
+[awscontainer.secrets.user]
+# 事前に provision した接続 URL を参照するだけ（pocket は API を叩かない）
+DATABASE_URL = { type = "tidb_database_url" }
+```
+
+- 対象 `type` は `neon_database_url` / `tidb_database_url` の 2 つ。これらは computed だと
+  deploy 時に管理 API key を要求するため、stored 化の利点が大きい type です。
+- `rds_database_url` は user 側で使えません。RDS は元々 deploy 時に管理 API key を要求せず、
+  接続 URL を Lambda 起動時に `POCKET_RDS_SECRET_ARN` から動的構築してパスワード
+  ローテーションに追従します。静的な stored URL にするとローテで失効するため対象外です。
+- **secret は deploy 前に provision しておく必要があります。** `type` 指定時、pocket は
+  secret 名を自動導出します（managed の pocket_store パスとは衝突しない別名）。未 provision
+  のまま deploy すると、pocket が期待する正準名を示して **deploy 時にエラー**で止まります
+  （runtime まで遅延しません）。エラーメッセージに出る名前にその store（sm/ssm）で値を
+  投入してください。値は接続 URL 文字列です。
 
 #### secrets.extra_resources
 

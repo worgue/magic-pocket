@@ -4,6 +4,19 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Features
+- DB 接続 URL の **stored mode** を追加しました。`[awscontainer.secrets.user]` に
+  `DATABASE_URL = { type = "tidb_database_url" }` / `{ type = "neon_database_url" }` と
+  書くと、deploy 時に provider の管理 API を叩いて URL を計算する computed mode
+  (`secrets.managed`) の代わりに、**事前 provision して secret store に保存済みの接続 URL を
+  参照するだけ**になります。deploy 環境に cluster を作成・削除できる管理 API key を持ち込まず
+  に済み (least privilege)、deploy が外部 API に依存しません。`type` 指定時は pocket が
+  secret 名を自動導出し、未 provision のまま deploy すると正準名を示して deploy 時にエラーで
+  止めます (runtime まで遅延しません)。`name` と `type` は排他です。RDS は元々管理 API key
+  非依存かつパスワードローテーション追従のため対象外です。
+
 ## [0.3.0](https://github.com/worgue/magic-pocket/releases/tag/0.3.0) - 2026-06-16
 
 ### Features

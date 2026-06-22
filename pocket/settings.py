@@ -91,9 +91,32 @@ class ManagedSecretSpec(BaseModel):
     #     id_environ_suffix: str = "_ID"
 
 
+# user secret の stored mode 用 type。
+# managed の computed type と同名だが、user 側に置くと「事前 provision 済みの URL を
+# 参照するだけ (stored)」を意味する。pocket は API を一切叩かず、導出した正準名の secret
+# を読むだけ。対象は deploy 時に管理 API key を要求する neon / tidb のみ (rds は runtime
+# 構築方式で stored 化の旨味が無く rotation 追従を壊すため対象外)。
+UserSecretType = Literal["neon_database_url", "tidb_database_url"]
+
+
 class UserSecretSpec(BaseModel):
-    name: str  # SM: ARN or secret name, SSM: parameter name/path
+    # name と type は排他 (name = 任意名を明示参照 / type = stored mode で正準名を導出)
+    name: str | None = None  # SM: ARN or secret name, SSM: parameter name/path
+    type: UserSecretType | None = None
     store: StoreType | None = None  # Noneの場合Secrets.storeを継承
+
+    @model_validator(mode="after")
+    def check_name_or_type(self):
+        # 「どちらも無し」を禁止。「両方指定」(name+type 排他) はユーザー入力時点で
+        # Secrets.check_user_name_type_exclusive が弾く。ここで両方を禁止しないのは、
+        # stored mode の解決後 (from_settings) に type を保持したまま導出 name を
+        # 埋めた内部状態が再バリデーションを通る必要があるため。
+        if self.name is None and self.type is None:
+            raise ValueError(
+                "UserSecretSpec requires 'name' or 'type' "
+                "(name = 明示参照 / type = stored mode で正準名を自動導出)."
+            )
+        return self
 
 
 class Secrets(BaseModel):
@@ -143,6 +166,16 @@ class Secrets(BaseModel):
         ),
     ] = []
     require_list_secrets: bool = False
+
+    @model_validator(mode="after")
+    def check_user_name_type_exclusive(self):
+        for key, spec in self.user.items():
+            if spec.name is not None and spec.type is not None:
+                raise ValueError(
+                    "user secret '%s': 'name' と 'type' は排他です "
+                    "(name = 明示参照 / type = stored mode のどちらか一方のみ)." % key
+                )
+        return self
 
 
 class AwsContainerIam(BaseModel):

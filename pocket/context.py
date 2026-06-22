@@ -175,7 +175,7 @@ class SecretsContext(BaseModel):
         resources: list[str] = []
         for spec in self.user.values():
             effective_store = spec.store or self.store
-            if effective_store == "sm":
+            if effective_store == "sm" and spec.name is not None:
                 resources.append(spec.name)
         if self.managed and self.store == "sm":
             try:
@@ -200,7 +200,7 @@ class SecretsContext(BaseModel):
         resources: list[str] = []
         for spec in self.user.values():
             effective_store = spec.store or self.store
-            if effective_store == "ssm":
+            if effective_store == "ssm" and spec.name is not None:
                 resources.append(spec.name)
         if self.managed and self.store == "ssm":
             resources.append(
@@ -235,8 +235,22 @@ class SecretsContext(BaseModel):
             "stage": root.stage,
             "project": root.project_name,
         }
+        pocket_key = secrets.pocket_key_format.format(**format_vars)
+
+        def _resolve_user_name(key: str, spec: UserSecretSpec) -> str:
+            if spec.name is not None:
+                return spec.name.format(**format_vars)
+            # type 指定 (stored mode): pocket が正準名を導出する (利用者は書かない)。
+            # managed の pocket_store パス /{pocket_key}/... と衝突させないため
+            # {pocket_key}-user を prefix にする (cleanup は該当パス配下のみ走査)。
+            effective_store = spec.store or secrets.store
+            prefix = f"{pocket_key}-user"
+            if effective_store == "ssm":
+                return f"/{prefix}/{key}"
+            return f"{prefix}/{key}"
+
         user_secrets = {
-            key: spec.model_copy(update={"name": spec.name.format(**format_vars)})
+            key: spec.model_copy(update={"name": _resolve_user_name(key, spec)})
             for key, spec in secrets.user.items()
         }
         return cls(
@@ -246,7 +260,7 @@ class SecretsContext(BaseModel):
             extra_resources=secrets.extra_resources,
             require_list_secrets=secrets.require_list_secrets,
             region=root.region,
-            pocket_key=secrets.pocket_key_format.format(**format_vars),
+            pocket_key=pocket_key,
             stage=root.stage,
             project_name=root.project_name,
         )

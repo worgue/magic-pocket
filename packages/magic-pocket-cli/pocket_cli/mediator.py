@@ -60,6 +60,7 @@ class Mediator:
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
         self._cleanup_orphaned_secrets()
+        self.verify_user_stored_secrets()
         if self.context.awscontainer and self.context.awscontainer.secrets:
             sc = self.context.awscontainer.secrets
             if hasattr(sc, "pocket_store"):
@@ -68,6 +69,53 @@ class Mediator:
                 del sc.allowed_sm_resources
             if hasattr(sc, "allowed_ssm_resources"):
                 del sc.allowed_ssm_resources
+
+    def verify_user_stored_secrets(self):
+        """type 付き user secret (stored mode) が deploy 前に provision 済みか検証する。
+
+        computed (managed) と違い pocket は値を生成しないため、未 provision でも
+        deploy は通り runtime まで遅延して落ちる。それを避けるため deploy 時に store を
+        引いて存在を確認し、無ければ正準名を示して止める。管理 API は叩かない。
+        """
+        if self.context.awscontainer is None:
+            return
+        if (sc := self.context.awscontainer.secrets) is None:
+            return
+        missing: list[str] = []
+        for key, spec in sc.user.items():
+            # type 付き = stored mode のみ対象。name は from_settings で導出済み。
+            if spec.type is None or spec.name is None:
+                continue
+            store = spec.store or sc.store
+            if not self._stored_secret_exists(spec.name, store, sc.region):
+                missing.append(
+                    "  - %s (type=%s, store=%s): %s"
+                    % (key, spec.type, store, spec.name)
+                )
+        if missing:
+            raise RuntimeError(
+                "stored mode の user secret が見つかりません。"
+                "deploy 前に下記の secret を provision してください "
+                "(値は接続 URL):\n" + "\n".join(missing)
+            )
+
+    def _stored_secret_exists(self, name: str, store: str, region: str) -> bool:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        try:
+            if store == "ssm":
+                boto3.client("ssm", region_name=region).get_parameter(Name=name)
+            else:
+                boto3.client("secretsmanager", region_name=region).describe_secret(
+                    SecretId=name
+                )
+            return True
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("ParameterNotFound", "ResourceNotFoundException"):
+                return False
+            raise
 
     def _cleanup_orphaned_secrets(self):
         """SSM/SM にあるが managed 定義にないシークレットを削除する"""
