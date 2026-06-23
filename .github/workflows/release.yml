@@ -15,7 +15,7 @@ jobs:
       contents: read
       id-token: write # Trusted Publishing (OIDC) に必要
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - name: Check tag matches package versions
         run: |
