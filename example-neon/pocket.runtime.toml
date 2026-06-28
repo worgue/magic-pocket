@@ -5,6 +5,12 @@ project_name = "pocket-example-neon"
 
 [neon]
 project_name = "dev-magic-pocket"
+# branch_name 省略時は project の default ブランチ (main) を使う。dev stage は main を共有。
+
+[sandbox.neon]
+project_name = "dev-magic-pocket"
+# sandbox stage は dev tier project 内の sandbox ブランチを使う (main とは分離)。
+branch_name = "sandbox"
 
 [s3]
 
