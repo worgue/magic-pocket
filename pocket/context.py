@@ -428,17 +428,28 @@ class NeonContext(BaseModel):
     api_key: str | None = None
     project_name: str
     branch_name: str
+    parent_branch_name: str | None = None
     name: str
     role_name: str
     skip_check_existing: bool = False
 
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
+        format_vars = {
+            "stage": root.stage,
+            "project": root.project_name,
+            "namespace": root.namespace,
+        }
         return cls(
             pg_version=neon.pg_version,
             api_key=neon.api_key,
             project_name=neon.project_name,
-            branch_name=root.stage,
+            branch_name=(neon.branch_name or "main").format(**format_vars),
+            parent_branch_name=(
+                neon.parent_branch_name.format(**format_vars)
+                if neon.parent_branch_name
+                else None
+            ),
             name=root.project_name,
             role_name=root.project_name,
             skip_check_existing=neon.skip_check_existing,

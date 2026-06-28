@@ -331,6 +331,17 @@ class Sqs(BaseModel):
 class Neon(BaseSettings):
     project_name: str
     pg_version: int = 15
+    # 省略時は project の default ブランチ (通常 main) を使う。stage 名との暗黙結合を
+    # 避けるため。per-stage で上書きしたい場合は [<stage>.neon] に branch_name を書く
+    # (stage override は from_toml の merge_stage_data で [neon] に deep-merge される)。
+    # FormatStr なので {stage}/{project}/{namespace} を展開可能。動的な feature 環境で
+    # 環境ごとに別ブランチを使う場合は branch_name = "{stage}" のように書く。
+    branch_name: FormatStr | None = None
+    # branch_name のブランチを新規作成する際の親ブランチ名。省略時は parent_id を送らず
+    # Neon が project の default ブランチ (= main) から枝分かれさせる (= 現状の挙動)。
+    # 非 default ブランチを親にしたい時だけ指定する (例: feature を別 stage から分岐)。
+    # branch_name 同様 FormatStr。既存ブランチがあれば作成は走らないので無視される。
+    parent_branch_name: FormatStr | None = None
     api_key: str | None = Field(alias="neon_api_key", default=None)
     # 立てると status を常に COMPLETED 返却し、deploy 中の存在確認 API call を
     # 一切行わない。GHA deploy ロールに外部 SaaS の credentials を渡さず deploy を

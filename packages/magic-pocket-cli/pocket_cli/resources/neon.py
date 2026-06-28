@@ -231,6 +231,25 @@ class Neon:
                     return Branch(**branch)
 
     @cached_property
+    def parent_branch(self) -> Branch | None:
+        """branch を新規作成する際の親ブランチ。
+
+        context.parent_branch_name が未指定なら None (= create_branch が parent_id を
+        送らず Neon の default ブランチから分岐)。指定があるのに project 内に該当
+        ブランチが無い場合はエラー (黙って default 分岐すると事故になるため)。
+        """
+        if not self.context.parent_branch_name:
+            return None
+        if self.project:
+            for branch in self.get("branches").json()["branches"]:
+                if branch["name"] == self.context.parent_branch_name:
+                    return Branch(**branch)
+        raise ValueError(
+            f"Neon parent branch '{self.context.parent_branch_name}' not found "
+            f"in project '{self.context.project_name}'"
+        )
+
+    @cached_property
     def database(self) -> Database | None:
         if self.branch:
             for database in self.get("databases").json()["databases"]:
@@ -293,7 +312,9 @@ class Neon:
         pass
 
     def create(self):
-        self.create_branch()
+        # parent_branch_name 指定時はその親から分岐。未指定なら parent_branch=None で
+        # 従来通り Neon default ブランチから分岐する。
+        self.create_branch(self.parent_branch)
         self.ensure_role()
         self.ensure_database()
 

@@ -93,3 +93,115 @@ def test_neon_role_returns_none_when_role_missing():
     ):
         mock_get.return_value = _fake_response(404, {"message": "role not found"})
         assert neon.role is None
+
+
+def _fake_root(stage: str):
+    """NeonContext.from_settings が参照する root の最小スタブ
+    (stage / project_name / namespace を参照する)。"""
+    from types import SimpleNamespace
+    from typing import cast
+
+    from pocket import settings
+
+    return cast(
+        settings.Settings,
+        SimpleNamespace(stage=stage, project_name="myapp", namespace="default"),
+    )
+
+
+def test_neon_context_branch_name_defaults_to_main():
+    """branch_name 省略時は stage 名ではなく default ブランチ (main) を使う"""
+    from pocket import settings
+    from pocket.context import NeonContext
+
+    neon = settings.Neon(project_name="dev-myapp")
+    assert neon.branch_name is None
+    ctx = NeonContext.from_settings(neon, _fake_root(stage="prod"))
+    assert ctx.branch_name == "main"
+    assert ctx.parent_branch_name is None
+
+
+def test_neon_context_branch_name_override():
+    """branch_name を明示すると (per-stage 上書き含む) その値が使われる"""
+    from pocket import settings
+    from pocket.context import NeonContext
+
+    neon = settings.Neon(project_name="dev-myapp", branch_name="sandbox")
+    ctx = NeonContext.from_settings(neon, _fake_root(stage="prod"))
+    assert ctx.branch_name == "sandbox"
+
+
+def test_neon_context_branch_name_template():
+    """branch_name は {stage} 等を展開する (動的な feature 環境向け)"""
+    from pocket import settings
+    from pocket.context import NeonContext
+
+    neon = settings.Neon(project_name="dev-myapp", branch_name="feature-{stage}")
+    ctx = NeonContext.from_settings(neon, _fake_root(stage="abc"))
+    assert ctx.branch_name == "feature-abc"
+
+
+def test_neon_context_parent_branch_name_template():
+    """parent_branch_name も展開され、指定時のみ値を持つ"""
+    from pocket import settings
+    from pocket.context import NeonContext
+
+    neon = settings.Neon(
+        project_name="dev-myapp",
+        branch_name="feature-{stage}",
+        parent_branch_name="main",
+    )
+    ctx = NeonContext.from_settings(neon, _fake_root(stage="abc"))
+    assert ctx.parent_branch_name == "main"
+
+
+def test_neon_parent_branch_resolves_from_project():
+    """parent_branch_name 指定時、project 内の同名ブランチを Branch として解決する"""
+    from pocket_cli.resources.neon import Branch, Neon
+
+    from pocket.context import NeonContext
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="feature-abc",
+        parent_branch_name="main",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch.object(
+            Neon,
+            "get",
+            return_value=_fake_response(
+                200, {"branches": [{"id": "br-main", "name": "main"}]}
+            ),
+        ),
+    ):
+        parent = neon.parent_branch
+        assert isinstance(parent, Branch)
+        assert parent.id == "br-main"
+
+
+def test_neon_parent_branch_none_when_unset():
+    """parent_branch_name 未指定なら parent_branch は None (= default 分岐)"""
+    from pocket_cli.resources.neon import Neon
+
+    from pocket.context import NeonContext
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="feature-abc",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    # project にも触れずに None を返す (API call 無し)
+    with patch.object(Neon, "get") as mock_get:
+        assert neon.parent_branch is None
+        mock_get.assert_not_called()
