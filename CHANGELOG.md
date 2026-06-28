@@ -4,6 +4,18 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.5.0](https://github.com/worgue/magic-pocket/releases/tag/0.5.0) - 2026-06-28
+
+### Features
+- `[neon]` で使用するブランチを選択できるようにしました。これまで Neon の
+  `branch_name` は stage 名にハードコードされていましたが、`branch_name` を省略すると
+  project の **default ブランチ (通常 `main`)** を使うようになり、stage = ブランチ名の
+  暗黙の結合を解消しました。`[<stage>.neon]` で per-stage に上書きでき、
+  `{stage}`/`{project}`/`{namespace}` を展開できるので、環境ごとに別ブランチを払い出す
+  使い方もできます。あわせて `parent_branch_name` を追加し、ブランチを新規作成する際の
+  親ブランチを指定できます (省略時は Neon の default ブランチから分岐する従来挙動)。
+  既存の stage 名ブランチ運用は `branch_name = "<stage>"` を明示すれば維持できます。
+
 ## [0.4.0](https://github.com/worgue/magic-pocket/releases/tag/0.4.0) - 2026-06-22
 
 ### Features
