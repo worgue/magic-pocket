@@ -278,10 +278,8 @@ class Neon:
 
     @property
     def status(self) -> ResourceStatus:
-        if self.context.skip_check_existing:
-            # 存在確認の Neon API call を skip し COMPLETED 固定。deploy ロールに
-            # Neon credentials を渡さず deploy を完走させる用途 (settings 参照)。
-            return "COMPLETED"
+        # provisioning="command" の Neon は get_resources で除外されるため、ここに
+        # 到達するのは deploy が Neon を管理する provisioning="deploy" の場合のみ。
         if self.working:
             return "COMPLETED"
         return "NOEXIST"

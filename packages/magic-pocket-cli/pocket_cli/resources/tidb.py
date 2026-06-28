@@ -160,9 +160,8 @@ class TiDb:
 
     @property
     def status(self) -> ResourceStatus:
-        if self.context.skip_check_existing:
-            # 存在確認の TiDB API call を skip し COMPLETED 固定 (settings 参照)。
-            return "COMPLETED"
+        # provisioning="command" の TiDB は get_resources で除外されるため、ここに
+        # 到達するのは deploy が TiDB を管理する provisioning="deploy" の場合のみ。
         if not self.context.public_key or not self.context.private_key:
             return "NOEXIST"
         if self.cluster and self.cluster.status == "ACTIVE":

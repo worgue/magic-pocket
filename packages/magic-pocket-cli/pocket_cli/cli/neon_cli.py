@@ -4,6 +4,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.resources.neon import Neon
 
 
@@ -65,6 +66,38 @@ def delete(stage):
     neon = get_neon_resource(stage)
     neon.delete_branch()
     echo.success("Branch was deleted successfully.")
+
+
+@neon.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--key", default=None, help="保存先 user secret のキー (複数候補時に必須)"
+)
+@click.option("--force", is_flag=True, help="既存 secret があっても上書きする")
+def store_url(stage, key, force):
+    """branch/role/db を ensure し DATABASE_URL を stored user secret に保存する。
+
+    provisioning="command" で deploy を Neon credential なしにするための provisioning
+    ステップ。Neon の URL は reveal_password 方式で冪等なので何度実行しても同じ値。
+    """
+
+    def ensure_and_compute_url(context):
+        neon = Neon(context.neon)
+        if not neon.branch:
+            neon.create_branch(neon.parent_branch)
+        neon.ensure_role()
+        neon.ensure_database()
+        # ensure 後の状態を確実に反映するため fresh instance で URL を算出する。
+        return Neon(context.neon).database_url
+
+    run_store_url(
+        stage=stage,
+        secret_type="neon_database_url",  # noqa: S106 (secret type 名であって credential ではない)
+        db_label="Neon",
+        key=key,
+        force=force,
+        ensure_and_compute_url=ensure_and_compute_url,
+    )
 
 
 @neon.command()

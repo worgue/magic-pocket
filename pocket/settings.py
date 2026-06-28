@@ -48,7 +48,32 @@ FormatStr = Annotated[
 
 StoreType = Literal["sm", "ssm"]
 
+# DB/KVS リソースの provisioning 方式。
+#   "deploy"  : deploy が当該リソースを ensure し接続 URL を供給する (zero-config)。
+#   "command" : deploy は当該リソースに触れない (管理 API 非依存 / credential 不要)。
+#               provisioning は `pocket <db> store-url` に一任し、deploy は
+#               stored-read のみ。
+ProvisioningMode = Literal["deploy", "command"]
+
 BuildBackend = Literal["codebuild", "docker", "depot"]
+
+
+def _reject_skip_check_existing(data, *, resource: str):
+    """削除済み設定 `skip_check_existing` が残っていたら fail-fast で移行を促す。
+
+    `provisioning = "command"` + `pocket <db> store-url` への移行で廃止した。
+    extra="ignore" だと黙殺されるため model_validator(mode="before") で raw 入力を
+    検査する。
+    """
+    if isinstance(data, dict) and "skip_check_existing" in data:
+        raise ValueError(
+            "[%s] skip_check_existing は廃止されました。"
+            '`provisioning = "command"` に置き換え、接続 URL を '
+            "[awscontainer.secrets.user] の type で宣言したうえで deploy 前に "
+            "`pocket resource %s store-url --stage <stage>` を実行してください。"
+            % (resource, resource)
+        )
+    return data
 
 
 class BuildConfig(BaseModel):
@@ -94,9 +119,9 @@ class ManagedSecretSpec(BaseModel):
 # user secret の stored mode 用 type。
 # managed の computed type と同名だが、user 側に置くと「事前 provision 済みの URL を
 # 参照するだけ (stored)」を意味する。pocket は API を一切叩かず、導出した正準名の secret
-# を読むだけ。対象は deploy 時に管理 API key を要求する neon / tidb のみ (rds は runtime
-# 構築方式で stored 化の旨味が無く rotation 追従を壊すため対象外)。
-UserSecretType = Literal["neon_database_url", "tidb_database_url"]
+# を読むだけ。対象は deploy 時に管理 API key を要求する neon / tidb / upstash (rds は
+# runtime 構築方式で stored 化の旨味が無く rotation 追従を壊すため対象外)。
+UserSecretType = Literal["neon_database_url", "tidb_database_url", "upstash_redis_url"]
 
 
 class UserSecretSpec(BaseModel):
@@ -343,12 +368,18 @@ class Neon(BaseSettings):
     # branch_name 同様 FormatStr。既存ブランチがあれば作成は走らないので無視される。
     parent_branch_name: FormatStr | None = None
     api_key: str | None = Field(alias="neon_api_key", default=None)
-    # 立てると status を常に COMPLETED 返却し、deploy 中の存在確認 API call を
-    # 一切行わない。GHA deploy ロールに外部 SaaS の credentials を渡さず deploy を
-    # 完走させるためのフラグ (リソースは host から `pocket neon ...` で管理する想定)。
-    skip_check_existing: bool = False
+    # "deploy" (既定): deploy が branch/role/db を ensure し DATABASE_URL を供給する。
+    # "command": deploy は Neon に一切触れない (credential 不要)。provisioning は
+    #            `pocket neon store-url` に一任し、deploy は stored user secret を
+    #            読むだけ。
+    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_skip_check_existing(cls, data):
+        return _reject_skip_check_existing(data, resource="neon")
 
 
 class TiDb(BaseSettings):
@@ -357,20 +388,32 @@ class TiDb(BaseSettings):
     project: str | None = None
     cluster: str | None = None
     region: str = "ap-northeast-1"
-    # Neon.skip_check_existing と同義。deploy 中の TiDB API 存在確認を skip する。
-    skip_check_existing: bool = False
+    # Neon.provisioning と同義。"command" で deploy が TiDB に触れない。
+    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_skip_check_existing(cls, data):
+        return _reject_skip_check_existing(data, resource="tidb")
 
 
 class Upstash(BaseSettings):
     email: str | None = Field(alias="upstash_email", default=None)
     api_key: str | None = Field(alias="upstash_api_key", default=None)
     budget: int = 20
-    # Neon.skip_check_existing と同義。deploy 中の Upstash API 存在確認を skip する。
-    skip_check_existing: bool = False
+    # Neon.provisioning と同義。"command" で deploy が Upstash に触れない
+    # (credential 不要)。provisioning は `pocket resource upstash store-url` に
+    # 一任し、deploy は stored read のみ。
+    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_skip_check_existing(cls, data):
+        return _reject_skip_check_existing(data, resource="upstash")
 
 
 class Dsql(BaseModel):

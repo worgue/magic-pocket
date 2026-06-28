@@ -425,6 +425,10 @@ pocket resource neon branch-out --stage=feature1 --base-stage=dev
 
 # ブランチの削除
 pocket resource neon delete --stage=dev
+
+# provisioning="command" 用: branch/role/db を ensure し DATABASE_URL を stored user
+# secret に保存（既存があれば --force で上書き）
+pocket resource neon store-url --stage=dev
 ```
 
 ### tidb
@@ -444,6 +448,18 @@ pocket resource tidb reset-database --stage=dev
 
 # クラスターの削除
 pocket resource tidb delete --stage=dev
+
+# provisioning="command" 用: cluster/db を ensure し DATABASE_URL を stored user secret に
+# 保存（既存があれば --force で上書き。TiDB は実行ごとに root password をローテーション）
+pocket resource tidb store-url --stage=dev
+```
+
+### upstash
+
+```bash
+# provisioning="command" 用: database を ensure し REDIS_URL を stored user secret に保存
+# （既存があれば --force で上書き）
+pocket resource upstash store-url --stage=dev
 ```
 
 ### dsql

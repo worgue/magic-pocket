@@ -55,11 +55,13 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     for _name, cf_ctx in context.cloudfront.items():
         if cf_ctx.waf is not None:
             resources.append(CloudFrontWaf(cf_ctx))
-    if context.neon:
+    # provisioning="command" の DB は deploy が管理しない (credential 不要)。
+    # provisioning は `pocket <db> store-url` に一任し、deploy は stored-read のみ。
+    if context.neon and context.neon.provisioning != "command":
         resources.append(Neon(context.neon))
-    if context.tidb:
+    if context.tidb and context.tidb.provisioning != "command":
         resources.append(TiDb(context.tidb))
-    if context.upstash:
+    if context.upstash and context.upstash.provisioning != "command":
         resources.append(Upstash(context.upstash))
     if context.s3:
         resources.append(S3(context.s3, cloudfront_contexts=context.cloudfront))
@@ -150,19 +152,6 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
             hook()
 
 
-def apply_skip_check_existing(context: Context) -> None:
-    """DB リソース (neon/tidb/upstash) の存在確認を一律 skip させる。
-
-    `--skip-check-existing` 指定時に呼ぶ。pocket.toml を編集せず、その deploy
-    実行に限り外部 SaaS API への存在確認 call を回避する (deploy ロールに
-    DB credentials を渡さず deploy を完走させる用途)。toml 側の
-    `skip_check_existing` フラグと同義で、こちらは実行時上書き。
-    """
-    for db_ctx in (context.neon, context.tidb, context.upstash):
-        if db_ctx is not None:
-            db_ctx.skip_check_existing = True
-
-
 def build_image(context: Context, *, tag: str) -> str:
     """awscontainer image を指定 tag で build & push する (deploy はしない)。
 
@@ -205,19 +194,11 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
-@click.option(
-    "--skip-check-existing",
-    is_flag=True,
-    default=False,
-    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
-)
-def deploy(stage: str, openpath, skip_frontend, skip_check_existing):
+def deploy(stage: str, openpath, skip_frontend):
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
-    if skip_check_existing:
-        apply_skip_check_existing(context)
     _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
 
 
@@ -226,13 +207,7 @@ def deploy(stage: str, openpath, skip_frontend, skip_check_existing):
 @click.option("--commit-hash", required=True, help="昇格する image の git commit hash")
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
-@click.option(
-    "--skip-check-existing",
-    is_flag=True,
-    default=False,
-    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
-)
-def promote(stage: str, commit_hash, openpath, skip_frontend, skip_check_existing):
+def promote(stage: str, commit_hash, openpath, skip_frontend):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 
     `pocket django build` で push した image に :<stage> タグを移し、
@@ -244,8 +219,6 @@ def promote(stage: str, commit_hash, openpath, skip_frontend, skip_check_existin
     context = Context.from_toml(stage=stage)
     if context.awscontainer is None:
         raise click.ClickException("awscontainer がこの stage に設定されていません。")
-    if skip_check_existing:
-        apply_skip_check_existing(context)
     context.awscontainer.promote_commit_hash = commit_hash
     _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
 

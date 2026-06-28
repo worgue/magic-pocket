@@ -82,13 +82,7 @@ def _update_dotenv(jinja2_env):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
-@click.option(
-    "--skip-check-existing",
-    is_flag=True,
-    default=False,
-    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
-)
-def deploy(stage: str, openpath, yes, skip_check_existing):
+def deploy(stage: str, openpath, yes):
     from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
 
     # pocket deploy を実行（インフラ + SPA フロントエンド）
@@ -98,7 +92,6 @@ def deploy(stage: str, openpath, yes, skip_check_existing):
         stage=stage,
         openpath=None,
         skip_frontend=False,
-        skip_check_existing=skip_check_existing,
     )
     _django_post_deploy(stage, yes=yes, openpath=openpath)
 
@@ -129,13 +122,7 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
-@click.option(
-    "--skip-check-existing",
-    is_flag=True,
-    default=False,
-    help="neon/tidb/upstash の存在確認 API を skip し COMPLETED 扱いで deploy",
-)
-def promote(stage: str, commit_hash, openpath, yes, skip_check_existing):
+def promote(stage: str, commit_hash, openpath, yes):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 
     `pocket django build` で push した image に :<stage> タグを移し、インフラ/Lambda
@@ -151,7 +138,6 @@ def promote(stage: str, commit_hash, openpath, yes, skip_check_existing):
         commit_hash=commit_hash,
         openpath=None,
         skip_frontend=False,
-        skip_check_existing=skip_check_existing,
     )
     _django_post_deploy(stage, yes=yes, openpath=openpath)
 

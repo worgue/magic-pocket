@@ -41,6 +41,18 @@ class Mediator:
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
             if key not in sc.pocket_store.secrets:
+                if managed_secret.type in (
+                    "neon_database_url",
+                    "tidb_database_url",
+                    "upstash_redis_url",
+                ):
+                    echo.warning(
+                        "computed DB/KVS URL (managed type=%s) は deprecated です。"
+                        "deploy が管理 API を叩いて URL を算出する方式から、"
+                        "[<db>] provisioning + [awscontainer.secrets.user] の type + "
+                        "`pocket <db> store-url` (stored) への移行を推奨します。"
+                        % managed_secret.type
+                    )
                 value = self._generate_secret(managed_secret)
                 if value is None:
                     msg = "Secret generation for %s is failed." % key
@@ -116,6 +128,58 @@ class Mediator:
             if code in ("ParameterNotFound", "ResourceNotFoundException"):
                 return False
             raise
+
+    def stored_secret_exists(self, spec) -> bool:
+        """stored mode user secret (spec.name) が store に存在するか。
+
+        store-url の冪等判定用。
+        """
+        if (
+            self.context.awscontainer is None
+            or self.context.awscontainer.secrets is None
+            or spec.name is None
+        ):
+            return False
+        sc = self.context.awscontainer.secrets
+        store = spec.store or sc.store
+        return self._stored_secret_exists(spec.name, store, sc.region)
+
+    def store_user_secret(self, spec, value: str) -> None:
+        """stored mode user secret の正準名 (spec.name) に単一値を書き込む。
+
+        `pocket <db> store-url` から使う。pocket_store (managed 集約) ではなく
+        user secret の導出名 ({pocket_key}-user/{KEY}) に直接 put する。
+        読み側 _stored_secret_exists と対称。
+        """
+        import boto3
+        from botocore.exceptions import ClientError
+
+        if (
+            self.context.awscontainer is None
+            or self.context.awscontainer.secrets is None
+        ):
+            raise RuntimeError("awscontainer secrets is not configured")
+        sc = self.context.awscontainer.secrets
+        if spec.name is None:
+            raise RuntimeError("user secret name is not resolved")
+        store = spec.store or sc.store
+        if store == "ssm":
+            boto3.client("ssm", region_name=sc.region).put_parameter(
+                Name=spec.name, Value=value, Type="SecureString", Overwrite=True
+            )
+            return
+        client = boto3.client("secretsmanager", region_name=sc.region)
+        try:
+            client.create_secret(
+                Name=spec.name,
+                SecretString=value,
+                Tags=[{"Key": "Name", "Value": spec.name}],
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceExistsException":
+                client.put_secret_value(SecretId=spec.name, SecretString=value)
+            else:
+                raise
 
     def _cleanup_orphaned_secrets(self):
         """SSM/SM にあるが managed 定義にないシークレットを削除する"""

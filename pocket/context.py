@@ -431,7 +431,7 @@ class NeonContext(BaseModel):
     parent_branch_name: str | None = None
     name: str
     role_name: str
-    skip_check_existing: bool = False
+    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
@@ -452,7 +452,7 @@ class NeonContext(BaseModel):
             ),
             name=root.project_name,
             role_name=root.project_name,
-            skip_check_existing=neon.skip_check_existing,
+            provisioning=neon.provisioning,
         )
 
 
@@ -464,7 +464,7 @@ class TiDbContext(BaseModel):
     database_name: str
     region: str
     project_name: str
-    skip_check_existing: bool = False
+    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
@@ -480,7 +480,7 @@ class TiDbContext(BaseModel):
             database_name=database_name,
             region=tidb.region,
             project_name=root.project_name,
-            skip_check_existing=tidb.skip_check_existing,
+            provisioning=tidb.provisioning,
         )
 
 
@@ -489,7 +489,7 @@ class UpstashContext(BaseModel):
     api_key: str | None = None
     database_name: str
     budget: int = 20
-    skip_check_existing: bool = False
+    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(
@@ -500,7 +500,7 @@ class UpstashContext(BaseModel):
             api_key=upstash.api_key,
             database_name=f"{root.project_name}-{root.stage}",
             budget=upstash.budget,
-            skip_check_existing=upstash.skip_check_existing,
+            provisioning=upstash.provisioning,
         )
 
 
