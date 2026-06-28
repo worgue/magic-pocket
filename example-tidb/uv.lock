@@ -125,8 +125,8 @@ wheels = [
 
 [[package]]
 name = "magic-pocket"
-version = "0.5.0"
-source = { path = "vendor/magic_pocket-0.5.0-py3-none-any.whl" }
+version = "0.6.0"
+source = { path = "vendor/magic_pocket-0.6.0-py3-none-any.whl" }
 dependencies = [
     { name = "apig-wsgi" },
     { name = "awslambdaric" },
@@ -137,7 +137,7 @@ dependencies = [
     { name = "rich" },
 ]
 wheels = [
-    { filename = "magic_pocket-0.5.0-py3-none-any.whl", hash = "sha256:33ede4383906499b4f42c70b081e3b63b433fe9f33e21433277453dc745cb71b" },
+    { filename = "magic_pocket-0.6.0-py3-none-any.whl", hash = "sha256:9106b64988b0b88ae78bc3ebb064da694ab2ae2d0b78144d92565db808758a3e" },
 ]
 
 [package.optional-dependencies]
@@ -214,7 +214,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.28" },
     { name = "django-tidb", specifier = ">=5.0" },
-    { name = "magic-pocket", extras = ["django"], path = "vendor/magic_pocket-0.5.0-py3-none-any.whl" },
+    { name = "magic-pocket", extras = ["django"], path = "vendor/magic_pocket-0.6.0-py3-none-any.whl" },
     { name = "mysqlclient", specifier = ">=2.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.1" },
 ]

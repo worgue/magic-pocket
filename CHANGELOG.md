@@ -4,6 +4,43 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.6.0](https://github.com/worgue/magic-pocket/releases/tag/0.6.0) - 2026-06-28
+
+### Features
+- DB / KVS の **provisioning を deploy から分離**できるようにしました。`[neon]` / `[tidb]` /
+  `[upstash]` に `provisioning = "command"` を指定すると、**deploy は当該リソースに一切触れません**
+  （管理 API call ゼロ / credential 不要）。provisioning は新コマンド
+  `pocket resource <neon|tidb|upstash> store-url --stage <stage>` に分離し、
+  branch/cluster/role/db (Upstash は database) を ensure して接続 URL を stored user secret
+  （`[awscontainer.secrets.user]` の `type`）の正準名へ保存します。これにより「provisioning は
+  管理 API key を持つ host / 特権 CI」「deploy は credential なし」という custody 分離が
+  素直に成立します（既定は従来どおり `provisioning = "deploy"`）。
+  - user secret の `type` に `upstash_redis_url` を追加しました（`neon_database_url` /
+    `tidb_database_url` と同様の stored mode）。
+  - `store-url` は既存 secret があると no-op で、`--force` で上書きします。複数候補があるときは
+    `--key` で対象を指定します。
+  - **TiDB の注意**: TiDB Serverless は password の reveal API が無いため、`tidb store-url` は
+    実行のたびに root password をローテーションします（Neon / Upstash は冪等）。実行後は
+    consumer の再デプロイが前提です。
+
+### Changed / Deprecated
+- DB / KVS 接続 URL の **computed mode**（`[awscontainer.secrets.managed]` に
+  `{ type = "neon_database_url" / "tidb_database_url" / "upstash_redis_url" }`）を
+  **deprecated** にしました。deploy 時に warning を出します。`[<db>] provisioning` + stored
+  user secret（`[awscontainer.secrets.user]` の `type`）へ移行してください。computed と
+  `provisioning = "deploy"` は「deploy が ensure し URL を供給する」点で挙動が同じで、差分は
+  保存先のみ（computed = managed pocket_store、stored = user secret 名）です。
+
+### Removed
+- `[neon]` / `[tidb]` / `[upstash]` の **`skip_check_existing` を削除**しました
+  （`provisioning = "command"` へ置換）。残っていると deploy 前に **fail-fast** で移行を案内します。
+- **実行時フラグ `--skip-check-existing` を削除**しました（`pocket deploy` / `pocket promote` /
+  `pocket django deploy` / `pocket django promote`）。credential-less deploy は
+  `[<db>] provisioning = "command"` に一本化されました。
+  - 移行手順: `[<db>] skip_check_existing = true` を `[<db>] provisioning = "command"` に置換し、
+    接続 URL を `[awscontainer.secrets.user]` の `type` で宣言、deploy 前に
+    `pocket resource <db> store-url --stage <stage>` を一度実行してください。
+
 ## [0.5.0](https://github.com/worgue/magic-pocket/releases/tag/0.5.0) - 2026-06-28
 
 ### Features
