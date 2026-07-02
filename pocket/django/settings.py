@@ -5,6 +5,13 @@ from typing import Any, Literal
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
+# staticfiles の publish 方式 (DB/KVS の ProvisioningMode と同じ思想の静的版)。
+#   "deploy"  : deploy / promote が collectstatic + upload を実行する (zero-config)。
+#   "command" : deploy / promote は静的に一切触れない。publish は
+#               `pocket django deploystatic` に一任する (静的を out-of-band
+#               管理する project 用。publish 経路を CI と分離できる)。
+PublishMode = Literal["deploy", "command"]
+
 
 class DjangoStorage(BaseSettings):
     store: Literal["s3", "filesystem"]
@@ -14,6 +21,7 @@ class DjangoStorage(BaseSettings):
     options: dict[str, Any] = {}
     distribution: str | None = None
     route: str | None = None
+    publish: PublishMode = "deploy"
 
     @model_validator(mode="after")
     def check_manifest(self):
@@ -42,6 +50,12 @@ class DjangoStorage(BaseSettings):
     def check_distribution(self):
         if self.distribution and self.store != "s3":
             raise ValueError("distribution can only be used with s3 store")
+        return self
+
+    @model_validator(mode="after")
+    def check_publish(self):
+        if self.publish != "deploy" and not self.static:
+            raise ValueError("publish can only be used with static storage")
         return self
 
 

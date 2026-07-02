@@ -4,6 +4,25 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Features
+- staticfiles の **publish を deploy から分離**できるようにしました。staticfiles 宣言に
+  `publish = "command"` を指定すると、`pocket django deploy` / `promote` は静的ファイルに
+  一切触れず、publish は `pocket django deploystatic` に一任されます（DB/KVS の
+  `provisioning = "command"` と同じ思想の静的版。大容量資産を out-of-band 管理し、CI は
+  コードのみデプロイする構成に対応。既定は従来どおり `publish = "deploy"`）。
+- `pocket django deploystatic` に `--link` を追加しました。collectstatic に `--link` を
+  渡し、大容量資産の複製コストを削減します（`aws s3 sync` は symlink を追うため upload 互換）。
+
+### Changed
+- `pocket django deploystatic` の **S3 上の不要ファイル削除を opt-in** にしました
+  （`--delete` フラグ新設）。従来は `aws s3 sync --delete` 固定で、旧デプロイのアセットを
+  参照中のリクエスト（キャッシュ済み HTML / 切替前の Lambda が返すページの hash 付き
+  ファイル名）や過去 commit への rollback を壊す時間窓がありました。`pocket django deploy` /
+  `promote` 内の静的アップロードも同様に削除なしになります。不要ファイルの掃除は
+  `pocket django deploystatic --delete` を明示実行してください。
+
 ## [0.6.0](https://github.com/worgue/magic-pocket/releases/tag/0.6.0) - 2026-06-28
 
 ### Features

@@ -316,6 +316,18 @@ pocket django deploystatic --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--skip-collectstatic` | collectstaticをスキップしてアップロードのみ実行 |
+| `--delete` | collectstatic 出力に無い S3 上のファイルを削除する (`aws s3 sync --delete`) |
+| `--link` | collectstatic に `--link` を渡す (大容量資産の複製コスト削減) |
+
+!!! note "`--delete` は opt-in"
+    デフォルトではアップロードのみで、S3 上の既存ファイルは削除しません。
+    削除すると、旧デプロイのアセットを参照中のリクエスト (キャッシュ済み HTML や
+    切替前の Lambda が返すページ) や過去 commit への rollback が壊れる可能性が
+    あるためです。不要ファイルの掃除をしたいときだけ `--delete` を付けてください。
+
+静的ファイルの publish を deploy / promote から切り離したい場合
+(CI と資産更新で publish 経路を分ける等) は、staticfiles 宣言に
+`publish = "command"` を指定します ([Django ストレージ設定](configuration.md) 参照)。
 
 ### pocket django storage upload
 

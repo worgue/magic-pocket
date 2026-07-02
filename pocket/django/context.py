@@ -22,6 +22,7 @@ class DjangoStorageContext(BaseModel):
     distribution: str | None = None
     route: str | None = None
     deploy_hash: bool = False
+    publish: settings.PublishMode = "deploy"
 
     @property
     def backend(self):
@@ -94,6 +95,7 @@ class DjangoStorageContext(BaseModel):
             distribution=storage.distribution,
             route=storage.route,
             deploy_hash=is_deploy_hash,
+            publish=storage.publish,
         )
 
 

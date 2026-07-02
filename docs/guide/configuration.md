@@ -1116,6 +1116,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 | `distribution` | str \| None | None | CloudFront distribution 名（`[cloudfront.xxx]` のキー名） |
 | `route` | str \| None | None | CloudFront route の ref（省略時は自動解決） |
 | `options` | dict | `{}` | 追加オプション（Djangoの `STORAGES[key]["OPTIONS"]` にそのまま渡される） |
+| `publish` | `"deploy"` \| `"command"` | `"deploy"` | staticfiles の publish 方式（`static=true` 時のみ）。下記参照 |
 
 `store`, `static`, `manifest`, `distribution` の組み合わせで以下のバックエンドが選択されます。
 
@@ -1139,6 +1140,23 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     [awscontainer.django.storages]
     default = { store = "s3", location = "", distribution = "media" }
     staticfiles = { store = "s3", location = "static", static = true, manifest = true, distribution = "main" }
+    ```
+
+!!! note "publish — 静的 publish を deploy から切り離す"
+    DB/KVS の `provisioning = "command"` と同じ思想の staticfiles 版です。
+
+    - `"deploy"`（デフォルト）: `pocket django deploy` / `promote` が
+      collectstatic + S3 アップロードを実行します（zero-config）
+    - `"command"`: deploy / promote は静的ファイルに一切触れません。
+      publish は `pocket django deploystatic` に一任します
+
+    大容量の静的資産（画像・動画等）を out-of-band 管理し、CI からのデプロイでは
+    コードのみ、資産の publish は別経路（VM 等から資産変更時のみ）としたい場合に
+    使います。
+
+    ```toml
+    [awscontainer.django.storages]
+    staticfiles = { store = "s3", location = "static", static = true, publish = "command" }
     ```
 
 #### caches

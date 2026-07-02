@@ -1,5 +1,10 @@
 import pytest
-from pocket_cli.django_cli import _get_management_command_handler
+from pocket_cli.django_cli import (
+    _get_management_command_handler,
+    _staticfiles_publish_mode,
+    collectstatic_locally,
+    upload_collected_staticfiles,
+)
 
 from pocket import settings
 from pocket.context import Context, SesContext
@@ -130,6 +135,42 @@ def test_ses_email_backend_not_configured(use_toml):
     use_toml("tests/data/toml/default.toml")
     result = get_email_backend(stage="dev")
     assert result == {}
+
+
+def test_staticfiles_publish_default_is_deploy(use_toml):
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer and context.awscontainer.django
+    assert context.awscontainer.django.storages["staticfiles"].publish == "deploy"
+    assert _staticfiles_publish_mode(context) == "deploy"
+
+
+def test_staticfiles_publish_command(use_toml):
+    use_toml("tests/data/toml/staticfiles_publish_command.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer and context.awscontainer.django
+    assert context.awscontainer.django.storages["staticfiles"].publish == "command"
+    assert _staticfiles_publish_mode(context) == "command"
+
+
+def test_upload_collected_staticfiles_delete_opt_in(use_toml, monkeypatch):
+    use_toml("tests/data/toml/default.toml")
+    cmds = []
+    monkeypatch.setattr("pocket_cli.django_cli.run", lambda cmd, **kw: cmds.append(cmd))
+    upload_collected_staticfiles("dev")
+    assert "--delete" not in cmds[0]
+    upload_collected_staticfiles("dev", delete=True)
+    assert cmds[1].endswith("--delete")
+
+
+def test_collectstatic_locally_link_opt_in(use_toml, monkeypatch):
+    use_toml("tests/data/toml/default.toml")
+    cmds = []
+    monkeypatch.setattr("pocket_cli.django_cli.run", lambda cmd, **kw: cmds.append(cmd))
+    collectstatic_locally("dev")
+    assert "--link" not in cmds[0]
+    collectstatic_locally("dev", link=True)
+    assert "--link" in cmds[1]
 
 
 def test_ses_not_configured_use_ses_false(use_toml):

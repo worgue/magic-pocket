@@ -99,7 +99,12 @@ def deploy(stage: str, openpath, yes):
 def _django_post_deploy(stage: str, *, yes: bool, openpath):
     """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。"""
     context = Context.from_toml(stage=stage)
-    if yes or click.confirm("deploystatic?", default=True):
+    if _staticfiles_publish_mode(context) == "command":
+        echo.info(
+            'staticfiles is publish = "command": skipping deploystatic. '
+            "Publish with `pocket django deploystatic --stage %s`." % stage
+        )
+    elif yes or click.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
         upload_collected_staticfiles(stage)
     handler = _get_management_command_handler(context)
@@ -181,6 +186,14 @@ def build(stage: str, allow_dirty: bool):
     echo.success("built and pushed: %s" % target)
 
 
+def _staticfiles_publish_mode(context: Context) -> str:
+    if context.awscontainer and context.awscontainer.django:
+        storage = context.awscontainer.django.storages.get("staticfiles")
+        if storage:
+            return storage.publish
+    return "deploy"
+
+
 def _get_management_command_handler(context: Context, key: str | None = None):
     if not context.awscontainer:
         raise Exception("awscontainer is not configured for this stage")
@@ -257,7 +270,7 @@ def clear_staticfiles_override_env():
     os.environ.pop("POCKET_STATICFILES_LOCATION_OVERRIDE", None)
 
 
-def upload_collected_staticfiles(stage: str):
+def upload_collected_staticfiles(stage: str, *, delete: bool = False):
     from pocket.django.utils import get_static_storage_s3_options
 
     s3_options = get_static_storage_s3_options(stage=stage)
@@ -267,9 +280,15 @@ def upload_collected_staticfiles(stage: str):
     echo.info("Bucket: %s" % s3_bucket_name)
     echo.info("Location: %s" % s3_location)
     echo.info("Uploading static files...")
+    cmd = "aws s3 sync %s s3://%s/%s/" % (
+        local_storage["OPTIONS"]["location"],
+        s3_bucket_name,
+        s3_location,
+    )
+    if delete:
+        cmd += " --delete"
     run(  # noqa: S602 aws s3 sync を pocket.toml 設定値から構築 (信頼境界内)
-        "aws s3 sync %s s3://%s/%s/ --delete"
-        % (local_storage["OPTIONS"]["location"], s3_bucket_name, s3_location),
+        cmd,
         shell=True,  # nosemgrep
         check=True,
     )
@@ -299,11 +318,14 @@ def _get_project_dir(stage: str) -> str | None:
     return None
 
 
-def collectstatic_locally(stage: str):
+def collectstatic_locally(stage: str, *, link: bool = False):
     local_storage = get_deploystatic_local_storage(stage)
     echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
     set_staticfiles_override_env(local_storage)
-    cmd = _build_python_command(["manage.py", "collectstatic", "--noinput"])
+    args = ["manage.py", "collectstatic", "--noinput"]
+    if link:
+        args.append("--link")
+    cmd = _build_python_command(args)
     project_dir = _get_project_dir(stage)
     run(cmd, check=True, cwd=project_dir)  # noqa: S603 shell=False + 制御された引数
     clear_staticfiles_override_env()
@@ -312,10 +334,24 @@ def collectstatic_locally(stage: str):
 @django.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--skip-collectstatic", is_flag=True, default=False)
-def deploystatic(stage: str, skip_collectstatic: bool):
+@click.option(
+    "--delete",
+    is_flag=True,
+    default=False,
+    help="collectstatic 出力に無い S3 上のファイルを削除する (aws s3 sync --delete)。"
+    " 旧デプロイのアセットを参照中のリクエストや rollback を壊しうるため opt-in",
+)
+@click.option(
+    "--link",
+    is_flag=True,
+    default=False,
+    help="collectstatic に --link を渡す (大容量資産の複製コスト削減。"
+    " aws s3 sync は symlink を追うので upload 互換)",
+)
+def deploystatic(stage: str, skip_collectstatic: bool, delete: bool, link: bool):
     if not skip_collectstatic:
-        collectstatic_locally(stage)
-    upload_collected_staticfiles(stage)
+        collectstatic_locally(stage, link=link)
+    upload_collected_staticfiles(stage, delete=delete)
 
 
 @django.command(

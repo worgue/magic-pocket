@@ -253,6 +253,14 @@ def test_storage_route_requires_distribution():
         )
 
 
+def test_storage_publish_requires_static():
+    """publish は staticfiles (static storage) 専用"""
+    with pytest.raises(ValueError, match="publish can only be used with static"):
+        DjangoStorage.model_validate(
+            {"store": "s3", "location": "media", "publish": "command"}
+        )
+
+
 def test_route_ref_duplicate_rejected():
     """同じ ref を複数 route に設定するとエラーになること"""
     with pytest.raises(ValueError, match="ref 'static' が重複"):
