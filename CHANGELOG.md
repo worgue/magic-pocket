@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.7.0](https://github.com/worgue/magic-pocket/releases/tag/0.7.0) - 2026-07-02
 
 ### Features
 - staticfiles の **publish を deploy から分離**できるようにしました。staticfiles 宣言に
