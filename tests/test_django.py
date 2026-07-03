@@ -8,8 +8,15 @@ from pocket_cli.django_cli import (
 
 from pocket import settings
 from pocket.context import Context, SesContext
+from pocket.django import utils as django_utils
 from pocket.django.context import DjangoStorageContext
-from pocket.django.utils import get_caches, get_email_backend, get_storages
+from pocket.django.utils import (
+    _tidb_ca_bundle_path,
+    get_caches,
+    get_databases,
+    get_email_backend,
+    get_storages,
+)
 
 
 def test_manage_cli(base_settings, aws_settings):
@@ -179,3 +186,44 @@ def test_ses_not_configured_use_ses_false(use_toml):
     assert context.ses is None
     assert context.awscontainer
     assert context.awscontainer.use_ses is False
+
+
+def test_tidb_ca_bundle_path_prefers_al2023(monkeypatch):
+    # AL2023 と Debian 両方が存在する場合は AL2023 (先頭候補) を選ぶ。
+    monkeypatch.setattr(django_utils.os.path, "exists", lambda p: True)
+    assert _tidb_ca_bundle_path() == "/etc/pki/tls/certs/ca-bundle.crt"
+
+
+def test_tidb_ca_bundle_path_falls_back_to_debian(monkeypatch):
+    # AL2023 の ca-bundle.crt が無く Debian 命名だけある環境 (開発環境等)。
+    monkeypatch.setattr(
+        django_utils.os.path,
+        "exists",
+        lambda p: p == "/etc/ssl/certs/ca-certificates.crt",
+    )
+    assert _tidb_ca_bundle_path() == "/etc/ssl/certs/ca-certificates.crt"
+
+
+def test_tidb_ca_bundle_path_default_when_none_exist(monkeypatch):
+    # どの候補も無ければ実行基盤 (AL2023) の標準パスを最後の拠り所に返す。
+    monkeypatch.setattr(django_utils.os.path, "exists", lambda p: False)
+    assert _tidb_ca_bundle_path() == "/etc/pki/tls/certs/ca-bundle.crt"
+
+
+def test_get_databases_tidb_ssl_and_persistent_conn(monkeypatch):
+    # tidb backend では TLS CA を候補探索で解決し、Lambda 向けに持続接続を
+    # 標準デフォルト化する。
+    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "django_tidb")
+    monkeypatch.setattr(django_utils.os.path, "exists", lambda p: True)
+    monkeypatch.setenv("DATABASE_URL", "mysql://u:p@gateway.tidbcloud.com:4000/testdb")
+
+    databases = get_databases(stage="dev")
+    db = databases["default"]
+
+    assert db["ENGINE"] == "django_tidb"
+    assert db["OPTIONS"] == {
+        "ssl_mode": "VERIFY_IDENTITY",
+        "ssl": {"ca": "/etc/pki/tls/certs/ca-bundle.crt"},
+    }
+    assert db["CONN_MAX_AGE"] is None
+    assert db["CONN_HEALTH_CHECKS"] is True

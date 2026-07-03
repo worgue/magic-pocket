@@ -269,10 +269,33 @@ def get_databases(*, stage: str | None = None) -> dict:
     if engine == "django_tidb":
         db["OPTIONS"] = {
             "ssl_mode": "VERIFY_IDENTITY",
-            "ssl": {"ca": "/etc/ssl/certs/ca-certificates.crt"},
+            "ssl": {"ca": _tidb_ca_bundle_path()},
         }
+        # Lambda は実行環境 (コンテナ) を再利用するため、持続接続で TLS
+        # handshake を warm リクエストから省く。idle 切断された接続は再利用前の
+        # health check で検知して張り直すので None (期限なし) でも安全。
+        db["CONN_MAX_AGE"] = None
+        db["CONN_HEALTH_CHECKS"] = True
 
     return {"default": db}
+
+
+# システム CA バンドルの候補パス。distro ごとに配置が異なるため順に探索する。
+# Lambda の base image (Amazon Linux 2023 / RHEL 系) は ca-bundle.crt、
+# Debian/Ubuntu 系 (ローカル開発環境を含む) は ca-certificates.crt に置く。
+_TIDB_CA_BUNDLE_CANDIDATES = (
+    "/etc/pki/tls/certs/ca-bundle.crt",  # Amazon Linux 2023 / RHEL 系
+    "/etc/ssl/certs/ca-certificates.crt",  # Debian / Ubuntu
+)
+
+
+def _tidb_ca_bundle_path() -> str:
+    for path in _TIDB_CA_BUNDLE_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    # どの候補も無い環境では実行基盤である AL2023 の標準パスを返す
+    # (存在チェックに失敗した場合の最後の拠り所)。
+    return _TIDB_CA_BUNDLE_CANDIDATES[0]
 
 
 def _detect_engine(stage: str | None, scheme: str) -> str:
