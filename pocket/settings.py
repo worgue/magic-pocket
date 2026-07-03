@@ -426,6 +426,11 @@ class Rds(BaseModel):
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
+    # DB 名の上書き。未指定なら "{stage}_{project}" (他リソース名の
+    # {stage}-{project} 順に合わせる)。既存クラスタ参照や snapshot 復元
+    # (RestoreDBClusterFromSnapshot は DatabaseName を無視し、元の DB 名が
+    # そのまま残る) で、pocket が実 DB 名を指す必要がある場合に指定する。
+    database: str | None = None
     # マスターパスワードの管理方式:
     #   "aws-managed": ManageMasterUserPassword=True。RDS が生成し 7 日周期で自動
     #                  ローテーション (既定。互換)。
@@ -448,6 +453,7 @@ class Rds(BaseModel):
             "min_capacity (非デフォルト)": self.min_capacity != 0.5,
             "max_capacity (非デフォルト)": self.max_capacity != 2.0,
             "snapshot_identifier": self.snapshot_identifier is not None,
+            "database": self.database is not None,
         }
         has_managed_custom = any(managed_fields.values())
 

@@ -565,7 +565,12 @@ class RdsContext(BaseModel):
             project=root.project_name,
             namespace=root.namespace,
         )
-        database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
+        # 他リソース名 (resource_prefix = {stage}-{project}) と順序を揃えて
+        # "{stage}_{project}"。rds.database で明示上書き可 (既存クラスタ参照 /
+        # snapshot 復元で実 DB 名を指す必要がある場合)。
+        database_name = rds.database or f"{root.stage}_{root.project_name}".replace(
+            "-", "_"
+        )
         # static パスワードの保存先は awscontainer.secrets.store に合わせる
         # (未設定時は "sm")。
         secret_store: StoreType = "sm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない

@@ -493,6 +493,7 @@ dockerfile_path = "pocket.Dockerfile"
 | `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU）。`managed = true` のみ |
 | `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU）。`managed = true` のみ |
 | `snapshot_identifier` | str \| None | None | 初回作成時に復元する snapshot の ID / ARN。`managed = true` のみ |
+| `database` | str \| None | None | DB 名の上書き。未指定なら `{stage}_{project}`（他リソース名と同じ順序）。`managed = true` のみ |
 | `secret_arn` | str \| None | None | 既存 RDS の Secrets Manager ARN。`managed = false` 時必須 |
 | `security_group_id` | str \| None | None | 既存 RDS の SG ID。`managed = false` 時必須 |
 
@@ -577,6 +578,19 @@ snapshot から復元すると Aurora のマスターパスワードは snapshot
 
 !!! info "VPC / Subnet Group は別物で OK"
     snapshot の元クラスタと、pocket が作る新クラスタの VPC / Subnet Group は **別物で構いません**。`[vpc]` で指定した pocket 管理の VPC にそのまま復元されます。
+
+!!! warning "復元クラスタの DB 名は snapshot 側のまま（`database` で追従）"
+    `RestoreDBClusterFromSnapshot` は `DatabaseName` を**無視**するため、復元後のクラスタには **snapshot 元の DB 名**がそのまま残ります。pocket の既定 DB 名は `{stage}_{project}` なので、元ツールが別の命名（例 `{project}_{stage}`）だった場合、pocket は存在しない DB に接続しようとして `FATAL: database "..." does not exist` になります。
+
+    復元元の実 DB 名に合わせるには `database` で上書きしてください:
+
+    ```toml
+    [prod.rds]
+    snapshot_identifier = "myapp-prod-migration-20260410"
+    database = "prod_myapp"  # 復元元 (snapshot) の実 DB 名に合わせる
+    ```
+
+    あるいは復元後に `ALTER DATABASE <old> RENAME TO <new>` で pocket 既定名へ寄せても構いません。
 
 ### 既存 RDS への接続 (`managed = false`)
 

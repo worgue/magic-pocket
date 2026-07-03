@@ -27,7 +27,7 @@ def test_rds_context(use_toml):
     assert context.rds is not None
     assert context.rds.cluster_identifier == "dev-testprj-pocket-aurora"
     assert context.rds.instance_identifier == "dev-testprj-pocket-aurora-1"
-    assert context.rds.database_name == "testprj_dev"
+    assert context.rds.database_name == "dev_testprj"
     assert context.rds.master_username == "postgres"
     assert context.rds.subnet_group_name == "dev-testprj-pocket-aurora"
     assert context.rds.security_group_name == "dev-testprj-pocket-aurora-rds"
@@ -130,6 +130,59 @@ def test_rds_snapshot_identifier_default_none():
     )
     assert settings.rds is not None
     assert settings.rds.snapshot_identifier is None
+
+
+def test_rds_database_override():
+    """rds.database で DB 名を上書きできること (snapshot 復元で実 DB 名を指す用途)"""
+    settings = Settings.model_validate(
+        {
+            "stage": "dev",
+            "general": {
+                "region": "ap-northeast-1",
+                "project_name": "testprj",
+                "stages": ["dev"],
+            },
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "rds": {
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                "database": "testprj_dev",
+            },
+            "awscontainer": {
+                "dockerfile_path": "Dockerfile",
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            },
+        }
+    )
+    assert settings.rds is not None
+    assert settings.rds.database == "testprj_dev"
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    # 上書き指定時はその値をそのまま採用 (default {stage}_{project} を無視)
+    assert context.rds.database_name == "testprj_dev"
+
+
+def test_rds_database_override_rejected_when_unmanaged():
+    """rds.database は managed = false では使えない"""
+    with pytest.raises(ValueError, match="database"):
+        Settings.model_validate(
+            {
+                "stage": "dev",
+                "general": {
+                    "region": "ap-northeast-1",
+                    "project_name": "testprj",
+                    "stages": ["dev"],
+                },
+                "rds": {
+                    "managed": False,
+                    "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:db",
+                    "security_group_id": "sg-0123456789abcdef0",
+                    "database": "somedb",
+                },
+                "awscontainer": {
+                    "dockerfile_path": "Dockerfile",
+                },
+            }
+        )
 
 
 def test_rds_unmanaged_mode():
