@@ -11,9 +11,15 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel, Field
 
 from pocket.resources.base import ResourceStatus
+from pocket.utils import MANAGE_HANDLER_SUCCESS_SENTINEL
 
 if TYPE_CHECKING:
     from pocket.context import LambdaHandlerContext
+
+
+class ManagementCommandFailed(Exception):
+    """management_command_handler の invoke が失敗した (成功センチネルが出ないまま
+    Lambda 実行が終わった) ことを示す。CLI を非ゼロ終了させ false green を防ぐ。"""
 
 
 class Configuration(BaseModel):
@@ -132,6 +138,10 @@ class LambdaHandler:
         events = self._find_events(start_pattern, created_at)
         print("Log stream found: %s" % events[0]["logStreamName"])
         printed = []
+        # 成功センチネル (management_command_handler が例外なく完了したときだけ印字)
+        # を REPORT 行までに観測できたかで成否を判定する。非同期 invoke では
+        # ハンドラの例外が呼び出し側に伝わらないため、ログ経由で判定する。
+        success_seen = False
         sleep_seconds = 5
         for _i in range(timeout_seconds // sleep_seconds):
             res = self.logs_client.filter_log_events(
@@ -145,8 +155,16 @@ class LambdaHandler:
             for message in messages[len(printed) :]:
                 print(message.strip())
                 printed.append(message)
+                if MANAGE_HANDLER_SUCCESS_SENTINEL in message:
+                    success_seen = True
                 time.sleep(0.05)
                 if message.startswith(report_prefix):
+                    if not success_seen:
+                        raise ManagementCommandFailed(
+                            "management command handler did not complete successfully "
+                            "(no success marker before REPORT). "
+                            "上の CloudWatch ログの traceback を確認してください。"
+                        )
                     return
             time.sleep(sleep_seconds)
         print("Timeout %s seconds. Please check logs in cloudwatch." % timeout_seconds)

@@ -417,6 +417,52 @@ def test_set_rds_database_url_with_env_fallback(use_toml):
         os.environ.pop("DATABASE_URL", None)
 
 
+@mock_aws
+def test_rds_create_is_idempotent(use_toml):
+    """create() を (別インスタンスで) 2 回呼んでも AlreadyExists で落ちない。
+
+    途中失敗した deploy の再実行を模す。subnet group / SG / cluster / instance が
+    既に在っても再利用され、重複作成もされないこと。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    from pocket_cli.resources.vpc import Vpc
+
+    assert context.rds.vpc is not None
+    Vpc(context.rds.vpc).create()
+
+    # 1 回目 (新規作成)
+    Rds(context.rds).create()
+
+    # 2 回目 (別インスタンス = 別プロセスの再実行相当)。例外なく完了すること。
+    Rds(context.rds).create()
+
+    rds_client = boto3.client("rds", region_name=context.rds.region)
+    clusters = rds_client.describe_db_clusters()["DBClusters"]
+    matching = [
+        c
+        for c in clusters
+        if c["DBClusterIdentifier"] == context.rds.cluster_identifier
+    ]
+    assert len(matching) == 1
+
+    instances = rds_client.describe_db_instances()["DBInstances"]
+    matching_instances = [
+        i
+        for i in instances
+        if i["DBInstanceIdentifier"] == context.rds.instance_identifier
+    ]
+    assert len(matching_instances) == 1
+
+    ec2 = boto3.client("ec2", region_name=context.rds.region)
+    groups = ec2.describe_security_groups(
+        Filters=[{"Name": "tag:Name", "Values": [context.rds.security_group_name]}]
+    )["SecurityGroups"]
+    assert len(groups) == 1
+
+
 # --- password_strategy = "static" ---
 
 

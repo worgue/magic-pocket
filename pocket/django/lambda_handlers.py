@@ -7,7 +7,7 @@ from django.core.management import call_command
 
 from pocket.django.utils import pocket_delete_sqs_task
 
-from ..utils import get_wsgi_application
+from ..utils import MANAGE_HANDLER_SUCCESS_SENTINEL, get_wsgi_application
 
 wsgi_handler = make_lambda_handler(
     get_wsgi_application(),
@@ -40,20 +40,24 @@ def management_command_handler(event, context):
         if not tokens:
             raise ValueError("manage event must contain a non-empty command line")
         call_command(*tokens)
-        return
-    command = event["command"]
-    args = event.get("args") or []
-    kwargs = event.get("kwargs") or {}
-    print(command)
-    print("args:", args)
-    print("kwargs:", kwargs)
-    if command == "pocket_resetdb":
-        _handle_resetdb()
-        return
-    if command == "createsuperuser":
-        if not os.environ.get("DJANGO_SUPERUSER_PASSWORD"):
-            raise Exception("DJANGO_SUPERUSER_PASSWORD is not set")
-    call_command(command, *args, **kwargs)
+    else:
+        command = event["command"]
+        args = event.get("args") or []
+        kwargs = event.get("kwargs") or {}
+        print(command)
+        print("args:", args)
+        print("kwargs:", kwargs)
+        if command == "pocket_resetdb":
+            _handle_resetdb()
+        else:
+            if command == "createsuperuser" and not os.environ.get(
+                "DJANGO_SUPERUSER_PASSWORD"
+            ):
+                raise Exception("DJANGO_SUPERUSER_PASSWORD is not set")
+            call_command(command, *args, **kwargs)
+    # ここに到達 = 例外なく完了。非同期 invoke でも CLI が成否を判定できるよう、
+    # 成功時だけセンチネルを印字する (失敗時は例外が伝播しここには来ない)。
+    print(MANAGE_HANDLER_SUCCESS_SENTINEL)
 
 
 def sqs_management_command_handler(event, context):

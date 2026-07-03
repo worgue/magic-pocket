@@ -13,6 +13,14 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
+# management_command_handler が「例外なく完了した」ときにだけ標準出力へ印字する
+# センチネル。非同期 (InvocationType="Event") invoke ではハンドラの戻り値/例外が
+# 呼び出し側に伝わらないため、CLI 側 (LambdaHandler.show_logs) はこの行が
+# CloudWatch ログに現れたかどうかで成否を判定する。行が無いまま REPORT に達したら
+# 失敗とみなして非ゼロ終了する (migrate 失敗が緑で通る "false green" を防ぐ)。
+MANAGE_HANDLER_SUCCESS_SENTINEL = "POCKET_MANAGE_HANDLER_SUCCESS"
+
+
 _console = Console(
     theme=Theme(
         {

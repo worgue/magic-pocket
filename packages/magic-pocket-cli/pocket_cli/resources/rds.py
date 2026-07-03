@@ -44,8 +44,9 @@ class Rds:
         self._sm_client = boto3.client("secretsmanager", region_name=context.region)
         self._ssm_client = boto3.client("ssm", region_name=context.region)
 
-    @cached_property
-    def cluster(self) -> dict | None:
+    def _describe_cluster(self) -> dict | None:
+        """クラスタを都度 API で引く (キャッシュしない)。create() の存在判定など、
+        作成前後で最新値が要る箇所はこちらを使う。"""
         try:
             res = self._rds_client.describe_db_clusters(
                 DBClusterIdentifier=self.context.cluster_identifier
@@ -60,7 +61,10 @@ class Rds:
             raise
 
     @cached_property
-    def instance(self) -> dict | None:
+    def cluster(self) -> dict | None:
+        return self._describe_cluster()
+
+    def _describe_instance(self) -> dict | None:
         try:
             res = self._rds_client.describe_db_instances(
                 DBInstanceIdentifier=self.context.instance_identifier
@@ -75,7 +79,10 @@ class Rds:
             raise
 
     @cached_property
-    def _security_group(self) -> dict | None:
+    def instance(self) -> dict | None:
+        return self._describe_instance()
+
+    def _describe_security_group(self) -> dict | None:
         res = self._ec2_client.describe_security_groups(
             Filters=[
                 {"Name": "tag:Name", "Values": [self.context.security_group_name]},
@@ -85,6 +92,10 @@ class Rds:
         if groups:
             return groups[0]
         return None
+
+    @cached_property
+    def _security_group(self) -> dict | None:
+        return self._describe_security_group()
 
     @property
     def security_group_id(self) -> str | None:
@@ -276,26 +287,34 @@ class Rds:
         # managed VPC の COMPLETED 待ちは deploy_resources で行う
         # （deploy_init 時点ではまだ VPC が作成されていない場合がある）
 
-    def create(self):
-        # VPC スタックの完了を待つ
-        if not self.context.vpc:
-            raise RuntimeError("vpc context is not configured")
-        if self.context.vpc.manage:
-            Vpc(self.context.vpc).stack.wait_status("COMPLETED")
-        subnet_ids = self._get_vpc_subnet_ids()
-        vpc_id = self._get_vpc_id()
+    def _ensure_subnet_group(self, subnet_ids: list[str]) -> None:
+        """DB Subnet Group を作成 (既存なら再利用)。"""
+        try:
+            echo.log("Creating DB Subnet Group: %s" % self.context.subnet_group_name)
+            self._rds_client.create_db_subnet_group(
+                DBSubnetGroupName=self.context.subnet_group_name,
+                DBSubnetGroupDescription="Aurora subnet group for %s"
+                % self.context.cluster_identifier,
+                SubnetIds=subnet_ids,
+                Tags=[{"Key": "Name", "Value": self.context.subnet_group_name}],
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "DBSubnetGroupAlreadyExistsFault":
+                raise
+            echo.log(
+                "DB Subnet Group %s already exists; reusing."
+                % self.context.subnet_group_name
+            )
 
-        # 1. DB Subnet Group
-        echo.log("Creating DB Subnet Group: %s" % self.context.subnet_group_name)
-        self._rds_client.create_db_subnet_group(
-            DBSubnetGroupName=self.context.subnet_group_name,
-            DBSubnetGroupDescription="Aurora subnet group for %s"
-            % self.context.cluster_identifier,
-            SubnetIds=subnet_ids,
-            Tags=[{"Key": "Name", "Value": self.context.subnet_group_name}],
-        )
-
-        # 2. Security Group
+    def _ensure_security_group(self, vpc_id: str) -> str:
+        """RDS 用 Security Group を作成 (Name タグで既存を検出したら再利用)。"""
+        existing_sg = self._describe_security_group()
+        if existing_sg:
+            echo.log(
+                "Security Group %s already exists; reusing."
+                % self.context.security_group_name
+            )
+            return existing_sg["GroupId"]
         echo.log("Creating Security Group: %s" % self.context.security_group_name)
         sg_res = self._ec2_client.create_security_group(
             GroupName=self.context.security_group_name,
@@ -311,20 +330,25 @@ class Rds:
                 }
             ],
         )
-        sg_id = sg_res["GroupId"]
+        return sg_res["GroupId"]
 
-        static = self.context.password_strategy == "static"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
-        # static の場合、ここで設定した平文パスワードを後段で secret に保存する。
-        password: str | None = None
+    def _create_or_restore_cluster(
+        self, sg_id: str, static: bool
+    ) -> tuple[bool, str | None]:
+        """クラスタを作成/復元 (既存なら skip)。
 
-        # 3. Aurora クラスター作成 (snapshot_identifier があれば復元)
+        戻り値は (このセッションで新規作成/復元したか, 生成した master password)。
+        """
+        if self._describe_cluster() is not None:
+            echo.log(
+                "Aurora cluster %s already exists; skipping creation."
+                % self.context.cluster_identifier
+            )
+            return False, None
         if self.context.snapshot_identifier:
             echo.log(
                 "Restoring Aurora cluster %s from snapshot %s"
-                % (
-                    self.context.cluster_identifier,
-                    self.context.snapshot_identifier,
-                )
+                % (self.context.cluster_identifier, self.context.snapshot_identifier)
             )
             self._rds_client.restore_db_cluster_from_snapshot(
                 DBClusterIdentifier=self.context.cluster_identifier,
@@ -340,31 +364,40 @@ class Rds:
                 },
                 Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
             )
+            return True, None
+        echo.log("Creating Aurora cluster: %s" % self.context.cluster_identifier)
+        password: str | None = None
+        password_kwargs: dict = {}
+        if static:
+            password = _generate_master_password()
+            password_kwargs["MasterUserPassword"] = password
         else:
-            echo.log("Creating Aurora cluster: %s" % self.context.cluster_identifier)
-            password_kwargs: dict = {}
-            if static:
-                password = _generate_master_password()
-                password_kwargs["MasterUserPassword"] = password
-            else:
-                password_kwargs["ManageMasterUserPassword"] = True
-            self._rds_client.create_db_cluster(
-                DBClusterIdentifier=self.context.cluster_identifier,
-                Engine="aurora-postgresql",
-                EngineMode="provisioned",
-                DatabaseName=self.context.database_name,
-                MasterUsername=self.context.master_username,
-                DBSubnetGroupName=self.context.subnet_group_name,
-                VpcSecurityGroupIds=[sg_id],
-                ServerlessV2ScalingConfiguration={
-                    "MinCapacity": self.context.min_capacity,
-                    "MaxCapacity": self.context.max_capacity,
-                },
-                Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
-                **password_kwargs,
-            )
+            password_kwargs["ManageMasterUserPassword"] = True
+        self._rds_client.create_db_cluster(
+            DBClusterIdentifier=self.context.cluster_identifier,
+            Engine="aurora-postgresql",
+            EngineMode="provisioned",
+            DatabaseName=self.context.database_name,
+            MasterUsername=self.context.master_username,
+            DBSubnetGroupName=self.context.subnet_group_name,
+            VpcSecurityGroupIds=[sg_id],
+            ServerlessV2ScalingConfiguration={
+                "MinCapacity": self.context.min_capacity,
+                "MaxCapacity": self.context.max_capacity,
+            },
+            Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
+            **password_kwargs,
+        )
+        return True, password
 
-        # 4. Aurora インスタンス作成
+    def _ensure_instance(self) -> None:
+        """Aurora インスタンスを作成 (既存なら skip)。"""
+        if self._describe_instance() is not None:
+            echo.log(
+                "Aurora instance %s already exists; skipping creation."
+                % self.context.instance_identifier
+            )
+            return
         echo.log("Creating Aurora instance: %s" % self.context.instance_identifier)
         self._rds_client.create_db_instance(
             DBInstanceIdentifier=self.context.instance_identifier,
@@ -374,14 +407,48 @@ class Rds:
             Tags=[{"Key": "Name", "Value": self.context.instance_identifier}],
         )
 
-        # 5. クラスター available を待機（最大30分）
+    def create(self):
+        # VPC スタックの完了を待つ
+        if not self.context.vpc:
+            raise RuntimeError("vpc context is not configured")
+        if self.context.vpc.manage:
+            Vpc(self.context.vpc).stack.wait_status("COMPLETED")
+        subnet_ids = self._get_vpc_subnet_ids()
+        vpc_id = self._get_vpc_id()
+
+        # 各ステップは「既に在れば再利用」で冪等にしてある。途中で失敗した
+        # deploy の再実行や、一部リソースだけ先行作成済みのケースでも
+        # AlreadyExists で落ちず、未完了のステップから続行できる。
+
+        static = self.context.password_strategy == "static"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
+
+        # 1. DB Subnet Group / 2. Security Group
+        self._ensure_subnet_group(subnet_ids)
+        sg_id = self._ensure_security_group(vpc_id)
+
+        # 3. Aurora クラスター (snapshot があれば復元)。cluster_created =
+        # このセッションで新規作成したか。password 切替 modify や static secret の
+        # 保存は「新規作成時のみ」実施する (再実行で static パスワードを作り直さない。
+        # 既存クラスタの調整は update() が担う)。
+        cluster_created, password = self._create_or_restore_cluster(sg_id, static)
+
+        # 4. Aurora インスタンス
+        self._ensure_instance()
+
+        # 5. クラスター/インスタンス available を待機（最大30分）。
+        # cluster available だけでは instance がまだ creating のことがあるため、
+        # 後続の modify_db_cluster (password 切替) の前に instance available まで
+        # 待つ。待たないと restore 直後の modify が反映されない/失敗しうる。
         echo.log("Waiting for Aurora cluster to become available...")
         self._wait_cluster_available(timeout=1800)
+        echo.log("Waiting for Aurora instance to become available...")
+        self._wait_instance_available(timeout=1800)
 
         # 6. snapshot から復元した場合、マスターパスワードを設定し直す。
         # (RestoreDBClusterFromSnapshot は snapshot の元パスワードを引き継ぐため、
         # pocket が参照できる認証情報を改めて確立する必要がある)
-        if self.context.snapshot_identifier:
+        # 新規に復元したときだけ実施 (再実行時の再切替を避ける)。
+        if cluster_created and self.context.snapshot_identifier:
             if static:
                 echo.log("Setting a pocket-managed static master password...")
                 password = _generate_master_password()
@@ -404,8 +471,8 @@ class Rds:
 
         # 7. static: 生成したパスワードを pocket 所有の secret に保存する。
         # この secret を MasterUserSecret 相当として Lambda へ渡すため、ローテーション
-        # 用 Lambda は付けない (= 自動ローテーションしない)。
-        if static:
+        # 用 Lambda は付けない (= 自動ローテーションしない)。新規作成時のみ。
+        if cluster_created and static:
             if password is None:
                 raise RuntimeError("password must be set for static credentials")
             self._store_static_credentials(password)
@@ -644,6 +711,26 @@ class Rds:
             time.sleep(interval)
         raise TimeoutError(
             "Cluster did not become available within %s seconds" % timeout
+        )
+
+    def _wait_instance_available(self, timeout: int = 1800, interval: int = 10):
+        for i in range(timeout // interval):
+            try:
+                res = self._rds_client.describe_db_instances(
+                    DBInstanceIdentifier=self.context.instance_identifier
+                )
+                status = res["DBInstances"][0]["DBInstanceStatus"]
+                if status == "available":
+                    print("")
+                    return
+            except ClientError:
+                pass
+            if i == 0:
+                print("Waiting for instance to be available", end="", flush=True)
+            print(".", end="", flush=True)
+            time.sleep(interval)
+        raise TimeoutError(
+            "Instance did not become available within %s seconds" % timeout
         )
 
     def _wait_instance_deleted(self, timeout: int = 600, interval: int = 10):
