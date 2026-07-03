@@ -1544,7 +1544,7 @@ routes = [
     ```toml
     routes = [
         { is_default = true, is_spa = true, origin_path = "/spa" },  # catch-all は必須
-        { path_pattern = "/static/*", ref = "static", origin_path = "/static" },  # static/static/
+        { path_pattern = "/static/*", ref = "static" },              # origin_path 省略 → static/
         { path_pattern = "/media/*", ref = "media" },                # origin_path 省略 → media/
     ]
     ```
@@ -1590,7 +1590,7 @@ Django の `ManifestStaticFilesStorage` と組み合わせる方式。`collectst
 [cloudfront.web]
 routes = [
     { is_default = true, is_spa = true, origin_path = "/app" },
-    { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/static" },
+    { path_pattern = "/static/*", ref = "static", versioning = "content_hash" },
 ]
 ```
 
@@ -1632,7 +1632,7 @@ routes = [
     domain = "sandbox.myproject.example.com"
     routes = [
         { type = "lambda", handler = "wsgi", is_default = true },
-        { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
+        { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash" },
     ]
     ```
 

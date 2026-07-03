@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
 from .general_settings import GeneralSettings, Vpc
-from .utils import get_toml_path
+from .utils import echo, get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -579,6 +579,20 @@ class Route(BaseSettings):
                 raise ValueError("origin_path must starts with /")
             if self.origin_path[-1] == "/":
                 raise ValueError("origin_path must not ends with /")
+            # origin_path が path_pattern の prefix と一致すると S3 key が
+            # 二重階層 (static/static, media/media 等) になる footgun。
+            # prefix を持つ path_pattern では origin_path 省略で単一 prefix に
+            # できるので警告する (省略時挙動は check_origin_path の elif 分岐)。
+            path_prefix = self.path_pattern.rstrip("/*").lstrip("/")
+            if path_prefix and self.origin_path.strip("/") == path_prefix:
+                echo.warning(
+                    f'S3 route origin_path = "{self.origin_path}" が '
+                    f'path_pattern = "{self.path_pattern}" と重複し、S3 key が '
+                    f"二重 prefix ({path_prefix}/{path_prefix}/...) になります。"
+                    " origin_path を省略すると単一 prefix "
+                    f"({path_prefix}/...) になり、S3 を直接操作する運用で"
+                    " prefix が直感的になります。"
+                )
         return self
 
     @model_validator(mode="after")

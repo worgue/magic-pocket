@@ -187,7 +187,7 @@ pocket_call_command("my_command", force_sqs=True)
 routes = [
     { type = "lambda", handler = "wsgi", is_default = true },
     # 公開ダウンロード用 route (signed なし)
-    { path_pattern = "/downloads/*", ref = "downloads", origin_path = "/downloads" },
+    { path_pattern = "/downloads/*", ref = "downloads" },  # origin_path 省略 → downloads/
 ]
 
 [awscontainer.django.storages]
