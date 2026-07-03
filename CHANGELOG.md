@@ -4,6 +4,23 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.9.0](https://github.com/worgue/magic-pocket/releases/tag/0.9.0) - 2026-07-04
+
+### Added
+- **S3 route で `origin_path` を省略できるようにしました**（`path_pattern` が prefix を持つ
+  route のみ）。S3 の key prefix は `origin_path + path_pattern` で計算されるため、
+  `path_pattern = "/media/*"` の route に `origin_path = "/media"` を付けると S3 実キーが
+  `media/media/...` の**二重階層**になっていました。`origin_path` を省略すると `path_pattern`
+  由来の**単一 prefix**（`media/...`）になり、`aws s3 sync` 等でバケットを直接操作する運用で
+  prefix が直感的になります。catch-all（`path_pattern = ""` / `"/*"`）は prefix を持たないため
+  `origin_path` は必須のままです。
+  - あわせて、S3 prefix 重複検査と OAC バケットポリシーの prefix 計算にも `origin_path` 省略
+    route を含めるよう修正しました（含めないと空 origin route のオブジェクトがポリシー範囲外に
+    なり CloudFront が 403 になる不具合を回避）。
+  - **既存デプロイへの影響**: 既存 route から `origin_path` を外すと S3 key prefix が変わり
+    既存オブジェクトが参照できなくなるため、単一 prefix へ移行する場合は既存オブジェクトの
+    移送が必要です（opt-in。既存 toml はそのままなら挙動不変）。
+
 ## [0.8.1](https://github.com/worgue/magic-pocket/releases/tag/0.8.1) - 2026-07-03
 
 ### Fixed
