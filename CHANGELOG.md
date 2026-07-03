@@ -4,6 +4,22 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.7.2](https://github.com/worgue/magic-pocket/releases/tag/0.7.2) - 2026-07-03
+
+### Fixed
+- TiDB backend の TLS CA バンドルパスを Debian/Ubuntu 命名
+  (`/etc/ssl/certs/ca-certificates.crt`) でハードコードしていたため、Amazon Linux 2023
+  ベースの Lambda（`public.ecr.aws/lambda/python`、CA は `/etc/pki/tls/certs/ca-bundle.crt`）
+  では CA ファイルを開けず、`ssl_mode = VERIFY_IDENTITY` の DB 接続が deploy 後に失敗する
+  問題を修正しました。候補パスを順に存在チェックする実装に変更し、AL2023 / RHEL 系と
+  Debian/Ubuntu の双方を吸収します。
+
+### Added
+- TiDB backend で `CONN_MAX_AGE = None` / `CONN_HEALTH_CHECKS = True` を標準デフォルト化
+  しました。Lambda は実行環境（コンテナ）を再利用するため、持続接続で warm リクエストの
+  TLS handshake を省けます。idle 切断された接続は再利用前の health check で検知して
+  張り直すため安全です。
+
 ## [0.7.1](https://github.com/worgue/magic-pocket/releases/tag/0.7.1) - 2026-07-03
 
 ### Fixed
