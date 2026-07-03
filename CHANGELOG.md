@@ -4,6 +4,16 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.7.1](https://github.com/worgue/magic-pocket/releases/tag/0.7.1) - 2026-07-03
+
+### Fixed
+- Neon の `provisioning = "deploy"` で、既存ブランチ（Neon プロジェクト作成時に自動生成
+  される default `main` を含む）があっても branch を無条件に作成しようとして
+  `409 branch already exists` で初回 deploy が失敗する問題を修正しました。既存ブランチが
+  ある場合は作成をスキップし、その上に role / database を ensure します（`create()` /
+  `create_branch()` を冪等化）。これにより default ブランチを使う stage の初回 deploy が
+  409 にならず、既存ブランチへの db/role bootstrap も deploy で完結します。
+
 ## [0.7.0](https://github.com/worgue/magic-pocket/releases/tag/0.7.0) - 2026-07-02
 
 ### Features
