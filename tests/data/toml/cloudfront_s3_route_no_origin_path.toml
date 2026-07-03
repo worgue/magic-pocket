@@ -1,0 +1,26 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[awscontainer.django.storages]
+# route = "media" は origin_path 省略 → 単一 prefix (media/)
+default = { store = "s3", distribution = "web", route = "media" }
+# route = "static" は origin_path 指定 → 従来どおり (static/static/)
+staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
+
+[cloudfront.web]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/spa" },
+    { path_pattern = "/static/*", ref = "static", origin_path = "/static" },
+    { path_pattern = "/media/*", ref = "media" },
+]

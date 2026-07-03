@@ -1,0 +1,27 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[awscontainer.django.storages]
+default = { store = "s3", distribution = "web", route = "media" }
+staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
+
+# spa / static は /app/ 配下、media は origin_path 省略で /media 配下。
+# media を OAC ポリシーの prefix 計算に含めないと共通 prefix が "/app" になり、
+# media/ が許可範囲外 (403) になる。含めれば共通 prefix は "" (バケット全体許可)。
+[cloudfront.web]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/app/spa" },
+    { path_pattern = "/static/*", ref = "static", origin_path = "/app/static" },
+    { path_pattern = "/media/*", ref = "media" },
+]

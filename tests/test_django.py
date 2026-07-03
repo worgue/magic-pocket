@@ -70,6 +70,34 @@ def test_storages(use_toml):
     }
 
 
+def test_s3_route_no_origin_path_single_prefix(use_toml):
+    """origin_path 省略の S3 route は単一 prefix (media/) になる。
+
+    origin_path を指定した route は従来どおり origin_path + path_pattern の
+    二重階層 (static/static/) のまま (opt-in で単一化できる)。
+    """
+    use_toml("tests/data/toml/cloudfront_s3_route_no_origin_path.toml")
+    storages = get_storages(stage="dev")
+    # media: origin_path 省略 → location は path_pattern 由来の "media" のみ。
+    # 従来の "media/media" のような二重階層にならない。
+    assert storages["default"]["OPTIONS"]["location"] == "media"
+    # static: origin_path="/static" 指定 → 従来どおり origin_path + path_pattern。
+    assert storages["staticfiles"]["OPTIONS"]["location"] == "static/static"
+
+
+def test_bucket_policy_prefix_includes_empty_origin_route(use_toml):
+    """OAC バケットポリシーの prefix 計算に origin_path 省略 route も含まれる。
+
+    spa=/app/spa, static=/app/static は /app 配下だが media は origin_path 省略で
+    /media 配下。media を含めれば共通 prefix は "" (バケット全体許可) になり media/ が
+    読める。含めないと共通 prefix が "/app" になり media/ が 403 になってしまう。
+    """
+    use_toml("tests/data/toml/cloudfront_s3_route_bucket_policy.toml")
+    context = Context.from_toml(stage="dev")
+    cf = context.cloudfront["web"]
+    assert cf.bucket_policy_prefix == ""
+
+
 def test_cache(use_toml):
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")

@@ -382,3 +382,36 @@ def test_route_s3_prefix_overlap_with_lambda_ignored():
         }
     )
     assert len(cf.routes) == 3
+
+
+def test_s3_route_origin_path_optional_for_non_catchall():
+    """path_pattern が prefix を持つ S3 route は origin_path 省略可 (単一 prefix)。"""
+    route = Route.model_validate({"type": "s3", "path_pattern": "/media/*"})
+    assert route.origin_path is None  # 省略のまま (下流で "" 扱い → 単一 prefix)
+
+
+def test_s3_route_catchall_still_requires_origin_path():
+    """catch-all (path_pattern が prefix を持たない) は origin_path 必須のまま。"""
+    # path_pattern = "" (デフォルトルート)
+    with pytest.raises(ValueError, match="S3 route requires `origin_path`"):
+        Route.model_validate({"type": "s3", "path_pattern": ""})
+    # path_pattern = "/*" も rstrip("/*") で空になるので catch-all 扱い
+    with pytest.raises(ValueError, match="S3 route requires `origin_path`"):
+        Route.model_validate({"type": "s3", "path_pattern": "/*"})
+
+
+def test_route_s3_prefix_overlap_includes_empty_origin():
+    """origin_path 省略の S3 route も prefix 衝突検査に含まれる。
+
+    origin_path="/media" の default route と、origin_path 省略 + path_pattern="/media/*"
+    の route は、どちらも実効 prefix が "media" で衝突するため検出される。
+    """
+    with pytest.raises(ValueError, match="同一"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/media"},
+                    {"path_pattern": "/media/*", "ref": "media"},
+                ],
+            }
+        )

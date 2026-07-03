@@ -877,9 +877,18 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @property
     def bucket_policy_prefix(self) -> str:
-        prefixes = [
-            r.origin_path for r in self.routes if not r.is_lambda and r.origin_path
-        ]
+        # CloudFront OAC に読取許可する S3 prefix。各 S3 route が CloudFront から
+        # 参照されるときの top prefix を集める。origin_path 指定時はそれが OriginPath
+        # として付くので origin_path が top prefix。origin_path 省略時は OriginPath 無し
+        # で path_pattern がそのまま key になるので path_pattern 由来が top prefix。
+        # (これを含めないと空 origin route のオブジェクトがポリシー範囲外になり 403)。
+        prefixes = []
+        for r in self.routes:
+            if r.is_lambda:
+                continue
+            prefix = r.origin_path or r.path_pattern.rstrip("/*")
+            if prefix:
+                prefixes.append(prefix)
         if self.managed_assets:
             prefixes.append("/pocket_managed")
         if not prefixes:

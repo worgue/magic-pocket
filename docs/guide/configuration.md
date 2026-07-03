@@ -1505,7 +1505,7 @@ routes = [
 |-----------|------|----------|------|
 | `type` | `"s3"` \| `"lambda"` | `"s3"` | ルートの種類 |
 | `handler` | str \| None | None | Lambda handler 名（`type = "lambda"` 時必須。WSGI / ASGI / Rust / Go 等、API Gateway 経由で公開される Lambda なら何でも） |
-| `origin_path` | str \| None | None | S3 オリジンパス（`type = "s3"` 時**必須**。`type = "lambda"` では指定不可） |
+| `origin_path` | str \| None | None | S3 オリジンパス（`type = "lambda"` では指定不可）。`path_pattern` が prefix を持つ route（例 `/media/*`）では**省略可**（省略時は S3 key が単一 prefix `media/` になる）。catch-all（`path_pattern = ""` / `"/*"`）では**必須** |
 | `path_pattern` | str | `""` | パスパターン |
 | `is_default` | bool | `false` | CloudFront の DefaultCacheBehavior として使用 |
 | `is_spa` | bool | `false` | SPA用の設定（フォールバックHTML対応） |
@@ -1531,6 +1531,32 @@ routes = [
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` を指定する場合は `build_dir` が必須です。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
+
+!!! tip "S3 key の二重 prefix を避ける（`origin_path` 省略）"
+    S3 route の S3 key prefix は `origin_path + path_pattern` で計算されます。CloudFront の
+    `origin_path` はリクエスト URI の前に付加されるため、`path_pattern = "/media/*"` の route に
+    `origin_path = "/media"` を付けると、S3 の実キーは `media/media/...` と**二重階層**になります。
+
+    `path_pattern` が prefix を持つ route（`/media/*` 等）は **`origin_path` を省略**すると、
+    S3 key が `path_pattern` 由来の**単一 prefix**（`media/...`）になります。`aws s3 sync` 等で
+    バケットを直接操作する運用で prefix が直感的になります。
+
+    ```toml
+    routes = [
+        { is_default = true, is_spa = true, origin_path = "/spa" },  # catch-all は必須
+        { path_pattern = "/static/*", ref = "static", origin_path = "/static" },  # static/static/
+        { path_pattern = "/media/*", ref = "media" },                # origin_path 省略 → media/
+    ]
+    ```
+
+    catch-all（`path_pattern = ""` / `"/*"`）は prefix を持たないため `origin_path` は必須のままです
+    （省略するとバケット直下に散らばり他 route と衝突するため）。
+
+    !!! warning "既存デプロイの移行"
+        既にデプロイ済みの route から `origin_path` を外すと S3 key prefix が変わり、
+        **既存オブジェクトが参照できなくなります**（`media/media/` → `media/`）。単一 prefix へ
+        移行する場合は、CloudFront が読む新 prefix へ既存オブジェクトを `aws s3 mv` 等で移送して
+        ください。新規 route はそのまま省略で構いません。
 
 ### Django 単体構成（CloudFront → Lambda のみ）
 

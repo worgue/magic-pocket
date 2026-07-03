@@ -560,15 +560,21 @@ class Route(BaseSettings):
         if self.type == "lambda":
             if self.origin_path is not None:
                 raise ValueError("type = 'lambda' cannot use origin_path")
-        else:
-            if self.origin_path is None:
+        elif not self.origin_path:
+            # origin_path 省略 (None / "") 時は S3 の key prefix が path_pattern だけに
+            # なる (origin_path も足すと media/media のように二重階層になる)。ただし
+            # path_pattern が prefix を持たない catch-all (path_pattern = "" や "/*") は
+            # バケット直下に散らばり他 route と衝突するため origin_path 必須のまま。
+            if not self.path_pattern.rstrip("/*").lstrip("/"):
                 raise ValueError(
-                    "S3 route requires `origin_path`. "
+                    "S3 route requires `origin_path` when path_pattern has no prefix "
+                    "(catch-all). "
                     'Set "/" for bucket root, or a prefix like "/spa" to separate '
                     "from other S3 routes (e.g. Django static at /static).\n"
                     '  Example: { type = "s3", path_pattern = "", '
                     'is_default = true, origin_path = "/spa" }'
                 )
+        else:
             if self.origin_path[0] != "/":
                 raise ValueError("origin_path must starts with /")
             if self.origin_path[-1] == "/":
@@ -730,13 +736,14 @@ class CloudFront(BaseSettings):
         一方の prefix がもう一方の prefix の親になっている場合、
         s3 sync --delete 等で意図せずファイルが削除される危険がある。
         """
-        s3_routes = [
-            r for r in self.routes if r.type == "s3" and r.origin_path is not None
-        ]
+        # origin_path 省略 (None / "") の S3 route も、path_pattern 由来の prefix で
+        # 衝突検査に含める (含めないと空 origin route が別 route と衝突しても
+        # 検出できない)。
+        s3_routes = [r for r in self.routes if r.type == "s3"]
         prefixes: list[tuple[str, str]] = []
         for route in s3_routes:
             label = route.ref or route.path_pattern or "default"
-            origin_path: str = route.origin_path  # type: ignore
+            origin_path = route.origin_path or ""
             prefix = (origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
             prefixes.append((label, prefix))
 
