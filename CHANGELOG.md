@@ -4,6 +4,26 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.8.0](https://github.com/worgue/magic-pocket/releases/tag/0.8.0) - 2026-07-03
+
+### Changed
+- **RDS の既定 DB 名の順序を `{project}_{stage}` から `{stage}_{project}` に変更しました**
+  （例 `myapp_prod` → `prod_myapp`）。クラスタ識別子や Subnet Group など他の RDS リソース名は
+  すべて `{stage}-{project}` 順（`resource_prefix` 由来）だったのに、DB 名だけ project 先頭で
+  順序が食い違っていたのを揃えるものです。
+  - **既存の RDS プロジェクトへの影響**: 既にデプロイ済みのクラスタは DB 名が旧順序
+    （`{project}_{stage}`）のままのため、本バージョンにアップグレードして接続すると
+    `FATAL: database "..." does not exist` になります。**旧 DB 名を維持したい場合は、新設の
+    `[rds] database` で旧名を明示的に固定してください**（下記 Added 参照）。新規プロジェクトは
+    そのまま新順序で作成されます。
+
+### Added
+- `[rds] database` を追加し、RDS の DB 名を明示的に上書きできるようにしました
+  （`managed = true` 時のみ）。主用途は snapshot からの復元です。
+  `RestoreDBClusterFromSnapshot` は `DatabaseName` を無視するため、復元後のクラスタには
+  snapshot 元の DB 名がそのまま残ります。元ツールが別命名（例 `{project}_{stage}`）だった場合、
+  `database` で実 DB 名を指すことで復元後の接続失敗を防げます。
+
 ## [0.7.2](https://github.com/worgue/magic-pocket/releases/tag/0.7.2) - 2026-07-03
 
 ### Fixed
