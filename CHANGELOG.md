@@ -4,6 +4,23 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.8.1](https://github.com/worgue/magic-pocket/releases/tag/0.8.1) - 2026-07-03
+
+### Fixed
+- **RDS `create()` を冪等化**しました。途中で失敗した deploy の再実行や、一部リソース
+  だけ先行作成済みのケースで、DB Subnet Group / Security Group / クラスタ / インスタンスが
+  `...AlreadyExists` で落ちていたのを、既存を検出して再利用・skip するようにしました。
+  static パスワードの再生成や password 切替 modify は「新規作成/復元したセッションのみ」
+  実施するため、再実行で認証情報が作り直されることもありません。
+- **RDS の snapshot 復元で、`modify_db_cluster`（master password 切替）の前にインスタンスが
+  `available` になるまで待つ**ようにしました。従来はクラスタの available のみ待っており、
+  インスタンスが `creating` の状態で modify が走って反映されない/失敗する可能性がありました。
+- **management command（migrate 等）の失敗が「緑」で通っていた（false green）のを修正**
+  しました。ハンドラは非同期 (`InvocationType="Event"`) で invoke され戻り値/例外が CLI に
+  伝わらないため、成功時のみ出力するセンチネルを導入し、CLI 側 (`show_logs`) が REPORT
+  までにそれを観測できなければ `ManagementCommandFailed` で**非ゼロ終了**するようにしました。
+  これにより `pocket deploy` 中の migrate 失敗が握り潰されず deploy が止まります。
+
 ## [0.8.0](https://github.com/worgue/magic-pocket/releases/tag/0.8.0) - 2026-07-03
 
 ### Changed
