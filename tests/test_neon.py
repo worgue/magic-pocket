@@ -181,3 +181,68 @@ def test_neon_parent_branch_none_when_unset():
     with patch.object(Neon, "get") as mock_get:
         assert neon.parent_branch is None
         mock_get.assert_not_called()
+
+
+def _idempotency_ctx():
+    from pocket.context import NeonContext
+
+    return NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="main",
+        name="myapp",
+        role_name="myapp",
+    )
+
+
+def test_neon_create_branch_skips_post_when_branch_exists():
+    """既存 branch (default main を含む) があるとき create_branch は POST しない
+
+    Neon project 作成時に自動生成される default main が存在すると、無条件 POST は
+    409 (branch already exists) で落ちる。branch が引ける場合はスキップして冪等にする。
+    """
+    from pocket_cli.resources.neon import Branch, Neon
+
+    neon = Neon(_idempotency_ctx())
+    with (
+        patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
+        patch.object(Neon, "post") as mock_post,
+    ):
+        neon.create_branch()
+        mock_post.assert_not_called()
+
+
+def test_neon_create_posts_branch_when_absent():
+    """branch が無ければ create_branch は POST して新規作成する (従来動作の維持)"""
+    from pocket_cli.resources.neon import Neon
+
+    neon = Neon(_idempotency_ctx())
+    # branch/endpoint cached_property を None にしておき、del での cache 無効化を通す
+    neon.__dict__["branch"] = None
+    neon.__dict__["endpoint"] = None
+    with patch.object(Neon, "post") as mock_post:
+        neon.create_branch()
+        mock_post.assert_called_once()
+        assert mock_post.call_args.args[0] == "branches"
+
+
+def test_neon_create_is_idempotent_when_branch_exists():
+    """既存 branch があるとき create() は branch を作らず role/database を ensure する
+
+    default main を使う stage の初回 deploy が 409 にならず、既存 branch 上に
+    db/role を bootstrap できることを保証する。
+    """
+    from pocket_cli.resources.neon import Branch, Neon
+
+    neon = Neon(_idempotency_ctx())
+    with (
+        patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
+        patch.object(Neon, "create_branch") as mock_create_branch,
+        patch.object(Neon, "ensure_role") as mock_ensure_role,
+        patch.object(Neon, "ensure_database") as mock_ensure_database,
+    ):
+        neon.create()
+        mock_create_branch.assert_not_called()
+        mock_ensure_role.assert_called_once()
+        mock_ensure_database.assert_called_once()

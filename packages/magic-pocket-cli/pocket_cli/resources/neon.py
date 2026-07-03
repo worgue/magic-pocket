@@ -310,16 +310,27 @@ class Neon:
         pass
 
     def create(self):
-        # parent_branch_name 指定時はその親から分岐。未指定なら parent_branch=None で
-        # 従来通り Neon default ブランチから分岐する。
-        self.create_branch(self.parent_branch)
+        # branch が既に存在するなら (Neon project 作成時に自動生成される default main
+        # を含む) その上に role/database を ensure するだけにし branch 作成はスキップ。
+        # parent_branch の解決も branch 不在時のみ行う (存在するのに親を要求して誤って
+        # ValueError にしないため)。これで default main を使う stage の初回 deploy が
+        # 409 (branch already exists) にならず、既存 branch への db/role bootstrap も
+        # deploy で完結する。
+        if self.branch is None:
+            # parent_branch_name 指定時はその親から分岐。未指定なら parent_branch=None
+            # で従来通り Neon default ブランチから分岐する。
+            self.create_branch(self.parent_branch)
         self.ensure_role()
         self.ensure_database()
 
     def create_branch(self, base_branch: Branch | None = None):
-        if self.branch is None:
-            del self.branch
-            del self.endpoint
+        # 冪等化: context.branch_name の branch が既に存在するなら POST /branches は
+        # 409 (branch already exists) になるため作成をスキップする。branch_out /
+        # store_url の呼び出し側も branch 不在を確認済だが、直接呼ばれた場合の防御。
+        if self.branch is not None:
+            return
+        del self.branch
+        del self.endpoint
         data = {
             "branch": {
                 "name": self.context.branch_name,
