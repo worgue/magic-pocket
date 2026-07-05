@@ -4,6 +4,24 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.11.0](https://github.com/worgue/magic-pocket/releases/tag/0.11.0) - 2026-07-05
+
+### Added
+- **CLI と runtime のバージョン不整合を、分かりやすいエラーで検知するようにしました**。
+  デプロイを叩く `pocket` CLI（`magic-pocket-cli`）と Lambda 内 runtime（`magic-pocket`）は
+  別パッケージで版が独立に固定されるため、CLI が新機能スキーマの `pocket.runtime.toml` を
+  書いても runtime が古いと解釈できず、Lambda の INIT フェーズで `Runtime.Unknown` として
+  不透明に失敗していました。
+  - `pocket.runtime.toml` の先頭に**生成元 CLI 版を TOML コメントとして刻み**ます。コメント
+    なので**古い runtime（tomllib）は無視**し、後方互換は壊れません。
+  - runtime は設定読込時に「生成元版 > 自身の版」を検出したら、`Runtime.Unknown` の代わりに
+    **対処（`uv add 'magic-pocket[django]>=X.Y.Z'`）を促す明快な例外**を出します（この検査を
+    含む 0.11.0 以降の runtime で有効）。
+  - deploy の management ステップが **INIT フェーズ失敗**（`Runtime.Unknown` /
+    `INIT_REPORT ... Status: error`）を検出した場合、「アプリの traceback を確認」ではなく
+    **runtime 側（バージョン不整合を含む）を疑う案内**に切り替え、切り分けの誤誘導を減らします。
+  - あわせて deploy ガイド（実行環境）に CLI/runtime の版結合と lock 更新手順を明記しました。
+
 ## [0.10.0](https://github.com/worgue/magic-pocket/releases/tag/0.10.0) - 2026-07-05
 
 ### Added

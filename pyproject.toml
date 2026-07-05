@@ -1,6 +1,6 @@
 [project]
 name = "magic-pocket"
-version = "0.10.0"
+version = "0.11.0"
 description = "Deploy system for Django projects."
 authors = [{ name = "Masaaki Yasui", email = "yasu@worgue.com" }]
 readme = "README.md"
