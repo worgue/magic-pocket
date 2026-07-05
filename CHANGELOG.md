@@ -4,6 +4,20 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.9.1](https://github.com/worgue/magic-pocket/releases/tag/0.9.1) - 2026-07-05
+
+### Fixed
+- **`redirect_from` の ACM 証明書 CFn 論理名にハイフン等の非英数字が残り deploy が
+  失敗する不具合を修正しました**。`RedirectFromContext.yaml_key` が `domain.split(".")`
+  + `capitalize()` で論理名を組み立てていたため、ハイフンを含む domain
+  （`apex→www` の定番 redirect でごく一般的）では CFn 論理 ID に非英数字が残り
+  `Template format error: Resource name ... is non alphanumeric` で UpdateStack が
+  失敗していました。`RouteContext` / `_camel` と同様に非英数字を境界にして除去する
+  ように揃えました。
+  - **既存デプロイへの影響なし**: 非英数字を含まない domain では旧実装と同一の論理名に
+    なる（挙動不変）ため、影響を受けるのはハイフン等を含む domain のみで、それらは
+    そもそも従来 deploy できていませんでした。
+
 ## [0.9.0](https://github.com/worgue/magic-pocket/releases/tag/0.9.0) - 2026-07-04
 
 ### Added
