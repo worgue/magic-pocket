@@ -15,6 +15,7 @@ import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.cli import url_helper
 from pocket_cli.mediator import Mediator
+from pydantic import ValidationError
 
 from pocket import settings
 from pocket.context import SecretsContext
@@ -162,17 +163,36 @@ def test_run_get_url_raises_when_no_stored_and_live_fails(base_settings, monkeyp
         )
 
 
-def test_read_stored_url_multiple_candidates_raises(base_settings, monkeypatch):
-    sc = _make_sc(
-        base_settings,
-        "ssm",
-        {"DB1": "neon_database_url", "DB2": "neon_database_url"},
+def test_duplicate_type_config_rejected(base_settings):
+    """同一 type の複数宣言は保存パス衝突のため config 構築時に弾かれる
+    (旧: url 解決時の曖昧エラーだったが、validator で前倒しに弾く)。"""
+    with pytest.raises(ValidationError):
+        _make_sc(
+            base_settings,
+            "ssm",
+            {"DB1": "neon_database_url", "DB2": "neon_database_url"},
+        )
+
+
+def test_run_get_url_reads_stored_by_type_without_declaration(
+    base_settings, monkeypatch, capsys
+):
+    """consumer (DATABASE_URL) が別 backend を指していても、type 基準パスから
+    その backend の stored URL を直接引ける (dual-declaration / cutover 後)。"""
+    # DATABASE_URL は tidb を指す。neon の consumer 宣言は存在しない。
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "tidb_database_url"})
+    monkeypatch.setattr(
+        "boto3.client", lambda *a, **k: _FakeAws("postgres://neon-stored")
     )
     _patch_from_toml(monkeypatch, _ctx_stub(sc))
-    with pytest.raises(click.ClickException, match="複数"):
-        url_helper.run_get_url(
-            stage="dev",
-            secret_type="neon_database_url",
-            db_label="Neon",
-            live_url=lambda ctx: "x",
-        )
+
+    live_calls = []
+    url_helper.run_get_url(
+        stage="dev",
+        secret_type="neon_database_url",
+        db_label="Neon",
+        live_url=lambda ctx: live_calls.append("live") or "postgres://live",
+    )
+    out = capsys.readouterr().out
+    assert out.strip() == "postgres://neon-stored"
+    assert live_calls == []  # type 基準で引けるので live (副作用) は呼ばない

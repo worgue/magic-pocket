@@ -1025,6 +1025,14 @@ secret の正準名へ保存）。`[<db>] provisioning = "command"` と組み合
   のまま deploy すると、pocket が期待する正準名を示して **deploy 時にエラー**で止まります
   （runtime まで遅延しません）。エラーメッセージに出る名前にその store（sm/ssm）で値を
   投入してください。値は接続 URL 文字列です。
+- 導出名は **`type` 基準**（`/{pocket_key}-user/{type}`）で、env var 名（このテーブルの
+  キー）には依存しません。env var をリネームしても保存先は動かず、同一 `type` の user
+  secret は 1 stage につき 1 個までです。この規約は 0.12.0 で導入されました。0.11 以前で
+  provision 済みの環境は、`pocket migrate secret-paths --stage <stage>`（または引数なしの
+  `pocket migrate`）で旧パス（キー基準）から新パス（type 基準）へ移設できます（冪等）。
+- **`pocket resource <db> url --stage <stage>`** は保存済み URL を stdout に出力します
+  （移行ツール等が `$(...)` で食える純テキスト）。`type` 基準で解決するため、consumer の
+  `DATABASE_URL` が別 backend を指していても「その backend の保存 URL」を引けます。
 
 #### secrets.extra_resources
 

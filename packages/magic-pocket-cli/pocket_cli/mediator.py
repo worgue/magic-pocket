@@ -144,16 +144,75 @@ class Mediator:
         store = spec.store or sc.store
         return self._stored_secret_exists(spec.name, store, sc.region)
 
+    def _require_secrets(self):
+        """awscontainer.secrets (SecretsContext) を返す。未設定なら raise。"""
+        ac = self.context.awscontainer
+        if ac is None or ac.secrets is None:
+            raise RuntimeError("awscontainer secrets is not configured")
+        return ac.secrets
+
+    def _put_stored_value(self, name: str, store: str, value: str, region: str) -> None:
+        """正準名 (name) に単一値を書き込む (ssm=SecureString / sm=create|put)。"""
+        import boto3
+        from botocore.exceptions import ClientError
+
+        if store == "ssm":
+            boto3.client("ssm", region_name=region).put_parameter(
+                Name=name, Value=value, Type="SecureString", Overwrite=True
+            )
+            return
+        client = boto3.client("secretsmanager", region_name=region)
+        try:
+            client.create_secret(
+                Name=name,
+                SecretString=value,
+                Tags=[{"Key": "Name", "Value": name}],
+            )
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceExistsException":
+                client.put_secret_value(SecretId=name, SecretString=value)
+            else:
+                raise
+
+    def _read_stored_value(self, name: str, store: str, region: str) -> str | None:
+        """正準名 (name) の値を読む。未 provision (NotFound) なら None。"""
+        import boto3
+        from botocore.exceptions import ClientError
+
+        try:
+            if store == "ssm":
+                res = boto3.client("ssm", region_name=region).get_parameter(
+                    Name=name, WithDecryption=True
+                )
+                return res["Parameter"]["Value"]
+            res = boto3.client("secretsmanager", region_name=region).get_secret_value(
+                SecretId=name
+            )
+            return res["SecretString"]
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("ParameterNotFound", "ResourceNotFoundException"):
+                return None
+            raise
+
+    def _delete_stored_value(self, name: str, store: str, region: str) -> None:
+        """正準名 (name) を削除する (migrate の旧パス cleanup 用)。"""
+        import boto3
+
+        if store == "ssm":
+            boto3.client("ssm", region_name=region).delete_parameter(Name=name)
+        else:
+            boto3.client("secretsmanager", region_name=region).delete_secret(
+                SecretId=name
+            )
+
     def store_user_secret(self, spec, value: str) -> None:
         """stored mode user secret の正準名 (spec.name) に単一値を書き込む。
 
         `pocket <db> store-url` から使う。pocket_store (managed 集約) ではなく
-        user secret の導出名 ({pocket_key}-user/{KEY}) に直接 put する。
+        user secret の type 基準導出名 ({pocket_key}-user/{type}) に直接 put する。
         読み側 _stored_secret_exists と対称。
         """
-        import boto3
-        from botocore.exceptions import ClientError
-
         if (
             self.context.awscontainer is None
             or self.context.awscontainer.secrets is None
@@ -163,23 +222,7 @@ class Mediator:
         if spec.name is None:
             raise RuntimeError("user secret name is not resolved")
         store = spec.store or sc.store
-        if store == "ssm":
-            boto3.client("ssm", region_name=sc.region).put_parameter(
-                Name=spec.name, Value=value, Type="SecureString", Overwrite=True
-            )
-            return
-        client = boto3.client("secretsmanager", region_name=sc.region)
-        try:
-            client.create_secret(
-                Name=spec.name,
-                SecretString=value,
-                Tags=[{"Key": "Name", "Value": spec.name}],
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ResourceExistsException":
-                client.put_secret_value(SecretId=spec.name, SecretString=value)
-            else:
-                raise
+        self._put_stored_value(spec.name, store, value, sc.region)
 
     def read_user_secret(self, spec) -> str | None:
         """stored mode user secret (spec.name) の値を読む。未 provision なら None。
@@ -187,9 +230,6 @@ class Mediator:
         store_user_secret / _stored_secret_exists と対称の読み取り。
         `pocket <db> url` の stored-first 解決に使う。管理 API は叩かない。
         """
-        import boto3
-        from botocore.exceptions import ClientError
-
         if (
             self.context.awscontainer is None
             or self.context.awscontainer.secrets is None
@@ -198,21 +238,79 @@ class Mediator:
             return None
         sc = self.context.awscontainer.secrets
         store = spec.store or sc.store
-        try:
-            if store == "ssm":
-                res = boto3.client("ssm", region_name=sc.region).get_parameter(
-                    Name=spec.name, WithDecryption=True
-                )
-                return res["Parameter"]["Value"]
-            res = boto3.client(
-                "secretsmanager", region_name=sc.region
-            ).get_secret_value(SecretId=spec.name)
-            return res["SecretString"]
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in ("ParameterNotFound", "ResourceNotFoundException"):
-                return None
-            raise
+        return self._read_stored_value(spec.name, store, sc.region)
+
+    def read_stored_url_by_type(self, secret_type: str) -> str | None:
+        """type 基準の正準パスを (consumer 宣言なしで) 構築して stored URL を読む。
+
+        dual-declaration で consumer (DATABASE_URL) が別 backend を指していても、
+        「その backend の stored URL」を type から直接引ける。store は secrets.store
+        既定 (per-type override は宣言でしか表現できないため)。
+        """
+        if (
+            self.context.awscontainer is None
+            or self.context.awscontainer.secrets is None
+        ):
+            return None
+        sc = self.context.awscontainer.secrets
+        name = sc.stored_url_name(secret_type)
+        return self._read_stored_value(name, sc.store, sc.region)
+
+    def migrate_user_secret_path(
+        self, key: str, spec, *, dry_run: bool = False
+    ) -> dict:
+        """0.11→0.12: user secret を旧キー基準パス→新 type 基準パスへ移設する。
+
+        旧 /{pocket_key}-user/{key} の値を新 /{pocket_key}-user/{type} へ copy し、
+        verify 後に旧を delete する。冪等 (新在+旧在なら旧のみ delete して cleanup を
+        完了)。戻り値の status: ``migrated`` / ``cleaned`` / ``already`` / ``missing``
+        / ``skip-name`` (dry_run では ``would-migrate`` / ``would-clean``)。
+        """
+        from pocket.context import user_secret_path
+
+        sc = self._require_secrets()
+        if spec.type is None:  # name モードは移設対象外
+            return {"status": "skip-name", "key": key}
+        store = spec.store or sc.store
+        old_name = user_secret_path(sc.pocket_key, key, store)
+        new_name = sc.stored_url_name(spec.type, store)
+        info = {
+            "status": None,
+            "key": key,
+            "type": spec.type,
+            "old": old_name,
+            "new": new_name,
+        }
+        if old_name == new_name:  # 既に type == key (レア) なら移設不要
+            info["status"] = "already"
+            return info
+        region = sc.region
+        new_exists = self._stored_secret_exists(new_name, store, region)
+        old_exists = self._stored_secret_exists(old_name, store, region)
+        if new_exists:
+            if old_exists:
+                if not dry_run:
+                    self._delete_stored_value(old_name, store, region)
+                info["status"] = "would-clean" if dry_run else "cleaned"
+            else:
+                info["status"] = "already"
+            return info
+        if not old_exists:
+            info["status"] = "missing"
+            return info
+        if dry_run:
+            info["status"] = "would-migrate"
+            return info
+        value = self._read_stored_value(old_name, store, region)
+        if value is None:
+            info["status"] = "missing"
+            return info
+        self._put_stored_value(new_name, store, value, region)
+        if self._read_stored_value(new_name, store, region) != value:
+            raise RuntimeError("copy verify failed: %s" % new_name)
+        self._delete_stored_value(old_name, store, region)
+        info["status"] = "migrated"
+        return info
 
     def _cleanup_orphaned_secrets(self):
         """SSM/SM にあるが managed 定義にないシークレットを削除する"""

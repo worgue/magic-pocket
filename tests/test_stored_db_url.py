@@ -57,24 +57,57 @@ def test_user_secret_neither_name_nor_type_is_error():
 
 
 def test_stored_type_name_derivation_sm(base_settings):
-    """type 指定 (store=sm) → {pocket_key}-user/{ENV_KEY} を導出する。"""
+    """type 指定 (store=sm) → {pocket_key}-user/{type} を導出する (env 名に非依存)。"""
     secrets = settings.Secrets(
         store="sm",
         user={"DATABASE_URL": settings.UserSecretSpec(type="tidb_database_url")},
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
-    # pocket_key = test-testprj-pocket
-    assert ctx.user["DATABASE_URL"].name == "test-testprj-pocket-user/DATABASE_URL"
+    # pocket_key = test-testprj-pocket / 保存 identity は type 基準 (辞書キー非依存)
+    assert ctx.user["DATABASE_URL"].name == "test-testprj-pocket-user/tidb_database_url"
 
 
 def test_stored_type_name_derivation_ssm(base_settings):
-    """type 指定 (store=ssm) → /{pocket_key}-user/{ENV_KEY} を導出する。"""
+    """type 指定 (store=ssm) → /{pocket_key}-user/{type} を導出する。"""
     secrets = settings.Secrets(
         store="ssm",
         user={"DATABASE_URL": settings.UserSecretSpec(type="neon_database_url")},
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
-    assert ctx.user["DATABASE_URL"].name == "/test-testprj-pocket-user/DATABASE_URL"
+    assert (
+        ctx.user["DATABASE_URL"].name == "/test-testprj-pocket-user/neon_database_url"
+    )
+
+
+def test_stored_type_name_independent_of_env_key(base_settings):
+    """env var 名 (辞書キー) を変えても保存パスは type 基準で不変。"""
+    a = SecretsContext.from_settings(
+        settings.Secrets(
+            store="ssm",
+            user={"DATABASE_URL": settings.UserSecretSpec(type="neon_database_url")},
+        ),
+        base_settings,
+    )
+    b = SecretsContext.from_settings(
+        settings.Secrets(
+            store="ssm",
+            user={"NEON_URL": settings.UserSecretSpec(type="neon_database_url")},
+        ),
+        base_settings,
+    )
+    assert a.user["DATABASE_URL"].name == b.user["NEON_URL"].name
+
+
+def test_user_secret_duplicate_type_is_error():
+    """同一 type の user secret 複数宣言は保存パス衝突のため禁止。"""
+    with pytest.raises(ValidationError):
+        settings.Secrets(
+            store="ssm",
+            user={
+                "DB1": settings.UserSecretSpec(type="neon_database_url"),
+                "DB2": settings.UserSecretSpec(type="neon_database_url"),
+            },
+        )
 
 
 def test_stored_type_name_does_not_collide_with_managed_path(base_settings):
@@ -105,7 +138,7 @@ def test_stored_type_iam_sm(base_settings):
     ctx = SecretsContext.from_settings(secrets, base_settings)
     assert (
         "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:"
-        "test-testprj-pocket-user/DATABASE_URL" in ctx.allowed_sm_resources
+        "test-testprj-pocket-user/tidb_database_url" in ctx.allowed_sm_resources
     )
 
 
@@ -117,7 +150,7 @@ def test_stored_type_iam_ssm(base_settings):
     ctx = SecretsContext.from_settings(secrets, base_settings)
     assert (
         "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter"
-        "/test-testprj-pocket-user/DATABASE_URL" in ctx.allowed_ssm_resources
+        "/test-testprj-pocket-user/neon_database_url" in ctx.allowed_ssm_resources
     )
 
 
@@ -186,7 +219,7 @@ def test_verify_stored_secret_missing_ssm_raises(base_settings, patch_boto3):
     with pytest.raises(RuntimeError) as ei:
         mediator.verify_user_stored_secrets()
     # 正準名がエラーに含まれること (利用者が provision 先を特定できる)
-    assert "/test-testprj-pocket-user/DATABASE_URL" in str(ei.value)
+    assert "/test-testprj-pocket-user/neon_database_url" in str(ei.value)
 
 
 def test_verify_stored_secret_missing_sm_raises(base_settings, patch_boto3):
@@ -195,7 +228,7 @@ def test_verify_stored_secret_missing_sm_raises(base_settings, patch_boto3):
     mediator = Mediator(_ctx_stub(sc))
     with pytest.raises(RuntimeError) as ei:
         mediator.verify_user_stored_secrets()
-    assert "test-testprj-pocket-user/DATABASE_URL" in str(ei.value)
+    assert "test-testprj-pocket-user/tidb_database_url" in str(ei.value)
 
 
 def test_verify_ignores_non_typed_user_secret(base_settings, patch_boto3):

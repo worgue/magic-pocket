@@ -28,6 +28,22 @@ from .utils import echo, get_hosted_zone_id_from_domain
 ORIGIN_VERIFY_SECRET_KEY = "POCKET_ORIGIN_VERIFY_SECRET"  # noqa: S105 secret 値ではなくキー/env 名
 
 
+def user_secret_path(pocket_key: str, segment: str, store: str) -> str:
+    """stored user secret の正準名を導出する。
+
+    provisioning identity を安定させるため、``segment`` には backend の type
+    (``neon_database_url`` 等) を渡す。consumer の env var 名 (secrets.user の
+    辞書キー) には依存させない — キーのリネームや backend 付け替えで保存先が
+    動かないようにするため。managed の pocket_store パス ``/{pocket_key}/...``
+    と衝突させないため ``{pocket_key}-user`` prefix 配下に置く
+    (cleanup は該当パス配下のみ走査)。
+    """
+    prefix = f"{pocket_key}-user"
+    if store == "ssm":
+        return f"/{prefix}/{segment}"
+    return f"{prefix}/{segment}"
+
+
 class ApiGatewayContext(BaseModel):
     domain: str | None = None
     create_records: bool = True
@@ -157,6 +173,16 @@ class SecretsContext(BaseModel):
             return SsmStore(self)
         return SecretsManager(self)
 
+    def stored_url_name(self, secret_type: str, store: str | None = None) -> str:
+        """type 基準の stored URL 正準名を導出する (宣言が無くても引ける)。
+
+        consumer の user secret 宣言に依存せず「その backend の stored URL」の
+        保存先を特定するために使う (dual-declaration での source 解決 / migrate)。
+        store 未指定時は secrets.store 既定 (per-type の store override は宣言で
+        しか表現できないため)。
+        """
+        return user_secret_path(self.pocket_key, secret_type, store or self.store)
+
     def _ensure_sm_arn(self, resource: str):
         if resource.startswith("arn:"):
             return resource
@@ -240,14 +266,13 @@ class SecretsContext(BaseModel):
         def _resolve_user_name(key: str, spec: UserSecretSpec) -> str:
             if spec.name is not None:
                 return spec.name.format(**format_vars)
-            # type 指定 (stored mode): pocket が正準名を導出する (利用者は書かない)。
-            # managed の pocket_store パス /{pocket_key}/... と衝突させないため
-            # {pocket_key}-user を prefix にする (cleanup は該当パス配下のみ走査)。
+            # type 指定 (stored mode): pocket が type 基準で正準名を導出する
+            # (利用者は書かない)。保存 identity を type に紐付けることで、env var
+            # 名 (辞書キー) のリネームや backend 付け替えで保存先が動かない。
+            if spec.type is None:  # name も type も無い spec は validator が弾く
+                raise RuntimeError("user secret spec has neither name nor type")
             effective_store = spec.store or secrets.store
-            prefix = f"{pocket_key}-user"
-            if effective_store == "ssm":
-                return f"/{prefix}/{key}"
-            return f"{prefix}/{key}"
+            return user_secret_path(pocket_key, spec.type, effective_store)
 
         user_secrets = {
             key: spec.model_copy(update={"name": _resolve_user_name(key, spec)})

@@ -63,19 +63,24 @@ def run_get_url(
 
 
 def _read_stored_url(context: Context, secret_type: str) -> str | None:
-    """``type=<secret_type>`` の stored user secret を 1 件だけ特定して値を読む。
+    """``type=<secret_type>`` の stored URL を読む。未 provision なら None。
 
-    宣言が 0 件なら None (→ live fallback)、複数なら曖昧として ClickException。
+    consumer の user secret 宣言が在れば ``spec.store`` override を尊重して読む。
+    宣言が無くても (dual-declaration で DATABASE_URL が別 backend を指す等)、
+    type 基準の正準パスを直接構築して読む — つまり「その backend の stored URL」を
+    consumer 宣言の有無と無関係に引ける。両方無ければ None (→ live fallback)。
     """
     sc = context.awscontainer.secrets if context.awscontainer else None
     if sc is None:
         return None
+    mediator = Mediator(context)
     specs = [spec for spec in sc.user.values() if spec.type == secret_type]
-    if not specs:
-        return None
     if len(specs) > 1:
+        # 通常は settings の check_user_type_unique で弾かれる (防御的)。
         raise click.ClickException(
             "type=%s の stored user secret が複数宣言されているため曖昧です。"
             % secret_type
         )
-    return Mediator(context).read_user_secret(specs[0])
+    if specs:
+        return mediator.read_user_secret(specs[0])
+    return mediator.read_stored_url_by_type(secret_type)

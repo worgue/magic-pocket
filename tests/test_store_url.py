@@ -16,6 +16,7 @@ import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.cli import store_url_helper
 from pocket_cli.mediator import Mediator
+from pydantic import ValidationError
 
 from pocket import settings
 from pocket.context import SecretsContext
@@ -84,7 +85,7 @@ def test_store_user_secret_ssm_put_parameter(base_settings, monkeypatch):
     mediator = Mediator(_ctx_stub(sc))
     mediator.store_user_secret(sc.user["DATABASE_URL"], "postgres://u:p@h:5432/db")
     assert fake.puts == [
-        ("/test-testprj-pocket-user/DATABASE_URL", "postgres://u:p@h:5432/db")
+        ("/test-testprj-pocket-user/neon_database_url", "postgres://u:p@h:5432/db")
     ]
 
 
@@ -94,7 +95,7 @@ def test_store_user_secret_sm_create(base_settings, monkeypatch):
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
     mediator = Mediator(_ctx_stub(sc))
     mediator.store_user_secret(sc.user["DATABASE_URL"], "url")
-    assert fake.create_calls == ["test-testprj-pocket-user/DATABASE_URL"]
+    assert fake.create_calls == ["test-testprj-pocket-user/neon_database_url"]
     assert fake.put_value_calls == []
 
 
@@ -106,7 +107,7 @@ def test_store_user_secret_sm_existing_uses_put_secret_value(
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
     mediator = Mediator(_ctx_stub(sc))
     mediator.store_user_secret(sc.user["DATABASE_URL"], "url")
-    assert fake.put_value_calls == ["test-testprj-pocket-user/DATABASE_URL"]
+    assert fake.put_value_calls == ["test-testprj-pocket-user/neon_database_url"]
     assert fake.create_calls == []
 
 
@@ -139,7 +140,7 @@ def test_run_store_url_single_candidate_puts(base_settings, monkeypatch):
     )
     assert called.get("yes")
     assert fake.puts == [
-        ("/test-testprj-pocket-user/DATABASE_URL", "postgres://u:p@h:5432/db")
+        ("/test-testprj-pocket-user/neon_database_url", "postgres://u:p@h:5432/db")
     ]
 
 
@@ -181,7 +182,7 @@ def test_run_store_url_force_overwrites_existing(base_settings, monkeypatch):
         force=True,
         ensure_and_compute_url=lambda context: "url2",
     )
-    assert fake.puts == [("/test-testprj-pocket-user/DATABASE_URL", "url2")]
+    assert fake.puts == [("/test-testprj-pocket-user/neon_database_url", "url2")]
 
 
 def test_run_store_url_no_candidate_raises(base_settings, monkeypatch):
@@ -198,30 +199,24 @@ def test_run_store_url_no_candidate_raises(base_settings, monkeypatch):
         )
 
 
-def test_run_store_url_multiple_candidates_requires_key(base_settings, monkeypatch):
-    sc = _make_sc(
-        base_settings,
-        "ssm",
-        {"DB1": "neon_database_url", "DB2": "neon_database_url"},
-    )
-    _patch_from_toml(monkeypatch, _ctx_stub(sc))
-    with pytest.raises(click.ClickException, match="複数"):
-        store_url_helper.run_store_url(
-            stage="dev",
-            secret_type="neon_database_url",
-            db_label="Neon",
-            key=None,
-            force=False,
-            ensure_and_compute_url=lambda context: "url",
+def test_run_store_url_duplicate_type_config_is_rejected(base_settings):
+    """同一 type の複数宣言は保存パス衝突のため config 構築時に弾かれる。
+
+    (旧: store-url の --key で振り分けていたが、type 基準パスへの移行で廃止。)
+    """
+    with pytest.raises(ValidationError):
+        settings.Secrets(
+            store="ssm",
+            user={
+                "DB1": settings.UserSecretSpec(type="neon_database_url"),
+                "DB2": settings.UserSecretSpec(type="neon_database_url"),
+            },
         )
 
 
-def test_run_store_url_key_selects_target(base_settings, monkeypatch):
-    sc = _make_sc(
-        base_settings,
-        "ssm",
-        {"DB1": "neon_database_url", "DB2": "neon_database_url"},
-    )
+def test_run_store_url_key_selects_declared_target(base_settings, monkeypatch):
+    """--key で宣言済みキーを明示指定できる (type 一致・単一宣言)。"""
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     fake = _FakeAws(exists=False)
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
     _patch_from_toml(monkeypatch, _ctx_stub(sc))
@@ -229,11 +224,12 @@ def test_run_store_url_key_selects_target(base_settings, monkeypatch):
         stage="dev",
         secret_type="neon_database_url",
         db_label="Neon",
-        key="DB2",
+        key="DATABASE_URL",
         force=False,
         ensure_and_compute_url=lambda context: "url",
     )
-    assert fake.puts == [("/test-testprj-pocket-user/DB2", "url")]
+    # 保存先は type 基準 (キー名に依存しない)
+    assert fake.puts == [("/test-testprj-pocket-user/neon_database_url", "url")]
 
 
 def test_run_store_url_key_type_mismatch_raises(base_settings, monkeypatch):
@@ -264,7 +260,7 @@ def test_run_store_url_upstash_single_candidate_puts(base_settings, monkeypatch)
         ensure_and_compute_url=lambda context: "rediss://default:pw@h:6379",
     )
     assert fake.puts == [
-        ("/test-testprj-pocket-user/REDIS_URL", "rediss://default:pw@h:6379")
+        ("/test-testprj-pocket-user/upstash_redis_url", "rediss://default:pw@h:6379")
     ]
 
 

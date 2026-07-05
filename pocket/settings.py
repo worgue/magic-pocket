@@ -202,6 +202,24 @@ class Secrets(BaseModel):
                 )
         return self
 
+    @model_validator(mode="after")
+    def check_user_type_unique(self):
+        # stored mode の保存パスは type 基準 (/{pocket_key}-user/{type}) で導出する
+        # ため、同一 type の user secret が複数あると保存先が衝突する。1 stage に
+        # つき type は 1 個までに制限する。
+        seen: dict[str, str] = {}
+        for key, spec in self.user.items():
+            if spec.type is None:
+                continue
+            if spec.type in seen:
+                raise ValueError(
+                    "user secret '%s' と '%s' が同一 type=%s です。stored の保存パスは "
+                    "type 基準で導出されるため、1 stage につき同一 type は 1 個までに "
+                    "してください。" % (key, seen[spec.type], spec.type)
+                )
+            seen[spec.type] = key
+        return self
+
 
 class AwsContainerIam(BaseModel):
     """Lambda execution role に追加注入する IAM 設定。

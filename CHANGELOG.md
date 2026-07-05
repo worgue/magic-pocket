@@ -7,6 +7,25 @@
 ## [Unreleased]
 
 ### Changed
+- **stored user secret の保存先を `type` 基準の正準名に変更しました（破壊的変更）**。
+  従来 `type` 指定の user secret（stored mode）は、保存先の SSM/SM 名を
+  **consumer の env var 名（`[awscontainer.secrets.user]` の辞書キー）**から導出して
+  いました（`/{pocket_key}-user/{ENV_KEY}`）。このため env var のリネームや backend
+  の付け替えで保存先が動き、backend 移行（`neon`→`tidb` 等）で「保存済み URL を引け
+  ない」問題の温床になっていました。これを **`type` 基準**（`/{pocket_key}-user/{type}`、
+  例 `/{pocket_key}-user/neon_database_url`）に変更しました:
+  - 保存 identity が env var 名から独立し、リネームや付け替えで動きません。
+  - 同一 `type` の user secret は **1 stage につき 1 個まで**に制限されます（保存先が
+    衝突するため。設定ロード時のバリデーションで検出）。
+  - `pocket resource <db> url` は、consumer の `DATABASE_URL` が別 backend を指して
+    いても **`type` 基準でその backend の保存 URL を解決**できるようになりました
+    （宣言が無くても正準パスから直接読む）。
+  - **移行**: 0.11 以前で provision 済みの環境は、アップグレード後に
+    `pocket migrate secret-paths --stage <stage>`（または引数なしの `pocket migrate`）
+    を実行して旧パス→新パスへ値を移設してください（copy→検証→旧削除、冪等）。
+    ※ backend の cutover を既に済ませて `type` 宣言が消えている旧値は自動移設の対象外
+    です（旧キーを導出できないため）。その場合は `store-url` の再実行、または旧パスの
+    値を手動で新パスへ copy してください。
 - **`redirect_from` を CloudFront Function 方式に作り替えました**。従来は
   リダイレクト元ドメインごとに「専用 ACM 証明書 + 専用 S3 website バケット
   （`RedirectAllRequestsTo`）+ 専用ディストリビューション」を作っていましたが、
@@ -25,6 +44,18 @@
     削除**します（別アカウント所有等で消せない場合は警告のみ）。
   - `pocket.toml` の設定（`redirect_from = [{ domain = ... }]`）は**従来どおり**で、
     移行のための記述変更は不要です。
+
+### Added
+- **`pocket migrate` をサブコマンド構成に整理しました**。
+  - `pocket migrate secret-paths`: stored user secret を旧キー基準パスから新 `type`
+    基準パスへ移設します（0.11→0.12。copy→検証→旧削除、冪等。`--dry-run` で確認可）。
+  - `pocket migrate template-hash`: 従来の `pocket migrate`（スタックのテンプレート
+    ハッシュタグ一括付与）です。
+  - 引数なしの `pocket migrate` は上記を **secret-paths → template-hash の順に冪等実行**
+    します（template-hash がテンプレ差分で中断しても secret-paths は完了済みで、
+    `pocket deploy` 後の再実行が安全）。
+  - **破壊的変更**: 従来の bare `pocket migrate`（テンプレートハッシュ付与）は
+    `pocket migrate template-hash` へ移動しました。
 
 ## [0.11.0](https://github.com/worgue/magic-pocket/releases/tag/0.11.0) - 2026-07-05
 

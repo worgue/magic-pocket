@@ -1,7 +1,13 @@
-"""pocket migrate: スタックのテンプレートハッシュタグを一括付与する。
+"""pocket migrate: バージョン間のデータ/スタック移行をまとめて実行する。
 
-旧バージョンでデプロイされたスタックに pocket:template_hash タグを付与し、
-yaml_synced の判定をハッシュベースに移行する。
+サブコマンド:
+
+- ``template-hash``: 旧バージョンでデプロイされたスタックに pocket:template_hash
+  タグを付与し、yaml_synced の判定をハッシュベースに移行する。
+- ``secret-paths``: stored user secret を旧キー基準パス ({pocket_key}-user/{key})
+  から新 type 基準パス ({pocket_key}-user/{type}) へ移設する (0.11→0.12)。
+
+サブコマンド無指定 (``pocket migrate``) なら全 migration を冪等に順次実行する。
 """
 
 from __future__ import annotations
@@ -14,6 +20,8 @@ import yaml
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
+
+# --- template-hash migration -------------------------------------------------
 
 
 def _get_existing_stacks(context: Context) -> list:
@@ -100,21 +108,17 @@ def _check_real_diffs(stacks: list) -> list[str]:
     return needs_deploy
 
 
-@click.command()
-@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-@click.option(
-    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
-)
-def migrate(stage: str, yes: bool):
-    """スタックのテンプレートハッシュタグを一括付与する"""
-    from pocket_cli.cli.aws_auth import check_aws_credentials
+def _run_template_hash(stage: str, *, yes: bool) -> None:
+    """スタックのテンプレートハッシュタグを一括付与する (冪等)。
 
-    check_aws_credentials()
+    未 deploy のテンプレ差分がある場合は SystemExit(1) で中断する
+    (前提条件ガード: 先に deploy が必要)。
+    """
     context = Context.from_toml(stage=stage)
     stacks = _get_existing_stacks(context)
 
     if not stacks:
-        echo.warning("対象のスタックがありません。")
+        echo.warning("template-hash: 対象のスタックがありません。")
         return
 
     # 1. タグがないスタックに uploaded template のハッシュで仮タグを付与
@@ -135,7 +139,7 @@ def migrate(stage: str, yes: bool):
     # 3. ローカルテンプレートのハッシュでタグを更新
     targets = _find_stacks_needing_update(stacks)
     if not targets:
-        echo.success("全スタックのタグが最新です。")
+        echo.success("template-hash: 全スタックのタグが最新です。")
         return
 
     echo.info("以下のスタックのタグをローカルハッシュに更新します:")
@@ -145,4 +149,134 @@ def migrate(stage: str, yes: bool):
         click.confirm("実行しますか？", abort=True)
 
     _apply_local_tags(targets)
-    echo.success("全スタックのマイグレーションが完了しました。")
+    echo.success("template-hash: 全スタックの移行が完了しました。")
+
+
+# --- secret-paths migration (0.11 -> 0.12) -----------------------------------
+
+_SECRET_PATH_LABELS = {
+    "would-migrate": "移設予定 (copy→旧削除)",
+    "would-clean": "旧パス削除予定 (移行済)",
+    "migrated": "移設完了",
+    "cleaned": "旧パス削除 (移行済)",
+    "already": "移行不要",
+    "missing": "未 provision (store-url で作成してください)",
+    "skip-name": "name モード (対象外)",
+}
+
+
+def _report_secret_path(info: dict) -> None:
+    status = info["status"]
+    label = _SECRET_PATH_LABELS.get(status, status)
+    if status in ("migrated", "cleaned"):
+        echo.success(
+            "%s: %s (%s → %s)" % (info["key"], label, info["old"], info["new"])
+        )
+    elif status in ("would-migrate", "would-clean"):
+        echo.info("%s: %s (%s → %s)" % (info["key"], label, info["old"], info["new"]))
+    elif status == "missing":
+        echo.warning("%s: %s (%s)" % (info["key"], label, info.get("new")))
+    else:
+        echo.info("%s: %s" % (info["key"], label))
+
+
+def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
+    """stored user secret を旧キー基準→新 type 基準パスへ移設する (冪等)。"""
+    from pocket_cli.mediator import Mediator
+
+    context = Context.from_toml(stage=stage)
+    sc = context.awscontainer.secrets if context.awscontainer else None
+    type_specs = (
+        [(k, s) for k, s in sc.user.items() if s.type is not None] if sc else []
+    )
+    if not type_specs:
+        echo.info("secret-paths: type-mode の user secret がありません。")
+        return
+
+    mediator = Mediator(context)
+
+    # まず dry-run で計画を出す (AWS への書込みなし)
+    plans = [
+        mediator.migrate_user_secret_path(k, s, dry_run=True) for k, s in type_specs
+    ]
+    for info in plans:
+        _report_secret_path(info)
+    to_act = [p for p in plans if p["status"] in ("would-migrate", "would-clean")]
+    if not to_act:
+        echo.success(
+            "secret-paths: 移設対象はありません (全て移行済み or 未 provision)。"
+        )
+        return
+    if dry_run:
+        echo.info("secret-paths: --dry-run のため実行はしません。")
+        return
+    if not yes:
+        click.confirm("上記の移設を実行しますか？", abort=True)
+
+    for key, spec in type_specs:
+        info = mediator.migrate_user_secret_path(key, spec, dry_run=False)
+        _report_secret_path(info)
+    echo.success("secret-paths: 移設が完了しました。")
+
+
+# --- CLI 配線 -----------------------------------------------------------------
+
+
+@click.group(invoke_without_command=True)
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", default=None)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+@click.pass_context
+def migrate(ctx: click.Context, stage: str | None, yes: bool):
+    """バージョン間の移行をまとめて実行する。
+
+    サブコマンド無指定なら全 migration (secret-paths → template-hash) を
+    冪等に順次実行する。
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    # bare 実行: 全 migration を冪等実行
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
+    resolved_stage: str = stage or click.prompt("Stage")
+    # secret-paths を先に (高速・ガードで中断しない)、template-hash を後に。
+    _run_secret_paths(resolved_stage, yes=yes, dry_run=False)
+    try:
+        _run_template_hash(resolved_stage, yes=yes)
+    except SystemExit:
+        echo.warning(
+            "template-hash はテンプレ差分のため中断しました "
+            "(secret-paths は完了済み)。pocket deploy --stage=%s の後に "
+            "pocket migrate を再実行してください。" % resolved_stage
+        )
+
+
+@migrate.command(name="template-hash")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def template_hash(stage: str, yes: bool):
+    """スタックのテンプレートハッシュタグを一括付与する。"""
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
+    _run_template_hash(stage, yes=yes)
+
+
+@migrate.command(name="secret-paths")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+@click.option(
+    "--dry-run", is_flag=True, default=False, help="移設内容を表示のみ (書込みなし)"
+)
+def secret_paths(stage: str, yes: bool, dry_run: bool):
+    """stored user secret を旧キー基準→新 type 基準パスへ移設する (0.11→0.12)。"""
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
+    _run_secret_paths(stage, yes=yes, dry_run=dry_run)
