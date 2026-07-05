@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.12.0](https://github.com/worgue/magic-pocket/releases/tag/0.12.0) - 2026-07-05
+
 ### Changed
 - **stored user secret の保存先を `type` 基準の正準名に変更しました（破壊的変更）**。
   従来 `type` 指定の user secret（stored mode）は、保存先の SSM/SM 名を
