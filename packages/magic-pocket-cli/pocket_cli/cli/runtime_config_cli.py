@@ -6,7 +6,7 @@ from pathlib import Path
 
 import click
 
-from pocket.utils import get_toml_path
+from pocket.utils import GENERATOR_VERSION_MARKER, get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -155,12 +155,28 @@ def _format_inline_value(value) -> str:
     return repr(value)
 
 
+def _generator_version() -> str | None:
+    """生成元 (magic-pocket-cli) のバージョン。取得できなければ None (刻印しない)。"""
+    try:
+        from importlib.metadata import version
+
+        return version("magic-pocket-cli")
+    except Exception:
+        return None
+
+
 def generate_runtime_config(output_path: Path) -> None:
     """pocket.runtime.toml を生成する（プログラムから呼び出し用）"""
     toml_path = get_toml_path()
     data = tomllib.loads(toml_path.read_text())
     cleaned = _clean_data(data)
     toml_str = _to_toml(cleaned).strip() + "\n"
+    # 生成元 (CLI) バージョンを先頭コメントに刻む。旧 runtime (tomllib) は無視するので
+    # 後方互換を壊さず、新 runtime だけが読んで版突合 (Settings.check_generator_version)
+    # に使う。CLI 版 > runtime 版のとき legible error にリフレーミングされる (層2)。
+    version = _generator_version()
+    if version:
+        toml_str = "%s %s\n%s" % (GENERATOR_VERSION_MARKER, version, toml_str)
     output_path.write_text(toml_str)
 
 

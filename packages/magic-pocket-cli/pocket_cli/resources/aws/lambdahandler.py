@@ -22,6 +22,21 @@ class ManagementCommandFailed(Exception):
     Lambda 実行が終わった) ことを示す。CLI を非ゼロ終了させ false green を防ぐ。"""
 
 
+def _looks_like_init_failure(log_text: str) -> bool:
+    """CloudWatch ログが Lambda の INIT フェーズ失敗を示すか判定する。
+
+    INIT で落ちると管理ハンドラのコードは一切走らないため、「アプリの traceback を
+    確認して」という誘導は誤り (存在しない traceback を指す)。version 不整合など
+    runtime 側の問題を疑うべきケースを切り分けるためのヒューリスティック。
+    """
+    if "Runtime.Unknown" in log_text:
+        return True
+    for line in log_text.splitlines():
+        if "INIT_REPORT" in line and "Status: error" in line:
+            return True
+    return False
+
+
 class Configuration(BaseModel):
     hash: str | None = Field(alias="CodeSha256", default=None)
     last_update_status: str | None = Field(alias="LastUpdateStatus", default=None)
@@ -160,6 +175,18 @@ class LambdaHandler:
                 time.sleep(0.05)
                 if message.startswith(report_prefix):
                     if not success_seen:
+                        if _looks_like_init_failure("\n".join(printed)):
+                            raise ManagementCommandFailed(
+                                "Lambda が INIT フェーズで失敗しました "
+                                "(Runtime.Unknown / INIT_REPORT ... Status: error)。"
+                                "これはアプリの例外ではなく runtime 側の問題の可能性が"
+                                "高いです (magic-pocket runtime の版不整合を含む)。"
+                                "pocket.toml で新しめの機能を使っている場合、"
+                                "magic-pocket runtime が古い可能性があります: "
+                                "uv add 'magic-pocket[django]>=<CLI と同じ版>'。"
+                                "アプリの traceback ではなく上の INIT_REPORT / "
+                                "Runtime.Unknown 行を確認してください。"
+                            )
                         raise ManagementCommandFailed(
                             "management command handler did not complete successfully "
                             "(no success marker before REPORT). "

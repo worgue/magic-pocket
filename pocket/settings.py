@@ -942,7 +942,9 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_toml(cls, *, stage: str):
-        data = tomllib.loads(get_toml_path().read_text())
+        text = get_toml_path().read_text()
+        cls.check_generator_version(text)
+        data = tomllib.loads(text)
         cls.check_keys(data)
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
@@ -970,6 +972,32 @@ class Settings(BaseSettings):
                     )
                 data[section]["vpc"] = vpc_data
             # use_vpc = False: VPC を使わない
+
+    @classmethod
+    def check_generator_version(cls, text: str):
+        """runtime.toml の生成元 (CLI) 版と自身の runtime 版を突合する。
+
+        pocket.runtime.toml は CLI (magic-pocket-cli) が生成し image に焼き込むが、
+        Lambda 内 runtime (magic-pocket) はプロジェクトの uv.lock 依存で別に固定される。
+        CLI が新機能スキーマを書き runtime が古いと pydantic が読めず INIT で opaque に
+        落ちる (`Runtime.Unknown`)。生成元版 > 自身の版なら原因と対処が分かる例外に
+        リフレーミングして早期に止める。マーカーは TOML コメントなので旧 runtime は無視
+        (後方互換)。この検査を含む版以降の runtime でのみ効く。
+        """
+        from pocket import __version__ as runtime_version
+        from pocket.utils import parse_generator_version, version_tuple
+
+        generator = parse_generator_version(text)
+        if not generator:
+            return
+        if version_tuple(generator) > version_tuple(runtime_version):
+            raise ValueError(
+                "pocket.runtime.toml は magic-pocket-cli %s が生成しましたが、この "
+                "runtime (magic-pocket) は %s です。新しい pocket.toml 機能を古い "
+                "runtime が解釈できず Lambda init が失敗します。上げてください: "
+                "uv add 'magic-pocket[django]>=%s'"
+                % (generator, runtime_version, generator)
+            )
 
     @classmethod
     def check_keys(cls, data: dict):

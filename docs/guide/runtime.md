@@ -4,6 +4,19 @@ Lambda上のアプリケーションは、`pocket.toml`（または `pocket.runt
 
 `pocket.runtime.toml` が存在する場合はそちらが優先されます。`pocket runtime-config` コマンドでビルド専用設定を除外したランタイム用 TOML を生成できます（[設定ファイル - pocket runtime-config](configuration.md#pocket-runtime-config) を参照）。
 
+!!! warning "CLI と runtime のバージョンは揃える（新機能を使ったら lock も上げる）"
+    デプロイを叩く `pocket` CLI（`magic-pocket-cli`）と、Lambda コンテナ内で動く runtime（`magic-pocket`）は**別パッケージで、同一バージョン系列で lockstep リリース**されます。CLI は host 側（`uvx` 等）で最新を使いがちですが、runtime は**プロジェクトの `uv.lock` に固定**され、独立して古いままになり得ます。
+
+    CLI が新しいと `pocket.runtime.toml` に新スキーマ（新機能）を書き込みますが、**古い runtime はそれを解釈できず Lambda の INIT フェーズで失敗**します。この場合 CloudWatch には原因の分かりにくい `Runtime.Unknown` しか出ません。
+
+    **pocket.toml で新しめの機能を使ったら、プロジェクトの `magic-pocket` も同じ版以上に上げてください**：
+
+    ```bash
+    uv add 'magic-pocket[django]>=X.Y.Z'   # CLI と同じ版に揃える
+    ```
+
+    magic-pocket 0.11.0 以降の runtime は、生成元 CLI 版が自身より新しいことを検知したら `Runtime.Unknown` の代わりに上記の対処を促す明快なエラーを出します（古い runtime には遡って効かないため、この結合関係の理解が最優先の予防策です）。
+
 ---
 
 ## POCKET_STAGE

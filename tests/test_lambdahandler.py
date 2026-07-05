@@ -70,5 +70,29 @@ def test_show_logs_raises_without_success_sentinel(monkeypatch):
         "REPORT RequestId: %s\tDuration: 1 ms" % request_id,
     ]
     handler, invoke_response, _ = _make_handler(monkeypatch, messages)
-    with pytest.raises(ManagementCommandFailed):
+    with pytest.raises(ManagementCommandFailed) as exc:
         handler.show_logs(invoke_response, timeout_seconds=5)
+    # アプリ例外由来なので従来どおり traceback 確認へ誘導する
+    assert "traceback" in str(exc.value)
+
+
+def test_show_logs_reframes_init_phase_failure(monkeypatch):
+    """INIT フェーズ失敗 (Runtime.Unknown) は版不整合を疑うメッセージに切り替える。
+
+    INIT で落ちると管理ハンドラは走らないため、「アプリの traceback を確認」という
+    従来メッセージは誤誘導になる。runtime 側 (版不整合含む) を疑う案内に出し分ける。
+    """
+    _, _, request_id = _make_handler(monkeypatch, [])
+    messages = [
+        "INIT_REPORT Init Duration: 1836.44 ms\tPhase: invoke\t"
+        "Status: error\tError Type: Runtime.Unknown",
+        '"START RequestId: %s"' % request_id,
+        "END RequestId: %s" % request_id,
+        "REPORT RequestId: %s\tDuration: 1 ms" % request_id,
+    ]
+    handler, invoke_response, _ = _make_handler(monkeypatch, messages)
+    with pytest.raises(ManagementCommandFailed) as exc:
+        handler.show_logs(invoke_response, timeout_seconds=5)
+    msg = str(exc.value)
+    assert "INIT" in msg
+    assert "magic-pocket" in msg  # version 不整合の対処 (uv add) に誘導

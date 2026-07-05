@@ -20,6 +20,39 @@ else:
 # 失敗とみなして非ゼロ終了する (migrate 失敗が緑で通る "false green" を防ぐ)。
 MANAGE_HANDLER_SUCCESS_SENTINEL = "POCKET_MANAGE_HANDLER_SUCCESS"
 
+# pocket.runtime.toml の先頭に刻む「生成元 (CLI) バージョン」マーカー。
+# TOML コメントとして書くので tomllib は無視する = 旧 runtime の後方互換を壊さない。
+# 新しい runtime だけがこの行を読み、CLI 版 > 自身の runtime 版なら「古い runtime が
+# 新しい runtime.toml を読んで INIT で opaque に落ちる」不整合を legible error に
+# リフレーミングする (magic-pocket-cli と magic-pocket は lockstep リリース)。
+GENERATOR_VERSION_MARKER = "# magic-pocket-cli generator version:"
+
+
+def parse_generator_version(text: str) -> str | None:
+    """runtime.toml 本文から生成元版マーカーコメントを取り出す。無ければ None。"""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(GENERATOR_VERSION_MARKER):
+            return stripped[len(GENERATOR_VERSION_MARKER) :].strip() or None
+    return None
+
+
+def version_tuple(version: str) -> tuple[int, ...]:
+    """ "0.10.0" → (0, 10, 0)。pre-release 等の suffix は各パートの先頭数字だけ採る。
+
+    packaging に依存せず版境界を粗く比較するための最小実装 (lockstep なので粗くて十分)。
+    """
+    parts: list[int] = []
+    for part in version.split("."):
+        digits = ""
+        for ch in part:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
 
 _console = Console(
     theme=Theme(
