@@ -1,5 +1,11 @@
-"""cloudfront_acm.yaml テンプレートの レンダリング検証。"""
+"""cloudfront_acm.yaml テンプレートの レンダリング検証。
 
+redirect_from は専用 cert ではなくメイン cert の SubjectAlternativeNames に載る
+(301 は CloudFront Function 方式)。ここではメイン cert に SAN と各ドメインの
+DomainValidationOptions が正しく載ることを検証する。
+"""
+
+import yaml as yaml_lib
 from pocket_cli.resources.aws.cloudformation import AcmStack
 
 from pocket.context import CloudFrontContext, RedirectFromContext, RouteContext
@@ -21,62 +27,71 @@ def _make_context(*, domain: str, redirect_from: list[RedirectFromContext]):
     )
 
 
+def _cert_props(ctx) -> dict:
+    doc = yaml_lib.safe_load(AcmStack(ctx).yaml)
+    return doc["Resources"]["Certificate"]["Properties"]
+
+
 def test_acm_main_cert_uses_parent_hosted_zone_id():
-    ctx = _make_context(domain="app.example.com", redirect_from=[])
-    yaml = AcmStack(ctx).yaml
-    # 親 cert (Certificate) は親の hosted_zone_id (override) を使う
-    assert "ZPARENT0000000" in yaml
+    props = _cert_props(_make_context(domain="app.example.com", redirect_from=[]))
+    dvo = {d["DomainName"]: d["HostedZoneId"] for d in props["DomainValidationOptions"]}
+    assert dvo == {"app.example.com": "ZPARENT0000000"}
+    # redirect_from が無ければ SAN は生えない
+    assert "SubjectAlternativeNames" not in props
 
 
-def test_acm_redirect_cert_uses_rf_hosted_zone_id_not_parent():
-    """redirect_from の cert は rf 自身の hosted_zone_id を参照する。
-
-    親と redirect 先で異なる Hosted Zone を指定したとき、redirect cert の
-    DomainValidationOptions.HostedZoneId は redirect 先のゾーンであるべき。
-    """
+def test_acm_redirect_domain_is_san_on_main_cert():
+    """redirect_from ドメインはメイン cert の SAN として載る (専用 cert を作らない)。"""
     rf = RedirectFromContext(
         domain="alias.example.org",
         hosted_zone_id_override="ZRF0000000000",
     )
     ctx = _make_context(domain="app.example.com", redirect_from=[rf])
     yaml = AcmStack(ctx).yaml
-    # 親 cert は親の zone
-    assert "ZPARENT0000000" in yaml
-    # redirect cert は rf の zone (バグ修正前は ZPARENT を参照していた)
-    assert "ZRF0000000000" in yaml
-    # redirect cert ブロックで rf の zone のみが現れる
-    redirect_section = yaml.split('"CertificateAliasExampleOrg"')[1].split("Tags:")[0]
-    assert "ZRF0000000000" in redirect_section
-    assert "ZPARENT0000000" not in redirect_section
+    props = _cert_props(ctx)
+    assert props["SubjectAlternativeNames"] == ["alias.example.org"]
+    # 専用 cert リソース / 出力は存在しない
+    assert "CertificateAliasExampleOrg" not in yaml
+    assert "CertificateArnAliasExampleOrg" not in yaml
 
 
-def test_acm_redirect_cert_with_same_zone_as_parent():
-    # rf が親と同じゾーン上のドメインでも、rf 自身の hosted_zone_id が引かれる
+def test_acm_redirect_domain_validation_uses_rf_hosted_zone_id_not_parent():
+    """SAN の DomainValidationOptions は rf 自身の hosted_zone_id を使う。
+
+    親と redirect 先で異なる Hosted Zone のとき、各ドメインの検証レコードは
+    それぞれのゾーンに作られる必要がある。
+    """
+    rf = RedirectFromContext(
+        domain="alias.example.org",
+        hosted_zone_id_override="ZRF0000000000",
+    )
+    ctx = _make_context(domain="app.example.com", redirect_from=[rf])
+    props = _cert_props(ctx)
+    dvo = {d["DomainName"]: d["HostedZoneId"] for d in props["DomainValidationOptions"]}
+    assert dvo == {
+        "app.example.com": "ZPARENT0000000",
+        "alias.example.org": "ZRF0000000000",
+    }
+
+
+def test_acm_redirect_domain_with_same_zone_as_parent():
     rf = RedirectFromContext(
         domain="alias.example.com",
         hosted_zone_id_override="ZPARENT0000000",
     )
     ctx = _make_context(domain="app.example.com", redirect_from=[rf])
-    yaml = AcmStack(ctx).yaml
-    # 親 / redirect どちらの cert ブロックでも ZPARENT が現れる
-    assert yaml.count("ZPARENT0000000") >= 2
+    props = _cert_props(ctx)
+    dvo = [d["HostedZoneId"] for d in props["DomainValidationOptions"]]
+    assert dvo == ["ZPARENT0000000", "ZPARENT0000000"]
 
 
-def test_acm_redirect_cert_logical_name_strips_non_alphanumeric():
-    """ハイフン付き redirect_from domain の cert 論理 ID が英数字のみになる。
-
-    CFn 論理 ID は英数字のみ。yaml_key が非英数字 (ハイフン等) を残すと
-    "Resource name ... is non alphanumeric" で UpdateStack が失敗する
-    (apex→www の定番 redirect でハイフン付きドメインを使うと全滅していた)。
-    """
-    rf = RedirectFromContext(
-        domain="foo-bar-baz.example.com",
-        hosted_zone_id_override="ZRF0000000000",
+def test_acm_multiple_redirect_domains_all_san():
+    ctx = _make_context(
+        domain="www.example.com",
+        redirect_from=[
+            RedirectFromContext(domain="example.com", hosted_zone_id_override="Z1"),
+            RedirectFromContext(domain="www.example.net", hosted_zone_id_override="Z2"),
+        ],
     )
-    ctx = _make_context(domain="www.example.com", redirect_from=[rf])
-    yaml = AcmStack(ctx).yaml
-    # 非英数字を除去した CamelCase 論理名で cert ブロックが生成される
-    assert '"CertificateFooBarBazExampleCom"' in yaml
-    assert '"CertificateArnFooBarBazExampleCom"' in yaml
-    # ハイフンを残した壊れた論理名は現れない
-    assert "Foo-bar-baz" not in yaml
+    props = _cert_props(ctx)
+    assert props["SubjectAlternativeNames"] == ["example.com", "www.example.net"]

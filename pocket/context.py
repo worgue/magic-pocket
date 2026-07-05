@@ -741,7 +741,6 @@ class S3Context(BaseModel):
 class RedirectFromContext(BaseModel):
     domain: str
     hosted_zone_id_override: str | None = None
-    region: Literal["us-east-1"] = "us-east-1"
 
     @computed_field
     @property
@@ -750,13 +749,6 @@ class RedirectFromContext(BaseModel):
         # ハイフン等の非英数字が残り Template format error になるため、_camel で
         # 非英数字を境界にして除去する (RouteContext / _camel と同じ扱いに揃える)。
         return _camel(self.domain)
-
-    @computed_field
-    @cached_property
-    def bucket_website_domain(self) -> str:
-        if self.region != "us-east-1":
-            raise Exception("Never reach here because of context validation")
-        return f"{self.domain}.s3-website-us-east-1.amazonaws.com"
 
     @computed_field
     @cached_property
@@ -944,6 +936,11 @@ class CloudFrontContext(BaseModel):
     @property
     def has_lambda_route(self) -> bool:
         return any(route.is_lambda for route in self.routes)
+
+    @computed_field
+    @property
+    def has_redirect_from(self) -> bool:
+        return bool(self.redirect_from)
 
     @computed_field
     @property

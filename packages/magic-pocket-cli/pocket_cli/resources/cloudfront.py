@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 from pocket_cli.resources.aws.cloudformation import CloudFrontStack
-from pocket_cli.resources.aws.s3_utils import bucket_exists, create_bucket
+from pocket_cli.resources.aws.s3_utils import delete_bucket_with_contents
 
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext, RouteContext
@@ -34,10 +34,6 @@ class OriginAccessControl(BaseModel):
 
 
 class NoOacException(Exception):
-    pass
-
-
-class BucketOwnershipException(Exception):
     pass
 
 
@@ -83,7 +79,6 @@ class CloudFront:
     def update(self, mediator: Mediator | None = None):
         self._prepare_token_secret(mediator)
         self._prepare_origin_verify_secret(mediator)
-        self._ensure_redirect_from()
         if not self.stack.exists:
             self.stack.create()
         elif not self.stack.yaml_synced:
@@ -96,6 +91,7 @@ class CloudFront:
         info("If you want to exit, you can safely kill this process.")
         info("In that case, run `pocket resource cloudfront update` later.")
         self.stack.wait_status("COMPLETED", timeout=1800, interval=10)
+        self._cleanup_legacy_redirect_from()
         self._ensure_bucket_policy()
         self._write_token_secret_to_kvs()
         log("Bucket for cloudfront is ready.")
@@ -337,7 +333,7 @@ class CloudFront:
                 echo.info("e.g) " + eg_cmd)
 
     def delete(self):
-        self._delete_redirect_from()
+        self._cleanup_legacy_redirect_from()
         self._delete_bucket_policy()
         echo.info("Deleting cloudformation stack for cloudfront ...")
         self.stack.delete()
@@ -346,66 +342,25 @@ class CloudFront:
             "S3 bucket is managed by the S3 resource: " + self.context.bucket_name
         )
 
-    def _bucket_exists(self, bucket_name):
-        try:
-            return bucket_exists(self.s3_client, bucket_name)
-        except ClientError as e:
-            raise BucketOwnershipException(
-                "Bucket might be already used by other account. "
-                "You may need to change the domain."
-            ) from e
+    def _cleanup_legacy_redirect_from(self):
+        """旧 redirect_from 実装 (専用 S3 website バケット) の名残を撤去する。
 
-    def _bucket_assert_empty(self, bucket_name):
-        res = self.s3_client.list_objects_v2(Bucket=bucket_name)
-        if "Contents" in res:
-            echo.danger("Redirect from bucket should be empty.")
-            raise Exception("Redirect from bucket is not empty.")
-
-    def _create_bucket(self, bucket_name, region):
-        create_bucket(self.s3_client, bucket_name, region)
-
-    def _ensure_redirect_from(self):
-        self._ensure_redirect_from_exists()
-        self._ensure_redirect_from_empty()
-        self._ensure_redirect_from_website()
-
-    def _ensure_redirect_from_website(self):
-        if not self.context.redirect_from:
-            return
-        if not self.context.domain:
-            raise RuntimeError("domain is required when redirect_from is set")
-        for redirect_from in self.context.redirect_from:
-            self.s3_client.put_bucket_website(
-                Bucket=redirect_from.domain,
-                WebsiteConfiguration={
-                    "RedirectAllRequestsTo": {
-                        "HostName": self.context.domain,
-                    }
-                },
-            )
-
-    def _ensure_redirect_from_exists(self):
-        for redirect_from in self.context.redirect_from:
-            if not self._bucket_exists(redirect_from.domain):
-                self._create_bucket(redirect_from.domain, redirect_from.region)
-
-    def _ensure_redirect_from_empty(self):
-        for redirect_from in self.context.redirect_from:
-            self._bucket_assert_empty(redirect_from.domain)
-
-    def _delete_redirect_from(self):
+        CloudFront Function 方式へ移行後、専用 distribution / cert は CFn 更新で
+        撤去されるが、旧実装が命令的に作っていた S3 website バケット
+        (バケット名 = redirect ドメイン) は CFn 管理外で orphan 化する。ここで
+        冪等に削除する。別アカウント所有 / リージョン不一致等で削除できない場合は
+        警告のみとし、deploy は止めない (新方式の 301 はバケットに依存しない)。
+        """
         for redirect_from in self.context.redirect_from:
             bucket = redirect_from.domain
             try:
-                if self._bucket_exists(bucket):
-                    self._bucket_assert_empty(bucket)
-                    self.s3_client.delete_bucket_website(Bucket=bucket)
-                    echo.info("Bucket website hosting for %s was deleted." % bucket)
-                    echo.warning("Delete the bucket manually: %s" % bucket)
-                else:
-                    echo.warning("Redirect from bucket does not exists.")
-            except BucketOwnershipException:
-                echo.danger("Redirect bucket might be already used by other account.")
+                delete_bucket_with_contents(self.s3_client, bucket)
+            except ClientError:
+                echo.warning(
+                    "Legacy redirect-from bucket を削除できませんでした "
+                    "(別アカウント所有 / リージョン不一致の可能性)。"
+                    "不要なら手動で確認・削除してください: " + bucket
+                )
 
     def _delete_redirect_from_policies(self, bucket_name):
         echo.danger("Delete redirect from bucket policies is implementing ...")

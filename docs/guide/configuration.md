@@ -1483,6 +1483,12 @@ domain = "www.example.com"
 redirect_from = [{ domain = "example.com" }]
 ```
 
+`redirect_from` に指定したドメインは、その CloudFront ディストリビューションの
+別名（Alias）として同じ配信に載り、証明書も `domain` の証明書に SAN として
+まとめられます。リクエストは viewer-request の CloudFront Function が判定し、
+canonical な `domain` へ **301 (path・query 保持)** でリダイレクトします
+（専用のリダイレクト用ディストリビューションや S3 バケットは作りません）。
+
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `domain` | str | **必須** | リダイレクト元ドメイン |

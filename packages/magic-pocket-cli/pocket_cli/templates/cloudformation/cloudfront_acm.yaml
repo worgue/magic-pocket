@@ -7,28 +7,27 @@ Resources:
     Type: AWS::CertificateManager::Certificate
     Properties:
       DomainName: "{{ domain }}"
+      # {% if redirect_from %}
+      # redirect_from ドメインは専用 cert ではなくメイン cert の SAN に載せる。
+      # 301 は CloudFront Function で返すため、redirect ドメインもこの配信の
+      # Alias になり、同じ証明書で終端できる。
+      SubjectAlternativeNames:
+        # {% for rf in redirect_from %}
+        - "{{ rf.domain }}"
+        # {% endfor %}
+      # {% endif %}
       DomainValidationOptions:
         - DomainName: "{{ domain }}"
           HostedZoneId: "{{ hosted_zone_id }}"
+        # {% for rf in redirect_from %}
+        - DomainName: "{{ rf.domain }}"
+          HostedZoneId: "{{ rf.hosted_zone_id }}"
+        # {% endfor %}
       Tags:
         - Key: Name
           Value: "{{ resource_prefix }}cloudfront-cert"
       ValidationMethod: DNS
   # {% endif %}
-
-  # {% for rf in redirect_from %}
-  "Certificate{{ rf.yaml_key }}":
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: "{{ rf.domain }}"
-      DomainValidationOptions:
-        - DomainName: "{{ rf.domain }}"
-          HostedZoneId: "{{ rf.hosted_zone_id }}"
-      Tags:
-        - Key: Name
-          Value: "{{ resource_prefix }}spa-cert-{{ rf.yaml_key }}"
-      ValidationMethod: DNS
-  # {% endfor %}
 
 Outputs:
   # {% if domain %}
@@ -36,8 +35,3 @@ Outputs:
     Value:
       Ref: Certificate
   # {% endif %}
-  # {% for rf in redirect_from %}
-  "CertificateArn{{ rf.yaml_key }}":
-    Value:
-      Ref: "Certificate{{ rf.yaml_key }}"
-  # {% endfor %}

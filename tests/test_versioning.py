@@ -94,7 +94,7 @@ def test_deploy_hash_cf_function_rendering(use_toml):
 
     cf = context.cloudfront["web"]
     stack = CloudFrontStack(cf)
-    stack._resolve_acm_arns = lambda: (None, {})
+    stack._resolve_acm_arn = lambda: None
     yaml = stack.yaml
     assert "DeployHashStripFunctionStatic" in yaml
     assert "deploy-hash-strip" in yaml

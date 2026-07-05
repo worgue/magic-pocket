@@ -397,14 +397,14 @@ class CloudFrontStack(Stack):
             )
         return output.get("WebACLArn")
 
-    def _resolve_acm_arns(self) -> tuple[str | None, dict[str, str]]:
-        """ACM スタック (us-east-1) から証明書 ARN を取得する。
+    def _resolve_acm_arn(self) -> str | None:
+        """ACM スタック (us-east-1) からメイン証明書 ARN を取得する。
 
-        Returns:
-            (メインドメインの証明書 ARN, redirect_from の yaml_key → ARN マップ)
+        redirect_from ドメインは専用 cert ではなくメイン cert の SAN に載るため、
+        取得する ARN はメインの 1 本のみ。
         """
         if not self.context.domain:
-            return None, {}
+            return None
         acm_stack = AcmStack(self.context)
         output = acm_stack.output
         if not output:
@@ -412,13 +412,7 @@ class CloudFrontStack(Stack):
                 f"ACM stack '{acm_stack.name}' が見つかりません。"
                 "先に ACM スタックをデプロイしてください。"
             )
-        cert_arn = output.get("CertificateArn")
-        redirect_arns: dict[str, str] = {}
-        for rf in self.context.redirect_from:
-            key = f"CertificateArn{rf.yaml_key}"
-            if key in output:
-                redirect_arns[rf.yaml_key] = output[key]
-        return cert_arn, redirect_arns
+        return output.get("CertificateArn")
 
     def _build_function_codes(self) -> dict[str, str]:
         """ルートごとに CloudFront Function コードを生成する"""
@@ -431,6 +425,61 @@ class CloudFrontStack(Stack):
             else:
                 codes[route.yaml_key] = self._generate_spa_fallback_function(route)
         return codes
+
+    def _render_host_redirect_prelude(self) -> str:
+        """非 canonical host → canonical domain の 301 prelude (4 スペース字下げ)。
+
+        各 viewer-request Function の `var request = event.request;` 直後に差し込む。
+        redirect_from が無ければ空文字を返す (呼び出し側は no-op)。
+        """
+        if not self.context.has_redirect_from:
+            return ""
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template(
+            "cloudformation/cf_function_host_redirect_prelude.js"
+        )
+        return template.render(canonical_domain=self.context.domain).rstrip("\n")
+
+    def _inject_host_redirect(self, code: str) -> str:
+        """生成済み Function コードの `var request = event.request;` 直後に
+        host redirect prelude を差し込む (redirect_from 有効時のみ)。"""
+        prelude = self._render_host_redirect_prelude()
+        if not prelude:
+            return code
+        out: list[str] = []
+        injected = False
+        for line in code.splitlines():
+            out.append(line)
+            if not injected and "var request = event.request;" in line:
+                out.append(prelude)
+                injected = True
+        return "\n".join(out)
+
+    @staticmethod
+    def _reindent(code: str, indent: int) -> str:
+        """FunctionCode: | ブロック用に 2 行目以降を indent スペース字下げする。"""
+        lines = []
+        for i, line in enumerate(code.splitlines()):
+            if i == 0:
+                lines.append(line)
+            else:
+                lines.append(" " * indent + line)
+        return "\n".join(lines)
+
+    def _generate_host_redirect_function(self) -> str:
+        """viewer-request Function を持たない behavior 用の単体 redirect Function。"""
+        prelude = self._render_host_redirect_prelude()
+        code = (
+            "function handler(event) {\n"
+            "    var request = event.request;\n"
+            f"{prelude}\n"
+            "    return request;\n"
+            "}"
+        )
+        return self._reindent(code, 8)
 
     def _build_deploy_hash_function_codes(self) -> dict[str, str]:
         """deploy_hash route 用の hash prefix strip Function コードを生成する"""
@@ -448,6 +497,7 @@ class CloudFrontStack(Stack):
                 "    return request;\n"
                 "}" % deploy_hash
             )
+            code = self._inject_host_redirect(code)
             lines = []
             for i, line in enumerate(code.splitlines()):
                 if i == 0:
@@ -468,6 +518,7 @@ class CloudFrontStack(Stack):
         )
         template = env.get_template("cloudformation/cf_function_spa_fallback.js")
         code = template.render(fallback_uri=fallback_uri)
+        code = self._inject_host_redirect(code)
         # FunctionCode: | の下は8スペース
         lines = []
         for i, line in enumerate(code.splitlines()):
@@ -491,6 +542,7 @@ class CloudFrontStack(Stack):
             fallback_uri=fallback_uri,
             login_path=route.login_path,
         )
+        code = self._inject_host_redirect(code)
         # Fn::Sub の2パラメータ形式で - | の下は12スペース
         lines = []
         for i, line in enumerate(code.splitlines()):
@@ -510,6 +562,7 @@ class CloudFrontStack(Stack):
         )
         template = env.get_template("cloudformation/cf_function_api_host.js")
         code = template.render()
+        code = self._inject_host_redirect(code)
         lines = []
         for i, line in enumerate(code.splitlines()):
             if i == 0:
@@ -520,13 +573,16 @@ class CloudFrontStack(Stack):
 
     @property
     def yaml(self) -> str:
-        acm_certificate_arn, acm_redirect_arns = self._resolve_acm_arns()
+        acm_certificate_arn = self._resolve_acm_arn()
         waf_acl_arn = self._resolve_waf_arn()
         function_codes = self._build_function_codes()
         deploy_hash_function_codes = self._build_deploy_hash_function_codes()
         api_host_function_code = ""
         if self.context.has_lambda_route:
             api_host_function_code = self._generate_api_host_function()
+        host_redirect_function_code = ""
+        if self.context.has_redirect_from:
+            host_redirect_function_code = self._generate_host_redirect_function()
 
         from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -540,11 +596,11 @@ class CloudFrontStack(Stack):
             resource=self._get_resource(),
             signing_key=bool(self.context.signing_key),
             acm_certificate_arn=acm_certificate_arn,
-            acm_redirect_arns=acm_redirect_arns,
             waf_acl_arn=waf_acl_arn,
             function_codes=function_codes,
             deploy_hash_function_codes=deploy_hash_function_codes,
             api_host_function_code=api_host_function_code,
+            host_redirect_function_code=host_redirect_function_code,
             has_token_kvs=self._has_token_kvs,
             origin_verify_secret=self._origin_verify_secret_value,
             **context_data,

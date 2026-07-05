@@ -4,6 +4,28 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- **`redirect_from` を CloudFront Function 方式に作り替えました**。従来は
+  リダイレクト元ドメインごとに「専用 ACM 証明書 + 専用 S3 website バケット
+  （`RedirectAllRequestsTo`）+ 専用ディストリビューション」を作っていましたが、
+  これを次の構成に置き換えました:
+  - リダイレクト元ドメインを**メインディストリビューションの Alias** に追加し、
+    証明書も**メイン証明書の SAN** にまとめる（専用証明書・専用配信を作らない）。
+  - canonical ドメインへの **301 リダイレクトを viewer-request の CloudFront
+    Function** で返す（path・query を保持）。既存の viewer-request Function
+    （API host / SPA fallback / deploy-hash strip 等）には同等の redirect
+    prelude を注入し、Function を持たない behavior にのみ専用の redirect
+    Function を割り当てるため、**全 behavior で確実にリダイレクト**されます。
+  - これにより、専用 S3 website バケット作成に起因する
+    **`IllegalLocationConstraintException`（bucket region 不整合）**と、
+    リダイレクト専用証明書の**論理名バグ**の温床が構造的に解消されます。
+  - 既存環境の更新時、旧実装が残した S3 website バケットは配信更新後に**冪等に
+    削除**します（別アカウント所有等で消せない場合は警告のみ）。
+  - `pocket.toml` の設定（`redirect_from = [{ domain = ... }]`）は**従来どおり**で、
+    移行のための記述変更は不要です。
+
 ## [0.11.0](https://github.com/worgue/magic-pocket/releases/tag/0.11.0) - 2026-07-05
 
 ### Added
