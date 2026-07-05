@@ -4,6 +4,22 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.10.0](https://github.com/worgue/magic-pocket/releases/tag/0.10.0) - 2026-07-05
+
+### Added
+- **`pocket resource neon url` / `pocket resource tidb url` を追加しました**。指定 stage の
+  backend 接続 URL を **純 URL のみ** stdout に出力します（診断・警告は stderr）。backend
+  移行ツール（Neon→TiDB 等）が接続 URL を app 側で自前解決（SSM パラメータ名のハードコード
+  や `neonctl` 直叩き）せずに、`$(pocket resource neon url --stage prod)` で取得できます。
+  - 解決方式は既定で **stored-first**（`type = "<db>_database_url"` の user secret を読む。
+    副作用が無く、consumer が実際に使う URL と一致）。未 provision の場合のみ provider API
+    での live 算出に fallback します。`--live` で常に provider API から算出します。
+  - TiDB は password reveal API が無く URL 算出が root password を rotate するため、既定を
+    stored-first にして rotate を回避しています（`--live` 指定時のみ rotate。consumer の
+    redeploy が前提）。
+  - 移行中に `[neon]` と `[tidb]` を **併記**（dual-declaration）した状態で、resource ごとに
+    `neon` / `tidb` を呼び分ければ source/target 双方の URL を解決できます。
+
 ## [0.9.1](https://github.com/worgue/magic-pocket/releases/tag/0.9.1) - 2026-07-05
 
 ### Fixed
