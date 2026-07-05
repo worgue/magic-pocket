@@ -746,7 +746,10 @@ class RedirectFromContext(BaseModel):
     @computed_field
     @property
     def yaml_key(self) -> str:
-        return "".join([s.capitalize() for s in self.domain.split(".")])
+        # CFn 論理 ID は英数字のみ。domain.split(".") + capitalize() だけだと
+        # ハイフン等の非英数字が残り Template format error になるため、_camel で
+        # 非英数字を境界にして除去する (RouteContext / _camel と同じ扱いに揃える)。
+        return _camel(self.domain)
 
     @computed_field
     @cached_property

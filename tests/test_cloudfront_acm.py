@@ -60,3 +60,23 @@ def test_acm_redirect_cert_with_same_zone_as_parent():
     yaml = AcmStack(ctx).yaml
     # 親 / redirect どちらの cert ブロックでも ZPARENT が現れる
     assert yaml.count("ZPARENT0000000") >= 2
+
+
+def test_acm_redirect_cert_logical_name_strips_non_alphanumeric():
+    """ハイフン付き redirect_from domain の cert 論理 ID が英数字のみになる。
+
+    CFn 論理 ID は英数字のみ。yaml_key が非英数字 (ハイフン等) を残すと
+    "Resource name ... is non alphanumeric" で UpdateStack が失敗する
+    (apex→www の定番 redirect でハイフン付きドメインを使うと全滅していた)。
+    """
+    rf = RedirectFromContext(
+        domain="foo-bar-baz.example.com",
+        hosted_zone_id_override="ZRF0000000000",
+    )
+    ctx = _make_context(domain="www.example.com", redirect_from=[rf])
+    yaml = AcmStack(ctx).yaml
+    # 非英数字を除去した CamelCase 論理名で cert ブロックが生成される
+    assert '"CertificateFooBarBazExampleCom"' in yaml
+    assert '"CertificateArnFooBarBazExampleCom"' in yaml
+    # ハイフンを残した壊れた論理名は現れない
+    assert "Foo-bar-baz" not in yaml
