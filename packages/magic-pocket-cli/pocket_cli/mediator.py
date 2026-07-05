@@ -181,6 +181,39 @@ class Mediator:
             else:
                 raise
 
+    def read_user_secret(self, spec) -> str | None:
+        """stored mode user secret (spec.name) の値を読む。未 provision なら None。
+
+        store_user_secret / _stored_secret_exists と対称の読み取り。
+        `pocket <db> url` の stored-first 解決に使う。管理 API は叩かない。
+        """
+        import boto3
+        from botocore.exceptions import ClientError
+
+        if (
+            self.context.awscontainer is None
+            or self.context.awscontainer.secrets is None
+            or spec.name is None
+        ):
+            return None
+        sc = self.context.awscontainer.secrets
+        store = spec.store or sc.store
+        try:
+            if store == "ssm":
+                res = boto3.client("ssm", region_name=sc.region).get_parameter(
+                    Name=spec.name, WithDecryption=True
+                )
+                return res["Parameter"]["Value"]
+            res = boto3.client(
+                "secretsmanager", region_name=sc.region
+            ).get_secret_value(SecretId=spec.name)
+            return res["SecretString"]
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("ParameterNotFound", "ResourceNotFoundException"):
+                return None
+            raise
+
     def _cleanup_orphaned_secrets(self):
         """SSM/SM にあるが managed 定義にないシークレットを削除する"""
         if self.context.awscontainer is None:

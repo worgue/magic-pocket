@@ -5,6 +5,7 @@ import click
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.store_url_helper import run_store_url
+from pocket_cli.cli.url_helper import run_get_url
 from pocket_cli.resources.neon import Neon
 
 
@@ -97,6 +98,36 @@ def store_url(stage, key, force):
         key=key,
         force=force,
         ensure_and_compute_url=ensure_and_compute_url,
+    )
+
+
+@neon.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--live",
+    is_flag=True,
+    help="stored を見ず provider API で live 算出する (Neon は reveal 方式で冪等)",
+)
+def url(stage, live):
+    """接続 URL を stdout に出力する (default: stored-first / --live: provider API)。
+
+    移行ツール等が `$(pocket resource neon url --stage <s>)` で食える純 URL のみを
+    stdout に出す (診断は stderr)。dual-declaration 下では source(Neon) の解決に使う。
+    """
+
+    def live_url(context):
+        if not context.neon:
+            raise click.ClickException(
+                "neon が pocket.toml に宣言されていません (live 算出不可)"
+            )
+        return Neon(context.neon).database_url
+
+    run_get_url(
+        stage=stage,
+        secret_type="neon_database_url",  # noqa: S106 (secret type 名であって credential ではない)
+        db_label="Neon",
+        live_url=live_url,
+        live=live,
     )
 
 

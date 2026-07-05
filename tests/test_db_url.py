@@ -1,0 +1,178 @@
+"""`pocket <db> url` と関連ヘルパー (url_helper / Mediator.read_user_secret) のテスト。
+
+検証対象:
+- Mediator.read_user_secret: stored user secret 名からの読み取り (ssm/sm/未 provision)
+- run_get_url: stored-first (default) / live fallback / --live 明示 / 解決不能時の raise
+- _read_stored_url: 複数候補の曖昧エラー
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import click
+import pytest
+from botocore.exceptions import ClientError
+from pocket_cli.cli import url_helper
+from pocket_cli.mediator import Mediator
+
+from pocket import settings
+from pocket.context import SecretsContext
+
+
+def _ctx_stub(secrets_context) -> Any:
+    class _Aws:
+        secrets = secrets_context
+
+    class _Ctx:
+        awscontainer = _Aws()
+
+    return _Ctx()
+
+
+def _make_sc(base_settings, store, types: dict):
+    user = {k: settings.UserSecretSpec(type=t) for k, t in types.items()}
+    secrets = settings.Secrets(store=store, user=user)
+    return SecretsContext.from_settings(secrets, base_settings)
+
+
+class _FakeAws:
+    """get_parameter / get_secret_value を返す or NotFound を投げる boto3 stub。"""
+
+    def __init__(self, value: str | None):
+        # value=None のとき「未 provision」= NotFound を投げる
+        self.value = value
+
+    def get_parameter(self, Name, WithDecryption=False):  # noqa: N803
+        if self.value is None:
+            raise ClientError({"Error": {"Code": "ParameterNotFound"}}, "GetParameter")
+        return {"Parameter": {"Value": self.value}}
+
+    def get_secret_value(self, SecretId):  # noqa: N803
+        if self.value is None:
+            raise ClientError(
+                {"Error": {"Code": "ResourceNotFoundException"}}, "GetSecretValue"
+            )
+        return {"SecretString": self.value}
+
+
+# --- Mediator.read_user_secret -----------------------------------------------
+
+
+def test_read_user_secret_ssm_returns_value(base_settings, monkeypatch):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws("postgres://stored"))
+    mediator = Mediator(_ctx_stub(sc))
+    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) == "postgres://stored"
+
+
+def test_read_user_secret_sm_returns_value(base_settings, monkeypatch):
+    sc = _make_sc(base_settings, "sm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws("postgres://sm"))
+    mediator = Mediator(_ctx_stub(sc))
+    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) == "postgres://sm"
+
+
+def test_read_user_secret_missing_returns_none(base_settings, monkeypatch):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))
+    mediator = Mediator(_ctx_stub(sc))
+    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) is None
+
+
+# --- run_get_url -------------------------------------------------------------
+
+
+def _patch_from_toml(monkeypatch, ctx):
+    monkeypatch.setattr(url_helper.Context, "from_toml", lambda stage: ctx)
+
+
+def test_run_get_url_stored_first_prints_stored_without_live(
+    base_settings, monkeypatch, capsys
+):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws("postgres://stored"))
+    _patch_from_toml(monkeypatch, _ctx_stub(sc))
+
+    live_calls = []
+
+    url_helper.run_get_url(
+        stage="dev",
+        secret_type="neon_database_url",
+        db_label="Neon",
+        live_url=lambda ctx: live_calls.append("live") or "postgres://live",
+    )
+    out = capsys.readouterr().out
+    assert out.strip() == "postgres://stored"
+    assert live_calls == []  # stored があれば live (副作用) は呼ばない
+
+
+def test_run_get_url_falls_back_to_live_when_unprovisioned(
+    base_settings, monkeypatch, capsys
+):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))  # 未 provision
+    _patch_from_toml(monkeypatch, _ctx_stub(sc))
+
+    url_helper.run_get_url(
+        stage="dev",
+        secret_type="neon_database_url",
+        db_label="Neon",
+        live_url=lambda ctx: "postgres://live",
+    )
+    captured = capsys.readouterr()
+    assert captured.out.strip() == "postgres://live"
+    assert "live 算出" in captured.err  # 警告は stderr に出る
+
+
+def test_run_get_url_live_flag_skips_stored(base_settings, monkeypatch, capsys):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "tidb_database_url"})
+
+    # stored は存在するが --live なので読まない (boto3 を呼んだら失敗させる)
+    def _boom(*a, **k):
+        raise AssertionError("stored should not be read with --live")
+
+    monkeypatch.setattr("boto3.client", _boom)
+    _patch_from_toml(monkeypatch, _ctx_stub(sc))
+
+    url_helper.run_get_url(
+        stage="dev",
+        secret_type="tidb_database_url",
+        db_label="TiDB",
+        live_url=lambda ctx: "mysql://live",
+        live=True,
+    )
+    assert capsys.readouterr().out.strip() == "mysql://live"
+
+
+def test_run_get_url_raises_when_no_stored_and_live_fails(base_settings, monkeypatch):
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
+    monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))
+    _patch_from_toml(monkeypatch, _ctx_stub(sc))
+
+    def live_url(ctx):
+        raise RuntimeError("neon not ready")
+
+    with pytest.raises(click.ClickException, match="解決できませんでした"):
+        url_helper.run_get_url(
+            stage="dev",
+            secret_type="neon_database_url",
+            db_label="Neon",
+            live_url=live_url,
+        )
+
+
+def test_read_stored_url_multiple_candidates_raises(base_settings, monkeypatch):
+    sc = _make_sc(
+        base_settings,
+        "ssm",
+        {"DB1": "neon_database_url", "DB2": "neon_database_url"},
+    )
+    _patch_from_toml(monkeypatch, _ctx_stub(sc))
+    with pytest.raises(click.ClickException, match="複数"):
+        url_helper.run_get_url(
+            stage="dev",
+            secret_type="neon_database_url",
+            db_label="Neon",
+            live_url=lambda ctx: "x",
+        )
