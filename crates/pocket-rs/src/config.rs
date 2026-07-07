@@ -123,7 +123,12 @@ struct ManagedSecretToml {
 
 #[derive(Debug, Deserialize)]
 struct UserSecretToml {
-    name: String,
+    /// 明示パス。省略時は `type` から正準パスを導出する。
+    #[serde(default)]
+    name: Option<String>,
+    /// type 基準 (stored mode): 省略した `name` を `/{pocket_key}-user/{type}` へ導出する。
+    #[serde(default, rename = "type")]
+    secret_type: Option<String>,
     store: Option<String>,
 }
 
@@ -254,57 +259,74 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
     let (secrets_config, handlers_config) = if let Some(ac_val) = data.get("awscontainer") {
         let ac: AwsContainerToml = ac_val.clone().try_into().map_err(PocketError::TomlParse)?;
 
-        let secrets_config = ac.secrets.map(|sc| {
-            let pocket_key = format_vars(&sc.pocket_key_format);
-            let store = parse_store_type(&sc.store);
-            let managed = sc
-                .managed
-                .into_iter()
-                .map(|(k, v)| {
-                    let options = v
-                        .options
-                        .into_iter()
-                        .map(|(ok, ov)| {
-                            let s = match ov {
-                                toml::Value::String(s) => s,
-                                other => other.to_string(),
-                            };
-                            (ok, s)
-                        })
-                        .collect();
-                    (
-                        k,
-                        ManagedSecretSpec {
-                            secret_type: v.secret_type,
-                            options,
+        let secrets_config = match ac.secrets {
+            Some(sc) => {
+                let pocket_key = format_vars(&sc.pocket_key_format);
+                let store = parse_store_type(&sc.store);
+                let managed = sc
+                    .managed
+                    .into_iter()
+                    .map(|(k, v)| {
+                        let options = v
+                            .options
+                            .into_iter()
+                            .map(|(ok, ov)| {
+                                let s = match ov {
+                                    toml::Value::String(s) => s,
+                                    other => other.to_string(),
+                                };
+                                (ok, s)
+                            })
+                            .collect();
+                        (
+                            k,
+                            ManagedSecretSpec {
+                                secret_type: v.secret_type,
+                                options,
+                            },
+                        )
+                    })
+                    .collect();
+                let mut user = HashMap::new();
+                for (k, v) in sc.user {
+                    let spec_store = v.store.as_deref().map(parse_store_type);
+                    // name は type 基準の正準パスへ解決してから保持する
+                    // (Python の SecretsContext.from_settings と同じ resolve)。
+                    let name = match v.name {
+                        Some(n) => format_vars(&n),
+                        None => match v.secret_type {
+                            Some(t) => {
+                                let effective_store = spec_store.clone().unwrap_or(store.clone());
+                                user_secret_path(&pocket_key, &t, &effective_store)
+                            }
+                            None => {
+                                return Err(PocketError::Config(format!(
+                                    "user secret `{k}` must have either `name` or `type`"
+                                )));
+                            }
                         },
-                    )
-                })
-                .collect();
-            let user = sc
-                .user
-                .into_iter()
-                .map(|(k, v)| {
-                    (
+                    };
+                    user.insert(
                         k,
                         UserSecretSpec {
-                            name: v.name,
-                            store: v.store.as_deref().map(parse_store_type),
+                            name,
+                            store: spec_store,
                         },
-                    )
-                })
-                .collect();
+                    );
+                }
 
-            SecretsConfig {
-                store,
-                pocket_key,
-                stage: stage.to_string(),
-                project_name: project_name.clone(),
-                region: general.region.clone(),
-                managed,
-                user,
+                Some(SecretsConfig {
+                    store,
+                    pocket_key,
+                    stage: stage.to_string(),
+                    project_name: project_name.clone(),
+                    region: general.region.clone(),
+                    managed,
+                    user,
+                })
             }
-        });
+            None => None,
+        };
 
         let handlers_config: HashMap<String, HandlerConfig> = ac
             .handlers
@@ -345,6 +367,20 @@ fn parse_store_type(s: &str) -> StoreType {
     match s {
         "ssm" => StoreType::Ssm,
         _ => StoreType::Sm,
+    }
+}
+
+/// stored user secret の正準名を type 基準で導出する。
+///
+/// Python 側 `pocket.context.user_secret_path` と一致させる。provisioning identity を
+/// 安定させるため `segment` には backend の type (`neon_database_url` 等) を渡す
+/// (consumer の env var 名 = 辞書キーには依存させない)。managed の
+/// `/{pocket_key}/...` と衝突させないため `{pocket_key}-user` prefix 配下に置く。
+fn user_secret_path(pocket_key: &str, segment: &str, store: &StoreType) -> String {
+    let prefix = format!("{pocket_key}-user");
+    match store {
+        StoreType::Ssm => format!("/{prefix}/{segment}"),
+        StoreType::Sm => format!("{prefix}/{segment}"),
     }
 }
 
@@ -509,6 +545,110 @@ stages = ["dev"]
         assert_eq!(config.namespace, "pocket");
         assert_eq!(config.prefix_template, "{stage}-{project}-{namespace}-");
         assert_eq!(config.resource_prefix, "dev-test-pocket-");
+    }
+
+    // 標準構成: provisioning = "command" + type 基準 user secret (name 省略)。
+    // 0.12 の type 基準 canonical 導出 (/{pocket_key}-user/{type}) を Rust でも
+    // 解決できることの回帰テスト。
+    const TYPE_USER_SECRET_TOML: &str = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["sandbox"]
+
+[neon]
+provisioning = "command"
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+
+[awscontainer.secrets]
+store = "ssm"
+
+[awscontainer.secrets.user]
+DATABASE_URL = { type = "neon_database_url" }
+"#;
+
+    #[test]
+    fn test_type_based_user_secret_derives_canonical_path() {
+        let config = load_config_from_str(TYPE_USER_SECRET_TOML, "sandbox").unwrap();
+        let secrets = config.secrets.unwrap();
+        assert_eq!(secrets.pocket_key, "sandbox-myapp-pocket");
+        let db = &secrets.user["DATABASE_URL"];
+        // store = ssm なので先頭スラッシュ付きの正準パス
+        assert_eq!(db.name, "/sandbox-myapp-pocket-user/neon_database_url");
+        // spec 個別 store は未指定 (secrets.store を継承)
+        assert_eq!(db.store, None);
+    }
+
+    #[test]
+    fn test_type_based_user_secret_sm_store_has_no_leading_slash() {
+        // store 省略 (default = sm) の type 基準 user secret は先頭スラッシュ無し。
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+
+[awscontainer.secrets.user]
+DATABASE_URL = { type = "neon_database_url" }
+"#;
+        let config = load_config_from_str(toml, "dev").unwrap();
+        let db = &config.secrets.unwrap().user["DATABASE_URL"];
+        assert_eq!(db.name, "dev-myapp-pocket-user/neon_database_url");
+    }
+
+    #[test]
+    fn test_user_secret_per_spec_store_overrides_derivation() {
+        // spec の store が secrets.store を上書きし、導出パスの形式も従う。
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+
+[awscontainer.secrets]
+store = "sm"
+
+[awscontainer.secrets.user]
+DATABASE_URL = { type = "neon_database_url", store = "ssm" }
+"#;
+        let config = load_config_from_str(toml, "dev").unwrap();
+        let db = &config.secrets.unwrap().user["DATABASE_URL"];
+        assert_eq!(db.store, Some(StoreType::Ssm));
+        assert_eq!(db.name, "/dev-myapp-pocket-user/neon_database_url");
+    }
+
+    #[test]
+    fn test_name_based_user_secret_still_works() {
+        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let ext = &config.secrets.unwrap().user["EXTERNAL_API_KEY"];
+        assert_eq!(ext.name, "my-external-key");
+        assert_eq!(ext.store, Some(StoreType::Sm));
+    }
+
+    #[test]
+    fn test_user_secret_without_name_or_type_errors() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+
+[awscontainer.secrets.user]
+DATABASE_URL = { store = "ssm" }
+"#;
+        let err = load_config_from_str(toml, "dev").unwrap_err();
+        assert!(matches!(err, PocketError::Config(_)));
     }
 
     #[test]
