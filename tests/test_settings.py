@@ -415,3 +415,18 @@ def test_route_s3_prefix_overlap_includes_empty_origin():
                 ],
             }
         )
+
+
+def test_double_prefix_advisory_goes_to_stderr_once(use_toml, capsys):
+    """origin_path == path_pattern prefix の二重 prefix 助言は、
+
+    (1) stdout ではなく stderr に出る (stdout は `$(pocket resource ... url)` 等の
+        capture 専用。診断が混ざると値を汚す)、かつ
+    (2) from_toml で 1 回だけ出る (pydantic の mode="after" validator は
+        BaseSettings で 2 回走るため validator 内で emit すると重複する)。
+    """
+    use_toml("tests/data/toml/cloudfront_s3_route_double_prefix.toml")
+    Settings.from_toml(stage="dev")
+    captured = capsys.readouterr()
+    assert "二重 prefix" not in captured.out  # stdout は汚さない
+    assert captured.err.count("二重 prefix") == 1  # stderr に 1 回だけ

@@ -101,3 +101,53 @@ def test_migrate_dry_run_does_not_write(base_settings, monkeypatch):
     info = med.migrate_user_secret_path("DATABASE_URL", spec, dry_run=True)
     assert info["status"] == "would-migrate"
     assert store == {OLD: "postgres://neon"}  # 書込みなし
+
+
+# --- CLI フロー: 旧パス削除前の runtime bump 警告 --------------------------------
+
+from types import SimpleNamespace  # noqa: E402
+from unittest import mock  # noqa: E402
+
+from pocket_cli.cli import migrate_cli  # noqa: E402
+
+
+def _patch_secret_paths_flow(monkeypatch, *, plan_status: str):
+    """_run_secret_paths を AWS 無しで走らせるための最小 stub 群を仕込む。"""
+    spec = SimpleNamespace(type="neon_database_url", store="ssm")
+    sc = SimpleNamespace(user={"DATABASE_URL": spec})
+    context = SimpleNamespace(awscontainer=SimpleNamespace(secrets=sc))
+    monkeypatch.setattr(
+        migrate_cli.Context, "from_toml", classmethod(lambda cls, *, stage: context)
+    )
+
+    fake_mediator = mock.MagicMock()
+    fake_mediator.migrate_user_secret_path.return_value = {
+        "status": plan_status,
+        "key": "DATABASE_URL",
+        "type": "neon_database_url",
+        "old": OLD,
+        "new": NEW,
+    }
+    monkeypatch.setattr("pocket_cli.mediator.Mediator", lambda context: fake_mediator)
+
+
+def test_secret_paths_warns_runtime_bump_before_acting(monkeypatch, capsys):
+    """移設対象 (would-migrate) がある場合、旧削除で古い runtime が壊れる旨と
+
+    runtime bump + 再デプロイを促す警告を stderr に出す (dry-run でも出す)。
+    """
+    _patch_secret_paths_flow(monkeypatch, plan_status="would-migrate")
+    migrate_cli._run_secret_paths("sandbox", yes=True, dry_run=True)
+    # Rich console は幅 80 で soft-wrap するため、改行・空白を潰して部分一致で見る。
+    compact = capsys.readouterr().err.replace("\n", "").replace(" ", "")
+    assert "magic-pocket[django]" in compact
+    assert "INIT" in compact
+    assert "--stage=sandbox" in compact  # 再デプロイ手順に stage が入る
+
+
+def test_secret_paths_no_warning_when_nothing_to_migrate(monkeypatch, capsys):
+    """移設対象が無い (already) 場合は runtime bump 警告を出さない。"""
+    _patch_secret_paths_flow(monkeypatch, plan_status="already")
+    migrate_cli._run_secret_paths("sandbox", yes=True, dry_run=True)
+    compact = capsys.readouterr().err.replace("\n", "").replace(" ", "")
+    assert "magic-pocket[django]" not in compact

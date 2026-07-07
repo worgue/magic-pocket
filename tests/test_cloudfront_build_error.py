@@ -50,7 +50,9 @@ def test_upload_build_failure_emits_actionable_hint_and_reraises(capsys):
         with pytest.raises(subprocess.CalledProcessError):
             cf.upload()
 
-    out = capsys.readouterr().out
+    # 診断・状態メッセージ (echo.*) は stdout ではなく stderr に出る
+    # (stdout は capture 用の機械出力専用)。
+    out = capsys.readouterr().err
     # (1) 失敗メッセージに exit code とコマンド文字列が含まれる
     assert "build コマンドが失敗" in out
     assert "exit 1" in out

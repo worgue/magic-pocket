@@ -54,7 +54,15 @@ def version_tuple(version: str) -> tuple[int, ...]:
     return tuple(parts)
 
 
+# 診断・状態メッセージ (echo.*) はすべて stderr に出す。stdout は
+# 「機械が食う値」(click.echo による URL / IAM Action 一覧 等) 専用とし、
+# `$(pocket resource neon url ...)` のような capture を診断ログで汚さない。
+# markup=False: echo は任意の診断文字列 (パスや `magic-pocket[django]` のような
+# extras 表記を含む) を渡すので、`[...]` を Rich markup として解釈させない
+# (解釈すると角括弧内が style タグ扱いで消える footgun)。
 _console = Console(
+    stderr=True,
+    markup=False,
     theme=Theme(
         {
             "success": "green",
@@ -63,7 +71,7 @@ _console = Console(
             "danger": "bold red",
             "log": "dim",
         }
-    )
+    ),
 )
 
 

@@ -3,7 +3,7 @@ import webbrowser
 
 import click
 
-from pocket.context import Context
+from pocket.context import Context, deploy_hash_report
 from pocket.utils import echo
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore
@@ -173,6 +173,11 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     promote 時は context.awscontainer.promote_commit_hash が設定済みで、
     deploy_init 内の image build が retag に置き換わる以外は deploy と同一。
     """
+    # DEPLOY_HASH の解決結果を deploy 時に 1 回可視化する (env 伝播漏れで
+    # 黙って git short hash に落ちる footgun の早期発見用)。
+    deploy_hash_message = deploy_hash_report(context)
+    if deploy_hash_message:
+        echo.info(deploy_hash_message)
     # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
     state_store = _create_state_store(context)
     state_store.ensure_bucket()

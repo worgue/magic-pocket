@@ -1,0 +1,21 @@
+# origin_path が path_pattern の prefix と一致する (二重 prefix) 構成。
+# from_toml が「raise しない助言」を stderr に 1 回だけ出すことの検証用。
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+[awscontainer]
+dockerfile_path = "tests/sampleprj/Dockerfile"
+
+[awscontainer.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[cloudfront.web]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/app" },
+    { path_pattern = "/static/*", ref = "static", origin_path = "/static" },
+]

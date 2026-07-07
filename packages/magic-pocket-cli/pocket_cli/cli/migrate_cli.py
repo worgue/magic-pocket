@@ -17,6 +17,7 @@ import hashlib
 import click
 import yaml
 
+from pocket import __version__
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
@@ -180,6 +181,32 @@ def _report_secret_path(info: dict) -> None:
         echo.info("%s: %s" % (info["key"], label))
 
 
+def _warn_runtime_bump_required(stage: str) -> None:
+    """secret-paths 移設で旧パスが削除されることの事前警告。
+
+    移設は copy→旧削除を一括で行うため、この stage に deploy 済みの Lambda runtime
+    (magic-pocket[django]) が古いままだと、旧パス (削除済) を参照して DATABASE_URL を
+    解決できず cold start の INIT で落ちる。移設後に runtime を CLI と同版へ bump して
+    再デプロイするまで stage が黙って壊れる footgun を、移設前に明示する
+    (template-hash が「先に deploy」で中断するのと同じ思想の事前ガード)。
+    """
+    echo.warning(
+        "⚠ 移設すると旧パスは削除されます (copy→旧削除は一括)。この stage に "
+        "deploy 済みの Lambda runtime (magic-pocket[django]) が古いままだと、"
+        "旧パスを参照して DATABASE_URL を解決できず cold start の INIT で落ちます。"
+    )
+    echo.warning(
+        "  移設後は速やかに runtime を CLI と同版へ上げて再デプロイしてください:\n"
+        "    uv add 'magic-pocket[django]>=%s'\n"
+        "    pocket deploy --stage=%s  (Django なら pocket django deploy --stage=%s)"
+        % (__version__, stage, stage)
+    )
+    echo.warning(
+        "  ※ copy と旧削除が一括のため完全な無停止移行にはなりません。warm instance は "
+        "recycle まで生存するので、移設直後に再デプロイすれば影響を最小化できます。"
+    )
+
+
 def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
     """stored user secret を旧キー基準→新 type 基準パスへ移設する (冪等)。"""
     from pocket_cli.mediator import Mediator
@@ -207,6 +234,7 @@ def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
             "secret-paths: 移設対象はありません (全て移行済み or 未 provision)。"
         )
         return
+    _warn_runtime_bump_required(stage)
     if dry_run:
         echo.info("secret-paths: --dry-run のため実行はしません。")
         return

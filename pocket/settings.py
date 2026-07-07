@@ -597,21 +597,33 @@ class Route(BaseSettings):
                 raise ValueError("origin_path must starts with /")
             if self.origin_path[-1] == "/":
                 raise ValueError("origin_path must not ends with /")
-            # origin_path が path_pattern の prefix と一致すると S3 key が
-            # 二重階層 (static/static, media/media 等) になる footgun。
-            # prefix を持つ path_pattern では origin_path 省略で単一 prefix に
-            # できるので警告する (省略時挙動は check_origin_path の elif 分岐)。
-            path_prefix = self.path_pattern.rstrip("/*").lstrip("/")
-            if path_prefix and self.origin_path.strip("/") == path_prefix:
-                echo.warning(
-                    f'S3 route origin_path = "{self.origin_path}" が '
-                    f'path_pattern = "{self.path_pattern}" と重複し、S3 key が '
-                    f"二重 prefix ({path_prefix}/{path_prefix}/...) になります。"
-                    " origin_path を省略すると単一 prefix "
-                    f"({path_prefix}/...) になり、S3 を直接操作する運用で"
-                    " prefix が直感的になります。"
-                )
         return self
+
+    def double_prefix_advisory(self) -> str | None:
+        """origin_path が path_pattern の prefix と一致する場合の助言文。無ければ None。
+
+        origin_path が path_pattern の prefix と一致すると S3 key が二重階層
+        (static/static, media/media 等) になる footgun。prefix を持つ path_pattern
+        では origin_path 省略で単一 prefix にできるので助言する (省略時挙動は
+        check_origin_path の elif 分岐)。
+
+        raise しない advisory なので、pydantic の mode="after" validator
+        (BaseSettings では 2 回走る) ではなく Settings.from_toml から 1 回だけ
+        emit する (`Settings._emit_advisories`)。二重出力を避けるため。
+        """
+        if self.type != "s3" or not self.origin_path:
+            return None
+        path_prefix = self.path_pattern.rstrip("/*").lstrip("/")
+        if path_prefix and self.origin_path.strip("/") == path_prefix:
+            return (
+                f'S3 route origin_path = "{self.origin_path}" が '
+                f'path_pattern = "{self.path_pattern}" と重複し、S3 key が '
+                f"二重 prefix ({path_prefix}/{path_prefix}/...) になります。"
+                " origin_path を省略すると単一 prefix "
+                f"({path_prefix}/...) になり、S3 を直接操作する運用で"
+                " prefix が直感的になります。"
+            )
+        return None
 
     @model_validator(mode="after")
     def check_require_token(self):
@@ -969,7 +981,21 @@ class Settings(BaseSettings):
         cls.remove_stages_data(stage, data)
         data["stage"] = stage
         cls.resolve_vpc(data)
-        return cls.model_validate(data)
+        result = cls.model_validate(data)
+        result._emit_advisories()
+        return result
+
+    def _emit_advisories(self) -> None:
+        """検証を通った後の advisory (raise しない助言) を 1 回だけ stderr に出す。
+
+        pydantic の mode="after" validator は BaseSettings で 2 回走るため、
+        重複させたくない助言はここ (from_toml から 1 回) で出す。
+        """
+        for cf in self.cloudfront.values():
+            for route in cf.routes:
+                message = route.double_prefix_advisory()
+                if message:
+                    echo.warning(message)
 
     @classmethod
     def resolve_vpc(cls, data: dict):

@@ -1063,6 +1063,30 @@ def _get_deploy_hash() -> str:
     return "unknown"
 
 
+def deploy_hash_report(context: Context) -> str | None:
+    """deploy 時に表示する DEPLOY_HASH の解決結果メッセージ (無関係なら None)。
+
+    deploy_hash versioning の route が無ければ DEPLOY_HASH は使われないので None。
+    route がある場合は「実際に使う値」と「出所 (DEPLOY_HASH env / git HEAD)」を
+    明示する。DEPLOY_HASH env の伝播漏れで黙って git short hash に落ち、版や
+    CloudFront cache の分離が効かない footgun を deploy 時に可視化するのが狙い。
+    出所判定は `_get_deploy_hash()` の優先順位 (env 優先) を鏡写しにする。
+    """
+    hashes = [cf.deploy_hash for cf in context.cloudfront.values() if cf.deploy_hash]
+    if not hashes:
+        return None
+    value = hashes[0]
+    if os.environ.get("DEPLOY_HASH"):
+        return f"DEPLOY_HASH = {value} (DEPLOY_HASH env より)"
+    if value == "unknown":
+        return "DEPLOY_HASH = unknown (git HEAD 取得失敗 かつ DEPLOY_HASH env 未設定)"
+    return (
+        f"DEPLOY_HASH = {value} (git HEAD より; DEPLOY_HASH env は未設定 — "
+        "連続 deploy で版 / CloudFront cache を分けたい場合は "
+        "DEPLOY_HASH を明示してください)"
+    )
+
+
 def get_commit_hash() -> str:
     """git のフル commit hash を取得する。COMMIT_HASH 環境変数があればそちらを優先。
 
