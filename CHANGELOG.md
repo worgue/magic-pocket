@@ -6,6 +6,32 @@
 
 ## [Unreleased]
 
+## [0.13.0](https://github.com/worgue/magic-pocket/releases/tag/0.13.0) - 2026-07-07
+
+### Added
+- `pocket deploy` / `pocket django deploy` 実行時に、解決された `DEPLOY_HASH` の値と
+  出所（`DEPLOY_HASH` 環境変数 / git HEAD）を 1 行表示するようにしました。環境変数の
+  伝播漏れで意図せず git short hash にフォールバックしていた場合に気づけます。
+- `pocket migrate secret-paths`（および `pocket migrate`）に、移設で旧パスが削除される
+  ことの事前警告を追加しました。移設後に古い runtime（`magic-pocket[django]`）が
+  `DATABASE_URL` を解決できず INIT で落ちる footgun を移設前に明示し、runtime を CLI と
+  同版へ更新してからの再デプロイを促します。
+- Rust クレート `magic-pocket-rs` が `type` 基準の user secret
+  （`{ type = "neon_database_url" }`、`name` 省略）に対応しました。Python ランタイムと
+  同じ正準パス導出（`store=ssm` なら `/{pocket_key}-user/{type}`）を実装し、`name` の
+  手書きが不要になりました。
+
+### Fixed
+- 診断・状態メッセージ（`echo`）が **stdout** に出ていたため、
+  `SRC=$(pocket resource neon url --stage prod)` のような capture に設定 lint の警告が
+  混入して URL を汚す問題を修正しました。診断はすべて **stderr** に出すようにし、stdout は
+  「機械が読む値」（URL / `pocket permissions list` の一覧など `click.echo` 出力）専用に
+  しました。
+- 診断メッセージ中の `magic-pocket[django]` のような角括弧表記が Rich の markup として
+  解釈されて消えてしまう問題を修正しました。
+- S3 route の `origin_path` 二重 prefix 助言が 1 回の設定ロードで 2 回表示される問題を
+  修正しました。
+
 ## [0.12.0](https://github.com/worgue/magic-pocket/releases/tag/0.12.0) - 2026-07-05
 
 ### Changed
