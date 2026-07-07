@@ -12,7 +12,7 @@ nav = [
     { "コマンドライン (CLI)" = "guide/cli.md" },
     { "実行環境" = "guide/runtime.md" },
     { "Django連携" = "guide/django.md" },
-    { "Loco連携" = "guide/loco.md" },
+    { "Rust連携 (Loco / axum)" = "guide/loco.md" },
     { "ベストプラクティス" = "guide/best-practices.md" },
     { "コールドスタート" = "guide/cold-start.md" },
   ] },

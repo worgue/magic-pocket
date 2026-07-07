@@ -1,7 +1,15 @@
-# Loco連携
+# Rust 連携（Loco / 素の axum）
 
-Rust アプリケーション（Loco など）では、`magic-pocket-rs` crate を使って環境変数をセットアップします。
+Rust アプリケーションでは、`magic-pocket-rs` crate を使って環境変数をセットアップします。
 Django の `set_envs()` に相当する機能を Rust で提供します。
+
+ここで使う仕組み（`lambda_http` で axum Router を Lambda ハンドラーにする・`set_envs()`
+でシークレット/リソース情報を注入する・`pocket.toml` の `handlers.command` でバイナリを
+指定する）は **Loco 固有ではなく、`lambda_http` を使う任意の axum アプリで共通**です。
+Loco を使わない素の axum バイナリでも、同じ `pocket.toml` と Dockerfile でそのまま
+デプロイできます（→[Lambda エントリポイント](#lambda)に両方の例）。デプロイは
+フレームワークを問わず plain `pocket deploy` で完結します（Loco 専用のデプロイ
+コマンドはありません）。
 
 ---
 
@@ -13,17 +21,24 @@ Django の `set_envs()` に相当する機能を Rust で提供します。
 [dependencies]
 magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git" }
 lambda_http = "0.14"
-loco-rs = "0.14"
 tokio = { version = "1", features = ["full"] }
+# Loco を使う場合のみ:
+loco-rs = "0.14"
+# 素の axum の場合は axum を直接:
+# axum = "0.8"
 ```
 
-Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換しますが、Loco（axum）では [`lambda_http`](https://crates.io/crates/lambda_http) が axum Router を直接 Lambda ハンドラーとして使えます。フレームワーク側で完結するため、Lambda Web Adapter のような外部 Extension は不要です。
+Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換しますが、axum では [`lambda_http`](https://crates.io/crates/lambda_http) が axum Router を直接 Lambda ハンドラーとして使えます（Loco の Router も素の axum の Router も同じ）。フレームワーク側で完結するため、Lambda Web Adapter のような外部 Extension は不要です。
 
 ---
 
 ## Lambda エントリポイント
 
-`src/bin/lambda.rs` を作成します。
+`src/bin/lambda.rs` を作成します。共通するのは「`set_envs()` で環境変数を注入 →
+axum Router を組み立てて `lambda_http::run(router)` に渡す」という流れで、Router の
+作り方だけがフレームワークで変わります。
+
+### Loco の場合
 
 ```rust
 use loco_rs::boot::{create_app, StartMode};
@@ -49,6 +64,29 @@ async fn main() -> Result<(), lambda_http::Error> {
     lambda_http::run(boot.router.expect("no router")).await
 }
 ```
+
+### 素の axum の場合
+
+Loco を使わず axum の Router を直接組む場合も、`set_envs()` → `lambda_http::run()` の
+流れは同じです。
+
+```rust
+use axum::{routing::get, Router};
+
+#[tokio::main]
+async fn main() -> Result<(), lambda_http::Error> {
+    magic_pocket_rs::set_envs().await.unwrap();
+
+    let router = Router::new().route("/api/health", get(|| async { "ok" }));
+
+    lambda_http::run(router).await
+}
+```
+
+この場合 `Cargo.toml` の `loco-rs` は不要で、`axum` を直接依存に加えます。以降の
+`set_envs()` / `pocket.toml` / Dockerfile はフレームワークを問わず共通です
+（後述の「注意点」の `production.yaml` / static 設定は Loco 固有なので素の axum では
+不要）。
 
 ---
 
@@ -116,6 +154,9 @@ CMD ["myapp-lambda"]
 ---
 
 ## 注意点
+
+以下は Loco の設定ファイル（`production.yaml`）に関する注意で、**Loco 固有**です。
+素の axum アプリでは該当しません。
 
 ### production.yaml の環境変数クォート
 
