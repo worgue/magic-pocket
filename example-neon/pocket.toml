@@ -6,6 +6,9 @@ project_name = "pocket-example-neon"
 [neon]
 project_name = "dev-magic-pocket"
 # branch_name 省略時は project の default ブランチ (main) を使う。dev stage は main を共有。
+# provisioning = "command": deploy は Neon に一切触れない (credential 不要)。接続 URL は
+# 事前に `pocket resource neon store-url --stage <stage>` で SSM の user secret へ保存する。
+provisioning = "command"
 
 [sandbox.neon]
 project_name = "dev-magic-pocket"
@@ -36,9 +39,17 @@ store = "ssm"
 [awscontainer.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+
+# DATABASE_URL は stored user secret (provisioning = "command")。deploy 前に
+# `pocket resource neon store-url --stage <stage>` で SSM (/{pocket_key}-user/neon_database_url)
+# へ保存しておく。deploy は provider を叩かず保存済み URL を読むだけ。
+[awscontainer.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 
 [sandbox.cloudfront.web]
+# deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
+# 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。
+domain = "neon.sandbox.magic-pocket.example.com"
 routes = [
     { type = "lambda", handler = "wsgi", is_default = true },
     { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
