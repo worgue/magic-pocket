@@ -1,12 +1,18 @@
 [general]
 region = "ap-northeast-1"
-stages = ["dev"]
+stages = ["dev", "sandbox"]
 project_name = "pocket-example"
 
 [tidb]
+# provisioning = "command": deploy は TiDB に一切触れない (API キー不要)。接続 URL は
+# 事前に `pocket resource tidb store-url --stage <stage>` で SSM の user secret へ保存する。
+provisioning = "command"
+
+[s3]
 
 [awscontainer]
 dockerfile_path = "pocket.Dockerfile"
+build = "depot"
 permissions_boundary = "arn:aws:iam::123456789012:policy/example-permissions-boundary"
 
 [awscontainer.handlers.wsgi]
@@ -19,10 +25,32 @@ timeout = 600
 [dev.awscontainer.handlers.wsgi]
 apigateway = {}
 
+# sandbox は CloudFront 経由で wsgi lambda を配信するため apigateway origin を持たせる。
+[sandbox.awscontainer.handlers.wsgi]
+apigateway = {}
+
+[awscontainer.django.storages]
+default = { store = "filesystem" }
+staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
+
 [awscontainer.secrets]
 store = "ssm"
 
 [awscontainer.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+
+# DATABASE_URL は stored user secret (provisioning = "command")。deploy 前に
+# `pocket resource tidb store-url --stage <stage>` で SSM (/{pocket_key}-user/tidb_database_url)
+# へ保存しておく。deploy は TiDB API キー無しで保存済み URL を読むだけ。
+[awscontainer.secrets.user]
 DATABASE_URL = { type = "tidb_database_url" }
+
+[sandbox.cloudfront.web]
+# deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
+# 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (worgue 機密メモ参照)。
+domain = "tidb.sandbox.magic-pocket.example.com"
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
+]

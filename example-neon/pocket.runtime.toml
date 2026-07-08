@@ -1,3 +1,4 @@
+# magic-pocket-cli generator version: 0.13.0
 [general]
 region = "ap-northeast-1"
 stages = ["dev", "sandbox"]
@@ -5,12 +6,20 @@ project_name = "pocket-example-neon"
 
 [neon]
 project_name = "dev-magic-pocket"
-# branch_name 省略時は project の default ブランチ (main) を使う。dev stage は main を共有。
+provisioning = "command"
 
 [sandbox.neon]
 project_name = "dev-magic-pocket"
-# sandbox stage は dev tier project 内の sandbox ブランチを使う (main とは分離)。
 branch_name = "sandbox"
+
+[sandbox.cloudfront]
+
+[sandbox.cloudfront.web]
+domain = "neon.sandbox.magic-pocket.example.com"
+routes = [
+    { type = "lambda", handler = "wsgi", is_default = true },
+    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
+]
 
 [s3]
 
@@ -54,14 +63,5 @@ type = "password"
 [awscontainer.secrets.managed.DJANGO_SUPERUSER_PASSWORD.options]
 length = 16
 
-[awscontainer.secrets.managed.DATABASE_URL]
+[awscontainer.secrets.user.DATABASE_URL]
 type = "neon_database_url"
-
-[sandbox.cloudfront]
-
-[sandbox.cloudfront.web]
-domain = "sandbox.magic-pocket.example.com"
-routes = [
-    { type = "lambda", handler = "wsgi", is_default = true },
-    { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
-]
