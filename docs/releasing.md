@@ -33,16 +33,20 @@ build & publish** する。
 
 ## リリース後に必ず実行する (毎回)
 
-8. **example の vendor wheel を更新する** (`example-neon` / `example-tidb` は
-   magic-pocket を **git 管理外の vendor wheel** で参照しているため、Dependabot では
-   更新できない。手動対応が必要):
-   1. repo root で `uv build` → `dist/magic_pocket-X.Y.Z-py3-none-any.whl` を生成
-   2. 各 `example-*/vendor/` に新 wheel をコピーし、**旧バージョンの wheel は削除**
-   3. 各 `example-*/pyproject.toml` の `[tool.uv.sources]` の wheel filename を `X.Y.Z` に更新
-   4. 各 example で `uv lock --upgrade-package magic-pocket`
-   5. 4 ファイル (pyproject.toml + uv.lock × 2 example) をコミット:
-      `:arrow_up: example の magic-pocket vendor wheel を X.Y.Z に更新`
-      (`.whl` 本体は git 管理外なのでコミットされない)
+8. **example の magic-pocket バージョンを更新する** (`example-neon` / `example-tidb` は
+   PyPI 公開版 `magic-pocket[django]==X.Y.Z` を pin 参照している):
+   1. 各 `example-*/pyproject.toml` の `magic-pocket[django]==X.Y.Z` を新バージョンへ更新
+   2. 各 example で `uv lock`
+   3. 4 ファイル (pyproject.toml + uv.lock × 2 example) をコミット:
+      `:arrow_up: example の magic-pocket を X.Y.Z に更新`
+
+   !!! note "vendor wheel は廃止済み"
+       以前は git 管理外の vendor wheel を参照していたが、gitignore + 非決定的ビルドで
+       wheel を作り直すと `uv.lock` のハッシュが不一致になり `uv sync --frozen` が落ちる
+       footgun があったため PyPI 版に切替えた。**この版更新は Dependabot でも自動化できる**
+       ので、リリース直後の必須手順ではなくなった (Dependabot PR を待つ運用でもよい)。
+       未リリース変更を example で検証したいときだけ、一時的に `[tool.uv.sources]` で
+       ローカル wheel を override する。
 
 9. **GitHub Release オブジェクトを作成する** (毎回。CHANGELOG の当該節を本文にする):
 
