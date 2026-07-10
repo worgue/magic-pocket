@@ -12,7 +12,6 @@ WORKDIR /app
 
 RUN uv venv $VIRTUAL_ENV
 COPY uv.lock pyproject.toml ./
-COPY vendor/ vendor/
 RUN uv sync --frozen --no-dev --no-install-project
 
 FROM base AS final

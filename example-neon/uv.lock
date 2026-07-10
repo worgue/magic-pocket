@@ -117,7 +117,7 @@ wheels = [
 [[package]]
 name = "magic-pocket"
 version = "0.14.0"
-source = { path = "vendor/magic_pocket-0.14.0-py3-none-any.whl" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apig-wsgi" },
     { name = "awslambdaric" },
@@ -127,30 +127,15 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "rich" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/f4/a0/8285ee5072b567088fe7fcb1b1779e5d44ac5fba165d171e2f18cfa07f62/magic_pocket-0.14.0.tar.gz", hash = "sha256:6b87854cca3b8345bede391ced67615abf9ed880a78f0aa6d26eea4bc4e6cb60", size = 538653, upload-time = "2026-07-10T08:29:41.293Z" }
 wheels = [
-    { filename = "magic_pocket-0.14.0-py3-none-any.whl", hash = "sha256:65ac8e4b030b37f02b34c68d079d226f40050bfd3910f2d8921093bc058c39eb" },
+    { url = "https://files.pythonhosted.org/packages/bb/1a/120b0d97c98ffcc71aaf02f60c236c8dfdf318008f0027d51f76709f7a8f/magic_pocket-0.14.0-py3-none-any.whl", hash = "sha256:65ac8e4b030b37f02b34c68d079d226f40050bfd3910f2d8921093bc058c39eb", size = 67607, upload-time = "2026-07-10T08:29:38.33Z" },
 ]
 
 [package.optional-dependencies]
 django = [
     { name = "django" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "apig-wsgi", specifier = ">=2.18.0" },
-    { name = "awslambdaric", specifier = ">=2.0.10" },
-    { name = "boto3", specifier = ">=1.34.28" },
-    { name = "cryptography", marker = "extra == 'signing'", specifier = ">=41.0.0" },
-    { name = "django", marker = "extra == 'django'", specifier = ">=4.2.0" },
-    { name = "django-ses", marker = "extra == 'ses'", specifier = ">=4.0.0" },
-    { name = "django-storages", specifier = ">=1.14.2,!=1.14.3" },
-    { name = "pydantic", specifier = ">=2.5.3" },
-    { name = "pydantic-settings", specifier = ">=2.1.0" },
-    { name = "rich", specifier = ">=13.7.0" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=1.1.0" },
-]
-provides-extras = ["django", "ses", "signing"]
 
 [[package]]
 name = "markdown-it-py"
@@ -191,7 +176,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.28" },
-    { name = "magic-pocket", extras = ["django"], path = "vendor/magic_pocket-0.14.0-py3-none-any.whl" },
+    { name = "magic-pocket", extras = ["django"], specifier = "==0.14.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.1" },
 ]
