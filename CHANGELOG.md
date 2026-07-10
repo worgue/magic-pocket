@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.14.0](https://github.com/worgue/magic-pocket/releases/tag/0.14.0) - 2026-07-10
+
 ### Fixed
 - DSQL リソース（`pocket.toml` の `[dsql]`）の deploy が boto3 パラメータの
   大文字小文字の誤りで常に失敗する問題を修正しました。boto3 dsql client の

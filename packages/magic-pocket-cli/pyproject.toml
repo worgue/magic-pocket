@@ -1,6 +1,6 @@
 [project]
 name = "magic-pocket-cli"
-version = "0.13.0"
+version = "0.14.0"
 description = "CLI and deploy tools for magic-pocket."
 requires-python = ">=3.10"
 dependencies = [
