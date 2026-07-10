@@ -28,20 +28,10 @@ from .utils import echo, get_hosted_zone_id_from_domain
 ORIGIN_VERIFY_SECRET_KEY = "POCKET_ORIGIN_VERIFY_SECRET"  # noqa: S105 secret 値ではなくキー/env 名
 
 
-def user_secret_path(pocket_key: str, segment: str, store: str) -> str:
-    """stored user secret の正準名を導出する。
-
-    provisioning identity を安定させるため、``segment`` には backend の type
-    (``neon_database_url`` 等) を渡す。consumer の env var 名 (secrets.user の
-    辞書キー) には依存させない — キーのリネームや backend 付け替えで保存先が
-    動かないようにするため。managed の pocket_store パス ``/{pocket_key}/...``
-    と衝突させないため ``{pocket_key}-user`` prefix 配下に置く
-    (cleanup は該当パス配下のみ走査)。
-    """
-    prefix = f"{pocket_key}-user"
-    if store == "ssm":
-        return f"/{prefix}/{segment}"
-    return f"{prefix}/{segment}"
+# stored user secret 名の正準導出は公開 API (pocket.naming) に一元化した。
+# 外部 provisioner が再実装せず import できるようにするため。後方互換のため
+# `from pocket.context import user_secret_path` はこの再エクスポートで維持する。
+from pocket.naming import user_secret_path  # noqa: E402,F401 (re-export)
 
 
 class ApiGatewayContext(BaseModel):
