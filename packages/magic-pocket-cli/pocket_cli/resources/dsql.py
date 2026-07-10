@@ -29,9 +29,9 @@ class Dsql:
             for cluster in page["clusters"]:
                 identifier = cluster["identifier"]
                 try:
-                    detail = self._client.get_cluster(Identifier=identifier)
+                    detail = self._client.get_cluster(identifier=identifier)
                     tags = self._client.list_tags_for_resource(
-                        ResourceArn=detail["arn"]
+                        resourceArn=detail["arn"]
                     )
                     if tags.get("tags", {}).get("Name") == self.context.tag_name:
                         return detail
@@ -102,7 +102,7 @@ class Dsql:
         if not self.identifier:
             return
         echo.log("Deleting DSQL cluster: %s" % self.identifier)
-        self._client.delete_cluster(Identifier=self.identifier)
+        self._client.delete_cluster(identifier=self.identifier)
         echo.log("Waiting for DSQL cluster deletion...")
         self._wait_deleted(self.identifier, timeout=600)
         echo.success("DSQL cluster was deleted.")
@@ -110,7 +110,7 @@ class Dsql:
     def _wait_active(self, identifier: str, timeout: int = 600, interval: int = 5):
         for i in range(timeout // interval):
             try:
-                res = self._client.get_cluster(Identifier=identifier)
+                res = self._client.get_cluster(identifier=identifier)
                 if res["status"] == "ACTIVE":
                     print("")
                     return
@@ -125,7 +125,7 @@ class Dsql:
     def _wait_deleted(self, identifier: str, timeout: int = 600, interval: int = 5):
         for i in range(timeout // interval):
             try:
-                self._client.get_cluster(Identifier=identifier)
+                self._client.get_cluster(identifier=identifier)
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ResourceNotFoundException":
                     print("")

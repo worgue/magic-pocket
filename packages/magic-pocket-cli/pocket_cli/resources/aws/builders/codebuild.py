@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import stat
 import time
 import zipfile
 from pathlib import Path
@@ -9,6 +11,7 @@ from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
 
+from pocket.utils import echo
 from pocket_cli.resources.aws.builders.dockerignore import (
     load_dockerignore,
     should_include,
@@ -287,7 +290,7 @@ class CodeBuildBuilder:
                     rel = os.path.join(rel_dir, filename) if rel_dir else filename
                     if not should_include(rel, spec):
                         continue
-                    zf.write(os.path.join(dirpath, filename), rel)
+                    self._add_source_file(zf, os.path.join(dirpath, filename), rel)
 
         zip_size_mb = buf.tell() / (1024 * 1024)
         buf.seek(0)
@@ -295,6 +298,31 @@ class CodeBuildBuilder:
         self.s3.upload_fileobj(buf, self.state_bucket, self._source_key)
         buf.close()
         print("  アップロード完了 (%.1f MB)" % zip_size_mb)
+
+    def _add_source_file(
+        self, zf: zipfile.ZipFile, full_path: str, arcname: str
+    ) -> None:
+        """1 ファイルを zip に追加する（forge VM 由来の footgun を吸収）。
+
+        - 壊れた symlink（host 側参照など、実体が無い）は skip して warning。
+          そのまま ``zipfile.write`` すると ``FileNotFoundError`` で source zip
+          作成ごと落ち、deploy 全体が失敗するため。
+        - 通常ファイルの権限を 0644 / 実行ファイルを 0755 に正規化する。
+          forge VM では ``sed -i`` 編集等で 0600 のファイルが生まれやすく、
+          そのまま image に入ると Lambda の非 root 実行ユーザーが読めず起動時に
+          panic する。mode を落として（他ユーザー read を保証して）防ぐ。
+        """
+        if not os.path.exists(full_path):
+            # os.path.exists は symlink を辿るため、壊れた symlink で False
+            echo.warning("  壊れた symlink を skip: %s" % arcname)
+            return
+        zi = zipfile.ZipInfo.from_file(full_path, arcname)
+        zi.compress_type = zipfile.ZIP_DEFLATED
+        perm = (zi.external_attr >> 16) & 0o777
+        new_perm = 0o755 if perm & stat.S_IXUSR else 0o644
+        zi.external_attr = (new_perm << 16) | (zi.external_attr & 0xFFFF)
+        with open(full_path, "rb") as src, zf.open(zi, "w") as dst:
+            shutil.copyfileobj(src, dst)
 
     # --- ビルド実行 ---
 

@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+### Fixed
+- DSQL リソース（`pocket.toml` の `[dsql]`）の deploy が boto3 パラメータの
+  大文字小文字の誤りで常に失敗する問題を修正しました。boto3 dsql client の
+  service model は lowerCamel（`identifier` / `resourceArn`）ですが、実装が
+  PascalCase（`Identifier` / `ResourceArn`）で呼んでおり `ParamValidationError`
+  になっていました（`get_cluster` / `delete_cluster` / `list_tags_for_resource`）。
+  `ParamValidationError` は `ClientError` ではないため既存の `except ClientError`
+  で拾えず、初回 deploy は cluster 作成直後の `_wait_active` で、再 deploy は
+  `status` 解決時に crash していました。実 service model で casing を検証する
+  Stubber ベースの回帰テストを追加しています。
+- CodeBuild builder の source zip 作成（`_upload_source`）を forge VM 環境で
+  発生しやすい 2 つの footgun に対して堅牢化しました。(1) 実体の無い**壊れた
+  symlink**（host 側参照など）を zip に入れようとして `FileNotFoundError` で
+  deploy 全体が落ちる問題を、当該ファイルを skip + warning するようにしました。
+  (2) `sed -i` 編集等で生じた **mode 0600 のファイル**がそのまま image に入り、
+  Lambda の非 root 実行ユーザーが読めず起動時に panic する問題を、通常ファイルを
+  0644 / 実行ファイルを 0755 に正規化して防ぐようにしました。
+
 ## [0.13.0](https://github.com/worgue/magic-pocket/releases/tag/0.13.0) - 2026-07-07
 
 ### Added
