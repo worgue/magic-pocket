@@ -14,4 +14,4 @@ dev = [
 ]
 
 [tool.uv.sources]
-magic-pocket = { path = "vendor/magic_pocket-0.13.0-py3-none-any.whl" }
+magic-pocket = { path = "vendor/magic_pocket-0.14.0-py3-none-any.whl" }
