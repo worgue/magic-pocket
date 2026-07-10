@@ -1,5 +1,8 @@
 [general]
-region = "ap-northeast-1"
+# Neon は東京非対応 (常に ap-southeast-1) のため、DB クエリのクロスリージョン往復を
+# 避けて pocket stack も Singapore に co-locate する (本ツール標準)。CloudFront cert は
+# us-east-1 に別途作られる。
+region = "ap-southeast-1"
 stages = ["dev", "sandbox"]
 project_name = "pocket-example-neon"
 

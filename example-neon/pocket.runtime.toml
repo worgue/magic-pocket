@@ -1,6 +1,6 @@
 # magic-pocket-cli generator version: 0.13.0
 [general]
-region = "ap-northeast-1"
+region = "ap-southeast-1"
 stages = ["dev", "sandbox"]
 project_name = "pocket-example-neon"
 
