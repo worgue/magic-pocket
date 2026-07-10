@@ -329,8 +329,11 @@ class Neon:
         # store_url の呼び出し側も branch 不在を確認済だが、直接呼ばれた場合の防御。
         if self.branch is not None:
             return
-        del self.branch
-        del self.endpoint
+        # branch/endpoint の cached_property を無効化し、branch 作成後の再取得を
+        # 強制する。endpoint はこの経路で一度も access していない (cache 未生成) ため
+        # 素の `del` は AttributeError になる。access 有無に依らず安全な pop で消す。
+        self.__dict__.pop("branch", None)
+        self.__dict__.pop("endpoint", None)
         data = {
             "branch": {
                 "name": self.context.branch_name,
