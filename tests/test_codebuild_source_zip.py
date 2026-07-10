@@ -78,7 +78,10 @@ def test_mode_0600_is_normalized_to_0644(builder, tmp_path):
 def test_executable_mode_is_normalized_to_0755(builder, tmp_path):
     f = tmp_path / "entrypoint.sh"
     f.write_text("#!/bin/sh\n")
-    os.chmod(f, 0o700)
+    # 意図的な test 入力: builder が実行ファイルの 0700 を 0755 に正規化することを
+    # 検証する。semgrep insecure-file-permissions は owner 実行ビット付き chmod を
+    # 機械的に flag するため、この行だけ抑制する (テストデータであり実コードではない)。
+    os.chmod(f, 0o700)  # nosemgrep
 
     zf = _zip_and_read(builder, [(str(f), "entrypoint.sh")])
     assert _mode(zf.getinfo("entrypoint.sh")) == 0o755
