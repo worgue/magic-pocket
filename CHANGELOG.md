@@ -6,6 +6,21 @@
 
 ## [Unreleased]
 
+## [0.15.0](https://github.com/worgue/magic-pocket/releases/tag/0.15.0) - 2026-07-11
+
+### Added
+- stored user secret 名の正準導出を公開 API `pocket.naming` として追加しました。
+  外部 provisioner（backend の接続 URL を SSM / Secrets Manager に焼く側）が、
+  pocket の deploy が読む正準パス（`/{pocket_key}-user/{type}`）を再実装せずに
+  import で共有できます。put する側と read する側（deploy）が同じ導出を使うことで、
+  パス不一致による `ParameterNotFound` を構造的に防ぎます。
+  `stored_user_secret_name` / `user_secret_path` / `pocket_key` と type 定数
+  （`NEON_DATABASE_URL` / `TIDB_DATABASE_URL` / `UPSTASH_REDIS_URL`）を公開します。
+  pydantic / boto3 非依存の純粋な文字列導出のため import は軽量です。
+  `import pocket` 直下からも参照でき、既存の
+  `from pocket.context import user_secret_path` は再エクスポートで後方互換を
+  維持しています。
+
 ## [0.14.0](https://github.com/worgue/magic-pocket/releases/tag/0.14.0) - 2026-07-10
 
 ### Fixed
