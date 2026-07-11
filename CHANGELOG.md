@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.16.0](https://github.com/worgue/magic-pocket/releases/tag/0.16.0) - 2026-07-11
+
 ### Added
 - `pocket resource dsql endpoint` / `pocket resource rds endpoint` に
   `--format json` オプションを追加しました。装飾なしの JSON を stdout に出力するため、
