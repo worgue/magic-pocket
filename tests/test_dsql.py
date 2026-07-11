@@ -9,9 +9,12 @@ Stubber を使って casing を固定する。
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from botocore.stub import Stubber
+from click.testing import CliRunner
+from pocket_cli.cli import dsql_cli
 from pocket_cli.resources.dsql import Dsql
 
 from pocket.context import DsqlContext
@@ -126,3 +129,44 @@ def test_delete_uses_lowercamel_params(monkeypatch):
     with stubber:
         dsql.delete()
     stubber.assert_no_pending_responses()
+
+
+def test_endpoint_cli_json_outputs_to_stdout(monkeypatch):
+    """`endpoint --format json` は stdout に装飾なしの JSON だけを出す。
+
+    診断メッセージ (echo.*) は stderr なので、`$(pocket resource dsql
+    endpoint --format json)` のような capture が汚れないことを固定する。
+    """
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    monkeypatch.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+    runner = CliRunner()
+    result = runner.invoke(
+        dsql_cli.dsql, ["endpoint", "--stage", "dev", "--format", "json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "endpoint": f"abc123.dsql.{REGION}.on.aws",
+        "region": REGION,
+        "port": 5432,
+    }
+
+
+def test_endpoint_cli_json_cluster_not_found_exits_nonzero(monkeypatch):
+    """json では cluster 不在を exit 1 で伝える (text は warning + exit 0)。"""
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = None
+    monkeypatch.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+    runner = CliRunner()
+    result = runner.invoke(
+        dsql_cli.dsql, ["endpoint", "--stage", "dev", "--format", "json"]
+    )
+    assert result.exit_code == 1
+    assert result.stdout == ""  # stdout は空のまま (エラーは stderr)
+    assert "Cluster not found" in result.stderr
+
+    # text (デフォルト) は従来挙動: exit 0 で stdout は汚さない
+    result = runner.invoke(dsql_cli.dsql, ["endpoint", "--stage", "dev"])
+    assert result.exit_code == 0, result.output
+    assert result.stdout == ""

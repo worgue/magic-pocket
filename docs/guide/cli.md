@@ -483,6 +483,10 @@ pocket resource dsql status --stage=dev
 # 接続情報の表示（endpoint, region, port）
 pocket resource dsql endpoint --stage=dev
 
+# 機械可読な JSON で stdout に出力（スクリプト / CI 向け。クラスター不在時は exit 1）
+pocket resource dsql endpoint --stage=dev --format=json
+# => {"endpoint": "xxxxx.dsql.ap-northeast-1.on.aws", "region": "ap-northeast-1", "port": 5432}
+
 # クラスターの削除（確認プロンプト付き）
 pocket resource dsql destroy --stage=dev
 ```
@@ -495,6 +499,9 @@ pocket resource rds status --stage=dev
 
 # 接続情報の表示（endpoint, port, database, username）
 pocket resource rds endpoint --stage=dev
+
+# 機械可読な JSON で stdout に出力（スクリプト / CI 向け。クラスター不在時は exit 1）
+pocket resource rds endpoint --stage=dev --format=json
 
 # クラスターの削除（確認プロンプト付き、Final Snapshot 作成）
 pocket resource rds destroy --stage=dev

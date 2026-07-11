@@ -792,3 +792,33 @@ def test_rds_migration_sm_to_ssm_preserves_password(use_toml):
     assert moved["password"] == before["password"]
     with pytest.raises(sm.exceptions.ResourceNotFoundException):
         sm.describe_secret(SecretId=context.rds.credentials_secret_name)
+
+
+def test_endpoint_cli_json_outputs_to_stdout(use_toml, monkeypatch):
+    """`endpoint --format json` は stdout に装飾なしの JSON だけを出す。
+
+    診断メッセージ (echo.*) は stderr なので、`$(pocket resource rds
+    endpoint --format json)` のような capture が汚れないことを固定する。
+    """
+    from click.testing import CliRunner
+    from pocket_cli.cli import rds_cli
+
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    endpoint = "dev-testprj-pocket-aurora.cluster-abc.ap-northeast-1.rds.amazonaws.com"
+    rds = Rds(context.rds)
+    rds.__dict__["cluster"] = {"Endpoint": endpoint, "Port": 5432}
+    monkeypatch.setattr(rds_cli, "_get_rds_resource", lambda stage: rds)
+    runner = CliRunner()
+    result = runner.invoke(
+        rds_cli.rds, ["endpoint", "--stage", "dev", "--format", "json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload == {
+        "endpoint": endpoint,
+        "port": 5432,
+        "database": "dev_testprj",
+        "username": "postgres",
+    }

@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Added
+- `pocket resource dsql endpoint` / `pocket resource rds endpoint` に
+  `--format json` オプションを追加しました。装飾なしの JSON を stdout に出力するため、
+  CI / シェルスクリプトから `$(pocket resource dsql endpoint --format json)` のように
+  安全に接続情報を取得できます（診断メッセージは従来通り stderr）。json 指定時は
+  クラスター不在を exit code 1 で伝えます（text は従来通り warning + exit 0）。
+
 ## [0.15.0](https://github.com/worgue/magic-pocket/releases/tag/0.15.0) - 2026-07-11
 
 ### Added
