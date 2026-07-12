@@ -6,7 +6,7 @@ from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
-from pocket_cli.resources.neon import Neon
+from pocket_cli.resources.neon import Neon, ensure_url_for_context
 
 
 @click.group()
@@ -83,13 +83,12 @@ def store_url(stage, key, force):
     """
 
     def ensure_and_compute_url(context):
-        neon = Neon(context.neon)
-        if not neon.branch:
-            neon.create_branch(neon.parent_branch)
-        neon.ensure_role()
-        neon.ensure_database()
-        # ensure 後の状態を確実に反映するため fresh instance で URL を算出する。
-        return Neon(context.neon).database_url
+        if not context.neon:
+            raise click.ClickException(
+                "neon が pocket.toml に宣言されていません (store-url 不可)"
+            )
+        # ensure + URL 算出は runtime package の共有ヘルパに一本化 (公開 API と同一経路)
+        return ensure_url_for_context(context.neon)
 
     run_store_url(
         stage=stage,

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Added
+- Neon の ensure + 接続 URL 算出を、import 可能な公開 API
+  `pocket.provisioning.neon` として runtime package (`magic-pocket`) 側に追加しました。
+  外部 provisioner（backend 作成時に接続 URL を SSM / Secrets Manager へ焼く側）が、
+  pocket.toml や `pocket_cli` を持たない中央実行（Web UI sync 等の Lambda 上
+  subprocess を含む）からでも、pocket 自身の ensure + URL 導出を再実装せずに
+  import で共有できます。`ensure_and_compute_url(project_name=..., branch_name=...,
+  name=..., role_name=..., api_key=...)` が branch/role/database を ensure して
+  `postgres://...?sslmode=require` を返します（`NeonContext` を直接渡す
+  `ensure_url_for_context` も公開）。SSM への保存自体は呼び出し側の責務で、正準名は
+  既存の `pocket.naming.stored_user_secret_name` で導出できます。これにより
+  `pocket.naming`（0.15.0）で path を、本 API で ensure+URL 導出を共有でき、
+  provisioner 側の独自再実装による drift を構造的に防げます。
+  - 実装は runtime package へ一本化し、HTTP は stdlib `urllib` で行うため
+    `magic-pocket` に新規依存は追加していません（`requests` は
+    `magic-pocket-cli` 側の依存のまま）。既存の
+    `pocket_cli.resources.neon`（`Neon` 等）は本モジュールの re-export として
+    後方互換を維持します。`pocket resource neon store-url` も同じ共有ヘルパを
+    経由するようになり、CLI と公開 API の導出が単一実装に揃います。
+
 ## [0.16.0](https://github.com/worgue/magic-pocket/releases/tag/0.16.0) - 2026-07-11
 
 ### Added

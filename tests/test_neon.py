@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from pocket_cli.resources.neon import NeonApi, NeonNotFound
@@ -13,16 +13,16 @@ def _fake_response(status_code: int, payload: dict) -> MagicMock:
 
 def test_neon_api_get_raises_neon_not_found_on_404():
     api = NeonApi("fake-key")
-    with patch("requests.get") as mock_get:
-        mock_get.return_value = _fake_response(404, {"message": "role not found"})
+    with patch("pocket.provisioning.neon._http_request") as mock_req:
+        mock_req.return_value = _fake_response(404, {"message": "role not found"})
         with pytest.raises(NeonNotFound, match="role not found"):
             api.get("projects/x/branches/y/roles/missing")
 
 
 def test_neon_api_get_raises_generic_on_500():
     api = NeonApi("fake-key")
-    with patch("requests.get") as mock_get:
-        mock_get.return_value = _fake_response(500, {"message": "internal"})
+    with patch("pocket.provisioning.neon._http_request") as mock_req:
+        mock_req.return_value = _fake_response(500, {"message": "internal"})
         with pytest.raises(Exception, match="500: internal") as excinfo:
             api.get("projects/x")
         assert not isinstance(excinfo.value, NeonNotFound)
@@ -30,8 +30,8 @@ def test_neon_api_get_raises_generic_on_500():
 
 def test_neon_api_get_returns_response_on_200():
     api = NeonApi("fake-key")
-    with patch("requests.get") as mock_get:
-        mock_get.return_value = _fake_response(200, {"role": {"name": "foo"}})
+    with patch("pocket.provisioning.neon._http_request") as mock_req:
+        mock_req.return_value = _fake_response(200, {"role": {"name": "foo"}})
         res = api.get("projects/x/branches/y/roles/foo")
         assert res.status_code == 200
         assert res.json() == {"role": {"name": "foo"}}
@@ -65,9 +65,9 @@ def test_neon_role_returns_none_when_role_missing():
             "project",
             new=MagicMock(id="mock-project-12345678", name="dev-myapp"),
         ),
-        patch("requests.get") as mock_get,
+        patch("pocket.provisioning.neon._http_request") as mock_req,
     ):
-        mock_get.return_value = _fake_response(404, {"message": "role not found"})
+        mock_req.return_value = _fake_response(404, {"message": "role not found"})
         assert neon.role is None
 
 
@@ -246,3 +246,84 @@ def test_neon_create_is_idempotent_when_branch_exists():
         mock_create_branch.assert_not_called()
         mock_ensure_role.assert_called_once()
         mock_ensure_database.assert_called_once()
+
+
+def test_neon_resource_reexport_is_same_object():
+    """CLI 側の import は runtime package の再エクスポートで同一クラスを指す
+    (isinstance / patch.object の互換を保つ)。"""
+    import pocket_cli.resources.neon as cli_neon
+
+    from pocket.provisioning import neon as runtime_neon
+
+    assert cli_neon.Neon is runtime_neon.Neon
+    assert cli_neon.NeonApi is runtime_neon.NeonApi
+    assert cli_neon.ensure_and_compute_url is runtime_neon.ensure_and_compute_url
+
+
+def test_ensure_and_compute_url_builds_context_and_delegates():
+    """公開 API は引数から NeonContext (provisioning='command') を組み立て、
+    共有ヘルパ ensure_url_for_context に委譲する。"""
+    from pocket.provisioning import neon as runtime_neon
+
+    with patch.object(runtime_neon, "ensure_url_for_context") as mock_ensure:
+        mock_ensure.return_value = "postgres://myapp:pw@host:5432/myapp?sslmode=require"
+        url = runtime_neon.ensure_and_compute_url(
+            project_name="dev-myapp",
+            branch_name="sandbox",
+            name="myapp",
+            role_name="myapp",
+            api_key="fake-key",
+        )
+    assert url == "postgres://myapp:pw@host:5432/myapp?sslmode=require"
+    ctx = mock_ensure.call_args.args[0]
+    assert ctx.project_name == "dev-myapp"
+    assert ctx.branch_name == "sandbox"
+    assert ctx.name == "myapp"
+    assert ctx.role_name == "myapp"
+    assert ctx.api_key == "fake-key"
+    assert ctx.parent_branch_name is None
+    assert ctx.provisioning == "command"
+
+
+def test_ensure_url_for_context_skips_branch_create_when_present():
+    """既存 branch があるとき ensure_url_for_context は branch を作らず role/db を
+    ensure し、fresh instance で算出した database_url を返す。"""
+    from pocket.provisioning.neon import Branch, Neon, ensure_url_for_context
+
+    expected = "postgres://myapp:pw@host:5432/myapp?sslmode=require"
+    with (
+        patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
+        patch.object(Neon, "create_branch") as mock_create_branch,
+        patch.object(Neon, "ensure_role") as mock_ensure_role,
+        patch.object(Neon, "ensure_database") as mock_ensure_database,
+        patch.object(
+            Neon, "database_url", new_callable=PropertyMock, return_value=expected
+        ),
+    ):
+        url = ensure_url_for_context(_idempotency_ctx())
+    assert url == expected
+    mock_create_branch.assert_not_called()
+    mock_ensure_role.assert_called_once()
+    mock_ensure_database.assert_called_once()
+
+
+def test_ensure_url_for_context_creates_branch_when_absent():
+    """branch が無いとき ensure_url_for_context は parent から branch を作成する。"""
+    from pocket.provisioning.neon import Neon, ensure_url_for_context
+
+    expected = "postgres://myapp:pw@host:5432/myapp?sslmode=require"
+    with (
+        patch.object(Neon, "branch", new=None),
+        patch.object(Neon, "parent_branch", new=None),
+        patch.object(Neon, "create_branch") as mock_create_branch,
+        patch.object(Neon, "ensure_role") as mock_ensure_role,
+        patch.object(Neon, "ensure_database") as mock_ensure_database,
+        patch.object(
+            Neon, "database_url", new_callable=PropertyMock, return_value=expected
+        ),
+    ):
+        url = ensure_url_for_context(_idempotency_ctx())
+    assert url == expected
+    mock_create_branch.assert_called_once()
+    mock_ensure_role.assert_called_once()
+    mock_ensure_database.assert_called_once()
