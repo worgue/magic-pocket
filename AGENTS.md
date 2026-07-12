@@ -83,3 +83,14 @@ uv run pyright
 
 - 引数を取るPythonスクリプトには、Clickライブラリを使用してください。argparseは使用しないでください。
 - 続けて5行以上の情報をprintする場合、print()を何度も呼ばず、print_xxx()関数を作成してまとめてください。4行以下なら分ける必要はありません。print_xxx()関数はファイルの最後にまとめて配置してください。xxxには、表示内容が分かる名前を入れてください。長くても構いません。
+
+### パッケージ構成と依存方針
+
+このリポジトリは 2 パッケージ構成です。依存を追加・移設する際は、どちらに属する変更かを必ず意識してください。
+
+- **`magic-pocket` (runtime, リポジトリルート)**: Lambda ランタイムに同梱される。全ユーザーの Lambda にバンドルされるため、**依存は最小限に保つ**こと。新規の実行時依存を安易に追加しない。
+- **`magic-pocket-cli` (`packages/magic-pocket-cli/`)**: deploy / CLI 専用。`requests` 等の重い依存はこちらに置く。
+
+CLI 専用だったロジックを runtime 側へ移設して公開 API 化する場合（例: 外部 provisioner から import 共有させる）、その依存を runtime に持ち込まないこと。**HTTP なら `requests` ではなく stdlib `urllib` で書き換える**（`pocket.provisioning.neon` はこの方針で実装済み）。やむを得ず runtime に依存を足す判断が要る場合は、**ユーザーに確認**してください。
+
+なお CLI が runtime の新モジュールを import（re-export 含む）するようになったら、`packages/magic-pocket-cli/pyproject.toml` の `magic-pocket>=X.Y.Z` pin を、そのモジュールが載る版へ**必ず引き上げる**こと（古い runtime との組み合わせで import 落ちを防ぐ）。

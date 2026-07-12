@@ -21,16 +21,14 @@ import os
 import re
 import time
 from functools import cached_property
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from pydantic import BaseModel
 
+from pocket.context import NeonContext
 from pocket.resources.base import ResourceStatus
-
-if TYPE_CHECKING:
-    from pocket.context import NeonContext
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -491,8 +489,6 @@ def ensure_and_compute_url(
         ``postgres://<role>:<password>@<host>:5432/<name>?sslmode=require`` 形式の
         接続 URL。
     """
-    from pocket.context import NeonContext
-
     context = NeonContext(
         pg_version=pg_version,
         api_key=api_key,
