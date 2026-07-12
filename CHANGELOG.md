@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.17.0](https://github.com/worgue/magic-pocket/releases/tag/0.17.0) - 2026-07-12
+
 ### Added
 - Neon の ensure + 接続 URL 算出を、import 可能な公開 API
   `pocket.provisioning.neon` として runtime package (`magic-pocket`) 側に追加しました。
