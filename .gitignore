@@ -32,3 +32,11 @@ forge.local.toml
 
 # Activity Docs (作業ローカルの working doc。公開 repo には出さない)
 /docs/activity/
+
+# example deploy 生成物 (pocket が生成: runtime config / collectstatic 出力 / cache)
+/example-neon/pocket.runtime.toml
+/example-neon/pocket_cache/
+/example-neon/staticfiles/
+/example-tidb/pocket.runtime.toml
+/example-tidb/pocket_cache/
+/example-tidb/staticfiles/
