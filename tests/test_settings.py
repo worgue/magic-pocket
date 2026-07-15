@@ -518,6 +518,22 @@ def test_s3_route_catchall_still_requires_origin_path():
         Route.model_validate({"type": "s3", "path_pattern": "/*"})
 
 
+def test_s3_route_bucket_root_origin_path_is_explicitly_unsupported():
+    """origin_path = "/" (バケット直下) は意図的な非サポートだと明示すること。
+
+    汎用の "must not ends with /" だけだと、ユーザーは次に origin_path 省略を試して
+    catch-all エラーに当たり、2 つのメッセージ間をループする。非サポートの理由
+    (バケット共有設計 / OAC ポリシーがバケット全体許可になる) まで案内する。
+    """
+    with pytest.raises(ValueError, match="サポートしていません"):
+        Route.model_validate({"type": "s3", "path_pattern": "", "origin_path": "/"})
+    # prefix を持つ path_pattern でも同じ (origin_path 自体の制約)
+    with pytest.raises(ValueError, match="サポートしていません"):
+        Route.model_validate(
+            {"type": "s3", "path_pattern": "/media/*", "origin_path": "/"}
+        )
+
+
 def test_route_ref_error_message_matches_condition():
     """ref 付き route の検査は「末尾 /*」なのでメッセージも end with を案内すること
 

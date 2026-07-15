@@ -632,6 +632,21 @@ class Route(BaseModel):
                     'is_default = true, origin_path = "/spa" }'
                 )
         else:
+            if self.origin_path == "/":
+                # 「バケット直下を配信する catch-all」の意図で書かれる。汎用の
+                # "must not ends with /" だと、次に origin_path 省略を試して
+                # 上の catch-all エラーに当たり、メッセージ間をループするので
+                # ここで意図的な非サポートだと明示する (docs: configuration.md)
+                raise ValueError(
+                    'origin_path = "/" (バケット直下の配信) はサポートしていません。'
+                    " pocket は 1 つの S3 バケットを複数 route で共有するため、"
+                    "バケット直下に向けると OAC のバケットポリシーがバケット全体の"
+                    "許可になり、route を張っていない prefix のオブジェクトまで"
+                    "CDN 経由で到達可能になります。\n"
+                    "  prefix を与えてください。URL 上のパスは path_pattern で"
+                    "決まるため、配信結果は変わりません"
+                    ' (例: origin_path = "/spa")。'
+                )
             if self.origin_path[0] != "/":
                 raise ValueError("origin_path must starts with /")
             if self.origin_path[-1] == "/":

@@ -20,6 +20,13 @@
     Rust 側は未実装でした。
 
 ### Changed
+- catch-all の S3 route で `origin_path = "/"`（バケット直下の配信）を指定した場合の
+  エラーメッセージを、意図的な非サポートである旨と理由（pocket は 1 つの S3 バケットを
+  複数 route で共有するため、バケット直下に向けると OAC のバケットポリシーが
+  バケット全体許可になる）を含むものに変更しました。従来は汎用の
+  `origin_path must not ends with /` だけで、`origin_path` 省略を試すと今度は
+  catch-all のエラーに当たり、メッセージ間をループしていました。
+  非サポートである旨は `docs/guide/configuration.md` にも明記しています。
 - **breaking**: pocket.toml の全セクションで未知キーをエラーにするようになりました。
   従来 `[awscontainer]`, `[awscontainer.secrets]`, `[awscontainer.handlers.*]`,
   `[rds]`, `[dsql]`, `[scheduler]`, `[vpc.efs]`, `[s3.cors]` 等は未知キーを黙って

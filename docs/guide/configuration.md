@@ -1540,6 +1540,7 @@ routes = [
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
     - `type = "lambda"` のルートでは `origin_path`, `is_spa`, `versioning`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
+    - `origin_path` は `/` で始まり `/` で終わらない必要があります。バケット直下を配信する `origin_path = "/"` はサポートしません（後述の warning を参照）。
     - 旧 `type = "api"` は廃止されました。`type = "lambda"` を使ってください（起動時に分かりやすいエラーが出ます）。
     - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
@@ -1560,6 +1561,35 @@ routes = [
         { is_default = true, is_spa = true, origin_path = "/spa" },  # catch-all は必須
         { path_pattern = "/static/*", ref = "static" },              # origin_path 省略 → static/
         { path_pattern = "/media/*", ref = "media" },                # origin_path 省略 → media/
+    ]
+    ```
+
+!!! warning "バケット直下の配信（`origin_path = "/"`）はサポートしません"
+    catch-all の route（`path_pattern = ""` / `"/*"`）に `origin_path = "/"` を指定して
+    **バケット直下をそのまま配信することはできません**。`origin_path` は先頭 `/` 始まり・
+    末尾 `/` なしが必須なので `"/"` は設定エラーになります。意図的な制約で、緩和する予定は
+    ありません。
+
+    理由は、pocket が **1 つの S3 バケットを複数の route で共有する**設計だからです
+    （`/static` は Django の静的ファイル、`/media` はアップロード、`/spa` はフロントエンド、
+    `/pocket_managed` は pocket 自身の管理ファイル…）。catch-all をバケット直下に向けると:
+
+    - **CloudFront に渡す OAC バケットポリシーがバケット全体（`arn:aws:s3:::<bucket>/*`）
+      許可になります。** 現在は route ごとの prefix から最小の共通 prefix を計算して
+      許可範囲を絞っています。バケット全体を許可すると、route を張っていない prefix の
+      オブジェクトまで CDN 経由で到達可能になり得ます。
+    - **他の route の prefix と衝突します。** catch-all が撒くオブジェクトがバケット直下に
+      散らばり、`static/` や `media/` と同じ階層に混ざります。
+
+    catch-all に prefix を与えれば同じ配信結果が得られ、上記の問題も起きません。
+    バケット直下に置きたかった場合も、`origin_path` を 1 つ足すだけで機能的な違いは
+    ありません（URL 上のパスは `path_pattern` で決まり、`origin_path` は S3 側の
+    key prefix にしか影響しないため）。
+
+    ```toml
+    routes = [
+        # NG: origin_path = "/" は設定エラー。catch-all で origin_path 省略も同様
+        { is_default = true, is_spa = true, origin_path = "/spa" },  # OK
     ]
     ```
 
