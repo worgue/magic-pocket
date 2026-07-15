@@ -232,13 +232,12 @@ def test_uploadable_routes(use_toml):
 
 def test_route_origin_path():
     """S3 route に origin_path 必須、API route に禁止"""
-    # S3 route: origin_path 必須。エラー文に具体例 (/" や /spa) と Example 行を含めて
+    # S3 route: origin_path 必須。エラー文に具体例 (/spa) と Example 行を含めて
     # 利用者が次の一手を取れるようにする
     with pytest.raises(ValueError) as excinfo:
         Route.model_validate({"is_default": True, "is_spa": True})
     msg = str(excinfo.value)
     assert "S3 route requires `origin_path`" in msg
-    assert '"/"' in msg  # bucket root の例示
     assert "/spa" in msg  # prefix 切り出しの例示
     assert "Example:" in msg
     # Lambda route: origin_path 指定禁止
@@ -435,6 +434,21 @@ def test_s3_route_catchall_still_requires_origin_path():
     # path_pattern = "/*" も rstrip("/*") で空になるので catch-all 扱い
     with pytest.raises(ValueError, match="S3 route requires `origin_path`"):
         Route.model_validate({"type": "s3", "path_pattern": "/*"})
+
+
+def test_s3_route_catchall_error_message_is_actionable():
+    """エラーメッセージが実際に validation を通る設定だけを案内すること。
+
+    以前は『Set "/" for bucket root』と案内していたが、origin_path = "/" は
+    同じ validator の「must not ends with /」で拒否され、従うことが不可能だった。
+    """
+    with pytest.raises(ValueError) as excinfo:
+        Route.model_validate({"type": "s3", "path_pattern": "", "is_default": True})
+    assert '"/" for bucket root' not in str(excinfo.value)
+    # メッセージ中の例 (origin_path = "/spa") はそのまま適用すれば通る
+    Route.model_validate(
+        {"type": "s3", "path_pattern": "", "is_default": True, "origin_path": "/spa"}
+    )
 
 
 def test_route_s3_prefix_overlap_includes_empty_origin():

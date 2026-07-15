@@ -597,8 +597,8 @@ class Route(BaseModel):
                 raise ValueError(
                     "S3 route requires `origin_path` when path_pattern has no prefix "
                     "(catch-all). "
-                    'Set "/" for bucket root, or a prefix like "/spa" to separate '
-                    "from other S3 routes (e.g. Django static at /static).\n"
+                    'Set a prefix like "/spa" to separate from other S3 routes '
+                    "(e.g. Django static at /static).\n"
                     '  Example: { type = "s3", path_pattern = "", '
                     'is_default = true, origin_path = "/spa" }'
                 )
