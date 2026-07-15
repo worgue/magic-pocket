@@ -29,15 +29,17 @@ def _pocket_secret_to_envs(
     if isinstance(secrets, str):
         return {key: secrets}
     elif spec.type == "rsa_pem_base64":
-        pem_suffix = spec.options["pem_base64_environ_suffix"]
-        pub_suffix = spec.options["pub_base64_environ_suffix"]
+        # デフォルトは settings.ManagedSecretSpec のコメントおよび Rust 実装
+        # (crates/pocket-rs/src/secrets/mod.rs) と揃える
+        pem_suffix = spec.options.get("pem_base64_environ_suffix", "_PEM_BASE64")
+        pub_suffix = spec.options.get("pub_base64_environ_suffix", "_PUB_BASE64")
         return {
             f"{key}{pem_suffix}": secrets["pem"],
             f"{key}{pub_suffix}": secrets["pub"],
         }
     elif spec.type == "cloudfront_signing_key":
-        pem_suffix = spec.options["pem_base64_environ_suffix"]
-        pub_suffix = spec.options["pub_base64_environ_suffix"]
+        pem_suffix = spec.options.get("pem_base64_environ_suffix", "_PEM_BASE64")
+        pub_suffix = spec.options.get("pub_base64_environ_suffix", "_PUB_BASE64")
         # key_id は CFn ImportValue で Lambda 環境変数に設定されるため不要
         return {
             f"{key}{pem_suffix}": secrets["pem"],
