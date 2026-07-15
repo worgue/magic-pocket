@@ -51,11 +51,10 @@ class ApiGatewayContext(BaseModel):
     @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
-        if self.hosted_zone_id_override:
-            return self.hosted_zone_id_override
-        if self.domain and self.create_records:
-            return get_hosted_zone_id_from_domain(self.domain)
-        return None
+        return resolve_hosted_zone_id(
+            self.domain if self.create_records else None,
+            self.hosted_zone_id_override,
+        )
 
     @classmethod
     def from_settings(cls, apigw: settings.ApiGateway) -> ApiGatewayContext:
@@ -621,6 +620,19 @@ class RdsContext(BaseModel):
         )
 
 
+def resolve_hosted_zone_id(domain: str | None, override: str | None) -> str | None:
+    """hosted zone ID を解決する (override 優先 → domain から検索 → None)。
+
+    ApiGateway / RedirectFrom / CloudFront で同じ解決を共有する
+    (以前は 3 クラスに別実装され判定順も不一致だった)。
+    """
+    if override:
+        return override
+    if not domain:
+        return None
+    return get_hosted_zone_id_from_domain(domain)
+
+
 def _camel(key: str) -> str:
     """schedule entry key を CFn logical ID 用 CamelCase に変換する"""
     return camel_logical_name(key)
@@ -778,11 +790,7 @@ class RedirectFromContext(BaseModel):
     @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
-        if self.hosted_zone_id_override:
-            return self.hosted_zone_id_override
-        if not self.domain:
-            return None
-        return get_hosted_zone_id_from_domain(self.domain)
+        return resolve_hosted_zone_id(self.domain, self.hosted_zone_id_override)
 
     @classmethod
     def from_settings(cls, rf: settings.RedirectFrom) -> RedirectFromContext:
@@ -984,11 +992,7 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @cached_property
     def hosted_zone_id(self) -> str | None:
-        if not self.domain:
-            return None
-        if self.hosted_zone_id_override:
-            return self.hosted_zone_id_override
-        return get_hosted_zone_id_from_domain(self.domain)
+        return resolve_hosted_zone_id(self.domain, self.hosted_zone_id_override)
 
     @classmethod
     def from_settings(

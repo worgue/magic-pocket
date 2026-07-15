@@ -22,24 +22,37 @@ def _get_django_context_for_storages(
     return general_context, context
 
 
+def resolve_django_context(
+    general_context: GeneralContext,
+    context: Context | None,
+    *,
+    require: str | None = None,
+):
+    """stage の awscontainer.django か、無ければ general の django_fallback を返す。
+
+    require に "storages" / "caches" を渡すと、その属性を持つ場合のみ stage 側を
+    採用する。この解決は storages / caches / settings で共通
+    (以前は 3 箇所に別実装されていた)。
+    """
+    fallback = general_context.django_fallback
+    if not fallback:
+        raise RuntimeError("Never happen because of context validation.")
+    django = (
+        context.awscontainer.django
+        if context and context.awscontainer and context.awscontainer.django
+        else None
+    )
+    if django is None:
+        return fallback
+    if require and not getattr(django, require):
+        return fallback
+    return django
+
+
 def _resolve_storage_django_context(
     general_context: GeneralContext, context: Context | None
 ):
-    if not context:
-        django_context = general_context.django_fallback
-        if not django_context:
-            raise RuntimeError("Never happen because of context validation.")
-        return django_context
-    if (
-        context.awscontainer
-        and context.awscontainer.django
-        and context.awscontainer.django.storages
-    ):
-        return context.awscontainer.django
-    django_context = general_context.django_fallback
-    if not django_context:
-        raise RuntimeError("Never happen because of context validation.")
-    return django_context
+    return resolve_django_context(general_context, context, require="storages")
 
 
 def _resolve_route(cf, storage):
@@ -213,20 +226,8 @@ def get_email_backend(*, stage: str | None = None) -> dict[str, Any]:
 def get_caches(*, stage: str | None = None) -> dict:
     stage = stage or os.environ.get("POCKET_STAGE")
     general_context = GeneralContext.from_toml()
-    if not general_context.django_fallback:
-        raise RuntimeError("Never happen because of context validation.")
-    if not stage:
-        django_context = general_context.django_fallback
-    else:
-        context = get_context(stage=stage)
-        if not (
-            context.awscontainer
-            and context.awscontainer.django
-            and context.awscontainer.django.caches
-        ):
-            django_context = general_context.django_fallback
-        else:
-            django_context = context.awscontainer.django
+    context = get_context(stage=stage) if stage else None
+    django_context = resolve_django_context(general_context, context, require="caches")
     caches = {}
     for key, cache in django_context.caches.items():
         caches[key] = {"BACKEND": cache.backend}

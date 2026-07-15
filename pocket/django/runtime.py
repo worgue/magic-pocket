@@ -9,6 +9,7 @@ from ..runtime import (
     set_envs_from_aws_resources,
     set_envs_from_secrets,
 )
+from .utils import resolve_django_context
 
 
 def set_envs():
@@ -45,16 +46,10 @@ def get_django_settings(
 ) -> dict[str, Any]:
     stage = stage or os.environ.get("POCKET_STAGE")
     general_context = GeneralContext.from_toml()
-    if not general_context.django_fallback:
-        raise RuntimeError("Never happen because of context validation.")
     if not stage:
-        django_context = general_context.django_fallback
-        return django_context.settings
+        return resolve_django_context(general_context, None).settings
     context = get_context(stage=stage)
-    if context.awscontainer and context.awscontainer.django:
-        django_context = context.awscontainer.django
-    else:
-        django_context = general_context.django_fallback
+    django_context = resolve_django_context(general_context, context)
     result = dict(django_context.settings)
     # CloudFront の API ルートがある場合、X-Forwarded-Host を有効化
     has_lambda_route = any(
