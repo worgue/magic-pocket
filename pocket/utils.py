@@ -174,9 +174,14 @@ def get_hosted_zones():
 @cache
 def get_hosted_zone_id_from_domain(domain: str):
     echo.log("Searching hostedzone_id from domain: %s" % domain)
-    zone_matched = [
-        zone for zone in get_hosted_zones() if zone["Name"].strip(".") in domain
-    ]
+
+    def _zone_matches(zone_name: str) -> bool:
+        # ラベル境界付き suffix 判定。substring 判定だと example.com zone が
+        # badexample.com (別ドメイン) に誤マッチする
+        name = zone_name.strip(".")
+        return domain == name or domain.endswith("." + name)
+
+    zone_matched = [zone for zone in get_hosted_zones() if _zone_matches(zone["Name"])]
     if len(zone_matched) == 0:
         raise Exception(
             "No route53 hosted zone for the domain. [%s]\n"
