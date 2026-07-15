@@ -13,6 +13,22 @@ def test_settings_from_toml(use_toml):
     assert settings.project_name == "testprj"
 
 
+def test_settings_check_keys_accepts_all_fields(use_toml):
+    """check_keys がトップレベル [upstash] 等の全 Settings フィールドを受理すること"""
+    use_toml("tests/data/toml/upstash.toml")
+    settings = Settings.from_toml(stage="dev")
+    assert settings.upstash is not None
+    assert settings.upstash.budget == 10
+
+
+def test_settings_check_keys_rejects_unknown_key(use_toml):
+    """check_keys が未知キーを拒否すること"""
+    with pytest.raises(ValueError, match="invalid key"):
+        Settings.check_keys(
+            {"general": {"stages": ["dev"]}, "unknownkey": {}},
+        )
+
+
 @mock_aws
 def test_context(use_toml):
     use_toml("tests/data/toml/default.toml")

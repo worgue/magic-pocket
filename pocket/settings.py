@@ -1045,32 +1045,14 @@ class Settings(BaseSettings):
 
     @classmethod
     def check_keys(cls, data: dict):
-        valid_keys = [
-            "general",
-            "vpc",
-            "awscontainer",
-            "neon",
-            "tidb",
-            "dsql",
-            "rds",
-            "ses",
-            "s3",
-            "cloudfront",
-            "scheduler",
-        ]
+        # stage は from_toml が注入するフィールドで、pocket.toml のキーではない
+        valid_keys = [key for key in cls.model_fields if key != "stage"]
         valid_keys += data["general"]["stages"]
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
                 raise ValueError(error)
-        # cloudfront はサブテーブル形式 [cloudfront.xxx]
-        # TOML パース結果が dict of dict であることを確認
-        if "cloudfront" in data:
-            if isinstance(data["cloudfront"], dict):
-                for v in data["cloudfront"].values():
-                    if not isinstance(v, dict):
-                        break
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):
