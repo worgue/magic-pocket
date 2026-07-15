@@ -92,12 +92,13 @@ def get_secrets(stage: str | None = None) -> dict:
 def set_envs_from_secrets(stage: str | None = None):
     if os.environ.get("POCKET_ENVS_SECRETS_LOADED") == "true":
         return
-    os.environ["POCKET_ENVS_SECRETS_LOADED"] = "true"
     data = get_secrets(stage)
     for key, value in data.items():
         os.environ[key] = value
     _set_rds_database_url()
     _set_dsql_token()
+    # 途中で例外が出た場合に再呼び出しで復旧できるよう、フラグは成功後に立てる
+    os.environ["POCKET_ENVS_SECRETS_LOADED"] = "true"
 
 
 def _read_rds_secret_string() -> str | None:
@@ -243,12 +244,12 @@ def set_envs_from_aws_resources(
 ):
     if os.environ.get("POCKET_ENVS_AWS_RESOURCES_LOADED") == "true":
         return
-    os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
     general_context = GeneralContext.from_toml()
     os.environ["POCKET_PROJECT_NAME"] = general_context.project_name
     os.environ["POCKET_REGION"] = general_context.region
     stage = stage or get_stage()
     if stage == "__none__":
+        os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
         return {}
     context = get_context(stage=stage)
     if context.awscontainer:
@@ -274,3 +275,5 @@ def set_envs_from_aws_resources(
         cf_domains = _get_cloudfront_domains(context)
         for name, domain in cf_domains.items():
             os.environ["POCKET_CLOUDFRONT_%s_DOMAIN" % name.upper()] = domain
+    # 途中で例外が出た場合に再呼び出しで復旧できるよう、フラグは成功後に立てる
+    os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"

@@ -30,26 +30,25 @@ pub async fn set_envs_from_secrets(stage: Option<&str>) -> Result<()> {
     if std::env::var("POCKET_ENVS_SECRETS_LOADED").as_deref() == Ok("true") {
         return Ok(());
     }
-    // SAFETY: Lambda はシングルプロセス環境で起動時に1回のみ呼ばれる
-    unsafe {
-        std::env::set_var("POCKET_ENVS_SECRETS_LOADED", "true");
-    }
 
     let stage = resolve_stage(stage);
-    if stage == "__none__" {
-        return Ok(());
-    }
+    if stage != "__none__" {
+        let pocket_config = config::load_config(&stage)?;
+        let data = secrets::get_secrets(&pocket_config).await?;
 
-    let pocket_config = config::load_config(&stage)?;
-    let data = secrets::get_secrets(&pocket_config).await?;
-
-    info!("Setting {} secret env vars", data.len());
-    for (key, value) in &data {
-        unsafe {
-            std::env::set_var(key, value);
+        info!("Setting {} secret env vars", data.len());
+        for (key, value) in &data {
+            // SAFETY: Lambda はシングルプロセス環境で起動時に1回のみ呼ばれる
+            unsafe {
+                std::env::set_var(key, value);
+            }
         }
     }
 
+    // 途中で Err になった場合に再呼び出しで復旧できるよう、フラグは成功後に立てる
+    unsafe {
+        std::env::set_var("POCKET_ENVS_SECRETS_LOADED", "true");
+    }
     Ok(())
 }
 
@@ -60,9 +59,6 @@ pub async fn set_envs_from_resources(stage: Option<&str>) -> Result<()> {
     if std::env::var("POCKET_ENVS_AWS_RESOURCES_LOADED").as_deref() == Ok("true") {
         return Ok(());
     }
-    unsafe {
-        std::env::set_var("POCKET_ENVS_AWS_RESOURCES_LOADED", "true");
-    }
 
     let stage = resolve_stage(stage);
     if stage == "__none__" {
@@ -71,6 +67,7 @@ pub async fn set_envs_from_resources(stage: Option<&str>) -> Result<()> {
         unsafe {
             std::env::set_var("POCKET_PROJECT_NAME", &pocket_config.project_name);
             std::env::set_var("POCKET_REGION", &pocket_config.region);
+            std::env::set_var("POCKET_ENVS_AWS_RESOURCES_LOADED", "true");
         }
         return Ok(());
     }
@@ -78,6 +75,10 @@ pub async fn set_envs_from_resources(stage: Option<&str>) -> Result<()> {
     let pocket_config = config::load_config(&stage)?;
     resources::set_envs_from_resources(&pocket_config).await?;
 
+    // 途中で Err になった場合に再呼び出しで復旧できるよう、フラグは成功後に立てる
+    unsafe {
+        std::env::set_var("POCKET_ENVS_AWS_RESOURCES_LOADED", "true");
+    }
     Ok(())
 }
 

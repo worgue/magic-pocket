@@ -1,6 +1,7 @@
 import os
 
 import boto3
+import pytest
 from moto import mock_aws
 
 import pocket.runtime as runtime
@@ -85,3 +86,32 @@ def test_pocket_secret_to_envs_rsa_options_override():
     )
     envs = _pocket_secret_to_envs("SIGN", {"pem": "p", "pub": "q"}, spec)
     assert envs == {"SIGN_PRIV": "p", "SIGN_PUB": "q"}
+
+
+def test_set_envs_from_secrets_retries_after_failure(use_toml, monkeypatch):
+    """get_secrets が失敗した後の再呼び出しが silent no-op にならないこと
+
+    以前は LOADED フラグを処理前に立てていたため、途中の例外後は
+    フラグで即 return し DATABASE_URL 等が未設定のまま進行しえた。
+    """
+    use_toml("tests/data/toml/default.toml")
+    monkeypatch.delenv("POCKET_ENVS_SECRETS_LOADED", raising=False)
+    calls = {"n": 0}
+
+    def _fail_once(stage):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("simulated SSM throttling")
+        return {"FROM_SECRETS": "ok"}
+
+    monkeypatch.setattr(runtime, "get_secrets", _fail_once)
+    monkeypatch.setattr(runtime, "_set_rds_database_url", lambda: None)
+    monkeypatch.setattr(runtime, "_set_dsql_token", lambda: None)
+
+    with pytest.raises(RuntimeError, match="simulated"):
+        runtime.set_envs_from_secrets(stage="dev")
+    assert os.environ.get("POCKET_ENVS_SECRETS_LOADED") != "true"
+
+    runtime.set_envs_from_secrets(stage="dev")
+    assert os.environ.get("FROM_SECRETS") == "ok"
+    assert os.environ.get("POCKET_ENVS_SECRETS_LOADED") == "true"
