@@ -75,12 +75,16 @@ class Mediator:
         self.verify_user_stored_secrets()
         if self.context.awscontainer and self.context.awscontainer.secrets:
             sc = self.context.awscontainer.secrets
-            if hasattr(sc, "pocket_store"):
-                del sc.pocket_store
-            if hasattr(sc, "allowed_sm_resources"):
-                del sc.allowed_sm_resources
-            if hasattr(sc, "allowed_ssm_resources"):
-                del sc.allowed_ssm_resources
+            # hasattr は getter を実行してしまう (allowed_sm_resources は
+            # pocket_store.arn = SM API 呼び出しまで走る) ため、キャッシュの
+            # 有無を __dict__ で確認してから del する
+            for cached in (
+                "pocket_store",
+                "allowed_sm_resources",
+                "allowed_ssm_resources",
+            ):
+                if cached in sc.__dict__:
+                    delattr(sc, cached)
 
     def verify_user_stored_secrets(self):
         """type 付き user secret (stored mode) が deploy 前に provision 済みか検証する。

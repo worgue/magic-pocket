@@ -39,8 +39,8 @@ class SsmStore:
                         Type="SecureString",
                         Overwrite=True,
                     )
-        if hasattr(self, "_pocket_secrets_cache"):
-            del self._pocket_secrets_cache
+        # hasattr は getter を実行してしまう (消すためだけのフル fetch) ため pop
+        self.__dict__.pop("_pocket_secrets_cache", None)
 
     def delete_secrets(self):
         echo.log("Deleting pocket secrets via SSM %s ..." % self.context.pocket_key)
@@ -57,8 +57,8 @@ class SsmStore:
         for i in range(0, len(names_to_delete), 10):
             batch = names_to_delete[i : i + 10]
             self.client.delete_parameters(Names=batch)
-        if hasattr(self, "_pocket_secrets_cache"):
-            del self._pocket_secrets_cache
+        # hasattr は getter を実行してしまう (消すためだけのフル fetch) ため pop
+        self.__dict__.pop("_pocket_secrets_cache", None)
 
     def delete_secret_keys(self, keys: set[str]):
         """指定キーのパラメータのみ削除する (orphan 掃除用)。
