@@ -235,15 +235,13 @@ class CodeBuildBuilder:
             "serviceRole": role_arn,
         }
 
-        try:
-            self.codebuild.batch_get_projects(names=[self._project_name])
-            existing = self.codebuild.batch_get_projects(names=[self._project_name])
-            if existing["projects"]:
-                self.codebuild.update_project(**project_config)
-                print("  CodeBuildプロジェクト更新: %s" % self._project_name)
-                return
-        except ClientError:
-            pass
+        # batch_get_projects は存在しない名前でも例外を投げず projectsNotFound に
+        # 入るだけなので、1 回の呼び出しで存在判定できる
+        existing = self.codebuild.batch_get_projects(names=[self._project_name])
+        if existing["projects"]:
+            self.codebuild.update_project(**project_config)
+            print("  CodeBuildプロジェクト更新: %s" % self._project_name)
+            return
 
         self.codebuild.create_project(**project_config)
         print("  CodeBuildプロジェクト作成: %s" % self._project_name)

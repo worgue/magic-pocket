@@ -251,14 +251,6 @@ def get_deploystatic_local_storage(stage: str):
     }
 
 
-def can_deploystatic(stage: str):
-    try:
-        get_deploystatic_local_storage(stage)
-        return True
-    except DeploystaticConfigError:
-        return False
-
-
 def set_staticfiles_override_env(storage):
     if os.environ.get("POCKET_STATICFILES_BACKEND_OVERRIDE"):
         raise Exception("POCKET_STATICFILES_BACKEND_OVERRIDE is already set")

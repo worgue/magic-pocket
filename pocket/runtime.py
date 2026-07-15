@@ -12,7 +12,7 @@ from .context import Context
 from .resources.aws.secretsmanager import SecretsManager
 from .resources.aws.ssm import SsmStore
 from .settings import ManagedSecretSpec
-from .utils import get_stage
+from .utils import echo, get_stage
 
 if TYPE_CHECKING:
     from .context import AwsContainerContext
@@ -61,12 +61,10 @@ def get_secrets(stage: str | None = None) -> dict:
     # managed: pocket_store経由で自動ディスパッチ (SM/SSM)
     for key, value in sc.pocket_store.secrets.items():
         if key not in sc.managed:
-            import sys
-
-            print(
-                "Warning: SSM にキー '%s' が managed 定義にありません。"
-                " pocket deploy で同期してください。" % key,
-                file=sys.stderr,
+            # 文言はストア種別 (SM/SSM) 非依存にする
+            echo.warning(
+                "store 上のキー '%s' が managed 定義にありません。"
+                " pocket deploy で同期してください。" % key
             )
             continue
         envs = _pocket_secret_to_envs(key, value, sc.managed[key])
@@ -209,12 +207,15 @@ def _get_hosts(ac_context: AwsContainerContext) -> dict[str, str | None]:
 def _get_queueurls(ac_context: AwsContainerContext) -> dict[str, str | None]:
     """SQS get_queue_url で queue URL を取得"""
     data: dict[str, str | None] = {}
+    # client は 1 つ作って使い回す (except 節での再生成はたまたま同一クラスに
+    # 解決されているだけで壊れやすい)
+    sqs = boto3.client("sqs")
     for key, handler in ac_context.handlers.items():
         if handler.sqs:
             try:
-                res = boto3.client("sqs").get_queue_url(QueueName=handler.sqs.name)
+                res = sqs.get_queue_url(QueueName=handler.sqs.name)
                 data[key] = res["QueueUrl"]
-            except boto3.client("sqs").exceptions.QueueDoesNotExist:
+            except sqs.exceptions.QueueDoesNotExist:
                 data[key] = None
         else:
             data[key] = None

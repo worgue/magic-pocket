@@ -370,11 +370,6 @@ class CloudFront:
                     "不要なら手動で確認・削除してください: " + bucket
                 )
 
-    def _delete_redirect_from_policies(self, bucket_name):
-        echo.danger("Delete redirect from bucket policies is implementing ...")
-        echo.warning("Please delete the bucket policy manually.")
-        echo.info("The bucket name: " + bucket_name)
-
     def _update_origin_bucket_policy(self, policy: dict | None):
         if policy is None:
             echo.info("Deleting bucket policy for %s." % self.context.bucket_name)

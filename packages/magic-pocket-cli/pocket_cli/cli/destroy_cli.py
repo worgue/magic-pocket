@@ -4,7 +4,10 @@ import click
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.resources.aws.builders.codebuild import CodeBuildBuilder
-from pocket_cli.resources.aws.state import StateStore
+from pocket_cli.resources.aws.state import (
+    context_resource_prefix,
+    create_state_store,
+)
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
@@ -18,32 +21,15 @@ from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
 
 
-def _create_state_store(context: Context) -> StateStore:
-    if not context.general:
-        raise RuntimeError("general context is not configured")
-    resource_prefix = context.general.prefix_template.format(
-        stage=context.stage,
-        project=context.project_name,
-        namespace=context.general.namespace,
-    )
-    bucket_name = f"{resource_prefix}state"
-    return StateStore(bucket_name, context.general.region)
-
-
 def _create_codebuild_builder(context: Context) -> CodeBuildBuilder | None:
     """CodeBuildBuilder インスタンスを作成（リソース確認用）"""
     if not context.awscontainer or not context.general:
         return None
-    resource_prefix = context.general.prefix_template.format(
-        stage=context.stage,
-        project=context.project_name,
-        namespace=context.general.namespace,
-    )
-    state_bucket = f"{resource_prefix}state"
+    resource_prefix = context_resource_prefix(context)
     return CodeBuildBuilder(
         region=context.general.region,
         resource_prefix=resource_prefix,
-        state_bucket=state_bucket,
+        state_bucket=f"{resource_prefix}state",
         permissions_boundary=context.awscontainer.permissions_boundary,
     )
 
@@ -100,12 +86,7 @@ def _warn_command_provisioned(label: str, hint: str):
     )
 
 
-def _collect_database_targets(context: Context) -> list[str]:
-    """データベース関連の削除対象を収集
-
-    provisioning="command" の DB は deploy 同様 destroy も管理しない
-    (credential レス運用のため provider API を叩かない)。
-    """
+def _collect_aws_database_targets(context: Context) -> list[str]:
     targets: list[str] = []
     if context.dsql:
         dsql = Dsql(context.dsql)
@@ -115,13 +96,34 @@ def _collect_database_targets(context: Context) -> list[str]:
         rds = Rds(context.rds)
         if rds.status != "NOEXIST":
             targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
-    if context.tidb and context.tidb.provisioning != "command":
-        targets.append("TiDB クラスタ")
-    if context.upstash and context.upstash.provisioning != "command":
-        targets.append("Upstash Redis: %s" % context.upstash.database_name)
-    if context.neon and context.neon.provisioning != "command":
-        targets.append("Neon ブランチ")
     return targets
+
+
+def _collect_external_database_targets(context: Context) -> list[str]:
+    """外部 DB (TiDB / Upstash / Neon) の削除対象を収集
+
+    provisioning="command" の DB は deploy 同様 destroy も管理しない
+    (credential レス運用のため provider API を叩かない)。
+    dsql/rds と同様に存在確認し、確認プロンプトの一覧を実態に合わせる。
+    """
+    targets: list[str] = []
+    if context.tidb and context.tidb.provisioning != "command":
+        if TiDb(context.tidb).cluster:
+            targets.append("TiDB クラスタ")
+    if context.upstash and context.upstash.provisioning != "command":
+        if Upstash(context.upstash).database:
+            targets.append("Upstash Redis: %s" % context.upstash.database_name)
+    if context.neon and context.neon.provisioning != "command":
+        if Neon(context.neon).branch:
+            targets.append("Neon ブランチ")
+    return targets
+
+
+def _collect_database_targets(context: Context) -> list[str]:
+    """データベース関連の削除対象を収集"""
+    return _collect_aws_database_targets(context) + _collect_external_database_targets(
+        context
+    )
 
 
 def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bool):
@@ -362,7 +364,7 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 
     # 7. ステートバケット
     if with_state_bucket:
-        state_store = _create_state_store(context)
+        state_store = create_state_store(context)
         echo.log("Destroying state bucket...")
         state_store.delete_bucket()
         echo.success("State bucket was deleted.")

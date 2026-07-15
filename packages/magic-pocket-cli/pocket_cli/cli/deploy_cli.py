@@ -6,7 +6,7 @@ import click
 from pocket.context import Context, deploy_hash_report
 from pocket.utils import echo
 from pocket_cli.mediator import Mediator
-from pocket_cli.resources.aws.state import StateStore
+from pocket_cli.resources.aws.state import StateStore, create_state_store
 from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
@@ -72,15 +72,7 @@ def get_resources(context: Context, *, state_bucket: str = ""):
 
 
 def _create_state_store(context: Context) -> StateStore:
-    if not context.general:
-        raise RuntimeError("general context is not configured")
-    resource_prefix = context.general.prefix_template.format(
-        stage=context.stage,
-        project=context.project_name,
-        namespace=context.general.namespace,
-    )
-    bucket_name = f"{resource_prefix}state"
-    return StateStore(bucket_name, context.general.region)
+    return create_state_store(context)
 
 
 def deploy_init_resources(context: Context, *, state_bucket: str = ""):

@@ -72,3 +72,20 @@ class StateStore:
     def delete_bucket(self):
         """ステートバケットを中身ごと削除"""
         delete_bucket_with_contents(self.client, self.bucket_name)
+
+
+def context_resource_prefix(context) -> str:
+    """Context から resource prefix を算出する (deploy / destroy / build 共通)。"""
+    if not context.general:
+        raise RuntimeError("general context is not configured")
+    return context.general.prefix_template.format(
+        stage=context.stage,
+        project=context.project_name,
+        namespace=context.general.namespace,
+    )
+
+
+def create_state_store(context) -> StateStore:
+    """Context から StateStore を作成する (deploy / destroy 共通)。"""
+    resource_prefix = context_resource_prefix(context)
+    return StateStore(f"{resource_prefix}state", context.general.region)
