@@ -32,6 +32,8 @@ class GeneralSettings(BaseModel):
 
 
 class Efs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     local_mount_path: str = Field(pattern="^/mnt/.*", default="/mnt/efs")
     access_point_path: str = Field(pattern="^/.+", default="/lambda")
 

@@ -1,6 +1,7 @@
 import boto3
 import pytest
 from moto import mock_aws
+from pydantic import ValidationError
 
 from pocket.context import Context
 from pocket.django.settings import DjangoStorage
@@ -48,6 +49,87 @@ def test_settings_check_keys_rejects_unknown_key(use_toml):
         Settings.check_keys(
             {"general": {"stages": ["dev"]}, "unknownkey": {}},
         )
+
+
+def test_nested_settings_reject_unknown_key():
+    """BaseModel な設定クラスが未知キー (toml の typo) を拒否すること
+
+    extra 既定 (ignore) だと typo が黙って捨てられ、設定したつもりの値が
+    効かないまま deploy される。実際 tests/data/toml が旧スキーマ
+    ([awscontainer.secretsmanager.pocket_secrets]) のまま放置され、宣言した
+    secret が丸ごと無視されていたのを取りこぼしていた。
+    """
+    from pocket.settings import AwsContainer, Rds, Secrets, Sqs
+
+    for model, data in (
+        (Secrets, {"managed": {}, "pocket_secrets": {}}),  # 旧スキーマ
+        (Rds, {"managed": True, "min_capacty": 1.0}),  # typo
+        (Sqs, {"batch_sise": 5}),  # typo
+        (AwsContainer, {"dockerfile_path": "Dockerfile", "secretsmanager": {}}),
+    ):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            model.model_validate(data)
+
+
+def test_env_backed_sections_reject_unknown_toml_key(use_toml, tmp_path):
+    """[neon] / [tidb] / [upstash] の toml キーの typo を拒否すること
+
+    この 3 つは .env から credential を読む BaseSettings 派生なので
+    extra="forbid" にできない (test_env_backed_sections_allow_unrelated_dotenv_keys
+    参照)。代わりに Settings.check_env_backed_section_keys が toml 側だけを検証する。
+    """
+    toml = tmp_path / "pocket.toml"
+    toml.write_text(
+        '[general]\nregion = "ap-southeast-1"\n'
+        'project_name = "testprj"\nstages = ["dev"]\n'
+        '[neon]\nproject_name = "p"\npg_versoin = 16\n'  # typo
+    )
+    use_toml(str(toml))
+    with pytest.raises(ValueError, match=r"invalid key pg_versoin in \[neon\]"):
+        Settings.from_toml(stage="dev")
+
+
+def test_env_backed_sections_keep_legacy_key_guidance(use_toml, tmp_path):
+    """廃止済み skip_check_existing は移行手順つきのエラーになること
+
+    check_env_backed_section_keys が先に "invalid key" で弾いてしまうと、
+    移行手順の案内が失われる。
+    """
+    toml = tmp_path / "pocket.toml"
+    toml.write_text(
+        '[general]\nregion = "ap-southeast-1"\n'
+        'project_name = "testprj"\nstages = ["dev"]\n'
+        '[neon]\nproject_name = "p"\nskip_check_existing = true\n'
+    )
+    use_toml(str(toml))
+    with pytest.raises(ValidationError, match="store-url"):
+        Settings.from_toml(stage="dev")
+
+
+def test_env_backed_sections_allow_unrelated_dotenv_keys(
+    use_toml, tmp_path, monkeypatch
+):
+    """[neon] 等が .env の無関係なキーで壊れないこと
+
+    Neon/TiDb/Upstash を extra="forbid" にすると、nested validation でも dotenv
+    source が読まれるため .env の DJANGO_SECRET_KEY 等まで
+    "Extra inputs are not permitted" で拒否されてしまう。これが 3 クラスだけ
+    extra="ignore" を維持している理由なので、回帰テストで固定する。
+    """
+    # 実環境の NEON_API_KEY は dotenv より優先されるので、.env 由来だと確定させる
+    monkeypatch.delenv("NEON_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("DJANGO_SECRET_KEY=abc\nNEON_API_KEY=key\n")
+    monkeypatch.chdir(tmp_path)
+    toml = tmp_path / "pocket.toml"
+    toml.write_text(
+        '[general]\nregion = "ap-southeast-1"\n'
+        'project_name = "testprj"\nstages = ["dev"]\n'
+        '[neon]\nproject_name = "p"\n'
+    )
+    use_toml(str(toml))
+    settings = Settings.from_toml(stage="dev")
+    assert settings.neon
+    assert settings.neon.api_key == "key"
 
 
 @mock_aws

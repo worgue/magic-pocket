@@ -77,6 +77,8 @@ def _reject_skip_check_existing(data, *, resource: str):
 
 
 class BuildConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     backend: BuildBackend = "codebuild"
     compute_type: str = "BUILD_GENERAL1_MEDIUM"
     depot_project_id: str | None = None
@@ -90,6 +92,8 @@ class BuildConfig(BaseModel):
 
 
 class ManagedSecretSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal[
         "auto_database_url",
         "password",
@@ -125,6 +129,8 @@ UserSecretType = Literal["neon_database_url", "tidb_database_url", "upstash_redi
 
 
 class UserSecretSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     # name と type は排他 (name = 任意名を明示参照 / type = stored mode で正準名を導出)
     name: str | None = None  # SM: ARN or secret name, SSM: parameter name/path
     type: UserSecretType | None = None
@@ -145,6 +151,8 @@ class UserSecretSpec(BaseModel):
 
 
 class Secrets(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     store: StoreType = "sm"
     pocket_key_format: Annotated[
         FormatStr,
@@ -228,6 +236,8 @@ class AwsContainerIam(BaseModel):
     カバーできない権限を、ユーザーが宣言的に与えるための逃げ道。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     managed_policy_arns: list[str] = []
     """LambdaRole の ManagedPolicyArns に追加する AWS managed policy ARN の list。"""
 
@@ -240,6 +250,8 @@ class AwsContainerIam(BaseModel):
 
 
 class AwsContainer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     vpc: Vpc | None = None
     secrets: Secrets | None = None
     handlers: dict[str, LambdaHandler] = {}
@@ -265,6 +277,8 @@ class AwsContainer(BaseModel):
 
 
 class LambdaHandler(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     command: str
     timeout: int = 30
     memory_size: int = 512
@@ -287,6 +301,9 @@ _BUILTIN_SCHEDULERS = (_LAMBDA_SCHEDULER, _DJANGO_MANAGEMENT_SCHEDULER)
 
 
 class _ScheduleEntryBase(BaseModel):
+    # 派生の LambdaScheduleEntry / DjangoManagementScheduleEntry にも継承される
+    model_config = ConfigDict(extra="forbid")
+
     cron: str | None = None
     rate: str | None = None
     handler: str
@@ -339,6 +356,8 @@ ScheduleEntry = Annotated[
 
 
 class Scheduler(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schedules: dict[str, ScheduleEntry] = {}
 
     @model_validator(mode="before")
@@ -361,6 +380,8 @@ class Scheduler(BaseModel):
 
 
 class Sqs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     batch_size: int = 10
     message_retention_period: int = 345600
     # minimum 2
@@ -437,10 +458,14 @@ class Upstash(BaseSettings):
 
 
 class Dsql(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     deletion_protection: bool = False
 
 
 class Rds(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     managed: bool = True
     vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
@@ -512,11 +537,15 @@ class Ses(BaseModel):
 
 
 class S3Cors(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     methods: list[str]
     cloudfront: str | list[str]
 
 
 class S3LifecycleRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     prefix: str
     noncurrent_version_expiration_days: int = Field(ge=1)
@@ -1029,6 +1058,8 @@ class Settings(BaseModel):
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
+        # stage override 適用後に検証する ([<stage>.neon] の typo も対象にするため)
+        cls.check_env_backed_section_keys(data)
         data["stage"] = stage
         cls.resolve_vpc(data)
         result = cls.model_validate(data)
@@ -1103,6 +1134,37 @@ class Settings(BaseModel):
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
                 raise ValueError(error)
+
+    @classmethod
+    def check_env_backed_section_keys(cls, data: dict):
+        """[neon] / [tidb] / [upstash] の toml キーの typo を検出する。
+
+        他の設定クラスは model_config の extra="forbid" で typo を弾くが、この 3 つは
+        credential を .env から読む BaseSettings 派生なので forbid にできない。
+        forbid にすると .env の無関係なキー (DJANGO_SECRET_KEY 等) まで
+        "Extra inputs are not permitted" で拒否されてしまう (nested validation でも
+        dotenv source は読まれるため、Settings 経由でも同じ)。
+        そこで model_config は extra="ignore" のまま、toml 側のキーだけをここで
+        検証し、forbid 相当の typo 検出を得る。
+        """
+        for section, model in (("neon", Neon), ("tidb", TiDb), ("upstash", Upstash)):
+            section_data = data.get(section)
+            if not isinstance(section_data, dict):
+                continue
+            valid_keys = set()
+            for name, field in model.model_fields.items():
+                valid_keys.add(name)
+                if field.alias:
+                    valid_keys.add(field.alias)
+            # 廃止済みキーは通し、各モデルの _reject_legacy_skip_check_existing に
+            # 移行手順つきのエラーを出させる (ここで弾くと案内が失われる)
+            valid_keys.add("skip_check_existing")
+            for key in section_data:
+                if key not in valid_keys:
+                    raise ValueError(
+                        f"invalid key {key} in [{section}] of pocket.toml\n"
+                        f"  有効なキー: {sorted(valid_keys - {'skip_check_existing'})}"
+                    )
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+### Changed
+- **breaking**: pocket.toml の全セクションで未知キーをエラーにするようになりました。
+  従来 `[awscontainer]`, `[awscontainer.secrets]`, `[awscontainer.handlers.*]`,
+  `[rds]`, `[dsql]`, `[scheduler]`, `[vpc.efs]`, `[s3.cors]` 等は未知キーを黙って
+  無視していたため、typo や旧スキーマの残骸が「設定したつもりで効いていない」
+  状態になっていました（例: 0.9.0 でリネームされた
+  `[awscontainer.secretsmanager.pocket_secrets]` を書き続けても secret 宣言が
+  丸ごと無視される）。既に `[general]`, `[cloudfront]`, `[s3]`, `[ses]` 等は
+  未知キーを拒否していたので、その挙動への統一になります。
+  未知キーが残っている pocket.toml は起動時に `Extra inputs are not permitted`
+  で失敗するので、エラーが指すキーを削除するか正しい名前に直してください。
+- **breaking**: `[neon]` / `[tidb]` / `[upstash]` も未知キーをエラーにするように
+  なりました。この 3 つは `.env` から credential を読むため pydantic 側の
+  `extra="forbid"` は使えず（`.env` の無関係なキーまで拒否してしまう）、
+  toml のキーのみを検証します。`.env` の扱いは従来どおり変わりません。
+
+### Removed
+- **breaking**: `pocket.django.utils.get_static_storage` を削除しました。
+  `get_storages()["staticfiles"]` で同じ storage を取得できます。
+
 ## [0.17.0](https://github.com/worgue/magic-pocket/releases/tag/0.17.0) - 2026-07-12
 
 ### Added

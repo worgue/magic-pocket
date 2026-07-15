@@ -19,5 +19,8 @@ dockerfile_path = "tests/sampleprj/Dockerfile"
 [awscontainer.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[awscontainer.secretsmanager.pocket_secrets]
+# provisioning = "command" は「pocket は provider API を叩かず、事前 provision 済みの
+# URL を読むだけ」なので、managed (pocket が provisioning する) ではなく user の
+# stored mode で宣言するのが対の設定
+[awscontainer.secrets.user]
 DATABASE_URL = { type = "tidb_database_url" }
