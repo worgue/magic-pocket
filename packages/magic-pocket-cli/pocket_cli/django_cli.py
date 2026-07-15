@@ -280,18 +280,17 @@ def upload_collected_staticfiles(stage: str, *, delete: bool = False):
     echo.info("Bucket: %s" % s3_bucket_name)
     echo.info("Location: %s" % s3_location)
     echo.info("Uploading static files...")
-    cmd = "aws s3 sync %s s3://%s/%s/" % (
+    # リスト引数 + shell=False (パスにスペース等が含まれても分解されない)
+    cmd = [
+        "aws",
+        "s3",
+        "sync",
         local_storage["OPTIONS"]["location"],
-        s3_bucket_name,
-        s3_location,
-    )
+        "s3://%s/%s/" % (s3_bucket_name, s3_location),
+    ]
     if delete:
-        cmd += " --delete"
-    run(  # noqa: S602 aws s3 sync を pocket.toml 設定値から構築 (信頼境界内)
-        cmd,
-        shell=True,  # nosemgrep
-        check=True,
-    )
+        cmd.append("--delete")
+    run(cmd, check=True)  # noqa: S603 shell=False + 制御された引数
 
 
 def _build_python_command(args: list[str]) -> list[str]:
@@ -424,11 +423,21 @@ def upload(storage, stage, delete, dryrun):
     from_location = from_storage["OPTIONS"]["location"]
     to_backet_name = to_storage["OPTIONS"]["bucket_name"]
     to_location = to_storage["OPTIONS"]["location"]
-    cmd = "aws s3 sync %s s3://%s/%s" % (from_location, to_backet_name, to_location)
-    cmd += ' --exclude ".*" --exclude "*/.*"'
+    # リスト引数 + shell=False (パスにスペース等が含まれても分解されない)
+    cmd = [
+        "aws",
+        "s3",
+        "sync",
+        from_location,
+        "s3://%s/%s" % (to_backet_name, to_location),
+        "--exclude",
+        ".*",
+        "--exclude",
+        "*/.*",
+    ]
     if delete:
-        cmd += " --delete"
+        cmd.append("--delete")
     if dryrun:
-        cmd += " --dryrun"
-    print(cmd)
-    run(cmd, shell=True, check=True)  # noqa: S602 aws s3 sync を pocket.toml 設定値から構築 (信頼境界内)  # nosemgrep
+        cmd.append("--dryrun")
+    print(" ".join(cmd))
+    run(cmd, check=True)  # noqa: S603 shell=False + 制御された引数

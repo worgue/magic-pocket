@@ -195,7 +195,8 @@ def test_upload_collected_staticfiles_delete_opt_in(use_toml, monkeypatch):
     upload_collected_staticfiles("dev")
     assert "--delete" not in cmds[0]
     upload_collected_staticfiles("dev", delete=True)
-    assert cmds[1].endswith("--delete")
+    # cmd はリスト引数 (shell=False)。パスにスペースが含まれても分解されない
+    assert cmds[1][-1] == "--delete"
 
 
 def test_collectstatic_locally_link_opt_in(use_toml, monkeypatch):
