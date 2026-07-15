@@ -61,7 +61,16 @@ def status(stage, name):
 @cloudfront_keys.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
-def destroy(stage, name):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def destroy(stage, name, yes):
+    if not yes:
+        click.confirm(
+            "stage '%s' の CloudFront signing key リソースを削除しますか？"
+            "(署名済み URL が無効になります)" % stage,
+            abort=True,
+        )
     for cfk in get_cloudfront_keys_resources(stage, name):
         echo.info("[%s]" % cfk.context.name)
         cfk.delete()

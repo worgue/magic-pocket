@@ -63,7 +63,15 @@ def branch_out(stage, base_stage):
 
 @neon.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def delete(stage):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def delete(stage, yes):
+    if not yes:
+        click.confirm(
+            "stage '%s' の Neon ブランチを削除しますか？(データは失われます)" % stage,
+            abort=True,
+        )
     neon = get_neon_resource(stage)
     neon.delete_branch()
     echo.success("Branch was deleted successfully.")

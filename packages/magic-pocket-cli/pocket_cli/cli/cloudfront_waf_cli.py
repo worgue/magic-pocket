@@ -61,7 +61,15 @@ def status(stage, name):
 @cloudfront_waf.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
-def destroy(stage, name):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def destroy(stage, name, yes):
+    if not yes:
+        click.confirm(
+            "stage '%s' の WAF WebACL を削除しますか？(IP 制限が解除されます)" % stage,
+            abort=True,
+        )
     for waf in get_cloudfront_waf_resources(stage, name):
         echo.info("[%s]" % waf.context.name)
         waf.delete()

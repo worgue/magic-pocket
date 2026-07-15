@@ -47,7 +47,15 @@ def reset_database(stage):
 
 @tidb.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def delete(stage):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def delete(stage, yes):
+    if not yes:
+        click.confirm(
+            "stage '%s' の TiDB クラスタを削除しますか？(データは失われます)" % stage,
+            abort=True,
+        )
     resource = get_tidb_resource(stage)
     resource.delete_cluster()
     echo.success("Cluster was deleted successfully.")

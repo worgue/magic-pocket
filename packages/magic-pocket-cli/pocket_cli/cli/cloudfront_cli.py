@@ -63,7 +63,15 @@ def create(stage, name):
 @cloudfront.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
-def destroy(stage, name):
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def destroy(stage, name, yes):
+    if not yes:
+        click.confirm(
+            "stage '%s' の CloudFront distribution を削除しますか？" % stage,
+            abort=True,
+        )
     for cf in get_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)
         cf.delete()

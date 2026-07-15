@@ -9,6 +9,10 @@ from botocore.exceptions import ClientError
 from pocket.context import Context
 from pocket.runtime import get_secrets
 from pocket.utils import echo
+from pocket_cli.cli.destroy_cli import (
+    _collect_awscontainer_targets,
+    _destroy_awscontainer,
+)
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.awscontainer import AwsContainer
 
@@ -135,25 +139,32 @@ def create(stage):
 @awscontainer.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--with-secrets", is_flag=True, default=False)
-def destroy(stage, with_secrets):
-    ac = get_awscontainer_resource(stage)
-    if ac.stack.status == "NOEXIST":
-        echo.warning("No AWS lambda container found.")
-    else:
-        ac.stack.delete()
-        echo.success("Aws lambda container was destroyed.")
-    if ac.ecr.exists():
-        ac.ecr.delete()
-        echo.success("ECR repository was deleted.")
-    else:
-        echo.warning("No ECR repository found.")
-    if with_secrets:
-        _confirm_delete_pocket_managed_secrets(ac)
-        if ac.context.secrets:
-            ac.context.secrets.pocket_store.delete_secrets()
-            echo.success("Pocket managed secrets were deleted.")
-    else:
-        echo.warning("Pocket managed secrets still exists.")
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def destroy(stage, with_secrets, yes):
+    """AwsContainer 関連リソースを削除する。
+
+    トップレベル `pocket destroy` と同じ実装を使う (共有 ECR の削除ガード /
+    stack 削除完了待ち / CodeBuild / log group 掃除を含む)。
+    """
+    context = Context.from_toml(stage=stage)
+    if not context.awscontainer:
+        echo.warning("awscontainer is not configured for this stage")
+        return
+    targets = _collect_awscontainer_targets(context, with_secrets)
+    if not targets:
+        echo.warning("削除対象のリソースが見つかりません。")
+        return
+    echo.danger("以下のリソースを削除します:")
+    for target in targets:
+        echo.info("  - %s" % target)
+    echo.danger("この操作は取り消せません！")
+    if not yes:
+        click.confirm(
+            "stage '%s' の AwsContainer リソースを削除しますか？" % stage, abort=True
+        )
+    _destroy_awscontainer(context, with_secrets)
 
 
 @awscontainer.command()
