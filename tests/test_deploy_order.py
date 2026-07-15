@@ -131,3 +131,47 @@ def test_wait_status_accepts_stack_already_rolled_back_at_rest(use_toml, monkeyp
     )
     # raise せず COMPLETED として返ること
     stack.wait_status("COMPLETED", timeout=5, interval=1)
+
+
+def test_stack_description_none_only_for_not_exist(use_toml, monkeypatch):
+    """description は「不存在」のみ None、throttling 等は伝播すること
+
+    以前は except ClientError 全捕捉で throttling / AccessDenied も
+    「スタック不存在」に潰れ、create_stack の AlreadyExists 衝突や
+    wait_status の誤中断 (「Stack が見つかりません」) につながっていた。
+    """
+    from botocore.exceptions import ClientError
+
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer is not None
+    assert context.awscontainer.vpc is not None
+    stack = Vpc(context.awscontainer.vpc).stack
+
+    def _raise(error_code, message):
+        def _call(**kwargs):
+            raise ClientError(
+                {"Error": {"Code": error_code, "Message": message}}, "DescribeStacks"
+            )
+
+        return _call
+
+    # 不存在 → None
+    monkeypatch.setattr(
+        stack.client,
+        "describe_stacks",
+        _raise("ValidationError", "Stack with id x does not exist"),
+        raising=False,
+    )
+    assert stack.description is None
+
+    # throttling → 伝播
+    stack.__dict__.pop("description", None)
+    monkeypatch.setattr(
+        stack.client,
+        "describe_stacks",
+        _raise("Throttling", "Rate exceeded"),
+        raising=False,
+    )
+    with pytest.raises(ClientError, match="Rate exceeded"):
+        _ = stack.description

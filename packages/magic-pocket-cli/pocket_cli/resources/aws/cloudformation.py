@@ -23,6 +23,19 @@ if TYPE_CHECKING:
     from pocket.general_context import VpcContext
 
 
+def _is_stack_not_exist_error(e: ClientError) -> bool:
+    """describe_stacks / get_template の「スタック不存在」エラー判定。
+
+    throttling / AccessDenied 等まで「不存在」に潰すと、既存スタックの
+    NOEXIST 誤判定 (create_stack の AlreadyExists 衝突) や wait_status の
+    誤中断につながるため、エラー種別を見て判定する。
+    """
+    error = e.response.get("Error", {})
+    return error.get("Code") == "ValidationError" and "does not exist" in error.get(
+        "Message", ""
+    )
+
+
 class Stack:
     template_filename: str
 
@@ -56,15 +69,19 @@ class Stack:
     def description(self):
         try:
             return self.client.describe_stacks(StackName=self.name)["Stacks"][0]
-        except ClientError:
-            return None
+        except ClientError as e:
+            if _is_stack_not_exist_error(e):
+                return None
+            raise
 
     @cached_property
     def uploaded_template(self) -> str | None:
         try:
             return self.client.get_template(StackName=self.name)["TemplateBody"]
-        except ClientError:
-            return None
+        except ClientError as e:
+            if _is_stack_not_exist_error(e):
+                return None
+            raise
 
     def clear_status(self):
         if hasattr(self, "description"):
