@@ -13,8 +13,8 @@ from botocore.exceptions import ClientError
 
 from pocket.utils import echo
 from pocket_cli.resources.aws.builders.dockerignore import (
+    iter_source_files,
     load_dockerignore,
-    should_include,
 )
 
 # CodeBuildイメージ
@@ -275,22 +275,8 @@ class CodeBuildBuilder:
         # SpooledTemporaryFile: 50MB までメモリ、超えたらディスクへ自動退避
         buf = tempfile.SpooledTemporaryFile(max_size=50 * 1024 * 1024)
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            # os.walk でディレクトリ単位の枝刈り (rglob より高速)
-            for dirpath, dirnames, filenames in os.walk(context_dir):
-                rel_dir = os.path.relpath(dirpath, context_dir)
-                if rel_dir == ".":
-                    rel_dir = ""
-                # 除外ディレクトリを in-place で枝刈り
-                dirnames[:] = sorted(
-                    d
-                    for d in dirnames
-                    if should_include(os.path.join(rel_dir, d) if rel_dir else d, spec)
-                )
-                for filename in sorted(filenames):
-                    rel = os.path.join(rel_dir, filename) if rel_dir else filename
-                    if not should_include(rel, spec):
-                        continue
-                    self._add_source_file(zf, os.path.join(dirpath, filename), rel)
+            for abs_path, rel in iter_source_files(context_dir, spec):
+                self._add_source_file(zf, abs_path, rel)
 
         zip_size_mb = buf.tell() / (1024 * 1024)
         buf.seek(0)

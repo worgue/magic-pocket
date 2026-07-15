@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pocket_cli.resources.aws.builders.dockerignore import (
+    iter_source_files,
     load_dockerignore,
     should_include,
 )
@@ -106,3 +107,34 @@ def test_default_excludes_when_no_dockerignore(tmp_path):
     assert not should_include("node_modules/foo.js", spec)
     assert not should_include("__pycache__/foo.pyc", spec)
     assert should_include("src/main.py", spec)
+
+
+def test_negation_reincludes_file_under_excluded_directory(tmp_path):
+    """`!` は除外ディレクトリ配下のファイルも再包含できること (docker CLI と同仕様)
+
+    以前は os.walk の枝刈りで除外ディレクトリへ到達できず、
+    node_modules + !node_modules/keep.js の keep.js が source zip から漏れていた。
+    """
+    (tmp_path / ".dockerignore").write_text("node_modules\n!node_modules/keep.js\n")
+    (tmp_path / "app.py").write_text("x")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "keep.js").write_text("k")
+    (tmp_path / "node_modules" / "skip.js").write_text("s")
+
+    spec = load_dockerignore(tmp_path)
+    rels = {rel for _abs, rel in iter_source_files(tmp_path, spec)}
+    assert "app.py" in rels
+    assert "node_modules/keep.js" in rels
+    assert "node_modules/skip.js" not in rels
+
+
+def test_iter_source_files_prunes_without_negation(tmp_path):
+    """否定パターンが無い場合は従来どおり除外ディレクトリが列挙されないこと"""
+    (tmp_path / ".dockerignore").write_text("node_modules\n")
+    (tmp_path / "app.py").write_text("x")
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "skip.js").write_text("s")
+
+    spec = load_dockerignore(tmp_path)
+    rels = {rel for _abs, rel in iter_source_files(tmp_path, spec)}
+    assert rels == {"app.py", ".dockerignore"}
