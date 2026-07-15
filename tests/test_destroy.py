@@ -119,3 +119,28 @@ def test_destroy_resources_deletes_vpc_after_rds(use_toml, monkeypatch):
     assert "vpc" in calls
     assert calls.index("awscontainer") < calls.index("vpc")
     assert calls.index("rds") < calls.index("vpc")
+
+
+@mock_aws
+def test_ecr_info_finds_repo_beyond_default_page_size():
+    """repo が 100 超あっても名前指定で対象 repo を見つけること
+
+    describe_repositories の全列挙は既定 100 件で切れるため、
+    見落とすと create_repository が AlreadyExists で deploy が落ちる (回帰)。
+    """
+    client = boto3.client("ecr", region_name=REGION)
+    for i in range(101):
+        client.create_repository(repositoryName="repo-%03d" % i)
+    client.create_repository(repositoryName="target-repo")
+    ecr = Ecr(REGION, "target-repo", "latest", "Dockerfile", "linux/amd64")
+    assert ecr.exists()
+
+
+@mock_aws
+def test_ecr_image_detail_empty_when_image_missing():
+    """対象タグの image が無いとき image_detail が空を返すこと"""
+    client = boto3.client("ecr", region_name=REGION)
+    client.create_repository(repositoryName="target-repo")
+    ecr = Ecr(REGION, "target-repo", "missing-tag", "Dockerfile", "linux/amd64")
+    detail = ecr.image_detail
+    assert detail.hash is None or not detail.hash

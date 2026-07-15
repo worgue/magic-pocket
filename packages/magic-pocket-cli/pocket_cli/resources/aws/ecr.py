@@ -46,10 +46,13 @@ class Ecr:
 
     @cached_property
     def info(self) -> RepositoryDetail:
-        for repository in self.client.describe_repositories()["repositories"]:
-            if repository["repositoryName"] == self.name:
-                return RepositoryDetail(**repository)
-        return RepositoryDetail()
+        # describe_repositories の全列挙は既定 100 件で切れるため名前指定で引く
+        # (repo 100 超で見落とすと create_repository が AlreadyExists で落ちる)
+        try:
+            res = self.client.describe_repositories(repositoryNames=[self.name])
+        except self.client.exceptions.RepositoryNotFoundException:
+            return RepositoryDetail()
+        return RepositoryDetail(**res["repositories"][0])
 
     @property
     def uri(self):
@@ -66,11 +69,21 @@ class Ecr:
 
     @property
     def image_detail(self):
-        data = self.client.describe_images(repositoryName=self.name)
+        # describe_images の全列挙は既定 100 件で切れる (image は deploy 毎に
+        # 増える)。タグ見落としで hash 比較が常に不一致になり毎 deploy 無駄な
+        # update が走るため、タグ指定で直接引く
+        try:
+            data = self.client.describe_images(
+                repositoryName=self.name,
+                imageIds=[{"imageTag": self.tag}],
+            )
+        except (
+            self.client.exceptions.RepositoryNotFoundException,
+            self.client.exceptions.ImageNotFoundException,
+        ):
+            return ImageDetail()
         for detail in data["imageDetails"]:
-            if image_tags := detail.get("imageTags"):
-                if self.tag in image_tags:
-                    return ImageDetail(**detail)
+            return ImageDetail(**detail)
         return ImageDetail()
 
     def create(self):
