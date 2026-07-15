@@ -112,9 +112,27 @@ _SCHEDULER_ACTIONS: list[str] = ["scheduler:*"]
 _TAG_ACTIONS: list[str] = ["tag:TagResources", "tag:UntagResources"]
 
 
-def _uses_ssm(settings: Settings) -> bool:
+def _effective_secret_stores(settings: Settings) -> set[str]:
+    """secrets の実効 store 集合 (グローバル既定 + user secret の per-spec override)"""
     ac = settings.awscontainer
-    return bool(ac and ac.secrets and ac.secrets.store == "ssm")
+    if not (ac and ac.secrets):
+        return set()
+    stores = {ac.secrets.store}
+    for spec in ac.secrets.user.values():
+        stores.add(spec.store or ac.secrets.store)
+    return stores
+
+
+def _uses_ssm(settings: Settings) -> bool:
+    return "ssm" in _effective_secret_stores(settings)
+
+
+def _uses_sm(settings: Settings) -> bool:
+    stores = _effective_secret_stores(settings)
+    if not stores:
+        # secrets 未設定でも従来どおり secretsmanager group を含める (既定挙動維持)
+        return True
+    return "sm" in stores
 
 
 def _has_sqs_handler(settings: Settings) -> bool:
@@ -190,7 +208,7 @@ def compute_actions(settings: Settings) -> list[str]:
     rules: list[tuple[str, bool]] = [
         ("core", True),
         ("ssm", _uses_ssm(settings)),
-        ("secretsmanager", not _uses_ssm(settings)),
+        ("secretsmanager", _uses_sm(settings)),
         ("cloudfront", bool(settings.cloudfront)),
         ("waf", _has_waf(settings)),
         ("vpc", _has_vpc(settings)),

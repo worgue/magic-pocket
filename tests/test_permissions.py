@@ -85,6 +85,43 @@ def test_secrets_store_ssm():
     assert "ssm:GetParametersByPath" in actions
 
 
+def test_secrets_per_spec_store_override_adds_both_groups():
+    """user secret の per-spec store override も Action 算出に反映されること。
+
+    グローバル store だけを見ると、override された store 側の操作
+    (stored-read / store-url の put) が CI deploy ロールで AccessDenied になる。
+    """
+    # グローバル sm + 個別 ssm → 両 group が入る
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "store": "sm",
+                "user": {"API_KEY": {"name": "/svc/api-key", "store": "ssm"}},
+            },
+            "handlers": {},
+        }
+    )
+    actions = compute_actions(settings)
+    assert "secretsmanager:*" in actions
+    assert "ssm:GetParameter" in actions
+
+    # グローバル ssm + 個別 sm → 両 group が入る
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "store": "ssm",
+                "user": {"API_KEY": {"name": "svc-api-key", "store": "sm"}},
+            },
+            "handlers": {},
+        }
+    )
+    actions = compute_actions(settings)
+    assert "secretsmanager:*" in actions
+    assert "ssm:GetParameter" in actions
+
+
 def test_cloudfront_adds_acm_route53():
     """[cloudfront.*] があれば cloudfront / acm / route53 Action が入る。"""
     settings = _build_settings(
