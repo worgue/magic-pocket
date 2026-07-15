@@ -50,3 +50,32 @@ def test_deploy_resources_skips_completed_resource(use_toml, monkeypatch):
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
     _run_deploy(monkeypatch, context, _FakeResource("COMPLETED"))
+
+
+def test_deploy_resources_prepares_before_status(use_toml, monkeypatch):
+    """prepare_deploy フックが status 判定より先に呼ばれること
+
+    secret 焼き込み構成 (enable_origin_verify / signing_key) では、secret 値が
+    空のまま template hash を計算すると deploy 済み hash と一致せず
+    毎回 REQUIRE_UPDATE になる (回帰テスト)。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+
+    calls: list[str] = []
+
+    class _Resource:
+        def prepare_deploy(self, mediator):
+            calls.append("prepare")
+
+        @property
+        def status(self):
+            calls.append("status")
+            return "COMPLETED"
+
+        def state_info(self):
+            return {}
+
+    _run_deploy(monkeypatch, context, _Resource())
+    assert calls[0] == "prepare"
+    assert "status" in calls

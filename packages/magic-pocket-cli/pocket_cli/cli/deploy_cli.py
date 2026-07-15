@@ -116,6 +116,12 @@ def upload_managed_assets(context: Context):
 
 def _deploy_resource(resource, mediator: Mediator, state_store: StateStore):
     target_name = resource.__class__.__name__
+    # template hash に影響する入力 (secret 値等) を status 判定前に読み込む。
+    # 空のまま hash を計算すると deploy 済み hash と一致せず、secret 焼き込み
+    # 構成 (enable_origin_verify / signing_key) で毎回 REQUIRE_UPDATE になる
+    prepare = getattr(resource, "prepare_deploy", None)
+    if prepare is not None:
+        prepare(mediator)
     if resource.status == "NOEXIST":
         echo.log("Creating %s..." % target_name)
         if "mediator" in inspect.signature(resource.create).parameters:

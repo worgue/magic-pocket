@@ -42,6 +42,16 @@ class CloudFrontKeys:
             self.context, signing_public_key_pem=self._signing_public_key_pem
         )
 
+    def prepare_deploy(self, mediator: Mediator | None = None):
+        """template hash に影響する公開鍵を store から読み込む (副作用なし)。
+
+        status / yaml_synced の判定前に呼ぶこと。空のまま hash を計算すると
+        deploy 済み hash と一致せず、毎回 REQUIRE_UPDATE になる。
+        """
+        if mediator is None:
+            return
+        self._prepare_signing_key(mediator)
+
     def create(self, mediator: Mediator):
         mediator.ensure_pocket_managed_secrets()
         self._prepare_signing_key(mediator)

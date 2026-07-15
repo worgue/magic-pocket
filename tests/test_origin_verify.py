@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -296,3 +297,33 @@ def test_mw_passthrough_when_match_but_no_viewer_ip(monkeypatch):
     out = mw(req)
     assert out is sentinel
     assert req.META["REMOTE_ADDR"] == "10.0.0.1"
+
+
+def test_prepare_deploy_loads_secret_for_consistent_hash():
+    """prepare_deploy 後の stack hash が update 時 (secret 込み) と一致すること
+
+    fresh インスタンスの空 secret で hash を計算すると deploy 済み hash と
+    永遠に一致せず REQUIRE_UPDATE が続き、ensure_post_deploy_state の安全網も
+    無効化される (回帰テスト)。
+    """
+    from pocket_cli.resources.cloudfront import CloudFront
+
+    ctx = _cf_lambda_context()
+    store = type(
+        "Store", (), {"secrets": {ORIGIN_VERIFY_SECRET_KEY: "deadbeefsecret"}}
+    )()
+    secrets_ctx = type("Sc", (), {"pocket_store": store})()
+    ac = type("Ac", (), {"secrets": secrets_ctx})()
+    m_context = type("Mc", (), {"awscontainer": ac})()
+    mediator: Any = type("M", (), {"context": m_context})()
+
+    with mock.patch("boto3.client"):
+        cf = CloudFront(ctx)
+        cf.prepare_deploy(mediator)
+        prepared_hash = cf.stack._template_hash
+        update_hash = CloudFrontStack(
+            ctx, origin_verify_secret_value="deadbeefsecret"
+        )._template_hash
+
+    assert cf._origin_verify_secret_value == "deadbeefsecret"
+    assert prepared_hash == update_hash

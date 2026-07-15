@@ -55,7 +55,10 @@ def test_ensure_post_deploy_state_skips_when_stack_not_completed(use_toml, monke
 
     cf.ensure_post_deploy_state(mediator=None)
 
-    assert called == {"prepare": 0, "policy": 0, "kvs": 0}
+    # prepare (store からの読み込みのみ・副作用なし) は status 判定前に走るが、
+    # 変更系 (bucket policy / KVS) は実行されないこと
+    assert called["policy"] == 0
+    assert called["kvs"] == 0
 
 
 @mock_aws

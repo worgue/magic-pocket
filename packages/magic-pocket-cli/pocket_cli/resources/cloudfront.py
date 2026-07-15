@@ -73,12 +73,20 @@ class CloudFront:
             origin_verify_secret_value=self._origin_verify_secret_value,
         )
 
+    def prepare_deploy(self, mediator: Mediator | None = None):
+        """template hash に影響する secret 値を store から読み込む (副作用なし)。
+
+        status / yaml_synced の判定前に呼ぶこと。値が空のまま hash を計算すると
+        deploy 済み hash と一致せず、毎回 REQUIRE_UPDATE になる。
+        """
+        self._prepare_token_secret(mediator)
+        self._prepare_origin_verify_secret(mediator)
+
     def create(self, mediator: Mediator | None = None):
         self.update(mediator=mediator)
 
     def update(self, mediator: Mediator | None = None):
-        self._prepare_token_secret(mediator)
-        self._prepare_origin_verify_secret(mediator)
+        self.prepare_deploy(mediator)
         if not self.stack.exists:
             self.stack.create()
         elif not self.stack.yaml_synced:
@@ -105,9 +113,9 @@ class CloudFront:
         KVS 書き込みなどが永遠にスキップされる、という事故が起きる。これを防ぐため
         deploy フローの末尾で stack 状態によらず冪等に再実行する。
         """
+        self.prepare_deploy(mediator)
         if self.stack.status != "COMPLETED":
             return
-        self._prepare_token_secret(mediator)
         self._ensure_bucket_policy()
         self._write_token_secret_to_kvs()
 
