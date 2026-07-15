@@ -87,3 +87,38 @@ def test_destroy_subcommands_require_confirmation(monkeypatch):
     _assert_confirm_guard(runner, cloudfront, ["destroy", "--stage", "dev"])
     _assert_confirm_guard(runner, neon, ["delete", "--stage", "dev"])
     _assert_confirm_guard(runner, tidb, ["delete", "--stage", "dev"])
+
+
+def test_collect_database_targets_skips_command_provisioned(use_toml):
+    """provisioning="command" の DB は削除対象一覧に載らないこと"""
+    from pocket.context import Context
+
+    use_toml("tests/data/toml/db_command_provisioning.toml")
+    context = Context.from_toml(stage="dev")
+    assert destroy_cli._collect_database_targets(context) == []
+
+
+def test_destroy_resources_does_not_touch_command_provisioned(use_toml, monkeypatch):
+    """provisioning="command" の DB へ provider API を叩かないこと
+
+    deploy 側は provisioning != "command" で除外するのに destroy に分岐が無く、
+    credential 未設定だと teardown が途中 (CloudFront 等の削除後) で止まっていた。
+    """
+    from pocket.context import Context
+
+    use_toml("tests/data/toml/db_command_provisioning.toml")
+    context = Context.from_toml(stage="dev")
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("provisioning=command の DB に provider API を呼んだ")
+
+    monkeypatch.setattr(destroy_cli, "TiDb", _boom)
+    monkeypatch.setattr(destroy_cli, "Neon", _boom)
+    monkeypatch.setattr(destroy_cli, "Upstash", _boom)
+    monkeypatch.setattr(destroy_cli, "_destroy_cloudfront_and_acm", lambda c: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_awscontainer", lambda c, w: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_dsql", lambda c: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_rds", lambda c: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_vpc", lambda c: None)
+
+    destroy_cli._destroy_resources(context, with_secrets=False, with_state_bucket=False)

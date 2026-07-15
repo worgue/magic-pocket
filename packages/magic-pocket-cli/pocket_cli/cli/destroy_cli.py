@@ -93,8 +93,19 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     return targets
 
 
+def _warn_command_provisioned(label: str, hint: str):
+    echo.warning(
+        '%s は provisioning="command" のため destroy では削除しません。'
+        "%s で削除してください。" % (label, hint)
+    )
+
+
 def _collect_database_targets(context: Context) -> list[str]:
-    """データベース関連の削除対象を収集"""
+    """データベース関連の削除対象を収集
+
+    provisioning="command" の DB は deploy 同様 destroy も管理しない
+    (credential レス運用のため provider API を叩かない)。
+    """
     targets: list[str] = []
     if context.dsql:
         dsql = Dsql(context.dsql)
@@ -104,11 +115,11 @@ def _collect_database_targets(context: Context) -> list[str]:
         rds = Rds(context.rds)
         if rds.status != "NOEXIST":
             targets.append("RDS Aurora クラスター: %s" % context.rds.cluster_identifier)
-    if context.tidb:
+    if context.tidb and context.tidb.provisioning != "command":
         targets.append("TiDB クラスタ")
-    if context.upstash:
+    if context.upstash and context.upstash.provisioning != "command":
         targets.append("Upstash Redis: %s" % context.upstash.database_name)
-    if context.neon:
+    if context.neon and context.neon.provisioning != "command":
         targets.append("Neon ブランチ")
     return targets
 
@@ -253,6 +264,44 @@ def _destroy_vpc(context: Context):
         echo.success("VPC was destroyed.")
 
 
+def _destroy_tidb(context: Context):
+    """TiDB クラスタを削除 (provisioning="command" は管理外)"""
+    if not context.tidb:
+        return
+    if context.tidb.provisioning == "command":
+        _warn_command_provisioned("TiDB", "pocket resource tidb delete")
+        return
+    if TiDb(context.tidb).cluster:
+        echo.log("Destroying TiDB cluster...")
+        TiDb(context.tidb).delete_cluster()
+        echo.success("TiDB cluster was deleted.")
+
+
+def _destroy_upstash(context: Context):
+    """Upstash Redis を削除 (provisioning="command" は管理外)"""
+    if not context.upstash:
+        return
+    if context.upstash.provisioning == "command":
+        _warn_command_provisioned("Upstash", "Upstash コンソール等")
+        return
+    upstash = Upstash(context.upstash)
+    if upstash.database:
+        upstash.delete_database()
+
+
+def _destroy_neon(context: Context):
+    """Neon ブランチを削除 (provisioning="command" は管理外)"""
+    if not context.neon:
+        return
+    if context.neon.provisioning == "command":
+        _warn_command_provisioned("Neon", "pocket resource neon delete")
+        return
+    if Neon(context.neon).branch:
+        echo.log("Destroying Neon branch...")
+        Neon(context.neon).delete_branch()
+        echo.success("Neon branch was deleted.")
+
+
 def _destroy_cloudfront_and_acm(context: Context):
     """CloudFront ディストリビューションと ACM 証明書を削除"""
     for name, cf_ctx in context.cloudfront.items():
@@ -302,23 +351,14 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
         S3(context.s3).delete()
         echo.success("S3 bucket was deleted.")
 
-    # 5. TiDB クラスタ
-    if context.tidb and TiDb(context.tidb).cluster:
-        echo.log("Destroying TiDB cluster...")
-        TiDb(context.tidb).delete_cluster()
-        echo.success("TiDB cluster was deleted.")
+    # 5. TiDB クラスタ (provisioning="command" は deploy 同様 destroy も管理しない)
+    _destroy_tidb(context)
 
     # 5.5. Upstash Redis
-    if context.upstash:
-        upstash = Upstash(context.upstash)
-        if upstash.database:
-            upstash.delete_database()
+    _destroy_upstash(context)
 
     # 6. Neon ブランチ
-    if context.neon and Neon(context.neon).branch:
-        echo.log("Destroying Neon branch...")
-        Neon(context.neon).delete_branch()
-        echo.success("Neon branch was deleted.")
+    _destroy_neon(context)
 
     # 7. ステートバケット
     if with_state_bucket:
