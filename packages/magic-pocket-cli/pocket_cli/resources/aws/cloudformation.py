@@ -79,10 +79,28 @@ class Stack:
         interval=3,
         error_statuses: tuple[ResourceStatus] = ("FAILED",),
     ):
+        # 待機開始後に ROLLBACK 系へ「遷移」したら操作失敗として検出する。
+        # UPDATE_ROLLBACK_COMPLETE 自体は cfn_status では COMPLETED (安定状態で
+        # 再 update 可能) なので、遷移を見ないと更新失敗が成功扱いになる。
+        # 最初から ROLLBACK 系 (依存リソース待ちで rest 状態の stack を見る場合)
+        # は失敗と見なさない。
+        initial_detail = self.status_detail
         noexist_count = 0
         for i in range(timeout // interval):
             self.clear_status()
             current = self.cfn_status
+            detail = self.status_detail
+            if (
+                status == "COMPLETED"
+                and "ROLLBACK" in detail
+                and detail != initial_detail
+            ):
+                print("")
+                print(self.description)
+                raise RuntimeError(
+                    f"Stack operation was rolled back ({detail}). "
+                    "Please check the console."
+                )
             if current == status:
                 print("")
                 return
@@ -159,6 +177,10 @@ class Stack:
                     return "FAILED"
                 return "COMPLETED"
             elif action in {"IMPORT", "REVIEW", "UPDATE", "CREATE"}:
+                # UPDATE_ROLLBACK_COMPLETE もここで COMPLETED になる (安定状態で
+                # 再 update 可能なため。rest 状態ではタグの template hash が
+                # ロールバックで旧値に戻るので status は REQUIRE_UPDATE になる)。
+                # 更新失敗の検出は wait_status の ROLLBACK 遷移チェックで行う。
                 return "COMPLETED"
         raise RuntimeError("unknown status: %s" % self.status_detail)
 

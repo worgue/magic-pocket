@@ -84,3 +84,50 @@ def test_wait_status_noexist_raises_when_expecting_completed(use_toml):
     # VPC スタックが存在しない状態で wait_status("COMPLETED") を呼ぶ
     with pytest.raises(RuntimeError, match="見つかりません"):
         vpc.stack.wait_status("COMPLETED", timeout=15, interval=1)
+
+
+@mock_aws
+def test_wait_status_raises_on_rollback_transition(use_toml, monkeypatch):
+    """更新開始後に ROLLBACK へ遷移したら wait_status("COMPLETED") が失敗すること
+
+    UPDATE_ROLLBACK_COMPLETE は cfn_status では COMPLETED (安定状態で再 update 可能)
+    のため、遷移を検出しないと更新失敗が成功扱いになる (false green の回帰テスト)。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer is not None
+    assert context.awscontainer.vpc is not None
+    stack = Vpc(context.awscontainer.vpc).stack
+
+    state = {"step": 0}
+    sequence = ["UPDATE_IN_PROGRESS", "UPDATE_ROLLBACK_IN_PROGRESS"]
+    monkeypatch.setattr(
+        type(stack),
+        "status_detail",
+        property(lambda self: sequence[min(state["step"], len(sequence) - 1)]),
+    )
+    monkeypatch.setattr(
+        "pocket_cli.resources.aws.cloudformation.time.sleep",
+        lambda _: state.__setitem__("step", state["step"] + 1),
+    )
+    with pytest.raises(RuntimeError, match="rolled back"):
+        stack.wait_status("COMPLETED", timeout=30, interval=1)
+
+
+@mock_aws
+def test_wait_status_accepts_stack_already_rolled_back_at_rest(use_toml, monkeypatch):
+    """依存リソース待ちで rest 状態の UPDATE_ROLLBACK_COMPLETE を見た場合は
+    安定状態 (COMPLETED) として成功すること"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer is not None
+    assert context.awscontainer.vpc is not None
+    stack = Vpc(context.awscontainer.vpc).stack
+
+    monkeypatch.setattr(
+        type(stack),
+        "status_detail",
+        property(lambda self: "UPDATE_ROLLBACK_COMPLETE"),
+    )
+    # raise せず COMPLETED として返ること
+    stack.wait_status("COMPLETED", timeout=5, interval=1)
