@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import time
 from functools import cached_property
@@ -30,9 +29,9 @@ from pydantic import BaseModel
 from pocket.context import NeonContext
 from pocket.resources.base import ResourceStatus
 
-logging.basicConfig()
+# basicConfig / setLevel はライブラリ import の副作用として呼び出し側の
+# root logger 設定を書き換えるため行わない (レベル設定は呼び出し側の責務)
 logger = logging.getLogger(__name__)
-logger.setLevel(level=os.getenv("POCKET_LOGGER_LEVEL", "WARNING").upper())
 
 ResourceType = Literal["branches", "databases", "endpoints", "roles"]
 
@@ -130,48 +129,57 @@ class NeonApi:
             "Authorization": "Bearer %s" % self.key,
         }
 
-    def get(self, path):
-        logger.info("GET %s" % self.endpoint + path)
-        res = _http_request("GET", self.endpoint + path, headers=self.header)
+    def _request(self, method: str, path: str, data=None) -> _HttpResponse:
+        url = self.endpoint + path
+        log = logger.info if method == "GET" else logger.warning
+        log("%s %s" % (method, url))
+        if data is not None:
+            logger.debug(json.dumps(data, indent=2))
+        res = _http_request(method, url, headers=self.header, data=data)
         logger.debug(res.status_code)
-        logger.debug(json.dumps(res.json(), indent=2))
         if 200 <= res.status_code < 300:
+            if method != "GET":
+                # Neon 側の反映待ち (operations polling の簡易代替)
+                time.sleep(2)
             return res
-        if res.status_code == 404:
-            raise NeonNotFound("%s: %s" % (res.status_code, res.json()["message"]))
+        detail = self._error_detail(res)
+        if method == "GET" and res.status_code == 404:
+            raise NeonNotFound("%s: %s" % (res.status_code, detail))
         if res.status_code == 401:
-            print("Used API key: %s" % (self.key[:5] + "..." + self.key[-5:]))
-            print("API key length: %s" % len(self.key))
-        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
+            self._print_auth_hint()
+        raise Exception("%s: %s" % (res.status_code, detail))
+
+    @staticmethod
+    def _error_detail(res: _HttpResponse) -> str:
+        """エラーレスポンスから安全にメッセージを取り出す。
+
+        非 JSON / 空 body (LB 由来の 502 HTML 等) や message キー欠落で
+        KeyError / JSONDecodeError になり本来の HTTP エラーを隠さないようにする。
+        """
+        try:
+            payload = res.json()
+        except json.JSONDecodeError:
+            return "<non-JSON response>"
+        if isinstance(payload, dict) and "message" in payload:
+            return str(payload["message"])
+        return json.dumps(payload)[:200]
+
+    def _print_auth_hint(self):
+        if not self.key:
+            print("NEON_API_KEY が未設定です (Authorization: Bearer None)。")
+            return
+        # 診断用に prefix と長さのみ表示 (末尾まで出すと部分的な secret 露出になる)
+        print("Used API key: %s..." % self.key[:5])
+        print("API key length: %s" % len(self.key))
+
+    def get(self, path):
+        return self._request("GET", path)
 
     def post(self, path, data=None):
-        logger.warning("POST %s" % self.endpoint + path)
-        logger.debug(json.dumps(data, indent=2))
-        res = _http_request(
-            "POST", self.endpoint + path, headers=self.header, data=data
-        )
-        logger.debug(res.status_code)
-        logger.debug(json.dumps(res.json(), indent=2))
-        if 200 <= res.status_code < 300:
-            time.sleep(2)
-            return res
-        if res.status_code == 401:
-            print("Used API key: %s" % (self.key[:5] + "..." + self.key[-5:]))
-            print("API key length: %s" % len(self.key))
-        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
+        return self._request("POST", path, data=data)
 
     def delete(self, path, data=None):
-        logger.warning("DELETE %s" % self.endpoint + path)
-        logger.debug(json.dumps(data, indent=2))
-        res = _http_request(
-            "DELETE", self.endpoint + path, headers=self.header, data=data
-        )
-        logger.debug(res.status_code)
-        logger.debug(json.dumps(res.json(), indent=2))
-        if 200 <= res.status_code < 300:
-            time.sleep(2)
-            return res
-        raise Exception("%s: %s" % (res.status_code, res.json()["message"]))
+        return self._request("DELETE", path, data=data)
 
     def projects_url(self):
         return self.endpoint + "projects"
@@ -427,12 +435,6 @@ class Neon:
             self.delete("databases", self.context.name)
         self.create_database()
 
-    def create_role(self):
-        if self.role is None:
-            del self.role
-        data = {"role": {"name": self.context.role_name}}
-        self.post("roles", data=data)
-
     def set_role_password(self):
         if self.role is None:
             raise Exception("Create role first")
@@ -457,10 +459,7 @@ def ensure_url_for_context(context: NeonContext) -> str:
     算出して返す。Neon の URL は reveal_password 方式で冪等なので何度呼んでも同じ。
     """
     neon = Neon(context)
-    if not neon.branch:
-        neon.create_branch(neon.parent_branch)
-    neon.ensure_role()
-    neon.ensure_database()
+    neon.create()
     return Neon(context).database_url
 
 

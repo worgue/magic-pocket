@@ -382,3 +382,29 @@ def test_neon_endpoint_prefers_read_write():
     assert endpoint is not None
     assert endpoint.type == "read_write"
     assert endpoint.host == "rw.example"
+
+
+def test_neon_api_error_without_json_body_reports_status():
+    """非 JSON body (LB 由来の 502 HTML 等) でも本来の HTTP エラーが报告されること
+
+    以前は res.json()["message"] 直アクセスで JSONDecodeError / KeyError になり
+    本来のエラーを隠していた。
+    """
+    from pocket.provisioning.neon import _HttpResponse
+
+    api = NeonApi("napi_dummy")
+    with patch("pocket.provisioning.neon._http_request") as mock_req:
+        mock_req.return_value = _HttpResponse(502, b"<html>Bad Gateway</html>")
+        with pytest.raises(Exception, match="502"):
+            api.get("projects")
+
+
+def test_neon_api_401_with_none_key_hints_missing_env(capsys):
+    """api_key 未設定 (None) の 401 で TypeError にならず設定不足を案内すること"""
+    api = NeonApi(None)
+    with patch("pocket.provisioning.neon._http_request") as mock_req:
+        mock_req.return_value = _fake_response(401, {"message": "unauthorized"})
+        with pytest.raises(Exception, match="401"):
+            api.get("projects")
+    out = capsys.readouterr().out
+    assert "NEON_API_KEY" in out
