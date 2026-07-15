@@ -85,7 +85,10 @@ class LambdaHandler:
     @property
     def queueurl(self) -> str | None:
         if self.context.sqs:
-            res = boto3.client("sqs").get_queue_url(QueueName=self.context.sqs.name)
+            # region 未指定だと AWS_DEFAULT_REGION が別 region の環境で
+            # 誤った queue を照会する (同クラスの他 client と同様に明示する)
+            sqs = boto3.client("sqs", region_name=self.context.region)
+            res = sqs.get_queue_url(QueueName=self.context.sqs.name)
             return res["QueueUrl"]
 
     def update(self, image_uri, wait=False):
