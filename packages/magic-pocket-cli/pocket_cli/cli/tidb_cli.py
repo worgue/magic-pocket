@@ -77,6 +77,10 @@ def store_url(stage, key, force):
     """
 
     def ensure_and_compute_url(context):
+        if not context.tidb:
+            raise click.ClickException(
+                "tidb が pocket.toml に宣言されていません (store-url 不可)"
+            )
         # TiDB は password reveal が無く ensure/url 算出で password を reset するため、
         # 同一インスタンスを使い回して password を整合させる (fresh instance にしない)。
         resource = TiDb(context.tidb)

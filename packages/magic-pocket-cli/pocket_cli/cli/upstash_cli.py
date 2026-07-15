@@ -24,6 +24,10 @@ def store_url(stage, key, force):
     """
 
     def ensure_and_compute_url(context):
+        if not context.upstash:
+            raise click.ClickException(
+                "upstash が pocket.toml に宣言されていません (store-url 不可)"
+            )
         resource = Upstash(context.upstash)
         resource.create()
         # ensure 後の状態を確実に反映するため fresh instance で URL を算出する。

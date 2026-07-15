@@ -107,8 +107,11 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
     elif yes or click.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
         upload_collected_staticfiles(stage)
-    handler = _get_management_command_handler(context)
     if yes or click.confirm("migrate?", default=True):
+        # handler 解決は migrate 実行が確定してから行う (management handler
+        # 未設定 stage で deploy 本体成功後に例外になり URL 表示へ到達しない
+        # のを防ぐ)
+        handler = _get_management_command_handler(context)
         res = handler.invoke(json.dumps({"command": "migrate", "args": []}))
         handler.show_logs(res)
     from pocket_cli.cli.deploy_cli import _get_deploy_url

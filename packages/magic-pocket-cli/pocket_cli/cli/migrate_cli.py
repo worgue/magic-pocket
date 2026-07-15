@@ -123,6 +123,16 @@ def _run_template_hash(stage: str, *, yes: bool) -> None:
         return
 
     # 1. タグがないスタックに uploaded template のハッシュで仮タグを付与
+    #    (update_stack を伴う CFn mutation のため、確認してから実行する)
+    backfill_targets = [s for s in stacks if s._deployed_template_hash is None]
+    if backfill_targets and not yes:
+        echo.info(
+            "以下のスタックにタグ付与のための update_stack "
+            "(UsePreviousTemplate) を実行します:"
+        )
+        for stack in backfill_targets:
+            echo.info("  - %s" % stack.name)
+        click.confirm("実行しますか？", abort=True)
     _backfill_tags(stacks)
 
     # 2. ローカルとの差分チェック（非 ASCII 文字化け以外の差分があれば中断）

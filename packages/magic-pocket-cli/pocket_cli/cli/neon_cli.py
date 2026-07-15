@@ -47,7 +47,7 @@ def reset_database(stage):
 
 @neon.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-@click.option("--base-stage", default=None)
+@click.option("--base-stage", required=True, help="分岐元の stage")
 def branch_out(stage, base_stage):
     neon = get_neon_resource(stage)
     if neon.branch:

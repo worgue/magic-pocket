@@ -61,8 +61,9 @@ class Mediator:
                     generated[key] = value
             else:
                 msg = (
-                    "%s is already created. "
-                    "Use rotate-pocket-managed if you want to refresh the secrets" % key
+                    "%s is already created. To rotate, run `pocket resource "
+                    "awscontainer secrets delete-pocket-managed` and then "
+                    "`create-pocket-managed`." % key
                 )
                 self._conditional_error(exists, msg)
         if generated:
