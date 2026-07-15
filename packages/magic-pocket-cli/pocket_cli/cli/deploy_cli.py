@@ -114,6 +114,37 @@ def upload_managed_assets(context: Context):
         cf.upload_managed_assets()
 
 
+def _deploy_resource(resource, mediator: Mediator, state_store: StateStore):
+    target_name = resource.__class__.__name__
+    if resource.status == "NOEXIST":
+        echo.log("Creating %s..." % target_name)
+        if "mediator" in inspect.signature(resource.create).parameters:
+            resource.create(mediator)
+        else:
+            resource.create()
+        state_store.record(resource.state_info())
+    elif resource.status == "REQUIRE_UPDATE":
+        echo.log("Updating %s..." % target_name)
+        if "mediator" in inspect.signature(resource.update).parameters:
+            resource.update(mediator)
+        else:
+            resource.update()
+        state_store.record(resource.state_info())
+    elif resource.status == "FAILED":
+        # 黙ってスキップすると deploy が exit 0 で成功表示になる
+        raise RuntimeError(
+            "%s が FAILED 状態です。AWS コンソール等で状態を確認して"
+            "解消してから再実行してください。" % target_name
+        )
+    elif resource.status == "PROGRESS":
+        raise RuntimeError(
+            "%s の前回操作が進行中です。完了を待ってから再実行してください。"
+            % target_name
+        )
+    else:
+        echo.log("%s is already the latest version." % target_name)
+
+
 def deploy_resources(context: Context, *, state_bucket: str = ""):
     state_store = _create_state_store(context)
     # state bucket は deploy_init_resources の前に作成済み
@@ -123,23 +154,7 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
     mediator = Mediator(context)
     resources = get_resources(context, state_bucket=state_bucket)
     for resource in resources:
-        target_name = resource.__class__.__name__
-        if resource.status == "NOEXIST":
-            echo.log("Creating %s..." % target_name)
-            if "mediator" in inspect.signature(resource.create).parameters:
-                resource.create(mediator)
-            else:
-                resource.create()
-            state_store.record(resource.state_info())
-        elif resource.status == "REQUIRE_UPDATE":
-            echo.log("Updating %s..." % target_name)
-            if "mediator" in inspect.signature(resource.update).parameters:
-                resource.update(mediator)
-            else:
-                resource.update()
-            state_store.record(resource.state_info())
-        else:
-            echo.log("%s is already the latest version." % target_name)
+        _deploy_resource(resource, mediator, state_store)
     # stack 作成/更新が終わった後の後付け状態 (bucket policy / KVS など) を
     # 冪等に確保する。wait_status が timeout した次の deploy でも復旧できる。
     for resource in resources:
