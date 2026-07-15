@@ -310,9 +310,14 @@ class Neon:
 
     @cached_property
     def endpoint(self) -> Endpoint | None:
+        # read replica (read_only endpoint) を追加した branch では一覧の並びに
+        # 依存せず read_write を選ぶ (read_only を返すと書き込みが全滅する)
         if self.branch:
             for endpoint in self.get("endpoints").json()["endpoints"]:
-                if endpoint["branch_id"] == self.branch.id:
+                if (
+                    endpoint["branch_id"] == self.branch.id
+                    and endpoint["type"] == "read_write"
+                ):
                     return Endpoint(**endpoint)
 
     @property

@@ -327,3 +327,58 @@ def test_ensure_url_for_context_creates_branch_when_absent():
     mock_create_branch.assert_called_once()
     mock_ensure_role.assert_called_once()
     mock_ensure_database.assert_called_once()
+
+
+def test_neon_endpoint_prefers_read_write():
+    """read replica (read_only) が先に並んでいても read_write endpoint を選ぶこと
+
+    endpoint type を見ないと一覧の並び次第で database_url が read_only ホストに
+    なり、アプリの書き込みが全滅する (回帰テスト)。
+    """
+    from pocket_cli.resources.neon import Branch, Neon
+
+    from pocket.context import NeonContext
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="sandbox",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    endpoints = {
+        "endpoints": [
+            {
+                "id": "ep-ro",
+                "host": "ro.example",
+                "branch_id": "br-xxx",
+                "autoscaling_limit_min_cu": 0.25,
+                "autoscaling_limit_max_cu": 0.25,
+                "type": "read_only",
+            },
+            {
+                "id": "ep-rw",
+                "host": "rw.example",
+                "branch_id": "br-xxx",
+                "autoscaling_limit_min_cu": 0.25,
+                "autoscaling_limit_max_cu": 0.25,
+                "type": "read_write",
+            },
+        ]
+    }
+    with (
+        patch.object(Neon, "branch", new=Branch(id="br-xxx", name="sandbox")),
+        patch.object(
+            Neon,
+            "project",
+            new=MagicMock(id="mock-project-12345678", name="dev-myapp"),
+        ),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        mock_req.return_value = _fake_response(200, endpoints)
+        endpoint = neon.endpoint
+    assert endpoint is not None
+    assert endpoint.type == "read_write"
+    assert endpoint.host == "rw.example"
