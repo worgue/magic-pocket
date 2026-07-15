@@ -5,7 +5,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 type HmacSha256 = Hmac<Sha256>;
 
 /// HMAC-SHA256 トークンを生成する。形式: {user_id}:{expiry_unix}:{hmac_hex}
+///
+/// user_id に `:` を含むとトークン形式の区切りと衝突し verify で常に無効に
+/// なるため panic する (Python 実装の ValueError と対応)。
 pub fn generate_token(user_id: &str, secret_hex: &str, max_age_secs: u64) -> String {
+    assert!(
+        !user_id.contains(':'),
+        "user_id must not contain ':' (token format delimiter)"
+    );
     let secret = hex::decode(secret_hex).expect("secret_hex が不正です");
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -357,3 +357,39 @@ def test_middleware_subclass_can_override_max_age(monkeypatch):
     req = _FakeRequest(user=_FakeUser(authenticated=True, pk="42"))
     mw(req)
     assert resp.cookies[COOKIE_NAME]["max_age"] == 60
+
+
+def test_generate_token_rejects_colon_user_id():
+    """user_id に : を含むとトークン形式と衝突して verify で常に無効になるため、
+    発行時に reject する (毎レスポンス再発行 + redirect ループの恒久化防止)"""
+    with pytest.raises(ValueError, match="user_id"):
+        generate_token("tenant:42", secret=TEST_SECRET)
+
+
+def test_middleware_reissues_on_user_switch(monkeypatch):
+    """logout を挟まないアカウント切替時に旧ユーザーの token を上書き発行すること"""
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    old_token = generate_token("41", secret=TEST_SECRET)
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: old_token},
+    )
+    mw(req)
+    assert COOKIE_NAME in resp.cookies
+    assert verify_token(resp.cookies[COOKIE_NAME]["value"]) == "42"
+
+
+def test_middleware_keeps_valid_token_for_same_user(monkeypatch):
+    """同一ユーザーの有効 token は再発行しないこと (従来挙動の維持)"""
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    token = generate_token("42", secret=TEST_SECRET)
+    resp = _FakeResponse()
+    mw = _make_middleware(resp, monkeypatch=monkeypatch)
+    req = _FakeRequest(
+        user=_FakeUser(authenticated=True, pk="42"),
+        cookies={COOKIE_NAME: token},
+    )
+    mw(req)
+    assert COOKIE_NAME not in resp.cookies

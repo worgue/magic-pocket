@@ -20,6 +20,10 @@ def generate_token(
     user_id: str, *, secret: str | None = None, max_age: int = DEFAULT_MAX_AGE
 ) -> str:
     """HMAC-SHA256 トークンを生成する。形式: {user_id}:{expiry_unix}:{hmac_hex}"""
+    if ":" in user_id:
+        # トークン形式の区切りと衝突し、verify_token で常に無効になる。
+        # 黙って発行すると毎レスポンス再発行 + redirect ループが恒久化する
+        raise ValueError("user_id must not contain ':' (token format delimiter)")
     if secret is None:
         secret = _get_secret()
     expiry = int(time.time()) + max_age
@@ -139,7 +143,11 @@ class SpaTokenCookieMiddleware:
                 return remaining < self._max_age() / 2
         """
         token = request.COOKIES.get(COOKIE_NAME)
-        return token is None or verify_token(token) is None
+        if token is None:
+            return True
+        # 失効だけでなく「別ユーザーの token」も再発行する (logout を挟まない
+        # アカウント切替後に旧ユーザーの token が最長 7 日残存するのを防ぐ)
+        return verify_token(token) != str(request.user.pk)
 
     def _max_age(self) -> int:
         """発行時の token 寿命 (秒)。subclass で settings 等から返せる。"""
