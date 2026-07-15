@@ -20,7 +20,12 @@ from .settings import (
     StoreType,
     UserSecretSpec,
 )
-from .utils import echo, get_hosted_zone_id_from_domain
+from .utils import (
+    camel_logical_name,
+    echo,
+    get_hosted_zone_id_from_domain,
+    route_logical_name,
+)
 
 # enable_origin_verify 用 managed secret の予約キー。Lambda runtime env 名にも
 # なる (string secret はキー名がそのまま env 名)。pocket.django.origin_verify の
@@ -618,9 +623,7 @@ class RdsContext(BaseModel):
 
 def _camel(key: str) -> str:
     """schedule entry key を CFn logical ID 用 CamelCase に変換する"""
-    return "".join(
-        part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", key) if part
-    )
+    return camel_logical_name(key)
 
 
 def _kebab(key: str) -> str:
@@ -824,16 +827,10 @@ class RouteContext(BaseModel):
     @computed_field
     @property
     def name(self) -> str:
-        if not self.path_pattern:
-            return "root"
-        if self.path_pattern[0] != "/":
+        if self.path_pattern and self.path_pattern[0] != "/":
             raise RuntimeError("Should be validated in settings")
-        parts = []
-        for part in self.path_pattern.split("/"):
-            if part and part != "*":
-                alnum_only = "".join(ch for ch in part if ch.isalnum())
-                parts.append(alnum_only)
-        return "-".join(parts)
+        # 一意性は settings.CloudFront.check_logical_id_uniqueness が同じ導出で検証する
+        return route_logical_name(self.path_pattern)
 
     @computed_field
     @property

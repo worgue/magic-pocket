@@ -1,5 +1,6 @@
 import importlib
 import os
+import re
 import sys
 from functools import cache
 from pathlib import Path
@@ -203,3 +204,26 @@ def get_wsgi_application():
         print("Failed to import WSGI application %s.wsgi" % get_project_name())
         raise
     return mod.application
+
+
+def route_logical_name(path_pattern: str) -> str:
+    """route の path_pattern から CFn 論理 ID / Origin Id 用の名前を導出する。
+
+    context.RouteContext.name と settings の一意性検証が同じ導出を共有する
+    (片方だけ変えると衝突検査がすり抜ける)。
+    """
+    if not path_pattern:
+        return "root"
+    parts = []
+    for part in path_pattern.split("/"):
+        if part and part != "*":
+            alnum_only = "".join(ch for ch in part if ch.isalnum())
+            parts.append(alnum_only)
+    return "-".join(parts)
+
+
+def camel_logical_name(key: str) -> str:
+    """非英数字を境界にした CamelCase の CFn 論理 ID を導出する。"""
+    return "".join(
+        part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", key) if part
+    )

@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
 from .general_settings import GeneralSettings, Vpc
-from .utils import echo, get_toml_path
+from .utils import camel_logical_name, echo, get_toml_path, route_logical_name
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -751,6 +751,42 @@ class CloudFront(BaseModel):
     def check_domain_redirect_from(self):
         if self.domain is None and self.redirect_from:
             raise ValueError("redirect_from requires domain to be set")
+        return self
+
+    @model_validator(mode="after")
+    def check_logical_id_uniqueness(self):
+        """導出される CFn 論理 ID / Origin Id の衝突・空文字を検証する。
+
+        非英数字は除去されるため `/foo-bar/*` と `/foobar/*` は同名になり、
+        テンプレートの論理 ID 重複で deploy が失敗する (prefix 重複検査は
+        すり抜ける)。redirect_from の domain も同様。
+        """
+        seen_routes: dict[str, str] = {}
+        for route in self.routes:
+            name = route_logical_name(route.path_pattern)
+            if not name.strip("-"):
+                raise ValueError(
+                    "path_pattern '%s' から CloudFormation 論理 ID を導出でき"
+                    'ません。catch-all は path_pattern = "" (is_default = true) '
+                    "を使ってください。" % route.path_pattern
+                )
+            if name in seen_routes:
+                raise ValueError(
+                    "routes '%s' と '%s' は同じ CloudFormation 論理 ID '%s' を"
+                    "導出します (英数字以外は除去されます)。"
+                    "区別可能な path prefix を使ってください。"
+                    % (seen_routes[name], route.path_pattern, name)
+                )
+            seen_routes[name] = route.path_pattern
+        seen_domains: dict[str, str] = {}
+        for rf in self.redirect_from:
+            key = camel_logical_name(rf.domain)
+            if key in seen_domains:
+                raise ValueError(
+                    "redirect_from '%s' と '%s' は同じ CloudFormation 論理 ID "
+                    "'%s' を導出します。" % (seen_domains[key], rf.domain, key)
+                )
+            seen_domains[key] = rf.domain
         return self
 
     @model_validator(mode="after")

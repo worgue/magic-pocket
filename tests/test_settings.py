@@ -490,3 +490,51 @@ def test_double_prefix_advisory_goes_to_stderr_once(use_toml, capsys):
     captured = capsys.readouterr()
     assert "二重 prefix" not in captured.out  # stdout は汚さない
     assert captured.err.count("二重 prefix") == 1  # stderr に 1 回だけ
+
+
+def test_route_logical_id_collision_rejected():
+    """非英数字の除去で同名になる routes は settings で reject されること
+
+    /foo-bar/* と /foobar/* はどちらも論理 ID 'foobar' になり、
+    CFn テンプレートの Origin Id / 論理 ID 重複で deploy が失敗する。
+    """
+    with pytest.raises(ValueError, match="同じ CloudFormation 論理 ID"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/web"},
+                    {"path_pattern": "/foo-bar/*", "origin_path": "/a"},
+                    {"path_pattern": "/foobar/*", "origin_path": "/b"},
+                ]
+            }
+        )
+
+
+def test_route_wildcard_only_path_pattern_rejected():
+    """path_pattern='/*' は論理 ID が空になるため明示エラーになること"""
+    with pytest.raises(ValueError, match="論理 ID を導出でき"):
+        CloudFront.model_validate(
+            {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/web"},
+                    {"path_pattern": "/*", "origin_path": "/spa"},
+                ]
+            }
+        )
+
+
+def test_redirect_from_logical_id_collision_rejected():
+    """redirect_from の domain 同士が同じ論理 ID になる場合は reject されること"""
+    with pytest.raises(ValueError, match="同じ CloudFormation 論理 ID"):
+        CloudFront.model_validate(
+            {
+                "domain": "example.com",
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/web"},
+                ],
+                "redirect_from": [
+                    {"domain": "foo-bar.example.com"},
+                    {"domain": "foo.bar.example.com"},
+                ],
+            }
+        )
