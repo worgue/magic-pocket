@@ -147,9 +147,22 @@ async fn get_queueurls(config: &PocketConfig) -> Result<HashMap<String, Option<S
                 Ok(resp) => {
                     result.insert(key.to_string(), resp.queue_url().map(|s| s.to_string()));
                 }
-                Err(e) => {
-                    warn!("Failed to get queue URL for {}: {}", sqs.name, e);
+                // QueueDoesNotExist のみ欠落として許容し、AccessDenied 等の
+                // 権限ミスは即顕在化させる (Python runtime と同挙動)
+                Err(e) if e
+                    .as_service_error()
+                    .map(|se| se.is_queue_does_not_exist())
+                    .unwrap_or(false) =>
+                {
+                    warn!("Queue does not exist: {}", sqs.name);
                     result.insert(key.to_string(), None);
+                }
+                Err(e) => {
+                    return Err(PocketError::Sqs(format!(
+                        "get_queue_url failed for {}: {}",
+                        sqs.name,
+                        aws_sdk_sqs::error::DisplayErrorContext(&e)
+                    )));
                 }
             }
         }
@@ -190,12 +203,14 @@ async fn get_cfn_outputs(
 }
 
 fn capitalize(s: &str) -> String {
+    // Python の str.capitalize / Jinja の |capitalize と同じく残りは小文字化する
+    // (CFn Output key の導出が CLI 側と食い違うと POCKET_*_HOST が silent 欠落する)
     let mut chars = s.chars();
     match chars.next() {
         None => String::new(),
         Some(first) => {
             let upper: String = first.to_uppercase().collect();
-            upper + chars.as_str()
+            upper + &chars.as_str().to_lowercase()
         }
     }
 }
@@ -210,5 +225,7 @@ mod tests {
         assert_eq!(capitalize("worker"), "Worker");
         assert_eq!(capitalize(""), "");
         assert_eq!(capitalize("a"), "A");
+        // Python str.capitalize と同じく残りは小文字化 (myWorker -> Myworker)
+        assert_eq!(capitalize("myWorker"), "Myworker");
     }
 }

@@ -19,7 +19,6 @@ use tracing::info;
 pub async fn set_envs() -> Result<()> {
     set_envs_from_secrets(None).await?;
     set_envs_from_resources(None).await?;
-    set_dsql_token().await?;
     Ok(())
 }
 
@@ -44,6 +43,10 @@ pub async fn set_envs_from_secrets(stage: Option<&str>) -> Result<()> {
             }
         }
     }
+
+    // DSQL トークンは secrets 経路の一部として設定する
+    // (Python の set_envs_from_secrets → _set_dsql_token と対称)
+    set_dsql_token().await?;
 
     // 途中で Err になった場合に再呼び出しで復旧できるよう、フラグは成功後に立てる
     unsafe {

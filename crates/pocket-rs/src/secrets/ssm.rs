@@ -44,8 +44,11 @@ pub async fn get_pocket_secrets(
             let name = param.name().unwrap_or_default();
             let value = param.value().unwrap_or_default();
 
-            // /{pocket_key}/ 以降の相対パスを取得
-            let relative = &name[path.len()..];
+            // /{pocket_key}/ 以降の相対パスを取得 (バイトスライスは name が
+            // path より短い場合に panic するため strip_prefix で安全に外す)
+            let Some(relative) = name.strip_prefix(path.as_str()) else {
+                continue;
+            };
             let parts: Vec<&str> = relative.split('/').collect();
 
             match parts.len() {
