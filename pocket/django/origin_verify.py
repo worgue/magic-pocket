@@ -57,7 +57,10 @@ class OriginVerifyMiddleware:
             # origin verify 無効 (local/dev)。生 REMOTE_ADDR を尊重して no-op。
             return self.get_response(request)
         provided = request.META.get(ORIGIN_VERIFY_HEADER_META, "")
-        if not hmac.compare_digest(provided, secret):
+        # compare_digest は非 ASCII の str で TypeError を投げる (Django はヘッダを
+        # latin-1 decode した str で渡す) ため、bytes 同士で比較して常に 403 で弾く
+        provided_bytes = provided.encode("latin-1", "replace")
+        if not hmac.compare_digest(provided_bytes, secret.encode()):
             return self._forbidden()
         ip = parse_viewer_ip(request.META.get(VIEWER_IP_HEADER_META, ""))
         if ip:

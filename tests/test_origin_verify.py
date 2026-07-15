@@ -327,3 +327,17 @@ def test_prepare_deploy_loads_secret_for_consistent_hash():
 
     assert cf._origin_verify_secret_value == "deadbeefsecret"
     assert prepared_hash == update_hash
+
+
+def test_mw_forbids_non_ascii_header_without_500(monkeypatch):
+    """非 ASCII のヘッダ値でも TypeError (500) にならず 403 で弾くこと
+
+    Django はヘッダ値を latin-1 decode した str で META に入れるため、
+    0x80 以上のバイトを含む直叩きで compare_digest が TypeError を投げていた。
+    """
+    _ensure_django_configured()
+    mw, sentinel = _make_mw(monkeypatch, secret=TEST_SECRET)
+    req = _FakeRequest({ORIGIN_VERIFY_HEADER_META: "\xc3\xa9" * 10})
+    out = mw(req)
+    assert out is not sentinel
+    assert out.status_code == 403
