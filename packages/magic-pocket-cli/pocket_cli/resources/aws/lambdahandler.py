@@ -124,15 +124,21 @@ class LambdaHandler:
             self.wait_update()
 
     def wait_update(self, interval=3, limit=60):
-        print(f"waiting lambda fanction {self.name} update.", end="", flush=True)
+        print(f"waiting lambda function {self.name} update.", end="", flush=True)
         for _i in range(limit // interval):
             time.sleep(interval)
             self.refresh()
             if self.status == "PROGRESS":
                 print(".", end="", flush=True)
-            else:
-                print(f"\nlambda function {self.name} was updated.")
-                break
+                continue
+            if self.status == "FAILED":
+                print("")
+                raise RuntimeError(
+                    f"lambda function {self.name} の更新が失敗しました "
+                    "(LastUpdateStatus=Failed)。image URI や設定を確認してください。"
+                )
+            print(f"\nlambda function {self.name} was updated.")
+            break
         else:
             raise Exception("Lambda couldn't stop updating. Please check.")
 
@@ -159,12 +165,10 @@ class LambdaHandler:
         success_seen = False
         sleep_seconds = 5
         for _i in range(timeout_seconds // sleep_seconds):
-            res = self.logs_client.filter_log_events(
-                logGroupName=self.context.log_group_name,
-                logStreamNames=[events[0]["logStreamName"]],
-                startTime=events[0]["timestamp"],
+            messages = self._filter_log_messages(
+                log_stream_name=events[0]["logStreamName"],
+                start_time=events[0]["timestamp"],
             )
-            messages = [event["message"] for event in res["events"]]
             if messages[: len(printed)] != printed:
                 raise Exception("log stream changed")
             for message in messages[len(printed) :]:
@@ -194,7 +198,33 @@ class LambdaHandler:
                         )
                     return
             time.sleep(sleep_seconds)
-        print("Timeout %s seconds. Please check logs in cloudwatch." % timeout_seconds)
+        # timeout を正常 return にすると成功センチネル未観測でも exit 0 になる
+        # (docstring の false green 防止の意図に反する) ため raise する
+        raise ManagementCommandFailed(
+            "Timeout %s seconds: 成功マーカーを観測できませんでした。"
+            "CloudWatch のログを確認してください。処理が長い場合は "
+            "--timeout-seconds を増やしてください。" % timeout_seconds
+        )
+
+    def _filter_log_messages(self, log_stream_name: str, start_time: int) -> list[str]:
+        """filter_log_events を nextToken を辿って全件取得する。
+
+        1 レスポンス上限 (1MB / 10k 件) を超えるログでも REPORT 行まで到達
+        できるようにする。
+        """
+        messages: list[str] = []
+        kwargs: dict = {
+            "logGroupName": self.context.log_group_name,
+            "logStreamNames": [log_stream_name],
+            "startTime": start_time,
+        }
+        while True:
+            res = self.logs_client.filter_log_events(**kwargs)
+            messages += [event["message"] for event in res["events"]]
+            next_token = res.get("nextToken")
+            if not next_token:
+                return messages
+            kwargs["nextToken"] = next_token
 
     def _get_recent_log_stream_names(self, limit: int):
         try:

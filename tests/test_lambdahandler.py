@@ -96,3 +96,85 @@ def test_show_logs_reframes_init_phase_failure(monkeypatch):
     msg = str(exc.value)
     assert "INIT" in msg
     assert "magic-pocket" in msg  # version 不整合の対処 (uv add) に誘導
+
+
+def test_wait_update_raises_on_failed(monkeypatch):
+    """LastUpdateStatus=Failed で wait_update が例外を投げること
+
+    以前は PROGRESS 以外で一律 break して「was updated.」と表示し、
+    更新失敗でも AwsContainer.update() が stack 更新まで続行していた。
+    """
+    handler = object.__new__(LambdaHandler)
+    fake_context = type("Ctx", (), {"function_name": "fn"})()
+    monkeypatch.setattr(handler, "context", fake_context, raising=False)
+    monkeypatch.setattr(handler, "refresh", lambda: None, raising=False)
+    seq = ["PROGRESS", "FAILED"]
+    state = {"i": -1}
+    monkeypatch.setattr(
+        "time.sleep", lambda _s: state.__setitem__("i", min(state["i"] + 1, 1))
+    )
+    monkeypatch.setattr(
+        LambdaHandler, "status", property(lambda self: seq[max(state["i"], 0)])
+    )
+    with pytest.raises(RuntimeError, match="LastUpdateStatus=Failed"):
+        handler.wait_update()
+
+
+def test_wait_update_returns_on_success(monkeypatch):
+    """Successful (COMPLETED) では従来どおり正常終了すること"""
+    handler = object.__new__(LambdaHandler)
+    fake_context = type("Ctx", (), {"function_name": "fn"})()
+    monkeypatch.setattr(handler, "context", fake_context, raising=False)
+    monkeypatch.setattr(handler, "refresh", lambda: None, raising=False)
+    seq = ["PROGRESS", "COMPLETED"]
+    state = {"i": -1}
+    monkeypatch.setattr(
+        "time.sleep", lambda _s: state.__setitem__("i", min(state["i"] + 1, 1))
+    )
+    monkeypatch.setattr(
+        LambdaHandler, "status", property(lambda self: seq[max(state["i"], 0)])
+    )
+    handler.wait_update()  # raise しないこと
+
+
+def test_show_logs_raises_on_timeout(monkeypatch):
+    """REPORT 行に到達しないまま timeout したら失敗として送出する (false green 防止)。
+
+    以前は print して正常 return し、成功センチネル未観測でも exit 0 になっていた。
+    """
+    _, _, request_id = _make_handler(monkeypatch, [])
+    messages = [
+        '"START RequestId: %s"' % request_id,
+        "Running migrations...",
+    ]
+    handler, invoke_response, _ = _make_handler(monkeypatch, messages)
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    with pytest.raises(ManagementCommandFailed, match="Timeout"):
+        handler.show_logs(invoke_response, timeout_seconds=5)
+
+
+def test_filter_log_messages_follows_next_token(monkeypatch):
+    """filter_log_events の nextToken を辿って全件取得すること"""
+
+    class _PagedLogsClient:
+        def __init__(self):
+            self.calls = []
+
+        def filter_log_events(self, **kwargs):
+            self.calls.append(kwargs)
+            if "nextToken" not in kwargs:
+                return {
+                    "events": [{"message": "page1"}],
+                    "nextToken": "t1",
+                }
+            return {"events": [{"message": "page2"}]}
+
+    handler = object.__new__(LambdaHandler)
+    fake_context = type("Ctx", (), {"log_group_name": "lg"})()
+    monkeypatch.setattr(handler, "context", fake_context, raising=False)
+    client = _PagedLogsClient()
+    monkeypatch.setattr(handler, "logs_client", client, raising=False)
+    messages = handler._filter_log_messages(log_stream_name="s", start_time=0)
+    assert messages == ["page1", "page2"]
+    assert len(client.calls) == 2
+    assert client.calls[1]["nextToken"] == "t1"
