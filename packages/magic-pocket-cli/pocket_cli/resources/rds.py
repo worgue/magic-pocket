@@ -168,15 +168,23 @@ class Rds:
         if self.cluster is None:
             return "NOEXIST"
         cluster_status = self.cluster["Status"]
-        if cluster_status in ("creating", "modifying", "deleting"):
-            return "PROGRESS"
         if cluster_status == "available":
             if not self._scaling_config_matches():
                 return "REQUIRE_UPDATE"
             if not self._password_state_matches():
                 return "REQUIRE_UPDATE"
             return "COMPLETED"
-        return "FAILED"
+        if cluster_status in (
+            "failed",
+            "inaccessible-encryption-credentials",
+            "storage-full",
+            "stopped",
+        ):
+            return "FAILED"
+        # creating / modifying / deleting のほか backing-up / upgrading /
+        # maintenance / starting / resetting-master-credentials 等の一時 status。
+        # FAILED にするとバックアップウィンドウ中の deploy が誤って中断する
+        return "PROGRESS"
 
     @property
     def description(self):

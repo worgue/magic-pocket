@@ -164,9 +164,13 @@ class TiDb:
         # 到達するのは deploy が TiDB を管理する provisioning="deploy" の場合のみ。
         if not self.context.public_key or not self.context.private_key:
             return "NOEXIST"
-        if self.cluster and self.cluster.status == "ACTIVE":
+        if self.cluster is None:
+            return "NOEXIST"
+        if self.cluster.status == "ACTIVE":
             return "COMPLETED"
-        return "NOEXIST"
+        # CREATING 等の遷移中。NOEXIST 扱いにすると中断後の再 deploy が
+        # 未起動クラスタへの接続 (_ensure_database) で失敗する
+        return "PROGRESS"
 
     @property
     def description(self) -> str:

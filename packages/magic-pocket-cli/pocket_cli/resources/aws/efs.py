@@ -52,17 +52,12 @@ class Efs:
             return self.description["FileSystemId"]
 
     def clear_status(self):
-        if hasattr(self, "description"):
-            del self.description
-        if hasattr(self, "lifecycle_policies"):
-            del self.lifecycle_policies
+        # hasattr は getter を実行してしまう (消すためだけの describe) ため pop
+        self.__dict__.pop("description", None)
+        self.__dict__.pop("lifecycle_policies", None)
 
-    def wait_status(self, status: ResourceStatus, timeout=60):
-        max_iter = 100
-        interval = 3
-        if (timeout < 0) or ((max_iter * interval) < timeout):
-            raise Exception("timeout value is out of range")
-        for i in range(max_iter):
+    def wait_status(self, status: ResourceStatus, timeout=300, interval=3):
+        for i in range(max(1, timeout // interval)):
             self.clear_status()
             if self.status == status:
                 print("")
@@ -71,6 +66,10 @@ class Efs:
                 print("Waiting for efs status to be %s" % status, end="", flush=True)
             print(".", end="", flush=True)
             time.sleep(interval)
+        # 時間切れを正常 return にすると未完了のまま後続処理へ進んでしまう
+        raise RuntimeError(
+            "EFS status did not become %s in %s seconds" % (status, timeout)
+        )
 
     def create(self):
         res = self.client.create_file_system(
@@ -84,9 +83,7 @@ class Efs:
                 },
             ],
         )
-        filesystem_id = res["FileSystemId"]
-        print(res)
-        print(filesystem_id)
+        print("Created EFS: %s" % res["FileSystemId"])
         self.wait_status("REQUIRE_UPDATE")
         self.ensure_lifecycle_policies()
 
@@ -127,13 +124,6 @@ class Efs:
             raise RuntimeError("EFS description is not available")
         if self.description["LifeCycleState"] != "available":
             return "PROGRESS"
-        if self.lifecycle_policies != [
-            {
-                "TransitionToIA": "AFTER_30_DAYS",
-            },
-            {
-                "TransitionToPrimaryStorageClass": "AFTER_1_ACCESS",
-            },
-        ]:
+        if self.lifecycle_policies != self.lifecycle_policies_should_be:
             return "REQUIRE_UPDATE"
         return "COMPLETED"
