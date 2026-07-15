@@ -1,5 +1,6 @@
 import boto3
 from moto import mock_aws
+from pocket_cli.cli import destroy_cli
 from pocket_cli.resources.aws.ecr import Ecr
 from pocket_cli.resources.aws.s3_utils import (
     bucket_exists,
@@ -8,6 +9,8 @@ from pocket_cli.resources.aws.s3_utils import (
     empty_bucket,
 )
 from pocket_cli.resources.aws.state import StateStore
+
+from pocket.context import Context
 
 REGION = "ap-southeast-1"
 
@@ -85,3 +88,34 @@ def test_state_delete_bucket():
     store.delete_bucket()
 
     assert not bucket_exists(client, "test-state-bucket")
+
+
+def test_destroy_resources_deletes_vpc_after_rds(use_toml, monkeypatch):
+    """VPC の削除が AwsContainer / RDS の削除より後に実行されること
+
+    RDS は VPC の subnet / SG を使用しているため、先に VPC を消すと
+    DELETE_FAILED になり destroy 全体が中断する (回帰テスト)。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        destroy_cli,
+        "_destroy_cloudfront_and_acm",
+        lambda c: calls.append("cloudfront"),
+    )
+    monkeypatch.setattr(
+        destroy_cli,
+        "_destroy_awscontainer",
+        lambda c, with_secrets: calls.append("awscontainer"),
+    )
+    monkeypatch.setattr(destroy_cli, "_destroy_dsql", lambda c: calls.append("dsql"))
+    monkeypatch.setattr(destroy_cli, "_destroy_rds", lambda c: calls.append("rds"))
+    monkeypatch.setattr(destroy_cli, "_destroy_vpc", lambda c: calls.append("vpc"))
+
+    destroy_cli._destroy_resources(context, with_secrets=True, with_state_bucket=False)
+
+    assert "vpc" in calls
+    assert calls.index("awscontainer") < calls.index("vpc")
+    assert calls.index("rds") < calls.index("vpc")

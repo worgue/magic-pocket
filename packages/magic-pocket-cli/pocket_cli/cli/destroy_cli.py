@@ -89,7 +89,6 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
         parts.append("CodeBuild")
 
     targets.append("AwsContainer (%s)" % " + ".join(parts))
-    targets.extend(_collect_vpc_targets(context))
 
     return targets
 
@@ -125,6 +124,7 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
 
     targets.extend(_collect_awscontainer_targets(context, with_secrets))
     targets.extend(_collect_database_targets(context))
+    targets.extend(_collect_vpc_targets(context))
 
     for name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
@@ -173,6 +173,9 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
     if ac.stack.status != "NOEXIST":
         echo.log("Destroying AwsContainer stack...")
         ac.stack.delete()
+        # Lambda が VPC 内にある場合、ENI 解放を含む削除完了を待たないと
+        # 後続の VPC 削除が subnet 使用中で DELETE_FAILED になる
+        ac.stack.wait_status("NOEXIST", timeout=1800, interval=10)
         echo.success("AwsContainer stack was destroyed.")
 
     if ac.ecr.exists():
@@ -195,8 +198,6 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
         echo.log("Destroying pocket managed secrets...")
         context.awscontainer.secrets.pocket_store.delete_secrets()
         echo.success("Pocket managed secrets were deleted.")
-
-    _destroy_vpc(context)
 
 
 def _destroy_dsql(context: Context):
@@ -273,7 +274,7 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
     # 1. CloudFront + ACM
     _destroy_cloudfront_and_acm(context)
 
-    # 2. AwsContainer (CFNスタック + ECR + secrets) + 3. VPC
+    # 2. AwsContainer (CFNスタック + ECR + secrets)
     _destroy_awscontainer(context, with_secrets)
 
     # 2.5. DSQL
@@ -281,6 +282,10 @@ def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: 
 
     # 2.6. RDS（AwsContainer の後、VPC の前）
     _destroy_rds(context)
+
+    # 3. VPC（RDS の後。RDS が VPC の subnet / SG を使用しているため、
+    #    先に VPC を消すと DELETE_FAILED になる）
+    _destroy_vpc(context)
 
     # 3.5. CloudFrontKeys（AwsContainer の後、S3 の前）
     for name, cf_ctx in context.cloudfront.items():
