@@ -408,3 +408,42 @@ def test_neon_api_401_with_none_key_hints_missing_env(capsys):
             api.get("projects")
     out = capsys.readouterr().out
     assert "NEON_API_KEY" in out
+
+
+def test_neon_database_url_percent_encodes_credentials():
+    """password の特殊文字が percent-encode され、解析側の unquote と対称なこと"""
+    from pocket_cli.resources.neon import Neon, Role
+
+    from pocket.context import NeonContext
+    from pocket.django.db_url import parse_database_url_credentials
+    from pocket.provisioning.neon import Endpoint
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="sandbox",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    with (
+        patch.object(Neon, "role", new=Role(name="myapp", password="p%40ss w:rd")),
+        patch.object(
+            Neon,
+            "endpoint",
+            new=Endpoint(
+                id="ep-rw",
+                host="h.example",
+                autoscaling_limit_min_cu=0.25,
+                autoscaling_limit_max_cu=0.25,
+                type="read_write",
+            ),
+        ),
+    ):
+        url = neon.database_url
+    creds = parse_database_url_credentials(url)
+    assert creds["PASSWORD"] == "p%40ss w:rd"
+    assert creds["USER"] == "myapp"
+    assert creds["HOST"] == "h.example"
+    assert creds["NAME"] == "myapp"

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
-import urllib.parse
 from collections.abc import Callable
 from typing import Any
+
+from pocket.django.db_url import parse_database_url_credentials
 
 # PostgreSQL SQLSTATE Class 28 = Invalid Authorization Specification
 # (28P01 = invalid_password, 28000 = invalid_authorization_specification)。
@@ -58,12 +59,7 @@ def refresh_rds_settings(settings_dict: dict[str, Any]) -> bool:
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         return False
-    parsed = urllib.parse.urlparse(database_url)
-    settings_dict["USER"] = urllib.parse.unquote(parsed.username or "")
-    settings_dict["PASSWORD"] = urllib.parse.unquote(parsed.password or "")
-    settings_dict["HOST"] = parsed.hostname or ""
-    settings_dict["PORT"] = str(parsed.port or "")
-    settings_dict["NAME"] = parsed.path.lstrip("/")
+    settings_dict.update(parse_database_url_credentials(database_url))
     return True
 
 

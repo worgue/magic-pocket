@@ -22,6 +22,7 @@ import time
 from functools import cached_property
 from typing import Literal
 from urllib.error import HTTPError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from pydantic import BaseModel
@@ -334,9 +335,11 @@ class Neon:
             raise NeonResourceIsNotReady("Create role and endpoint first")
         if self.role.password is None:
             self.set_role_password()
+        # 解析側 (pocket.django.db_url) は unquote するため、生成側は必ず quote する
+        # (runtime._set_rds_database_url と同じ対称性)
         return "postgres://%s:%s@%s:5432/%s?sslmode=require" % (
-            self.context.role_name,
-            self.role.password,
+            quote(self.context.role_name, safe=""),
+            quote(self.role.password or "", safe=""),
             self.endpoint.host,
             self.context.name,
         )

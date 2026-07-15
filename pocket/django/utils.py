@@ -9,6 +9,7 @@ from django.core.management import call_command
 from ..context import Context
 from ..general_context import GeneralContext
 from ..runtime import get_context
+from .db_url import parse_database_url_credentials
 
 
 def _get_django_context_for_storages(
@@ -260,11 +261,7 @@ def get_databases(*, stage: str | None = None) -> dict:
 
     db: dict = {
         "ENGINE": engine,
-        "NAME": parsed.path.lstrip("/"),
-        "USER": urllib.parse.unquote(parsed.username or ""),
-        "PASSWORD": urllib.parse.unquote(parsed.password or ""),
-        "HOST": parsed.hostname or "",
-        "PORT": str(parsed.port or ""),
+        **parse_database_url_credentials(database_url),
     }
     if engine == "django_tidb":
         db["OPTIONS"] = {
