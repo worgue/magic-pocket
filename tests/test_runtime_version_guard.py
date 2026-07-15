@@ -81,3 +81,41 @@ def test_generate_runtime_config_stamps_marker_and_stays_valid_toml(
     parsed = tomllib.loads(text)
     assert parsed["general"]["project_name"] == "x"
     assert "_generator_version" not in parsed  # トップレベルキーとしては入れない
+
+
+def test_runtime_config_escapes_toml_strings():
+    """文字列値の " と \\ がエスケープされ、生成 TOML がパース可能なこと
+
+    以前は単純連結だったため、引用符やバックスラッシュを含む値 (schedules の
+    manage コマンド等) で不正 TOML が image に焼き込まれ、Lambda INIT で
+    初めて落ちていた。
+    """
+    from pocket_cli.cli.runtime_config_cli import _to_toml
+
+    tricky = 'say "hello" C:\\path\\to'
+    toml_str = _to_toml({"general": {"note": tricky, "items": ['a"b']}})
+    parsed = tomllib.loads(toml_str)
+    assert parsed["general"]["note"] == tricky
+    assert parsed["general"]["items"] == ['a"b']
+
+
+def test_runtime_config_stdout_includes_version_marker(monkeypatch):
+    """stdout モードでも GENERATOR_VERSION_MARKER が刻まれること
+
+    以前はファイル出力と別実装でマーカーが欠け、
+    `pocket runtime-config > pocket.runtime.toml` 経由だと版突合ガード
+    (Settings.check_generator_version) が無効になっていた。
+    """
+    from pathlib import Path
+
+    from click.testing import CliRunner
+    from pocket_cli.cli.runtime_config_cli import runtime_config
+
+    monkeypatch.setattr(
+        "pocket_cli.cli.runtime_config_cli.get_toml_path",
+        lambda: Path("tests/data/toml/default.toml"),
+    )
+    runner = CliRunner()
+    result = runner.invoke(runtime_config, ["-"])
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith(GENERATOR_VERSION_MARKER)

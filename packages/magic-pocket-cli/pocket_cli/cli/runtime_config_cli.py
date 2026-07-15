@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import json
 import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import click
@@ -119,13 +121,23 @@ def _to_toml(data: dict, prefix: str = "") -> str:
     return "\n".join(lines)
 
 
+def _toml_string(value: str) -> str:
+    """TOML basic string として安全な表現を返す。
+
+    エスケープ規則 (\" / \\\\ / 制御文字) は JSON と互換。単純連結だと
+    引用符やバックスラッシュを含む値で不正 TOML になり、image に焼き込まれて
+    Lambda INIT で初めて落ちる。
+    """
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _format_value(key: str, value) -> str:
     if isinstance(value, bool):
         return f"{key} = {'true' if value else 'false'}"
     if isinstance(value, int):
         return f"{key} = {value}"
     if isinstance(value, str):
-        return f'{key} = "{value}"'
+        return f"{key} = {_toml_string(value)}"
     if isinstance(value, list):
         return f"{key} = {_format_list(value)}"
     return f"{key} = {value!r}"
@@ -135,7 +147,7 @@ def _format_list(items: list) -> str:
     if not items:
         return "[]"
     if all(isinstance(i, str) for i in items):
-        return "[%s]" % ", ".join(f'"{i}"' for i in items)
+        return "[%s]" % ", ".join(_toml_string(i) for i in items)
     if all(isinstance(i, dict) for i in items):
         parts = []
         for item in items:
@@ -151,33 +163,40 @@ def _format_inline_value(value) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        return f'"{value}"'
+        return _toml_string(value)
     return repr(value)
 
 
 def _generator_version() -> str | None:
     """生成元 (magic-pocket-cli) のバージョン。取得できなければ None (刻印しない)。"""
     try:
-        from importlib.metadata import version
-
         return version("magic-pocket-cli")
-    except Exception:
+    except PackageNotFoundError:
         return None
 
 
-def generate_runtime_config(output_path: Path) -> None:
-    """pocket.runtime.toml を生成する（プログラムから呼び出し用）"""
+def _runtime_config_str() -> str:
+    """pocket.runtime.toml の内容を生成する (stdout / ファイル出力の共通実装)。
+
+    生成元 (CLI) バージョンを先頭コメントに刻む。旧 runtime (tomllib) は無視するので
+    後方互換を壊さず、新 runtime だけが読んで版突合 (Settings.check_generator_version)
+    に使う。CLI 版 > runtime 版のとき legible error にリフレーミングされる (層2)。
+    stdout 経由 (`pocket runtime-config > pocket.runtime.toml`) でもマーカーが
+    欠けないよう、生成は本関数に一本化する。
+    """
     toml_path = get_toml_path()
     data = tomllib.loads(toml_path.read_text())
     cleaned = _clean_data(data)
     toml_str = _to_toml(cleaned).strip() + "\n"
-    # 生成元 (CLI) バージョンを先頭コメントに刻む。旧 runtime (tomllib) は無視するので
-    # 後方互換を壊さず、新 runtime だけが読んで版突合 (Settings.check_generator_version)
-    # に使う。CLI 版 > runtime 版のとき legible error にリフレーミングされる (層2)。
-    version = _generator_version()
-    if version:
-        toml_str = "%s %s\n%s" % (GENERATOR_VERSION_MARKER, version, toml_str)
-    output_path.write_text(toml_str)
+    generator_version = _generator_version()
+    if generator_version:
+        toml_str = "%s %s\n%s" % (GENERATOR_VERSION_MARKER, generator_version, toml_str)
+    return toml_str
+
+
+def generate_runtime_config(output_path: Path) -> None:
+    """pocket.runtime.toml を生成する（プログラムから呼び出し用）"""
+    output_path.write_text(_runtime_config_str())
 
 
 @click.command("runtime-config")
@@ -191,11 +210,7 @@ def runtime_config(output: str):
     OUTPUT: 出力先ファイルパス（省略時は標準出力）
     """
     if output == "-":
-        toml_path = get_toml_path()
-        data = tomllib.loads(toml_path.read_text())
-        cleaned = _clean_data(data)
-        toml_str = _to_toml(cleaned).strip() + "\n"
-        click.echo(toml_str, nl=False)
+        click.echo(_runtime_config_str(), nl=False)
     else:
         generate_runtime_config(Path(output))
         click.echo("runtime-config を出力しました: %s" % output)
