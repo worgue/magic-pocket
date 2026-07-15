@@ -48,7 +48,15 @@ CloudFormation が Lambda 関数の環境変数として自動設定するため
 | `POCKET_DSQL_ENDPOINT` | DSQL クラスターのエンドポイント |
 | `POCKET_DSQL_REGION` | DSQL クラスターのリージョン |
 | `POCKET_DSQL_TOKEN` | DSQL IAM 認証トークン（`set_envs()` 呼び出し時に生成） |
+| `DATABASE_URL` | RDS 構成時、認証情報（Secrets Manager / SSM）から実行時に構築される接続 URL |
 | シークレットキー | Secrets Manager / SSM のシークレット値 |
+
+!!! info "RDS の `DATABASE_URL` は実行時に構築される"
+    RDS のマスターパスワードは自動ローテーションされうるため、deploy 時に値を
+    焼き込めません。`DATABASE_URL = { type = "rds_database_url" }` を宣言した場合、
+    シークレットには marker 値だけが入り、`set_envs()` が起動時に認証情報を読んで
+    実際の URL へ上書きします（Django・Rust いずれの実装でも同じ挙動）。
+    パスワードは URL 安全になるよう percent-encode されます。
 
 ---
 

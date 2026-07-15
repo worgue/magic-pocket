@@ -1237,6 +1237,7 @@ dependencies = [
  "aws-sdk-secretsmanager",
  "aws-sdk-sqs",
  "aws-sdk-ssm",
+ "percent-encoding",
  "serde",
  "serde_json",
  "thiserror",

@@ -18,3 +18,6 @@ aws-sdk-sqs = { version = "1", default-features = false, features = ["default-ht
 tokio = { version = "1", features = ["full"] }
 thiserror = "2"
 tracing = "0.1"
+# RDS パスワードの percent-encode 用。aws-sdk-* が既に依存しているため
+# 依存ツリーは増えない (Python 側 urllib.parse.quote との一致が要件)
+percent-encoding = "2"

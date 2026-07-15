@@ -17,6 +17,9 @@ pub struct PocketConfig {
     pub resource_prefix: String,
     pub secrets: Option<SecretsConfig>,
     pub handlers: HashMap<String, HandlerConfig>,
+    /// `[cloudfront.<name>]` の name 一覧 (sorted)。
+    /// distribution ドメインを POCKET_CLOUDFRONT_<NAME>_DOMAIN に注入するのに使う。
+    pub cloudfront_names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -210,6 +213,7 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         resource_prefix: String::new(),
         secrets: None,
         handlers: HashMap::new(),
+        cloudfront_names: Vec::new(),
     })
 }
 
@@ -371,6 +375,15 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
         (None, HashMap::new())
     };
 
+    // [cloudfront.<name>] の name 一覧。値は CFn stack output から引くので
+    // ここでは名前だけ拾う (順序は env 注入を決定的にするため sorted)
+    let mut cloudfront_names: Vec<String> = data
+        .get("cloudfront")
+        .and_then(|v| v.as_table())
+        .map(|t| t.keys().cloned().collect())
+        .unwrap_or_default();
+    cloudfront_names.sort();
+
     Ok(PocketConfig {
         region: general.region,
         project_name,
@@ -381,6 +394,7 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
         resource_prefix,
         secrets: secrets_config,
         handlers: handlers_config,
+        cloudfront_names,
     })
 }
 
@@ -522,6 +536,35 @@ domain = "api.example.com"
         assert!(worker.apigateway.is_none());
         assert!(worker.sqs.is_some());
         assert_eq!(worker.sqs.as_ref().unwrap().name, "dev-myapp-pocket-worker");
+    }
+
+    #[test]
+    fn test_cloudfront_names_collected_sorted() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[s3]
+
+[cloudfront.web]
+domain = "example.com"
+
+[cloudfront.admin]
+"#;
+        let config = load_config_from_str(toml, "dev").unwrap();
+        // env 注入を決定的にするため sorted
+        assert_eq!(config.cloudfront_names, vec!["admin", "web"]);
+        // stack 名の導出が Python の CloudFrontContext.slug ({stage}-{project}-{name})
+        // と一致すること
+        assert_eq!(config.slug, "dev-myapp");
+    }
+
+    #[test]
+    fn test_cloudfront_names_empty_when_absent() {
+        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        assert!(config.cloudfront_names.is_empty());
     }
 
     #[test]

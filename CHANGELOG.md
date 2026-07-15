@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### Added
+- Rust runtime (`magic-pocket-rs`) の `set_envs()` が RDS と CloudFront に対応しました。
+  - `DATABASE_URL = { type = "rds_database_url" }` 構成で、Secrets Manager / SSM の
+    認証情報から `DATABASE_URL` を実行時に構築します（Python runtime の
+    `_set_rds_database_url` と対称。パスワードの percent-encode、
+    ManageMasterUserPassword の secret に host/port/dbname が無い場合の
+    `POCKET_RDS_ENDPOINT` 等での補完まで含めて同じ結果になります）。
+    従来 Rust アプリは RDS 構成でも `DATABASE_URL` が marker 値
+    (`__rds_runtime__`) のまま boot し、接続に失敗していました。
+  - `POCKET_CLOUDFRONT_{NAME}_DOMAIN` をセットするようになりました。
+    ドキュメントは以前から Django・Rust 両対応と記載していましたが、
+    Rust 側は未実装でした。
+
 ### Changed
 - **breaking**: pocket.toml の全セクションで未知キーをエラーにするようになりました。
   従来 `[awscontainer]`, `[awscontainer.secrets]`, `[awscontainer.handlers.*]`,

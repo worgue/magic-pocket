@@ -130,6 +130,35 @@ LOCO_SECRET_KEY = { type = "password", options = { length = 50 } }
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
+### データベースの選択
+
+`set_envs()` は Django 版と同じ DB backend に対応しています。`DATABASE_URL` の
+`type` を差し替えるだけで切り替わります。
+
+| type | 備考 |
+|------|------|
+| `neon_database_url` | 上記の例。VPC 不要 |
+| `tidb_database_url` | VPC 不要 |
+| `rds_database_url` | VPC 必須。認証情報から実行時に `DATABASE_URL` を構築 |
+| （DSQL） | `[dsql]` を設定。IAM 認証トークンを `POCKET_DSQL_TOKEN` にセット |
+
+RDS を使う場合は `[rds]` と VPC の設定が必要です。
+
+```toml
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]  # managed VPC では RDS に 2AZ 以上必須
+
+[rds]
+
+[awscontainer.secrets.managed]
+DATABASE_URL = { type = "rds_database_url" }
+```
+
+RDS のマスターパスワードは自動ローテーションされるため、`DATABASE_URL` は
+deploy 時ではなく `set_envs()` 呼び出し時に認証情報から構築されます。詳細は
+「[実行環境](runtime.md#セットされる環境変数)」を参照してください。
+
 ---
 
 ## Dockerfile の例

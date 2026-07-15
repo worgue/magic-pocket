@@ -1,5 +1,6 @@
 pub mod config;
 pub mod error;
+pub mod rds;
 pub mod resources;
 pub mod secrets;
 
@@ -44,8 +45,11 @@ pub async fn set_envs_from_secrets(stage: Option<&str>) -> Result<()> {
         }
     }
 
-    // DSQL トークンは secrets 経路の一部として設定する
-    // (Python の set_envs_from_secrets → _set_dsql_token と対称)
+    // RDS / DSQL の接続情報は secrets 経路の一部として設定する
+    // (Python の set_envs_from_secrets → _set_rds_database_url → _set_dsql_token
+    //  と同じ順序。RDS は managed secret の marker 値 `__rds_runtime__` を実値で
+    //  上書きするため、必ず上の secrets 展開より後に呼ぶ)
+    rds::set_rds_database_url().await?;
     set_dsql_token().await?;
 
     // 途中で Err になった場合に再呼び出しで復旧できるよう、フラグは成功後に立てる

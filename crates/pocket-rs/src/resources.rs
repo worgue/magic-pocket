@@ -19,42 +19,79 @@ pub async fn set_envs_from_resources(config: &PocketConfig) -> Result<()> {
         unsafe {
             std::env::set_var("POCKET_HOSTS", "");
         }
-        return Ok(());
+    } else {
+        let hosts_map = get_hosts(config).await?;
+        let mut hosts = Vec::new();
+
+        for (lambda_key, host) in &hosts_map {
+            if let Some(host) = host {
+                hosts.push(host.clone());
+                let upper_key = lambda_key.to_uppercase();
+                unsafe {
+                    std::env::set_var(format!("POCKET_{}_HOST", upper_key), host);
+                    std::env::set_var(
+                        format!("POCKET_{}_ENDPOINT", upper_key),
+                        format!("https://{}", host),
+                    );
+                }
+            }
+        }
+
+        unsafe {
+            // カンマ区切り (Python 版 runtime.py と同じ形式)
+            std::env::set_var("POCKET_HOSTS", hosts.join(","));
+        }
+
+        let queueurls_map = get_queueurls(config).await?;
+        for (lambda_key, queueurl) in &queueurls_map {
+            if let Some(url) = queueurl {
+                let upper_key = lambda_key.to_uppercase();
+                unsafe {
+                    std::env::set_var(format!("POCKET_{}_QUEUEURL", upper_key), url);
+                }
+            }
+        }
     }
 
-    let hosts_map = get_hosts(config).await?;
-    let mut hosts = Vec::new();
+    // handler の有無に関わらず実行する (Python の set_envs_from_aws_resources は
+    // awscontainer が無くても cloudfront domain を注入する)
+    set_cloudfront_domains(config).await;
 
-    for (lambda_key, host) in &hosts_map {
-        if let Some(host) = host {
-            hosts.push(host.clone());
-            let upper_key = lambda_key.to_uppercase();
-            unsafe {
-                std::env::set_var(format!("POCKET_{}_HOST", upper_key), host);
-                std::env::set_var(
-                    format!("POCKET_{}_ENDPOINT", upper_key),
-                    format!("https://{}", host),
+    Ok(())
+}
+
+/// CloudFront distribution のドメインを POCKET_CLOUDFRONT_<NAME>_DOMAIN にセットする
+///
+/// Python の runtime.py:_get_cloudfront_domains() に相当。stack 未作成や権限不足でも
+/// boot 自体は続行させる (Python 側も describe_stacks の ClientError を握りつぶす。
+/// cloudfront stack より先に container stack を deploy する順序があるため)。
+async fn set_cloudfront_domains(config: &PocketConfig) {
+    for name in &config.cloudfront_names {
+        let stack_name = format!("{}-{}-cloudfront", config.slug, name);
+        let outputs = match get_cfn_outputs(&config.region, &stack_name).await {
+            Ok(outputs) => outputs,
+            Err(e) => {
+                warn!("Could not read CloudFront stack {}: {}", stack_name, e);
+                continue;
+            }
+        };
+        match outputs.get("DistributionDomainName") {
+            Some(domain) => {
+                let env_key = format!("POCKET_CLOUDFRONT_{}_DOMAIN", name.to_uppercase());
+                info!("{} = {}", env_key, domain);
+                // SAFETY: Lambda はシングルプロセス環境で起動時に1回のみ呼ばれる
+                unsafe {
+                    std::env::set_var(env_key, domain);
+                }
+            }
+            None => {
+                warn!(
+                    "CloudFront stack {} has no DistributionDomainName output",
+                    stack_name
                 );
             }
         }
     }
-
-    unsafe {
-        // カンマ区切り (Python 版 runtime.py と同じ形式)
-        std::env::set_var("POCKET_HOSTS", hosts.join(","));
-    }
-
-    let queueurls_map = get_queueurls(config).await?;
-    for (lambda_key, queueurl) in &queueurls_map {
-        if let Some(url) = queueurl {
-            let upper_key = lambda_key.to_uppercase();
-            unsafe {
-                std::env::set_var(format!("POCKET_{}_QUEUEURL", upper_key), url);
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /// CFn stack output と handler config から全 handler の host を取得する
