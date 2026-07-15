@@ -692,7 +692,7 @@ class Route(BaseModel):
     def check_ref(self):
         if self.ref:
             if self.path_pattern[-2:] != "/*":
-                raise ValueError("When ref is set, path_pattern must starts with /*")
+                raise ValueError("When ref is set, path_pattern must end with /*")
         return self
 
 

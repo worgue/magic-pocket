@@ -436,6 +436,15 @@ def test_s3_route_catchall_still_requires_origin_path():
         Route.model_validate({"type": "s3", "path_pattern": "/*"})
 
 
+def test_route_ref_error_message_matches_condition():
+    """ref 付き route の検査は「末尾 /*」なのでメッセージも end with を案内すること
+
+    以前は 'must starts with /*' と実条件と逆の案内でユーザーが再度失敗していた。
+    """
+    with pytest.raises(ValueError, match=r"must end with /\*"):
+        Route.model_validate({"type": "s3", "path_pattern": "/static", "ref": "main"})
+
+
 def test_s3_route_catchall_error_message_is_actionable():
     """エラーメッセージが実際に validation を通る設定だけを案内すること。
 
