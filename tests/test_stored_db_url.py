@@ -138,7 +138,8 @@ def test_stored_type_iam_sm(base_settings):
     ctx = SecretsContext.from_settings(secrets, base_settings)
     assert (
         "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:"
-        "test-testprj-pocket-user/tidb_database_url" in ctx.allowed_sm_resources
+        # SM の実 ARN のランダムサフィックスにマッチするワイルドカード付き
+        "test-testprj-pocket-user/tidb_database_url-??????" in ctx.allowed_sm_resources
     )
 
 
@@ -151,6 +152,47 @@ def test_stored_type_iam_ssm(base_settings):
     assert (
         "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter"
         "/test-testprj-pocket-user/neon_database_url" in ctx.allowed_ssm_resources
+    )
+
+
+def test_user_secret_sm_bare_name_gets_suffix_wildcard(base_settings):
+    """SM の名前指定 user secret に -?????? ワイルドカードが付くこと
+
+    SM の実 ARN は名前末尾に 6 文字のランダムサフィックスが付くため、
+    exact 名の Resource では実 secret にマッチせず AccessDenied になる。
+    """
+    secrets = settings.Secrets(
+        store="sm",
+        user={"API_KEY": settings.UserSecretSpec(name="my-api-key")},
+    )
+    ctx = SecretsContext.from_settings(secrets, base_settings)
+    assert (
+        "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:"
+        "my-api-key-??????" in ctx.allowed_sm_resources
+    )
+
+
+def test_user_secret_sm_full_arn_untouched(base_settings):
+    """ARN 指定はそのまま (ワイルドカードを付けない) こと"""
+    arn = "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:x-AbCdEf"
+    secrets = settings.Secrets(
+        store="sm",
+        user={"API_KEY": settings.UserSecretSpec(name=arn)},
+    )
+    ctx = SecretsContext.from_settings(secrets, base_settings)
+    assert arn in ctx.allowed_sm_resources
+
+
+def test_user_secret_ssm_bare_name_normalized(base_settings):
+    """先頭 / なしの SSM パラメータ名から正しい ARN が生成されること"""
+    secrets = settings.Secrets(
+        store="ssm",
+        user={"API_KEY": settings.UserSecretSpec(name="myparam", store="ssm")},
+    )
+    ctx = SecretsContext.from_settings(secrets, base_settings)
+    assert (
+        "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myparam"
+        in ctx.allowed_ssm_resources
     )
 
 

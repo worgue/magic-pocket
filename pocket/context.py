@@ -176,14 +176,21 @@ class SecretsContext(BaseModel):
     def _ensure_sm_arn(self, resource: str):
         if resource.startswith("arn:"):
             return resource
+        # SM の実 ARN は名前末尾に 6 文字のランダムサフィックスが付くため、
+        # 名前指定はワイルドカード付きで許可しないと実 secret にマッチしない
         return (
-            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:" + resource
+            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:"
+            + resource
+            + "-??????"
         )
 
     def _ensure_ssm_arn(self, resource: str):
         if resource.startswith("arn:"):
             return resource
-        return "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter" + resource
+        # 先頭 / なしのパラメータ名 (SSM としては合法) でも正しい ARN になるよう正規化
+        return "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/" + (
+            resource.lstrip("/")
+        )
 
     @computed_field
     @cached_property
