@@ -273,7 +273,9 @@ class LambdaHandler(BaseModel):
     sqs: Sqs | None = None
 
 
-class ApiGateway(BaseSettings):
+class ApiGateway(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     domain: str | None = None
     create_records: bool = True
     hosted_zone_id_override: str | None = None
@@ -501,7 +503,9 @@ class Rds(BaseModel):
         return self
 
 
-class Ses(BaseSettings):
+class Ses(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     from_email: str
     region: str | None = None  # None → general.region を継承
     configuration_set: str | None = None
@@ -518,14 +522,18 @@ class S3LifecycleRule(BaseModel):
     noncurrent_version_expiration_days: int = Field(ge=1)
 
 
-class S3(BaseSettings):
+class S3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
     cors: S3Cors | None = None
     versioning: bool = False
     lifecycle_rules: list[S3LifecycleRule] = []
 
 
-class RedirectFrom(BaseSettings):
+class RedirectFrom(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     domain: str
     hosted_zone_id_override: str | None = None
 
@@ -533,7 +541,9 @@ class RedirectFrom(BaseSettings):
 Versioning = Literal["content_hash", "deploy_hash"]
 
 
-class Route(BaseSettings):
+class Route(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     type: Literal["s3", "lambda"] = "s3"
     handler: str | None = None
     path_pattern: str = ""
@@ -608,7 +618,7 @@ class Route(BaseSettings):
         check_origin_path の elif 分岐)。
 
         raise しない advisory なので、pydantic の mode="after" validator
-        (BaseSettings では 2 回走る) ではなく Settings.from_toml から 1 回だけ
+        (再検証のたびに走る) ではなく Settings.from_toml から 1 回だけ
         emit する (`Settings._emit_advisories`)。二重出力を避けるため。
         """
         if self.type != "s3" or not self.origin_path:
@@ -717,7 +727,9 @@ class CloudFrontWaf(BaseModel):
         return self
 
 
-class CloudFront(BaseSettings):
+class CloudFront(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     domain: str | None = None
     hosted_zone_id_override: str | None = None
     redirect_from: list[RedirectFrom] = []
@@ -819,7 +831,9 @@ class CloudFront(BaseSettings):
         return self
 
 
-class Settings(BaseSettings):
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     general: GeneralSettings
     stage: TagStr
     vpc: Vpc | None = None
@@ -988,7 +1002,7 @@ class Settings(BaseSettings):
     def _emit_advisories(self) -> None:
         """検証を通った後の advisory (raise しない助言) を 1 回だけ stderr に出す。
 
-        pydantic の mode="after" validator は BaseSettings で 2 回走るため、
+        pydantic の mode="after" validator は再検証のたびに走るため、
         重複させたくない助言はここ (from_toml から 1 回) で出す。
         """
         for cf in self.cloudfront.values():

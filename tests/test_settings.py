@@ -21,6 +21,27 @@ def test_settings_check_keys_accepts_all_fields(use_toml):
     assert settings.upstash.budget == 10
 
 
+def test_settings_do_not_read_environment_variables(use_toml, monkeypatch):
+    """toml 設定クラスが同名の環境変数から値を拾わないこと (BaseModel 化の回帰テスト)
+
+    toml で省略したフィールドが CI にありがちな環境変数 (DOMAIN, REGION 等) で
+    黙って埋まると、証明書発行先や Route53 レコード作成先が変わる。
+    """
+    from pocket.settings import Ses
+
+    monkeypatch.setenv("DOMAIN", "evil.example.com")
+    monkeypatch.setenv("REGION", "evil-region-1")
+    monkeypatch.setenv("REF", "evil")
+    monkeypatch.setenv("LOCATION", "evil-location")
+    use_toml("tests/data/toml/default.toml")
+    settings = Settings.from_toml(stage="dev")
+    assert settings.cloudfront["main"].domain is None
+    assert settings.general.django_fallback.storages
+    assert settings.general.django_fallback.storages["default"].location is None
+    ses = Ses.model_validate({"from_email": "noreply@project.com"})
+    assert ses.region is None
+
+
 def test_settings_check_keys_rejects_unknown_key(use_toml):
     """check_keys が未知キーを拒否すること"""
     with pytest.raises(ValueError, match="invalid key"):

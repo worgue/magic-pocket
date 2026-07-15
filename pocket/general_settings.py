@@ -3,8 +3,7 @@ from __future__ import annotations
 import sys
 from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .django.settings import Django
 from .utils import get_project_name, get_toml_path
@@ -15,7 +14,9 @@ else:
     import tomli as tomllib
 
 
-class GeneralSettings(BaseSettings):
+class GeneralSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     namespace: str = "pocket"
     prefix_template: str = "{stage}-{project}-{namespace}-"
     region: str
@@ -35,7 +36,9 @@ class Efs(BaseModel):
     access_point_path: str = Field(pattern="^/.+", default="/lambda")
 
 
-class Vpc(BaseSettings):
+class Vpc(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ref: str
     zone_suffixes: list[Annotated[str, Field(max_length=1)]] = []
     nat_gateway: bool = True

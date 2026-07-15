@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import model_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, model_validator
 
 # staticfiles の publish 方式 (DB/KVS の ProvisioningMode と同じ思想の静的版)。
 #   "deploy"  : deploy / promote が collectstatic + upload を実行する (zero-config)。
@@ -13,7 +12,9 @@ from pydantic_settings import BaseSettings
 PublishMode = Literal["deploy", "command"]
 
 
-class DjangoStorage(BaseSettings):
+class DjangoStorage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     store: Literal["s3", "filesystem"]
     location: str | None = None
     static: bool = False
@@ -59,12 +60,16 @@ class DjangoStorage(BaseSettings):
         return self
 
 
-class DjangoCache(BaseSettings):
+class DjangoCache(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     store: Literal["efs", "locmem", "redis"]
     location_subdir: str = "{stage}"
 
 
-class Django(BaseSettings):
+class Django(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     storages: dict[str, DjangoStorage] | None = None
     caches: dict[str, DjangoCache] | None = None
     settings: dict[str, Any] = {}
