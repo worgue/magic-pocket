@@ -38,13 +38,13 @@ pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
         return None;
     }
     let secret = hex::decode(secret_hex).ok()?;
+    let sig_bytes = hex::decode(sig).ok()?;
     let msg = format!("{user_id}:{expiry_str}");
     let mut mac = HmacSha256::new_from_slice(&secret).ok()?;
     mac.update(msg.as_bytes());
-    let expected = hex::encode(mac.finalize().into_bytes());
-    if sig != expected {
-        return None;
-    }
+    // 定数時間比較 (Python 側の hmac.compare_digest と対応)。
+    // 通常の文字列比較はタイミングサイドチャネルになる
+    mac.verify_slice(&sig_bytes).ok()?;
     Some(user_id.to_string())
 }
 
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn test_expired_token() {
         // 手動で期限切れトークンを作る
-        let expired = format!("user123:0:deadbeef");
+        let expired = "user123:0:deadbeef".to_string();
         assert_eq!(verify_token(&expired, TEST_SECRET), None);
     }
 

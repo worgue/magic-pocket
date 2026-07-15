@@ -162,6 +162,23 @@ pub fn find_toml_path() -> Result<PathBuf> {
     }
 }
 
+/// general.project_name を必須として取り出す。
+///
+/// Python CLI は pyproject.toml から導出できるが、Rust runtime には
+/// その情報源が無い。silent に "unknown" へ fallback すると誤った
+/// pocket_key を参照して secrets 空 / queue URL 欠落が黙って起きるため、
+/// 明示エラーにする。
+fn require_project_name(project_name: Option<String>) -> Result<String> {
+    project_name.ok_or_else(|| {
+        PocketError::Config(
+            "general.project_name is required for the Rust runtime \
+             (the Python CLI derives it from pyproject.toml, which is not \
+             available here). Set it explicitly in pocket.toml."
+                .into(),
+        )
+    })
+}
+
 /// pocket.toml をパースして PocketConfig を返す
 pub fn load_config(stage: &str) -> Result<PocketConfig> {
     let toml_path = find_toml_path()?;
@@ -181,7 +198,7 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         general_val.clone().try_into().map_err(PocketError::TomlParse)?
     };
 
-    let project_name = general.project_name.unwrap_or_else(|| "unknown".to_string());
+    let project_name = require_project_name(general.project_name)?;
 
     Ok(PocketConfig {
         region: general.region,
@@ -205,6 +222,12 @@ pub fn load_config_from_path(path: &Path, stage: &str) -> Result<PocketConfig> {
 /// TOML 文字列から PocketConfig を構築する
 pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> {
     let mut data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
+
+    // [general] 欠如を先に検出する (stages 取得の失敗を StageNotFound と
+    // 誤報告しないため)
+    if data.get("general").is_none() {
+        return Err(PocketError::Config("missing [general] section".into()));
+    }
 
     // ステージが stages に含まれるか検証
     let stages = data
@@ -242,9 +265,7 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
         general_val.clone().try_into().map_err(PocketError::TomlParse)?
     };
 
-    let project_name = general
-        .project_name
-        .unwrap_or_else(|| "unknown".to_string());
+    let project_name = require_project_name(general.project_name)?;
 
     let format_vars = |s: &str| -> String {
         s.replace("{stage}", stage)
@@ -649,6 +670,26 @@ DATABASE_URL = { store = "ssm" }
 "#;
         let err = load_config_from_str(toml, "dev").unwrap_err();
         assert!(matches!(err, PocketError::Config(_)));
+    }
+
+    #[test]
+    fn test_missing_project_name_errors() {
+        // Python は pyproject.toml から導出するが Rust には情報源が無い。
+        // silent な "unknown" fallback は誤った pocket_key の参照になる
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+stages = ["dev"]
+"#;
+        let err = load_config_from_str(toml, "dev").unwrap_err();
+        assert!(err.to_string().contains("project_name"));
+    }
+
+    #[test]
+    fn test_missing_general_section_reports_config_error() {
+        // 以前は stages 取得失敗が StageNotFound と誤報告されていた
+        let err = load_config_from_str("[dev]\n", "dev").unwrap_err();
+        assert!(err.to_string().contains("missing [general] section"));
     }
 
     #[test]
