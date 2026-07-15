@@ -63,6 +63,16 @@ class SecretsManager:
             )
         del self._pocket_secrets_response
 
+    def delete_secret_keys(self, keys: set[str]):
+        """指定キーのみ除いた内容で書き換える (orphan 掃除用)。
+
+        update_secrets は project entry の全置換なので 1 回の書き換えで済む。
+        「全削除 → 書き戻し」の 2 段階は中断時に無関係な secret まで喪失する
+        ため行わない。
+        """
+        cleaned = {k: v for k, v in self.secrets.items() if k not in keys}
+        self.update_secrets(cleaned)
+
     @cached_property
     def _pocket_secrets_response(self):
         echo.log("Requesting pocket secrets %s ..." % self.context.pocket_key)

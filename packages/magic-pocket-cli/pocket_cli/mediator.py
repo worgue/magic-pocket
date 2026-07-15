@@ -327,13 +327,9 @@ class Mediator:
             "managed 定義にないシークレットを削除します: %s"
             % ", ".join(sorted(orphaned))
         )
-        # managed に含まれるキーだけ残して再書き込み
-        cleaned = {
-            k: v for k, v in sc.pocket_store.secrets.items() if k in managed_keys
-        }
-        sc.pocket_store.delete_secrets()
-        if cleaned:
-            sc.pocket_store.update_secrets(cleaned)
+        # orphan キーのみ削除する。「全削除 → 書き戻し」は中断時に
+        # 無関係な secret (SECRET_KEY / RSA signing key 等) まで喪失する
+        sc.pocket_store.delete_secret_keys(orphaned)
 
     def _generate_secret(self, spec: ManagedSecretSpec):
         if spec.type == "auto_database_url":

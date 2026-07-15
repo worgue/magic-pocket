@@ -60,6 +60,28 @@ class SsmStore:
         if hasattr(self, "_pocket_secrets_cache"):
             del self._pocket_secrets_cache
 
+    def delete_secret_keys(self, keys: set[str]):
+        """指定キーのパラメータのみ削除する (orphan 掃除用)。
+
+        「全削除 → 書き戻し」は中断時に無関係な secret まで喪失するため行わない。
+        """
+        echo.log(
+            "Deleting pocket secrets via SSM %s: %s ..."
+            % (self.context.pocket_key, ", ".join(sorted(keys)))
+        )
+        path = f"/{self.context.pocket_key}/"
+        names_to_delete: list[str] = []
+        paginator = self.client.get_paginator("get_parameters_by_path")
+        for page in paginator.paginate(Path=path, Recursive=True):
+            for param in page.get("Parameters", []):
+                relative = param["Name"][len(path) :]
+                if relative.split("/")[0] in keys:
+                    names_to_delete.append(param["Name"])
+        # DeleteParameters は最大10個ずつ
+        for i in range(0, len(names_to_delete), 10):
+            self.client.delete_parameters(Names=names_to_delete[i : i + 10])
+        self.__dict__.pop("_pocket_secrets_cache", None)
+
     @cached_property
     def _pocket_secrets_cache(self) -> dict[str, str | dict[str, str]]:
         echo.log("Requesting pocket secrets via SSM %s ..." % self.context.pocket_key)
