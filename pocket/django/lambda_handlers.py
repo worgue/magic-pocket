@@ -79,6 +79,8 @@ def sqs_management_command_report_failuers_handler(event, context):
         try:
             call_command(data["command"], *data["args"], **data["kwargs"])
             pocket_delete_sqs_task(record["receiptHandle"])
+        # batchItemFailures で失敗 record を SQS に報告するには、management
+        # command が投げる任意の例外を捕捉する必要がある (仕組み上の要請)
         except Exception as e:
             print(e)
             batch_item_failures.append({"itemIdentifier": record["messageId"]})

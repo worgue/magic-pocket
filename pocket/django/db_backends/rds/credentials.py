@@ -81,6 +81,8 @@ def connect_with_credential_refresh(
     """
     try:
         return connect(conn_params)
+    # psycopg を import しない設計 (is_auth_error docstring 参照) のため型で
+    # 絞れない。認証失敗のみ処理し、それ以外は即 re-raise する filter
     except Exception as exc:
         if not is_auth_error(exc):
             raise

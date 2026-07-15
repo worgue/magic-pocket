@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import click
 import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.cli import url_helper
@@ -146,7 +145,12 @@ def test_run_get_url_live_flag_skips_stored(base_settings, monkeypatch, capsys):
     assert capsys.readouterr().out.strip() == "mysql://live"
 
 
-def test_run_get_url_raises_when_no_stored_and_live_fails(base_settings, monkeypatch):
+def test_run_get_url_propagates_live_failure(base_settings, monkeypatch):
+    """live 算出の失敗は握らず自然に伝播すること。
+
+    以前は except Exception で「解決できませんでした」に丸め from None で
+    traceback も破棄していた (AGENTS.md の方針違反 + 原因情報の喪失)。
+    """
     sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))
     _patch_from_toml(monkeypatch, _ctx_stub(sc))
@@ -154,7 +158,7 @@ def test_run_get_url_raises_when_no_stored_and_live_fails(base_settings, monkeyp
     def live_url(ctx):
         raise RuntimeError("neon not ready")
 
-    with pytest.raises(click.ClickException, match="解決できませんでした"):
+    with pytest.raises(RuntimeError, match="neon not ready"):
         url_helper.run_get_url(
             stage="dev",
             secret_type="neon_database_url",

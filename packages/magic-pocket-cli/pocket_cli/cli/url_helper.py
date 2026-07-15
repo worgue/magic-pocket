@@ -63,15 +63,8 @@ def run_get_url(
             abort=True,
             err=True,
         )
-    try:
-        url = live_url(context)
-    except Exception as e:
-        raise click.ClickException(
-            "%s の接続 URL を解決できませんでした。stored secret が無く live 算出も"
-            "失敗 (%s)。[<db>] 宣言 + provider 資格情報、または store-url を"
-            "確認してください。" % (db_label, e)
-        ) from None
-    click.echo(url)
+    # live 算出の失敗は握らず自然に伝播させる (丸めると原因の traceback が失われる)
+    click.echo(live_url(context))
 
 
 def _read_stored_url(context: Context, secret_type: str) -> str | None:
