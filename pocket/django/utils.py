@@ -179,11 +179,6 @@ def get_storages(*, stage: str | None = None) -> dict:
     return storages
 
 
-def get_static_storage(*, stage: str | None = None):
-    storages = get_storages(stage=stage)
-    return storages["staticfiles"]  # must be available
-
-
 def get_static_storage_s3_options(*, stage: str | None = None) -> dict:
     """staticfiles の S3 アップロード先情報を返す。
 
