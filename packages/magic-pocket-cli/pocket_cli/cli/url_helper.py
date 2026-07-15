@@ -15,6 +15,7 @@ def run_get_url(
     db_label: str,
     live_url: Callable[[Context], str],
     live: bool = False,
+    live_rotates_credentials: bool = False,
 ) -> None:
     """DB 接続 URL を stdout に純テキストで出力する (`pocket resource <db> url`)。
 
@@ -29,6 +30,10 @@ def run_get_url(
     - ``--live``: stored を見ず必ず provider API で live 算出する。常に最新だが、reveal
       API を持たない backend (TiDB 等) では **root password を rotate する** 点に注意
       (consumer の redeploy が前提)。
+
+    ``live_rotates_credentials=True`` の backend では、default モードからの live
+    fallback は破壊的 (credential rotate) なため確認プロンプトを挟む。``--live``
+    明示時はオプションの help で rotate を告知済みなので確認しない。
 
     dual-declaration (移行中に ``[neon]`` と ``[tidb]`` を併記) 下でも、resource ごとに
     neon / tidb を呼び分ければ source/target 双方を解決できる。
@@ -51,6 +56,13 @@ def run_get_url(
         % db_label,
         err=True,
     )
+    if live_rotates_credentials:
+        click.confirm(
+            "%s の live 算出は root password を rotate し、稼働中 consumer の"
+            "接続を無効化します。続行しますか？" % db_label,
+            abort=True,
+            err=True,
+        )
     try:
         url = live_url(context)
     except Exception as e:

@@ -118,6 +118,7 @@ def url(stage, live):
         db_label="TiDB",
         live_url=live_url,
         live=live,
+        live_rotates_credentials=True,
     )
 
 
@@ -138,6 +139,15 @@ def status(stage):
         echo.warning("Cluster not found")
         return
     if resource.cluster.status == "ACTIVE":
-        echo.success("Database url: %s" % resource.database_url)
+        # database_url は password reveal API が無い TiDB では root password を
+        # rotate してしまうため、status では endpoint のみ表示する
+        echo.success(
+            "Cluster endpoint: %s:%d (user: %s)"
+            % (resource.cluster.host, resource.cluster.port, resource.cluster.user)
+        )
+        echo.info(
+            "接続 URL は `pocket resource tidb url --stage %s` を使用してください。"
+            % stage
+        )
     else:
         echo.warning("Cluster status: %s" % resource.cluster.status)
