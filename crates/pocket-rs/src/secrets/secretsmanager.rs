@@ -40,18 +40,12 @@ impl GetSecretError {
 /// - InvalidRequestException → restore_secret() → リトライ
 /// - JSON 構造: { stage: { project_name: { KEY: "value", ... } } }
 pub async fn get_pocket_secrets(
-    region: &str,
+    client: &Client,
     pocket_key: &str,
     stage: &str,
     project_name: &str,
 ) -> Result<HashMap<String, serde_json::Value>> {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(region.to_string()))
-        .load()
-        .await;
-    let client = Client::new(&sdk_config);
-
-    let secret_string = match try_get_secret_string(&client, pocket_key).await {
+    let secret_string = match try_get_secret_string(client, pocket_key).await {
         Ok(s) => s,
         Err(GetSecretError::NotFound) => {
             return Ok(HashMap::new());
@@ -59,8 +53,8 @@ pub async fn get_pocket_secrets(
         Err(GetSecretError::ScheduledForDeletion) => {
             // 削除スケジュール済みシークレットを復元してリトライ
             warn!("Secret was deleted, restoring: {}", pocket_key);
-            restore_secret(&client, pocket_key).await?;
-            get_secret_string(&client, pocket_key).await?
+            restore_secret(client, pocket_key).await?;
+            get_secret_string(client, pocket_key).await?
         }
         Err(e) => return Err(e.into_pocket_error()),
     };
@@ -83,13 +77,8 @@ pub async fn get_pocket_secrets(
 }
 
 /// SM からユーザー指定のシークレットを1件取得
-pub async fn get_user_secret(region: &str, secret_id: &str) -> Result<String> {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(region.to_string()))
-        .load()
-        .await;
-    let client = Client::new(&sdk_config);
-    get_secret_string(&client, secret_id).await
+pub async fn get_user_secret(client: &Client, secret_id: &str) -> Result<String> {
+    get_secret_string(client, secret_id).await
 }
 
 async fn get_secret_string(client: &Client, secret_id: &str) -> Result<String> {

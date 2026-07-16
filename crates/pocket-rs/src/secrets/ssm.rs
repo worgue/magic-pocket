@@ -12,15 +12,9 @@ use crate::error::{PocketError, Result};
 /// - 1階層パラメータ → String 値
 /// - 2階層パラメータ → Dict 値 (serde_json::Value::Object)
 pub async fn get_pocket_secrets(
-    region: &str,
+    client: &Client,
     pocket_key: &str,
 ) -> Result<HashMap<String, serde_json::Value>> {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(region.to_string()))
-        .load()
-        .await;
-    let client = Client::new(&sdk_config);
-
     let path = format!("/{}/", pocket_key);
     let mut result: HashMap<String, serde_json::Value> = HashMap::new();
 
@@ -83,13 +77,7 @@ pub async fn get_pocket_secrets(
 }
 
 /// SSM からユーザー指定のパラメータを1件取得
-pub async fn get_user_secret(region: &str, name: &str) -> Result<String> {
-    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(region.to_string()))
-        .load()
-        .await;
-    let client = Client::new(&sdk_config);
-
+pub async fn get_user_secret(client: &Client, name: &str) -> Result<String> {
     let resp = client
         .get_parameter()
         .name(name)

@@ -18,12 +18,24 @@ pub async fn get_secrets(config: &PocketConfig) -> Result<HashMap<String, String
         Some(sc) => sc,
         None => return Ok(HashMap::new()),
     };
+    if sc.managed.is_empty() && sc.user.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // SDK config のロード (credential 解決) は secret 1 件毎に行うと cold start を
+    // 引き伸ばすため、ここで一度だけ行い client を使い回す
+    let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .region(aws_config::Region::new(sc.region.clone()))
+        .load()
+        .await;
+    let sm_client = aws_sdk_secretsmanager::Client::new(&sdk_config);
+    let ssm_client = aws_sdk_ssm::Client::new(&sdk_config);
 
     let mut secrets = HashMap::new();
 
     // managed secrets
     if !sc.managed.is_empty() {
-        let raw_secrets = get_managed_secrets(sc).await?;
+        let raw_secrets = get_managed_secrets(sc, &sm_client, &ssm_client).await?;
         for (key, value) in &raw_secrets {
             if let Some(spec) = sc.managed.get(key) {
                 let envs = expand_secret(key, value, spec)?;
@@ -38,11 +50,11 @@ pub async fn get_secrets(config: &PocketConfig) -> Result<HashMap<String, String
         let value = match effective_store {
             StoreType::Sm => {
                 info!("Fetching user secret from SM: {}", spec.name);
-                secretsmanager::get_user_secret(&sc.region, &spec.name).await?
+                secretsmanager::get_user_secret(&sm_client, &spec.name).await?
             }
             StoreType::Ssm => {
                 info!("Fetching user secret from SSM: {}", spec.name);
-                ssm::get_user_secret(&sc.region, &spec.name).await?
+                ssm::get_user_secret(&ssm_client, &spec.name).await?
             }
         };
         secrets.insert(key.clone(), value);
@@ -54,16 +66,23 @@ pub async fn get_secrets(config: &PocketConfig) -> Result<HashMap<String, String
 /// store に応じて SM / SSM から managed secrets を一括取得
 async fn get_managed_secrets(
     sc: &SecretsConfig,
+    sm_client: &aws_sdk_secretsmanager::Client,
+    ssm_client: &aws_sdk_ssm::Client,
 ) -> Result<HashMap<String, serde_json::Value>> {
     match sc.store {
         StoreType::Sm => {
             info!("Fetching managed secrets from SM: {}", sc.pocket_key);
-            secretsmanager::get_pocket_secrets(&sc.region, &sc.pocket_key, &sc.stage, &sc.project_name)
-                .await
+            secretsmanager::get_pocket_secrets(
+                sm_client,
+                &sc.pocket_key,
+                &sc.stage,
+                &sc.project_name,
+            )
+            .await
         }
         StoreType::Ssm => {
             info!("Fetching managed secrets from SSM: {}", sc.pocket_key);
-            ssm::get_pocket_secrets(&sc.region, &sc.pocket_key).await
+            ssm::get_pocket_secrets(ssm_client, &sc.pocket_key).await
         }
     }
 }
