@@ -192,8 +192,8 @@ use pocket_spa_auth::{generate_token, verify_token, login_cookie_value, logout_c
 
 let secret = std::env::var("SPA_TOKEN_SECRET").unwrap();
 
-// トークン生成
-let token = generate_token("user123", &secret, 604800);
+// トークン生成 (user_id に ':' を含む / secret が不正 hex の場合は Err)
+let token = generate_token("user123", &secret, 604800)?;
 
 // トークン検証
 if let Some(user_id) = verify_token(&token, &secret) {

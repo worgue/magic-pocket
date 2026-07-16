@@ -4,16 +4,38 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// generate_token の入力不正 (Python 実装の ValueError と対応)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenError {
+    /// user_id に `:` が含まれる (トークン形式の区切りと衝突し verify で常に無効になる)
+    UserIdContainsColon,
+    /// secret_hex が 16 進文字列として不正
+    InvalidSecretHex,
+}
+
+impl std::fmt::Display for TokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenError::UserIdContainsColon => {
+                write!(f, "user_id must not contain ':' (token format delimiter)")
+            }
+            TokenError::InvalidSecretHex => write!(f, "secret_hex is not a valid hex string"),
+        }
+    }
+}
+
+impl std::error::Error for TokenError {}
+
 /// HMAC-SHA256 トークンを生成する。形式: {user_id}:{expiry_unix}:{hmac_hex}
-///
-/// user_id に `:` を含むとトークン形式の区切りと衝突し verify で常に無効に
-/// なるため panic する (Python 実装の ValueError と対応)。
-pub fn generate_token(user_id: &str, secret_hex: &str, max_age_secs: u64) -> String {
-    assert!(
-        !user_id.contains(':'),
-        "user_id must not contain ':' (token format delimiter)"
-    );
-    let secret = hex::decode(secret_hex).expect("secret_hex が不正です");
+pub fn generate_token(
+    user_id: &str,
+    secret_hex: &str,
+    max_age_secs: u64,
+) -> Result<String, TokenError> {
+    if user_id.contains(':') {
+        return Err(TokenError::UserIdContainsColon);
+    }
+    let secret = hex::decode(secret_hex).map_err(|_| TokenError::InvalidSecretHex)?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("システム時刻エラー")
@@ -24,7 +46,7 @@ pub fn generate_token(user_id: &str, secret_hex: &str, max_age_secs: u64) -> Str
         HmacSha256::new_from_slice(&secret).expect("HMAC キー長エラー");
     mac.update(msg.as_bytes());
     let sig = hex::encode(mac.finalize().into_bytes());
-    format!("{user_id}:{expiry}:{sig}")
+    Ok(format!("{user_id}:{expiry}:{sig}"))
 }
 
 /// トークンを検証し、有効なら user_id を返す。無効なら None。
@@ -77,14 +99,27 @@ mod tests {
 
     #[test]
     fn test_generate_and_verify() {
-        let token = generate_token("user123", TEST_SECRET, 3600);
+        let token = generate_token("user123", TEST_SECRET, 3600).unwrap();
         let result = verify_token(&token, TEST_SECRET);
         assert_eq!(result, Some("user123".to_string()));
     }
 
     #[test]
+    fn test_generate_rejects_colon_in_user_id() {
+        // ':' はトークン形式の区切りなので混入を入力時点で弾く (Python の ValueError)
+        let err = generate_token("user:123", TEST_SECRET, 3600).unwrap_err();
+        assert_eq!(err, TokenError::UserIdContainsColon);
+    }
+
+    #[test]
+    fn test_generate_rejects_invalid_hex_secret() {
+        let err = generate_token("user123", "not-hex!", 3600).unwrap_err();
+        assert_eq!(err, TokenError::InvalidSecretHex);
+    }
+
+    #[test]
     fn test_invalid_signature() {
-        let token = generate_token("user123", TEST_SECRET, 3600);
+        let token = generate_token("user123", TEST_SECRET, 3600).unwrap();
         let parts: Vec<&str> = token.splitn(3, ':').collect();
         let tampered = format!("{}:{}:{}", parts[0], parts[1], "bad_signature");
         assert_eq!(verify_token(&tampered, TEST_SECRET), None);
