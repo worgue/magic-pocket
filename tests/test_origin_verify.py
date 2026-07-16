@@ -14,7 +14,6 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from moto import mock_aws
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 from pydantic import ValidationError
@@ -98,9 +97,7 @@ def test_enable_origin_verify_accepts_lambda_route():
 # ---------------------------------------------------------------------------
 
 
-@mock_aws
 def test_context_injects_managed_secret_when_enabled():
-    # SecretsContext 構築時に allowed_sm_resources が pocket_store を引くため moto 下。
     s = settings.Settings.model_validate(_settings_dict(enable=True, lambda_route=True))
     context = Context.from_settings(s)
     assert context.awscontainer is not None

@@ -241,9 +241,12 @@ class SecretsContext(BaseModel):
 
     @model_validator(mode="after")
     def check_entry(self):
+        # allowed_sm_resources は pocket_store.arn (SM API) まで解決するため、
+        # validator からは触らない。ここでの判定は宣言の有無だけで足りる
         has_resources = (
-            self.allowed_sm_resources
-            or self.allowed_ssm_resources
+            any(spec.name is not None for spec in self.user.values())
+            or bool(self.managed)
+            or bool(self.extra_resources)
             or self.require_list_secrets
         )
         if not has_resources:

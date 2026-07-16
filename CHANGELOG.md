@@ -20,6 +20,15 @@
     Rust 側は未実装でした。
 
 ### Changed
+- context の組み立て（`Context.from_toml` / `from_settings`）が AWS API を
+  呼ばなくなりました。従来は managed secret を宣言していると、SecretsContext の
+  validator が IAM 許可リスト（`allowed_sm_resources`）の ARN 解決まで行うため、
+  context を作るだけで Secrets Manager の `get_secret_value` が走っていました
+  （credential 不在環境では分かりにくい `NoCredentialsError`、Lambda cold start
+  にも余計な API 呼び出し）。ARN 解決は実際に必要になる時点（テンプレート描画・
+  serialize）まで遅延されます。これに伴い、managed secret が未作成のときの
+  「Pocket managed secrets is not ready」警告も context 構築時ではなく初回
+  ARN 解決時に出るようになります。
 - catch-all の S3 route で `origin_path = "/"`（バケット直下の配信）を指定した場合の
   エラーメッセージを、意図的な非サポートである旨と理由（pocket は 1 つの S3 バケットを
   複数 route で共有するため、バケット直下に向けると OAC のバケットポリシーが

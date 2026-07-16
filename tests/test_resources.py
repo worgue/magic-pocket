@@ -49,6 +49,28 @@ def test_secretsmanager(use_toml):
     assert value["SecretString"] == "postgres://localhost:5432"
 
 
+def test_context_from_toml_does_not_call_aws(use_toml, monkeypatch):
+    """managed secret を宣言した toml でも Context.from_toml が AWS を叩かないこと
+
+    check_entry validator が allowed_sm_resources → pocket_store.arn (SM
+    get_secret_value) まで解決していたため、context を組み立てるだけで実 AWS を
+    呼んでいた (credential 不在の @mock_aws なしテストが落ちる) 回帰テスト。
+    """
+    import botocore.client
+
+    def _boom(self, operation_name, api_params):
+        raise AssertionError(
+            "Context.from_toml が AWS API を呼んだ: %s" % operation_name
+        )
+
+    monkeypatch.setattr(botocore.client.BaseClient, "_make_api_call", _boom)
+    use_toml("tests/data/toml/awscontainer_pocket_secrets.toml")
+    context = Context.from_toml(stage="prod")
+    assert context.awscontainer
+    assert context.awscontainer.secrets
+    assert context.awscontainer.secrets.managed
+
+
 @mock_aws
 def test_initial_secretsmanager_policy(use_toml):
     use_toml("tests/data/toml/awscontainer_pocket_secrets.toml")
