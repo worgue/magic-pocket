@@ -317,19 +317,24 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
                     let spec_store = v.store.as_deref().map(parse_store_type);
                     // name は type 基準の正準パスへ解決してから保持する
                     // (Python の SecretsContext.from_settings と同じ resolve)。
-                    let name = match v.name {
-                        Some(n) => format_vars(&n),
-                        None => match v.secret_type {
-                            Some(t) => {
-                                let effective_store = spec_store.clone().unwrap_or(store.clone());
-                                user_secret_path(&pocket_key, &t, &effective_store)
-                            }
-                            None => {
-                                return Err(PocketError::Config(format!(
-                                    "user secret `{k}` must have either `name` or `type`"
-                                )));
-                            }
-                        },
+                    // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
+                    let name = match (v.name, v.secret_type) {
+                        (Some(_), Some(_)) => {
+                            return Err(PocketError::Config(format!(
+                                "user secret `{k}`: `name` and `type` are mutually \
+                                 exclusive (name = 明示参照 / type = stored mode)"
+                            )));
+                        }
+                        (Some(n), None) => format_vars(&n),
+                        (None, Some(t)) => {
+                            let effective_store = spec_store.clone().unwrap_or(store.clone());
+                            user_secret_path(&pocket_key, &t, &effective_store)
+                        }
+                        (None, None) => {
+                            return Err(PocketError::Config(format!(
+                                "user secret `{k}` must have either `name` or `type`"
+                            )));
+                        }
                     };
                     user.insert(
                         k,
@@ -713,6 +718,26 @@ DATABASE_URL = { store = "ssm" }
 "#;
         let err = load_config_from_str(toml, "dev").unwrap_err();
         assert!(matches!(err, PocketError::Config(_)));
+    }
+
+    #[test]
+    fn test_user_secret_with_both_name_and_type_errors() {
+        // Python の check_user_name_type_exclusive と同じ排他。以前は name 優先で
+        // type を黙殺しており、stored mode のつもりの設定が明示参照になっていた
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+
+[awscontainer.secrets.user]
+DATABASE_URL = { name = "my-secret", type = "neon_database_url" }
+"#;
+        let err = load_config_from_str(toml, "dev").unwrap_err();
+        assert!(err.to_string().contains("mutually"), "got {err}");
     }
 
     #[test]
