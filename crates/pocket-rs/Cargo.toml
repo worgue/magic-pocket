@@ -15,9 +15,13 @@ aws-sdk-ssm = { version = "1", default-features = false, features = ["default-ht
 aws-sdk-cloudformation = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-dsql = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
-tokio = { version = "1", features = ["full"] }
 thiserror = "2"
 tracing = "0.1"
 # RDS パスワードの percent-encode 用。aws-sdk-* が既に依存しているため
 # 依存ツリーは増えない (Python 側 urllib.parse.quote との一致が要件)
 percent-encoding = "2"
+
+[dev-dependencies]
+# 本体は async fn を提供するだけで tokio API を直接使わない (runtime は利用側が
+# 用意する)。テストの Runtime::new() と doc 例の #[tokio::main] にのみ必要
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
