@@ -1,0 +1,8 @@
+{
+  "comment": "pocket-spa-auth (Rust) と pocket.django.spa_auth (Python) の共通テストベクタ。両実装のテストが同じファイルを読み、乖離を CI で検出する",
+  "cookie_name": "pocket-spa-token",
+  "secret_hex": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "user_id": "vector-user",
+  "expiry": 9999999999,
+  "token": "vector-user:9999999999:1d9ce3921b69e57a4562a294cfa678b3ff4938b49b0369d646185d9ef24567e2"
+}

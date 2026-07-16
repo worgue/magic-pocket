@@ -166,6 +166,22 @@ def test_verify_malformed_token():
     assert verify_token("", secret=TEST_SECRET) is None
 
 
+def test_shared_vector_with_rust():
+    """Rust 実装 (pocket-spa-auth) との共通テストベクタ。
+
+    トークン形式・HMAC 計算・Cookie 名が両実装で一致することを CI で検出する。
+    Rust 側の対になるテストは crates/pocket-spa-auth の test_python_shared_vector。
+    """
+    import json
+    from pathlib import Path
+
+    data = json.loads(
+        (Path(__file__).parent / "data" / "spa_auth_vectors.json").read_text()
+    )
+    assert COOKIE_NAME == data["cookie_name"]
+    assert verify_token(data["token"], secret=data["secret_hex"]) == data["user_id"]
+
+
 def test_spa_login_sets_cookie():
     """spa_login がレスポンスに Cookie をセットする"""
 

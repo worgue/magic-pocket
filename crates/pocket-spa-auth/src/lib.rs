@@ -4,6 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 type HmacSha256 = Hmac<Sha256>;
 
+/// トークンを格納する Cookie 名 (Python 側 pocket.django.spa_auth.COOKIE_NAME と同値)
+pub const COOKIE_NAME: &str = "pocket-spa-token";
+
 /// generate_token の入力不正 (Python 実装の ValueError と対応)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenError {
@@ -80,14 +83,14 @@ pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
 /// ログイン用 Cookie 値を生成する
 pub fn login_cookie_value(token: &str, max_age_secs: u64) -> String {
     format!(
-        "pocket-spa-token={token}; Max-Age={max_age_secs}; \
+        "{COOKIE_NAME}={token}; Max-Age={max_age_secs}; \
          HttpOnly; Secure; SameSite=Lax; Path=/"
     )
 }
 
 /// ログアウト用 Cookie 値を生成する
 pub fn logout_cookie_value() -> String {
-    "pocket-spa-token=; Max-Age=0; HttpOnly; Secure; SameSite=Lax; Path=/".to_string()
+    format!("{COOKIE_NAME}=; Max-Age=0; HttpOnly; Secure; SameSite=Lax; Path=/")
 }
 
 #[cfg(test)]
@@ -152,5 +155,22 @@ mod tests {
     fn test_logout_cookie_value() {
         let cookie = logout_cookie_value();
         assert!(cookie.contains("Max-Age=0"));
+    }
+
+    #[test]
+    fn test_python_shared_vector() {
+        // Python 実装 (pocket.django.spa_auth) と同じ fixture を読み、トークン形式・
+        // HMAC 計算・Cookie 名の乖離を CI で検出する。Python 側の対になるテストは
+        // tests/test_spa_auth.py の test_shared_vector_with_rust
+        let raw = include_str!("../../../tests/data/spa_auth_vectors.json");
+        let v: serde_json::Value = serde_json::from_str(raw).unwrap();
+        assert_eq!(v["cookie_name"].as_str().unwrap(), COOKIE_NAME);
+        let token = v["token"].as_str().unwrap();
+        let secret = v["secret_hex"].as_str().unwrap();
+        // verify は期待 HMAC を再計算して比較するので、署名アルゴリズムの一致を含む
+        assert_eq!(
+            verify_token(token, secret).as_deref(),
+            v["user_id"].as_str()
+        );
     }
 }
