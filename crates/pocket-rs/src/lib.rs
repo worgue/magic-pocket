@@ -95,15 +95,23 @@ fn resolve_stage(stage: Option<&str>) -> String {
         .unwrap_or_else(|| std::env::var("POCKET_STAGE").unwrap_or_else(|_| "__none__".to_string()))
 }
 
-/// POCKET_DSQL_ENDPOINT があれば IAM 認証トークンを生成して POCKET_DSQL_TOKEN にセット
-async fn set_dsql_token() -> Result<()> {
+/// DSQL の IAM 認証トークンを再生成し、POCKET_DSQL_TOKEN を最新化して返す
+///
+/// Python の runtime.refresh_dsql_token() に相当。POCKET_DSQL_TOKEN は cold start で
+/// 1 回しか生成されず約 15 分で失効するため、長時間稼働した warm Lambda が新しい
+/// 接続を張る直前に本関数を呼ぶと、最新トークンで再接続でき、期限切れトークンに
+/// よる認証失敗を避けられる。新規接続には戻り値のトークンをそのまま使うこと
+/// (env 経由の受け渡しは他スレッドが env を読む構成では推奨しない)。
+/// DSQL 未設定 (POCKET_DSQL_ENDPOINT / POCKET_DSQL_REGION が無い) 場合は
+/// Ok(None) を返す。
+pub async fn refresh_dsql_token() -> Result<Option<String>> {
     let endpoint = match std::env::var("POCKET_DSQL_ENDPOINT") {
         Ok(v) if !v.is_empty() => v,
-        _ => return Ok(()),
+        _ => return Ok(None),
     };
     let region = match std::env::var("POCKET_DSQL_REGION") {
         Ok(v) if !v.is_empty() => v,
-        _ => return Ok(()),
+        _ => return Ok(None),
     };
 
     let sdk_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
@@ -123,5 +131,56 @@ async fn set_dsql_token() -> Result<()> {
     unsafe {
         std::env::set_var("POCKET_DSQL_TOKEN", token.as_str());
     }
+    Ok(Some(token.as_str().to_string()))
+}
+
+/// POCKET_DSQL_ENDPOINT があれば IAM 認証トークンを生成して POCKET_DSQL_TOKEN にセット
+async fn set_dsql_token() -> Result<()> {
+    refresh_dsql_token().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// env はプロセス全体で共有され、Rust のテストは並列実行されるため、
+    /// POCKET_DSQL_* を触るテストはこの lock で直列化する。
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn clear_dsql_env() {
+        unsafe {
+            std::env::remove_var("POCKET_DSQL_ENDPOINT");
+            std::env::remove_var("POCKET_DSQL_REGION");
+            std::env::remove_var("POCKET_DSQL_TOKEN");
+        }
+    }
+
+    #[test]
+    fn test_refresh_dsql_token_returns_none_without_dsql_env() {
+        // DSQL 未設定 (Neon / RDS 等) では AWS を叩かず Ok(None) を返し、
+        // POCKET_DSQL_TOKEN も触らないこと (Python の refresh_dsql_token と同じ)。
+        // ENV_LOCK を await 越しに保持しないよう block_on で駆動する
+        // (#[tokio::test] だと clippy::await_holding_lock に触れる)。
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_dsql_env();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let token = rt.block_on(refresh_dsql_token()).unwrap();
+        assert_eq!(token, None);
+        assert!(std::env::var("POCKET_DSQL_TOKEN").is_err());
+    }
+
+    #[test]
+    fn test_refresh_dsql_token_returns_none_without_region() {
+        // endpoint だけあって region が無い片肺構成でも None (Python と同じ)
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        clear_dsql_env();
+        unsafe {
+            std::env::set_var("POCKET_DSQL_ENDPOINT", "example.dsql.ap-northeast-1.on.aws");
+        }
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let token = rt.block_on(refresh_dsql_token()).unwrap();
+        assert_eq!(token, None);
+        clear_dsql_env();
+    }
 }
