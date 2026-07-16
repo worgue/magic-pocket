@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use aws_sdk_ssm::error::DisplayErrorContext;
 use aws_sdk_ssm::Client;
 
 use crate::error::{PocketError, Result};
@@ -38,7 +39,7 @@ pub async fn get_pocket_secrets(
         let resp = req
             .send()
             .await
-            .map_err(|e| PocketError::Ssm(e.to_string()))?;
+            .map_err(|e| PocketError::Ssm(DisplayErrorContext(&e).to_string()))?;
 
         for param in resp.parameters() {
             let name = param.name().unwrap_or_default();
@@ -95,7 +96,7 @@ pub async fn get_user_secret(region: &str, name: &str) -> Result<String> {
         .with_decryption(true)
         .send()
         .await
-        .map_err(|e| PocketError::Ssm(e.to_string()))?;
+        .map_err(|e| PocketError::Ssm(DisplayErrorContext(&e).to_string()))?;
 
     resp.parameter()
         .and_then(|p| p.value())

@@ -224,7 +224,11 @@ async fn get_cfn_outputs(
         .stack_name(stack_name)
         .send()
         .await
-        .map_err(|e| PocketError::CloudFormation(e.to_string()))?;
+        .map_err(|e| {
+            PocketError::CloudFormation(
+                aws_sdk_cloudformation::error::DisplayErrorContext(&e).to_string(),
+            )
+        })?;
 
     let mut outputs = HashMap::new();
     if let Some(stack) = resp.stacks().first() {

@@ -120,12 +120,16 @@ pub async fn refresh_dsql_token() -> Result<Option<String>> {
             .hostname(&endpoint)
             .region(aws_config::Region::new(region))
             .build()
-            .map_err(|e| error::PocketError::Dsql(e.to_string()))?,
+            .map_err(|e| {
+                error::PocketError::Dsql(aws_sdk_dsql::error::DisplayErrorContext(&*e).to_string())
+            })?,
     );
     let token = signer
         .db_connect_admin_auth_token(&sdk_config)
         .await
-        .map_err(|e| error::PocketError::Dsql(e.to_string()))?;
+        .map_err(|e| {
+            error::PocketError::Dsql(aws_sdk_dsql::error::DisplayErrorContext(&*e).to_string())
+        })?;
 
     info!("DSQL auth token generated for {}", endpoint);
     unsafe {
