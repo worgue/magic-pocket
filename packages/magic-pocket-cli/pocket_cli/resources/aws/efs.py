@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 import uuid
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -8,6 +7,7 @@ from typing import TYPE_CHECKING
 import boto3
 
 from pocket.resources.base import ResourceStatus
+from pocket_cli.resources.aws.poll import wait_until
 
 if TYPE_CHECKING:
     from pocket.general_context import EfsContext
@@ -57,18 +57,21 @@ class Efs:
         self.__dict__.pop("lifecycle_policies", None)
 
     def wait_status(self, status: ResourceStatus, timeout=300, interval=3):
-        for i in range(max(1, timeout // interval)):
+        def poll():
             self.clear_status()
-            if self.status == status:
-                print("")
-                return
-            if i == 0:
-                print("Waiting for efs status to be %s" % status, end="", flush=True)
-            print(".", end="", flush=True)
-            time.sleep(interval)
-        # 時間切れを正常 return にすると未完了のまま後続処理へ進んでしまう
-        raise RuntimeError(
-            "EFS status did not become %s in %s seconds" % (status, timeout)
+            return self.status == status
+
+        # 時間切れは wait_until が RuntimeError を送出する (silent timeout に
+        # すると未完了のまま後続処理へ進んでしまう)。
+        wait_until(
+            poll,
+            timeout=max(interval, timeout),
+            interval=interval,
+            start_message="Waiting for efs status to be %s" % status,
+            timeout_message=(
+                "EFS status did not become %s in %s seconds" % (status, timeout)
+            ),
+            timeout_exc=RuntimeError,
         )
 
     def create(self):

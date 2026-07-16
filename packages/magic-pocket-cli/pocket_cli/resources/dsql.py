@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -9,6 +8,7 @@ from botocore.exceptions import ClientError
 
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
+from pocket_cli.resources.aws.poll import wait_until
 
 if TYPE_CHECKING:
     from pocket.context import DsqlContext
@@ -108,34 +108,40 @@ class Dsql:
         echo.success("DSQL cluster was deleted.")
 
     def _wait_active(self, identifier: str, timeout: int = 600, interval: int = 5):
-        for i in range(timeout // interval):
+        def poll():
             try:
                 res = self._client.get_cluster(identifier=identifier)
-                if res["status"] == "ACTIVE":
-                    print("")
-                    return
+                return res["status"] == "ACTIVE"
             except ClientError:
-                pass
-            if i == 0:
-                print("Waiting for cluster to be active", end="", flush=True)
-            print(".", end="", flush=True)
-            time.sleep(interval)
-        raise TimeoutError("Cluster did not become active within %s seconds" % timeout)
+                return False
+
+        wait_until(
+            poll,
+            timeout=timeout,
+            interval=interval,
+            start_message="Waiting for cluster to be active",
+            timeout_message=(
+                "Cluster did not become active within %s seconds" % timeout
+            ),
+        )
 
     def _wait_deleted(self, identifier: str, timeout: int = 600, interval: int = 5):
-        for i in range(timeout // interval):
+        def poll():
             try:
                 self._client.get_cluster(identifier=identifier)
+                return False
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                    print("")
-                    return
+                    return True
                 raise
-            if i == 0:
-                print("Waiting for cluster deletion", end="", flush=True)
-            print(".", end="", flush=True)
-            time.sleep(interval)
-        raise TimeoutError("Cluster not deleted within %s seconds" % timeout)
+
+        wait_until(
+            poll,
+            timeout=timeout,
+            interval=interval,
+            start_message="Waiting for cluster deletion",
+            timeout_message="Cluster not deleted within %s seconds" % timeout,
+        )
 
     def clear_cache(self):
         if "cluster" in self.__dict__:
