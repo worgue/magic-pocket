@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 from pocket_cli.resources.aws.cloudformation import CloudFrontWafStack
+from pocket_cli.resources.aws.stack_backed import StackBackedResource
 
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext
 
 
-class CloudFrontWaf:
+class CloudFrontWaf(StackBackedResource):
     """us-east-1 に WAFv2 IPSet + WebACL を管理するリソース。
 
     `[cloudfront.<name>.waf]` block がある CloudFront でのみ使用。
@@ -18,9 +18,6 @@ class CloudFrontWaf:
     """
 
     context: CloudFrontContext
-
-    def __init__(self, context: CloudFrontContext) -> None:
-        self.context = context
 
     @property
     def description(self):
@@ -30,21 +27,13 @@ class CloudFrontWaf:
         key = "cloudfront-waf-%s" % self.context.name
         return {key: {"name": self.context.name}}
 
-    def deploy_init(self):
-        pass
-
-    @property
-    def status(self) -> ResourceStatus:
-        return self.stack.status
-
     @property
     def stack(self):
         return CloudFrontWafStack(self.context)
 
     def create(self):
         echo.log("WAF (IPSet + WebACL) を作成中 (us-east-1)...")
-        self.stack.create()
-        self.stack.wait_status("COMPLETED", timeout=300, interval=10)
+        self._create_stack()
         if self.context.waf is None:
             raise RuntimeError("waf context is not configured")
         if self.context.waf.enable_ip_set:
@@ -57,12 +46,6 @@ class CloudFrontWaf:
         else:
             echo.info("WAF を作成しました (IP allowlist 無効、managed rules のみ)。")
 
-    def update(self):
-        if not self.stack.yaml_synced:
-            self.stack.update()
-            self.stack.wait_status("COMPLETED", timeout=300, interval=10)
-
     def delete(self):
         echo.log("WAF スタックを削除中...")
-        self.stack.delete()
-        self.stack.wait_status("NOEXIST", timeout=300, interval=10)
+        self._delete_stack()

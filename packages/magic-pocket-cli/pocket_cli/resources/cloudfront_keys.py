@@ -3,20 +3,22 @@ from __future__ import annotations
 import base64
 from typing import TYPE_CHECKING
 
-from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.cloudformation import CloudFrontKeysStack
+from pocket_cli.resources.aws.stack_backed import StackBackedResource
 
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext
 
 
-class CloudFrontKeys:
+class CloudFrontKeys(StackBackedResource):
     context: CloudFrontContext
+    wait_timeout = 120
+    wait_interval = 5
 
     def __init__(self, context: CloudFrontContext) -> None:
-        self.context = context
+        super().__init__(context)
         self._signing_public_key_pem: str = ""
 
     @property
@@ -28,13 +30,6 @@ class CloudFrontKeys:
     def state_info(self):
         key = "cloudfront-keys-%s" % self.context.name
         return {key: {"signing_key": self.context.signing_key}}
-
-    def deploy_init(self):
-        pass
-
-    @property
-    def status(self) -> ResourceStatus:
-        return self.stack.status
 
     @property
     def stack(self):
@@ -52,23 +47,21 @@ class CloudFrontKeys:
             return
         self._prepare_signing_key(mediator)
 
-    def create(self, mediator: Mediator):
+    # mediator を取るのは意図的な非対称。deploy フロー (_deploy_resource) は
+    # inspect.signature で mediator の有無を見て呼び分ける
+    def create(self, mediator: Mediator):  # type: ignore[override]
         mediator.ensure_pocket_managed_secrets()
         self._prepare_signing_key(mediator)
-        self.stack.create()
-        self.stack.wait_status("COMPLETED", timeout=120, interval=5)
+        self._create_stack()
 
-    def update(self, mediator: Mediator):
+    def update(self, mediator: Mediator):  # type: ignore[override]
         mediator.ensure_pocket_managed_secrets()
         self._prepare_signing_key(mediator)
-        if not self.stack.yaml_synced:
-            self.stack.update()
-            self.stack.wait_status("COMPLETED", timeout=120, interval=5)
+        self._update_stack()
 
     def delete(self):
         echo.info("Deleting CloudFront keys stack ...")
-        self.stack.delete()
-        self.stack.wait_status("NOEXIST", timeout=300, interval=10)
+        self._delete_stack()
 
     def _prepare_signing_key(self, mediator: Mediator):
         if not self.context.signing_key:

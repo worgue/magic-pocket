@@ -214,6 +214,16 @@ class Stack:
 
     @property
     def yaml(self) -> str:
+        return self._render_yaml()
+
+    def _render_yaml(self, context_data: dict | None = None, **extra) -> str:
+        """テンプレートをレンダリングし prettier-ignore 行を除去する。
+
+        context_data 省略時は context.model_dump() を渡す (exclude や動的な
+        差し替えが必要なサブクラスは加工済み dict を渡す)。
+        """
+        if context_data is None:
+            context_data = self.context.model_dump()
         template = Environment(
             loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
         ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
@@ -221,7 +231,8 @@ class Stack:
             stack_name=self.name,
             export=self.export,
             resource=self._get_resource(),
-            **self.context.model_dump(),
+            **extra,
+            **context_data,
         )
         return "\n".join(
             [
@@ -352,9 +363,6 @@ class CloudFrontKeysStack(Stack):
         self._signing_public_key_pem = signing_public_key_pem
         super().__init__(context)
 
-    def get_client(self):
-        return boto3.client("cloudformation", region_name=self.context.region)
-
     @property
     def name(self):
         return f"{self.context.slug}-cloudfront-keys"
@@ -368,24 +376,8 @@ class CloudFrontKeysStack(Stack):
 
     @property
     def yaml(self) -> str:
-        from jinja2 import Environment, PackageLoader, select_autoescape
-
-        template = Environment(
-            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
-        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        original_yaml = template.render(
-            stack_name=self.name,
-            export=self.export,
-            resource=self._get_resource(),
+        return self._render_yaml(
             signing_public_key_pem=self._signing_public_key_pem,
-            **self.context.model_dump(),
-        )
-        return "\n".join(
-            [
-                line
-                for line in original_yaml.splitlines()
-                if line.strip() not in ["#", "# prettier-ignore"]
-            ]
         )
 
 
@@ -402,9 +394,6 @@ class CloudFrontStack(Stack):
         self._token_secret_value = token_secret_value
         self._origin_verify_secret_value = origin_verify_secret_value
         super().__init__(context)
-
-    def get_client(self):
-        return boto3.client("cloudformation", region_name=self.context.region)
 
     @property
     def name(self):
@@ -537,13 +526,7 @@ class CloudFrontStack(Stack):
                 "}" % deploy_hash
             )
             code = self._inject_host_redirect(code)
-            lines = []
-            for i, line in enumerate(code.splitlines()):
-                if i == 0:
-                    lines.append(line)
-                else:
-                    lines.append(" " * 8 + line)
-            codes[route.yaml_key] = "\n".join(lines)
+            codes[route.yaml_key] = self._reindent(code, 8)
         return codes
 
     def _generate_spa_fallback_function(self, route) -> str:  # type: ignore
@@ -559,13 +542,7 @@ class CloudFrontStack(Stack):
         code = template.render(fallback_uri=fallback_uri)
         code = self._inject_host_redirect(code)
         # FunctionCode: | の下は8スペース
-        lines = []
-        for i, line in enumerate(code.splitlines()):
-            if i == 0:
-                lines.append(line)
-            else:
-                lines.append(" " * 8 + line)
-        return "\n".join(lines)
+        return self._reindent(code, 8)
 
     def _generate_spa_auth_function(self, route) -> str:  # type: ignore
         """KVS + HMAC 検証付き async CloudFront Function コードを生成する"""
@@ -583,18 +560,10 @@ class CloudFrontStack(Stack):
         )
         code = self._inject_host_redirect(code)
         # Fn::Sub の2パラメータ形式で - | の下は12スペース
-        lines = []
-        for i, line in enumerate(code.splitlines()):
-            if i == 0:
-                lines.append(line)
-            else:
-                lines.append(" " * 12 + line)
-        return "\n".join(lines)
+        return self._reindent(code, 12)
 
     def _generate_api_host_function(self) -> str:
         """API ルート用 X-Forwarded-Host 付与 Function コードを生成する"""
-        from jinja2 import Environment, PackageLoader, select_autoescape
-
         env = Environment(
             loader=PackageLoader("pocket_cli"),
             autoescape=select_autoescape(),
@@ -602,13 +571,7 @@ class CloudFrontStack(Stack):
         template = env.get_template("cloudformation/cf_function_api_host.js")
         code = template.render()
         code = self._inject_host_redirect(code)
-        lines = []
-        for i, line in enumerate(code.splitlines()):
-            if i == 0:
-                lines.append(line)
-            else:
-                lines.append(" " * 8 + line)
-        return "\n".join(lines)
+        return self._reindent(code, 8)
 
     @property
     def yaml(self) -> str:
@@ -623,16 +586,10 @@ class CloudFrontStack(Stack):
         if self.context.has_redirect_from:
             host_redirect_function_code = self._generate_host_redirect_function()
 
-        from jinja2 import Environment, PackageLoader, select_autoescape
-
-        template = Environment(
-            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
-        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        context_data = self.context.model_dump(exclude={"signing_key", "token_secret"})
-        original_yaml = template.render(
-            stack_name=self.name,
-            export=self.export,
-            resource=self._get_resource(),
+        return self._render_yaml(
+            context_data=self.context.model_dump(
+                exclude={"signing_key", "token_secret"}
+            ),
             signing_key=bool(self.context.signing_key),
             acm_certificate_arn=acm_certificate_arn,
             waf_acl_arn=waf_acl_arn,
@@ -642,14 +599,6 @@ class CloudFrontStack(Stack):
             host_redirect_function_code=host_redirect_function_code,
             has_token_kvs=self._has_token_kvs,
             origin_verify_secret=self._origin_verify_secret_value,
-            **context_data,
-        )
-        return "\n".join(
-            [
-                line
-                for line in original_yaml.splitlines()
-                if line.strip() not in ["#", "# prettier-ignore"]
-            ]
         )
 
 
@@ -773,13 +722,8 @@ class ContainerStack(Stack):
                 f"{self.context.vpc.region}{chr(97 + i)}" for i in range(zone_count)
             ]
 
-        template = Environment(
-            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
-        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        original_yaml = template.render(
-            stack_name=self.name,
-            export=self.export,
-            resource=self._get_resource(),
+        return self._render_yaml(
+            context_data=context_dump,
             rds_security_group_id=rds_info.get("rds_security_group_id"),
             rds_secret_store=rds_info.get("rds_secret_store"),
             rds_secret_arn=rds_info.get("rds_secret_arn"),
@@ -799,14 +743,6 @@ class ContainerStack(Stack):
                 if self._scheduler_context
                 else None
             ),
-            **context_dump,
-        )
-        return "\n".join(
-            [
-                line
-                for line in original_yaml.splitlines()
-                if line.strip() not in ["#", "# prettier-ignore"]
-            ]
         )
 
 
