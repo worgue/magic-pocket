@@ -60,32 +60,32 @@ def management_command_handler(event, context):
     print(MANAGE_HANDLER_SUCCESS_SENTINEL)
 
 
+def _run_sqs_management_command_record(record):
+    """SQS record 1 件の management command を実行し、成功した message を削除する。"""
+    print(record["body"])
+    data = json.loads(record["body"])
+    call_command(data["command"], *data["args"], **data["kwargs"])
+    pocket_delete_sqs_task(record["receiptHandle"])
+
+
 def sqs_management_command_handler(event, context):
     print(event)
     for record in event["Records"]:
-        print(record["body"])
-        data = json.loads(record["body"])
-        call_command(data["command"], *data["args"], **data["kwargs"])
-        pocket_delete_sqs_task(record["receiptHandle"])
+        _run_sqs_management_command_record(record)
 
 
-def sqs_management_command_report_failuers_handler(event, context):
+def sqs_management_command_report_failures_handler(event, context):
     print(event)
     batch_item_failures = []
-    sqs_batch_response = {}
     for record in event["Records"]:
-        print(record["body"])
-        data = json.loads(record["body"])
         try:
-            call_command(data["command"], *data["args"], **data["kwargs"])
-            pocket_delete_sqs_task(record["receiptHandle"])
+            _run_sqs_management_command_record(record)
         # batchItemFailures で失敗 record を SQS に報告するには、management
         # command が投げる任意の例外を捕捉する必要がある (仕組み上の要請)
         except Exception as e:
             print(e)
             batch_item_failures.append({"itemIdentifier": record["messageId"]})
-    sqs_batch_response["batchItemFailures"] = batch_item_failures
-    return sqs_batch_response
+    return {"batchItemFailures": batch_item_failures}
 
 
 def dangerous_shell_handler(event, context):

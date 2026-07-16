@@ -41,6 +41,25 @@
   なりました。この 3 つは `.env` から credential を読むため pydantic 側の
   `extra="forbid"` は使えず（`.env` の無関係なキーまで拒否してしまう）、
   toml のキーのみを検証します。`.env` の扱いは従来どおり変わりません。
+- **breaking**: `pocket.django.lambda_handlers` の
+  `sqs_management_command_report_failuers_handler` を、typo を修正した
+  `sqs_management_command_report_failures_handler` にリネームしました
+  (`failuers` → `failures`)。旧名は残していません。pocket.toml の
+  `[awscontainer.handlers.*]` の `command` で旧名を指している場合は、新しい名前に
+  書き換えてください（そのままだと deploy 後の Lambda が handler の解決に失敗します）。
+
+### Fixed
+- **SQS handler の部分失敗で、成功済みの job が再実行される問題を修正しました。**
+  `pocket.command_handler.BaseCommandHandler` は event source mapping に
+  `FunctionResponseTypes: ReportBatchItemFailures` が付いている
+  (`report_batch_item_failures` が true = 既定) にもかかわらず `batchItemFailures` を
+  返しておらず、バッチ内の 1 record が失敗すると handler 全体が例外で落ちていました。
+  SQS はこれを「バッチ全件が失敗」と解釈するため、**同じバッチで既に完走していた
+  record まで再配信され、冪等でない管理コマンドが二重実行されていました**。
+  record 毎に例外を捕捉し、失敗した record の messageId だけを
+  `batchItemFailures` で報告するようになったので、再配信されるのは失敗した record
+  だけになります。crash 時の traceback は従来どおり CloudWatch に出力され、
+  `dead_letter_max_receive_count` 超過で DLQ に落ちる挙動も変わりません。
 
 ### Removed
 - **breaking**: `pocket.django.utils.get_static_storage` を削除しました。

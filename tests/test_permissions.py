@@ -12,7 +12,7 @@ from pocket.settings import Settings
 
 # 長いハンドラ command を test 内で 90 列に収めるための定数化
 _SQS_HANDLER_CMD = (
-    "pocket.django.lambda_handlers.sqs_management_command_report_failuers_handler"
+    "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 )
 
 

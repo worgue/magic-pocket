@@ -20,9 +20,15 @@ crash 時の挙動:
 
 - 予期せぬ crash (spawn 失敗 / spec 不正 / sink エラー / OOM / timeout 等) で UI が
   永遠に running を読まないよう、:meth:`_run` は ``try/finally`` + ``done_ok`` フラグで
-  「正常完了でないまま抜けた」ときだけ :meth:`on_crash` を呼ぶ。``except`` で握りつぶさ
-  ないので、例外はそのまま伝播し CloudWatch traceback + DLQ に残る (AGENTS.md
-  「曖昧な例外キャッチ禁止」と整合)。
+  「正常完了でないまま抜けた」ときだけ :meth:`on_crash` を呼ぶ。:meth:`_run` は例外を
+  握りつぶさず、そのまま呼び出し元 (:meth:`__call__`) へ伝播させる。
+
+- :meth:`__call__` は record 毎に :meth:`_run` を呼び、失敗した record の messageId を
+  ``batchItemFailures`` で SQS に報告する (partial batch response)。**crash した record
+  だけ**が再配信され、``dead_letter_max_receive_count`` 超過で DLQ に落ちる。バッチ全体
+  を落とすと成功済みの record まで再配信され、冪等でない管理コマンドが二重実行される
+  ため、ここでは例外を捕捉する。traceback は捕捉時に明示的に出力するので CloudWatch に
+  は従来どおり残る。
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 from abc import ABC, abstractmethod
 
 
@@ -50,14 +57,31 @@ class BaseCommandHandler(ABC):
     #: 完了時 (:meth:`on_finish`) は throttle に関係なく確実に書く想定。
     throttle: float = 1.0
 
-    def __call__(self, event, context):
+    def __call__(self, event, context) -> dict:
         """SQS event source の Lambda entrypoint.
 
-        バッチ内の各 record (= 1 job) を順に完走させる。例外は catch せず伝播させ、
-        SQS の redrive / DLQ に委ねる。
+        バッチ内の各 record (= 1 job) を順に完走させ、crash した record の messageId を
+        ``batchItemFailures`` で返す。返り値は
+        ``{"batchItemFailures": [{"itemIdentifier": ...}, ...]}`` で、失敗が無ければ
+        空 list (= 全件成功) になる。
+
+        この返り値を SQS が解釈するのは event source mapping に
+        ``FunctionResponseTypes: ReportBatchItemFailures`` が付いているとき、つまり
+        ``pocket.toml`` の ``[awscontainer.handlers.<key>.sqs]``
+        ``report_batch_item_failures`` が true (既定) のとき。false のときは SQS 側が
+        返り値を無視するだけで、返して害は無い。
         """
+        batch_item_failures = []
         for record in event["Records"]:
-            self._run(json.loads(record["body"]))
+            try:
+                self._run(json.loads(record["body"]))
+            # 失敗 record を batchItemFailures で報告するには、job が投げる任意の例外を
+            # 捕捉する必要がある (仕組み上の要請)。型で絞ると絞り漏れた例外で handler
+            # 全体が落ち、成功済み record まで再配信されてしまう。
+            except Exception:
+                traceback.print_exc()
+                batch_item_failures.append({"itemIdentifier": record["messageId"]})
+        return {"batchItemFailures": batch_item_failures}
 
     def _run(self, spec: dict) -> None:
         """1 job 分のコマンドを完走させ、進捗 / 結果を sink hook 経由で永続化する."""
@@ -97,7 +121,8 @@ class BaseCommandHandler(ABC):
                 # 例外が伝播中 (= worker crash)。UI が failed を読めるよう sink に
                 # 記録する。正常 finalize 後 (done_ok=True) はここを通らない。
                 self.on_crash(spec, sys.exc_info()[1])
-            # 例外は finally を抜けて自然に伝播 (= re-raise) → CloudWatch + DLQ。
+            # 例外は finally を抜けて自然に伝播 (= re-raise)。__call__ が捕捉して
+            # この record を batchItemFailures に載せる → 再配信 → DLQ。
 
     @abstractmethod
     def build_argv(self, spec: dict) -> list[str]:
