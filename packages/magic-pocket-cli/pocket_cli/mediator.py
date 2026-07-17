@@ -5,6 +5,7 @@ import secrets
 from typing import TYPE_CHECKING, Literal
 
 from pocket.utils import echo
+from pocket_cli import secret_store
 from pocket_cli.resources.neon import Neon, NeonResourceIsNotReady
 from pocket_cli.resources.tidb import TiDb, TiDbResourceIsNotReady
 from pocket_cli.resources.upstash import Upstash, UpstashResourceIsNotReady
@@ -158,58 +159,15 @@ class Mediator:
 
     def _put_stored_value(self, name: str, store: str, value: str, region: str) -> None:
         """正準名 (name) に単一値を書き込む (ssm=SecureString / sm=create|put)。"""
-        import boto3
-        from botocore.exceptions import ClientError
-
-        if store == "ssm":
-            boto3.client("ssm", region_name=region).put_parameter(
-                Name=name, Value=value, Type="SecureString", Overwrite=True
-            )
-            return
-        client = boto3.client("secretsmanager", region_name=region)
-        try:
-            client.create_secret(
-                Name=name,
-                SecretString=value,
-                Tags=[{"Key": "Name", "Value": name}],
-            )
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ResourceExistsException":
-                client.put_secret_value(SecretId=name, SecretString=value)
-            else:
-                raise
+        secret_store.put_stored_value(name, store, value, region)
 
     def _read_stored_value(self, name: str, store: str, region: str) -> str | None:
         """正準名 (name) の値を読む。未 provision (NotFound) なら None。"""
-        import boto3
-        from botocore.exceptions import ClientError
-
-        try:
-            if store == "ssm":
-                res = boto3.client("ssm", region_name=region).get_parameter(
-                    Name=name, WithDecryption=True
-                )
-                return res["Parameter"]["Value"]
-            res = boto3.client("secretsmanager", region_name=region).get_secret_value(
-                SecretId=name
-            )
-            return res["SecretString"]
-        except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in ("ParameterNotFound", "ResourceNotFoundException"):
-                return None
-            raise
+        return secret_store.read_stored_value(name, store, region)
 
     def _delete_stored_value(self, name: str, store: str, region: str) -> None:
         """正準名 (name) を削除する (migrate の旧パス cleanup 用)。"""
-        import boto3
-
-        if store == "ssm":
-            boto3.client("ssm", region_name=region).delete_parameter(Name=name)
-        else:
-            boto3.client("secretsmanager", region_name=region).delete_secret(
-                SecretId=name
-            )
+        secret_store.delete_stored_value(name, store, region)
 
     def store_user_secret(self, spec, value: str) -> None:
         """stored mode user secret の正準名 (spec.name) に単一値を書き込む。

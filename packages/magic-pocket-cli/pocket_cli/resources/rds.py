@@ -12,6 +12,7 @@ from botocore.exceptions import ClientError
 
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
+from pocket_cli import secret_store
 from pocket_cli.resources.aws.cloudformation import VpcStack
 from pocket_cli.resources.aws.poll import wait_until
 from pocket_cli.resources.vpc import Vpc
@@ -513,54 +514,29 @@ class Rds:
 
     def _write_credential_to_store(self, store: str, secret_string: str) -> None:
         name = self.context.credentials_secret_name
+        result = secret_store.put_stored_value(
+            name, store, secret_string, self.context.region
+        )
         if store == "ssm":
-            self._ssm_client.put_parameter(
-                Name=name, Value=secret_string, Type="SecureString", Overwrite=True
-            )
             echo.success("Stored static DB credentials in SSM parameter: %s" % name)
-            return
-        try:
-            self._sm_client.create_secret(
-                Name=name,
-                SecretString=secret_string,
-                Tags=[{"Key": "Name", "Value": name}],
-            )
+        elif result is secret_store.PutResult.CREATED:
             echo.success("Stored static DB credentials secret: %s" % name)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "ResourceExistsException":
-                self._sm_client.put_secret_value(
-                    SecretId=name, SecretString=secret_string
-                )
-                echo.success("Updated static DB credentials secret: %s" % name)
-            else:
-                raise
+        else:
+            echo.success("Updated static DB credentials secret: %s" % name)
 
     def _read_credential_from_store(self, store: str) -> str | None:
-        name = self.context.credentials_secret_name
-        try:
-            if store == "ssm":
-                res = self._ssm_client.get_parameter(Name=name, WithDecryption=True)
-                return res["Parameter"]["Value"]
-            return self._sm_client.get_secret_value(SecretId=name)["SecretString"]
-        except ClientError as e:
-            not_found = ("ParameterNotFound", "ResourceNotFoundException")
-            if e.response["Error"]["Code"] in not_found:
-                return None
-            raise
+        return secret_store.read_stored_value(
+            self.context.credentials_secret_name, store, self.context.region
+        )
 
     def _delete_credential_from_store(self, store: str) -> None:
-        name = self.context.credentials_secret_name
-        try:
-            if store == "ssm":
-                self._ssm_client.delete_parameter(Name=name)
-            else:
-                self._sm_client.delete_secret(
-                    SecretId=name, ForceDeleteWithoutRecovery=True
-                )
-        except ClientError as e:
-            not_found = ("ParameterNotFound", "ResourceNotFoundException")
-            if e.response["Error"]["Code"] not in not_found:
-                raise
+        secret_store.delete_stored_value(
+            self.context.credentials_secret_name,
+            store,
+            self.context.region,
+            force_sm=True,
+            swallow_not_found=True,
+        )
 
     def update(self):
         self.clear_cache()
