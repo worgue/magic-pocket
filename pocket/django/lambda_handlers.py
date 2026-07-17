@@ -9,8 +9,41 @@ from pocket.django.utils import pocket_delete_sqs_task
 
 from ..utils import MANAGE_HANDLER_SUCCESS_SENTINEL, get_wsgi_application
 
+
+def _wsgi_transcode_path(environ):
+    """API Gateway payload v1 由来の PATH_INFO を WSGI 仕様準拠へ直す。
+
+    API Gateway (payload v1) は ``event["path"]`` を**パーセントデコード済み**で
+    渡すため、apig_wsgi の ``unquote(..., encoding="iso-8859-1")`` は no-op となり、
+    生の非 ASCII (例: 乃) がそのまま PATH_INFO / SCRIPT_NAME に入る。WSGI 仕様では
+    これらは latin-1 で表現可能な str である必要があり、Django は
+    ``get_bytes_from_wsgi`` で ``value.encode("iso-8859-1")`` して検証するため、
+    非 ASCII があると UnicodeEncodeError → 500 になる。
+
+    ここで WSGI 流の transcode (``s.encode("utf-8").decode("iso-8859-1")``) に直す。
+    既に latin-1 で表現可能な値 (ASCII や payload v2 の rawPath 由来で unquote 済み)
+    は二重エンコードを避けるためそのまま通す。
+    """
+    for key in ("PATH_INFO", "SCRIPT_NAME"):
+        value = environ.get(key)
+        if not value:
+            continue
+        try:
+            value.encode("iso-8859-1")
+        except UnicodeEncodeError:
+            environ[key] = value.encode("utf-8").decode("iso-8859-1")
+    return environ
+
+
+def _wsgi_app_with_path_fix(app):
+    def wrapped(environ, start_response):
+        return app(_wsgi_transcode_path(environ), start_response)
+
+    return wrapped
+
+
 wsgi_handler = make_lambda_handler(
-    get_wsgi_application(),
+    _wsgi_app_with_path_fix(get_wsgi_application()),
     binary_support=True,
     non_binary_content_type_prefixes=(
         "application/json",
