@@ -2,6 +2,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.cloudfront import CloudFront
 
 
@@ -12,13 +13,12 @@ def cloudfront():
 
 def get_cloudfront_resources(stage, name=None):
     context = Context.from_toml(stage=stage)
-    if not context.cloudfront:
-        echo.danger("cloudfront is not configured for this stage")
-        raise Exception("cloudfront is not configured for this stage")
+    require_configured(
+        context.cloudfront, "cloudfront is not configured for this stage"
+    )
     if name:
         if name not in context.cloudfront:
-            echo.danger("cloudfront '%s' is not configured" % name)
-            raise Exception("cloudfront '%s' is not configured" % name)
+            raise click.ClickException("cloudfront '%s' is not configured" % name)
         return [CloudFront(context.cloudfront[name])]
     return [CloudFront(cf_ctx) for cf_ctx in context.cloudfront.values()]
 

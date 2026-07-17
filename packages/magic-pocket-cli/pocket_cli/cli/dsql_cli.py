@@ -4,14 +4,15 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.dsql import Dsql
 
 
 def _get_dsql_resource(stage: str) -> Dsql:
     context = Context.from_toml(stage=stage)
-    if not context.dsql:
-        raise click.ClickException("dsql is not configured for this stage")
-    return Dsql(context.dsql)
+    return Dsql(
+        require_configured(context.dsql, "dsql is not configured for this stage")
+    )
 
 
 @click.group()

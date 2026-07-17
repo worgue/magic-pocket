@@ -4,6 +4,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.s3 import S3
 
 
@@ -14,10 +15,9 @@ def s3():
 
 def get_s3_resource(stage):
     context = Context.from_toml(stage=stage)
-    if not context.s3:
-        echo.danger("s3 is not configured for this stage")
-        raise Exception("s3 is not configured for this stage")
-    return S3(context=context.s3)
+    return S3(
+        context=require_configured(context.s3, "s3 is not configured for this stage")
+    )
 
 
 @s3.command()

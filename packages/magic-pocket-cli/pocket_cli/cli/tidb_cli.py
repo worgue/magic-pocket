@@ -4,6 +4,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
 from pocket_cli.resources.tidb import TiDb
@@ -16,10 +17,11 @@ def tidb():
 
 def get_tidb_resource(stage):
     context = Context.from_toml(stage=stage)
-    if not context.tidb:
-        echo.danger("tidb is not configured for this stage")
-        raise ValueError("tidb is not configured for this stage")
-    return TiDb(context=context.tidb)
+    return TiDb(
+        context=require_configured(
+            context.tidb, "tidb is not configured for this stage"
+        )
+    )
 
 
 @tidb.command()

@@ -2,6 +2,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 
 
@@ -12,9 +13,9 @@ def cloudfront_keys():
 
 def get_cloudfront_keys_resources(stage, name=None):
     context = Context.from_toml(stage=stage)
-    if not context.cloudfront:
-        echo.danger("cloudfront is not configured for this stage")
-        raise Exception("cloudfront is not configured for this stage")
+    require_configured(
+        context.cloudfront, "cloudfront is not configured for this stage"
+    )
     results = []
     for cf_name, cf_ctx in context.cloudfront.items():
         if not cf_ctx.signing_key:
@@ -23,8 +24,7 @@ def get_cloudfront_keys_resources(stage, name=None):
             continue
         results.append(CloudFrontKeys(cf_ctx))
     if name and not results:
-        echo.danger("cloudfront_keys '%s' is not configured" % name)
-        raise Exception("cloudfront_keys '%s' is not configured" % name)
+        raise click.ClickException("cloudfront_keys '%s' is not configured" % name)
     return results
 
 

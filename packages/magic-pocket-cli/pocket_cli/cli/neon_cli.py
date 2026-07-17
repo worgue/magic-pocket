@@ -4,6 +4,7 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
 from pocket_cli.resources.neon import Neon, ensure_url_for_context
@@ -16,10 +17,11 @@ def neon():
 
 def get_neon_resource(stage):
     context = Context.from_toml(stage=stage)
-    if not context.neon:
-        echo.danger("neon is not configured for this stage")
-        raise Exception("neon is not configured for this stage")
-    return Neon(context=context.neon)
+    return Neon(
+        context=require_configured(
+            context.neon, "neon is not configured for this stage"
+        )
+    )
 
 
 @neon.command()

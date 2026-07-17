@@ -4,14 +4,13 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.rds import Rds
 
 
 def _get_rds_resource(stage: str) -> Rds:
     context = Context.from_toml(stage=stage)
-    if not context.rds:
-        raise click.ClickException("rds is not configured for this stage")
-    return Rds(context.rds)
+    return Rds(require_configured(context.rds, "rds is not configured for this stage"))
 
 
 @click.group()

@@ -13,6 +13,7 @@ from pocket_cli.cli.destroy_cli import (
     _collect_awscontainer_targets,
     _destroy_awscontainer,
 )
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.awscontainer import AwsContainer
 
@@ -24,10 +25,11 @@ def awscontainer():
 
 def get_awscontainer_resource(stage):
     context = Context.from_toml(stage=stage)
-    if not context.awscontainer:
-        echo.danger("awscontainer is not configured for this stage")
-        raise Exception("awscontainer is not configured for this stage")
-    return AwsContainer(context=context.awscontainer)
+    return AwsContainer(
+        context=require_configured(
+            context.awscontainer, "awscontainer is not configured for this stage"
+        )
+    )
 
 
 @awscontainer.command()
