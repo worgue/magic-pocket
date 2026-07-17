@@ -260,11 +260,7 @@ class SecretsContext(BaseModel):
     def from_settings(
         cls, secrets: settings.Secrets, root: settings.Settings
     ) -> SecretsContext:
-        format_vars = {
-            "namespace": root.namespace,
-            "stage": root.stage,
-            "project": root.project_name,
-        }
+        format_vars = root.format_vars
         pocket_key = secrets.pocket_key_format.format(**format_vars)
 
         def _resolve_user_name(key: str, spec: UserSecretSpec) -> str:
@@ -363,11 +359,7 @@ class AwsContainerContext(BaseModel):
     def from_settings(
         cls, ac: settings.AwsContainer, root: settings.Settings
     ) -> AwsContainerContext:
-        resource_prefix = root.prefix_template.format(
-            stage=root.stage,
-            project=root.project_name,
-            namespace=root.namespace,
-        )
+        resource_prefix = root.resource_prefix
 
         vpc_ctx = None
         if ac.vpc:
@@ -464,11 +456,7 @@ class NeonContext(BaseModel):
 
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
-        format_vars = {
-            "stage": root.stage,
-            "project": root.project_name,
-            "namespace": root.namespace,
-        }
+        format_vars = root.format_vars
         return cls(
             pg_version=neon.pg_version,
             api_key=neon.api_key,
@@ -540,11 +528,7 @@ class DsqlContext(BaseModel):
 
     @classmethod
     def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
-        resource_prefix = root.prefix_template.format(
-            stage=root.stage,
-            project=root.project_name,
-            namespace=root.namespace,
-        )
+        resource_prefix = root.resource_prefix
         return cls(
             region=root.region,
             tag_name=f"{resource_prefix}dsql",
@@ -589,11 +573,7 @@ class RdsContext(BaseModel):
         if not rds.vpc:
             raise RuntimeError("rds.vpc must be resolved by resolve_vpc")
         vpc_ctx = VpcContext.from_settings(rds.vpc, root.general)
-        resource_prefix = root.prefix_template.format(
-            stage=root.stage,
-            project=root.project_name,
-            namespace=root.namespace,
-        )
+        resource_prefix = root.resource_prefix
         # 他リソース名 (resource_prefix = {stage}-{project}) と順序を揃えて
         # "{stage}_{project}"。rds.database で明示上書き可 (既存クラスタ参照 /
         # snapshot 復元で実 DB 名を指す必要がある場合)。
@@ -745,11 +725,6 @@ class S3Context(BaseModel):
 
     @classmethod
     def from_settings(cls, s3: settings.S3, root: settings.Settings) -> S3Context:
-        format_vars = {
-            "namespace": root.namespace,
-            "stage": root.stage,
-            "project": root.project_name,
-        }
         cors_ctx = None
         if s3.cors:
             cf_names = (
@@ -771,7 +746,7 @@ class S3Context(BaseModel):
         ]
         return cls(
             region=root.region,
-            bucket_name=s3.bucket_name_format.format(**format_vars),
+            bucket_name=s3.bucket_name(root.format_vars),
             cors=cors_ctx,
             versioning=s3.versioning,
             lifecycle_rules=lifecycle_ctxs,
@@ -1003,16 +978,7 @@ class CloudFrontContext(BaseModel):
     ) -> CloudFrontContext:
         if not root.s3:
             raise RuntimeError("s3 is required when cloudfront is configured")
-        format_vars = {
-            "namespace": root.namespace,
-            "stage": root.stage,
-            "project": root.project_name,
-        }
-        resource_prefix = root.prefix_template.format(
-            stage=root.stage,
-            project=root.project_name,
-            namespace=root.namespace,
-        )
+        resource_prefix = root.resource_prefix
         routes = [RouteContext.from_settings(r) for r in cf.routes]
         deploy_hash = ""
         if any(r.is_deploy_hash for r in routes):
@@ -1025,7 +991,7 @@ class CloudFrontContext(BaseModel):
             domain=cf.domain,
             hosted_zone_id_override=cf.hosted_zone_id_override,
             slug=f"{root.slug}-{name}",
-            bucket_name=root.s3.bucket_name_format.format(**format_vars),
+            bucket_name=root.s3.bucket_name(root.format_vars),
             resource_prefix=resource_prefix,
             redirect_from=[
                 RedirectFromContext.from_settings(rf) for rf in cf.redirect_from

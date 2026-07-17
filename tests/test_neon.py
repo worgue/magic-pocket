@@ -81,7 +81,12 @@ def _fake_root(stage: str):
 
     return cast(
         settings.Settings,
-        SimpleNamespace(stage=stage, project_name="myapp", namespace="default"),
+        SimpleNamespace(
+            stage=stage,
+            project_name="myapp",
+            namespace="default",
+            format_vars={"stage": stage, "project": "myapp", "namespace": "default"},
+        ),
     )
 
 

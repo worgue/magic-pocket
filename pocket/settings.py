@@ -559,6 +559,14 @@ class S3(BaseModel):
     versioning: bool = False
     lifecycle_rules: list[S3LifecycleRule] = []
 
+    def bucket_name(self, format_vars: dict[str, str]) -> str:
+        """bucket_name_format を format_vars で展開したバケット名。
+
+        S3Context と CloudFrontContext が別個に同じ導出を持っていたのを
+        この 1 メソッドに集約する (Settings.format_vars を渡して使う)。
+        """
+        return self.bucket_name_format.format(**format_vars)
+
 
 class RedirectFrom(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -943,6 +951,30 @@ class Settings(BaseModel):
     @property
     def prefix_template(self):
         return self.general.prefix_template
+
+    @property
+    def format_vars(self) -> dict[str, str]:
+        """FormatStr 展開用の変数一式。
+
+        context.py の各 from_settings が個別に組み立てていた同一 dict を
+        一元化したもの。導出規則は Rust 側 (config.rs の format_vars) と
+        揃える必要があるため変えないこと (ズレると secret / queue 名が silent に
+        食い違う)。
+        """
+        return {
+            "namespace": self.namespace,
+            "stage": self.stage,
+            "project": self.project_name,
+        }
+
+    @property
+    def resource_prefix(self) -> str:
+        """リソース名の共通 prefix。e.g) dev-myprj-pocket-
+
+        prefix_template を format_vars で展開したもの。context.py の
+        AwsContainer / Dsql / Rds / CloudFront が同一計算を重複させていた。
+        """
+        return self.prefix_template.format(**self.format_vars)
 
     @computed_field
     @property
