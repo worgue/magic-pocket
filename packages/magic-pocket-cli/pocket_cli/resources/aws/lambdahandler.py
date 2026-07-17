@@ -92,9 +92,22 @@ class LambdaHandler:
             return res["QueueUrl"]
 
     def update(self, image_uri, wait=False):
-        res = self.client.update_function_code(
-            FunctionName=self.name, ImageUri=image_uri
-        )
+        try:
+            res = self.client.update_function_code(
+                FunctionName=self.name, ImageUri=image_uri
+            )
+        except self.client.exceptions.ResourceConflictException as e:
+            # 別の操作 (多くは並行 deploy) が同じ Lambda を更新中だと AWS が
+            # ResourceConflictException を返す。生 traceback だと「pocket 内部が
+            # 落ちた」と誤読され、原因 (自分の並行実行) が本文から読み取れないため、
+            # 原因と次の一手が自己完結する legible error に包み直す
+            # (ValueError は PocketCLI が「エラー: ...」で拾い exit 1 にする)。
+            raise ValueError(
+                "Lambda function '%s' が別の更新処理中のため、"
+                "code を更新できませんでした。同じ stage の `pocket deploy` を"
+                "並行実行していないか確認し、実行中ならその完了を待ってから"
+                "再実行してください (deploy は数分かかります)。" % self.name
+            ) from e
         print(f"lambda function {self.name} was updated.")
         show_keys = ["FunctionName", "Timeout", "MemorySize", "Version", "Environment"]
         for key, value in res.items():

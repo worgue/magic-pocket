@@ -178,3 +178,35 @@ def test_filter_log_messages_follows_next_token(monkeypatch):
     assert messages == ["page1", "page2"]
     assert len(client.calls) == 2
     assert client.calls[1]["nextToken"] == "t1"
+
+
+def test_update_reframes_resource_conflict(monkeypatch):
+    """並行 deploy 等で Lambda が更新中 (ResourceConflictException) のとき、
+    生 traceback ではなく原因と次の一手が読める legible error に包み直す。"""
+
+    class _ResourceConflictException(Exception):
+        pass
+
+    class _FakeExceptions:
+        ResourceConflictException = _ResourceConflictException
+
+    class _FakeLambdaClient:
+        exceptions = _FakeExceptions()
+
+        def update_function_code(self, **kwargs):
+            raise _ResourceConflictException(
+                "An update is in progress for resource: ..."
+            )
+
+    handler = object.__new__(LambdaHandler)  # __init__ (boto client 生成) を回避
+    fake_context = type("Ctx", (), {"function_name": "sandbox-pocket-wsgi"})()
+    monkeypatch.setattr(handler, "context", fake_context, raising=False)
+    monkeypatch.setattr(handler, "client", _FakeLambdaClient(), raising=False)
+
+    with pytest.raises(ValueError) as exc:
+        handler.update(image_uri="dummy:latest")
+    msg = str(exc.value)
+    # 原因 (別更新中) と対象、次の一手 (完了を待って再実行) が本文に含まれる
+    assert "sandbox-pocket-wsgi" in msg
+    assert "別の更新処理中" in msg
+    assert "再実行" in msg
