@@ -1,8 +1,8 @@
 """`pocket <db> store-url` と関連ヘルパーのテスト。
 
 検証対象:
-- Mediator.store_user_secret: stored user secret 正準名への put (ssm / sm 新規・既存)
-- Mediator.stored_secret_exists: 存在判定
+- StoredUserSecretStore.put: stored user secret 正準名への put (ssm / sm 新規・既存)
+- StoredUserSecretStore.exists: 存在判定
 - run_store_url: 対象特定 (単一 / --key / 0 件 / 複数) と既存時 no-op / --force 上書き
 - computed (managed db url type) の deprecation warning
 """
@@ -75,15 +75,14 @@ class _FakeAws:
         self.puts.append((SecretId, SecretString))
 
 
-# --- Mediator.store_user_secret ----------------------------------------------
+# --- StoredUserSecretStore.put -------------------------------------------------
 
 
 def test_store_user_secret_ssm_put_parameter(base_settings, monkeypatch):
     sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     fake = _FakeAws()
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
-    mediator = Mediator(_ctx_stub(sc))
-    mediator.store_user_secret(sc.user["DATABASE_URL"], "postgres://u:p@h:5432/db")
+    sc.user_store.put(sc.user["DATABASE_URL"], "postgres://u:p@h:5432/db")
     assert fake.puts == [
         ("/test-testprj-pocket-user/neon_database_url", "postgres://u:p@h:5432/db")
     ]
@@ -93,8 +92,7 @@ def test_store_user_secret_sm_create(base_settings, monkeypatch):
     sc = _make_sc(base_settings, "sm", {"DATABASE_URL": "neon_database_url"})
     fake = _FakeAws(exists=False)
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
-    mediator = Mediator(_ctx_stub(sc))
-    mediator.store_user_secret(sc.user["DATABASE_URL"], "url")
+    sc.user_store.put(sc.user["DATABASE_URL"], "url")
     assert fake.create_calls == ["test-testprj-pocket-user/neon_database_url"]
     assert fake.put_value_calls == []
 
@@ -105,8 +103,7 @@ def test_store_user_secret_sm_existing_uses_put_secret_value(
     sc = _make_sc(base_settings, "sm", {"DATABASE_URL": "neon_database_url"})
     fake = _FakeAws(exists=True)
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
-    mediator = Mediator(_ctx_stub(sc))
-    mediator.store_user_secret(sc.user["DATABASE_URL"], "url")
+    sc.user_store.put(sc.user["DATABASE_URL"], "url")
     assert fake.put_value_calls == ["test-testprj-pocket-user/neon_database_url"]
     assert fake.create_calls == []
 

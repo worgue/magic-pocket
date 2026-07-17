@@ -5,7 +5,6 @@ from typing import Callable
 import click
 
 from pocket.context import Context
-from pocket_cli.mediator import Mediator
 
 
 def run_get_url(
@@ -78,7 +77,6 @@ def _read_stored_url(context: Context, secret_type: str) -> str | None:
     sc = context.awscontainer.secrets if context.awscontainer else None
     if sc is None:
         return None
-    mediator = Mediator(context)
     specs = [spec for spec in sc.user.values() if spec.type == secret_type]
     if len(specs) > 1:
         # 通常は settings の check_user_type_unique で弾かれる (防御的)。
@@ -87,5 +85,5 @@ def _read_stored_url(context: Context, secret_type: str) -> str | None:
             % secret_type
         )
     if specs:
-        return mediator.read_user_secret(specs[0])
-    return mediator.read_stored_url_by_type(secret_type)
+        return sc.user_store.read(specs[0])
+    return sc.user_store.read_by_type(secret_type)

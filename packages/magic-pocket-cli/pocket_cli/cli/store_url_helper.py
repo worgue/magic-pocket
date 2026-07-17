@@ -6,7 +6,6 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
-from pocket_cli.mediator import Mediator
 
 
 def run_store_url(
@@ -59,9 +58,8 @@ def run_store_url(
         target_key = candidates[0]
 
     spec = sc.user[target_key]
-    mediator = Mediator(context)
 
-    if not force and mediator.stored_secret_exists(spec):
+    if not force and sc.user_store.exists(spec):
         echo.warning(
             "%s は既に存在します (%s)。rotate する場合は --force を付けてください。"
             % (target_key, spec.name)
@@ -69,7 +67,7 @@ def run_store_url(
         return
 
     url = ensure_and_compute_url(context)
-    mediator.store_user_secret(spec, url)
+    sc.user_store.put(spec, url)
     echo.success(
         "%s URL を %s (%s) に保存しました。" % (db_label, target_key, spec.name)
     )

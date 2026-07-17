@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
+from pocket import secret_store
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
-from pocket_cli import secret_store
 from pocket_cli.resources.aws.cloudformation import VpcStack
 from pocket_cli.resources.aws.poll import wait_until
 from pocket_cli.resources.vpc import Vpc

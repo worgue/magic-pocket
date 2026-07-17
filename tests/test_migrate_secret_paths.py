@@ -1,4 +1,4 @@
-"""`pocket migrate secret-paths` の中核 (Mediator.migrate_user_secret_path) のテスト。
+"""`pocket migrate secret-paths` の中核 (_migrate_user_secret_path) のテスト。
 
 stored user secret を旧キー基準パス (/{pocket_key}-user/{key}) から新 type 基準パス
 (/{pocket_key}-user/{type}) へ copy→verify→旧 delete する。冪等性を検証する。
@@ -6,26 +6,14 @@ stored user secret を旧キー基準パス (/{pocket_key}-user/{key}) から新
 
 from __future__ import annotations
 
-from typing import Any
-
 from botocore.exceptions import ClientError
-from pocket_cli.mediator import Mediator
+from pocket_cli.cli import migrate_cli
 
 from pocket import settings
 from pocket.context import SecretsContext
 
 OLD = "/test-testprj-pocket-user/DATABASE_URL"  # 旧: キー基準
 NEW = "/test-testprj-pocket-user/neon_database_url"  # 新: type 基準
-
-
-def _ctx_stub(secrets_context) -> Any:
-    class _Aws:
-        secrets = secrets_context
-
-    class _Ctx:
-        awscontainer = _Aws()
-
-    return _Ctx()
 
 
 def _make_sc(base_settings):
@@ -55,25 +43,25 @@ class _FakeSsm:
 
 
 def _setup(base_settings, monkeypatch, store: dict):
-    """boto3 を fake で差し替えた Mediator と、対象 spec を返す。"""
+    """boto3 を fake で差し替えた SecretsContext と、対象 spec を返す。"""
     fake = _FakeSsm(store)
     monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
     sc = _make_sc(base_settings)
-    return Mediator(_ctx_stub(sc)), sc.user["DATABASE_URL"]
+    return sc, sc.user["DATABASE_URL"]
 
 
 def test_migrate_copies_and_deletes_old(base_settings, monkeypatch):
     store = {OLD: "postgres://neon"}
-    med, spec = _setup(base_settings, monkeypatch, store)
-    info = med.migrate_user_secret_path("DATABASE_URL", spec)
+    sc, spec = _setup(base_settings, monkeypatch, store)
+    info = migrate_cli._migrate_user_secret_path(sc, "DATABASE_URL", spec)
     assert info["status"] == "migrated"
     assert store == {NEW: "postgres://neon"}  # 新へ copy、旧は delete
 
 
 def test_migrate_idempotent_already_migrated(base_settings, monkeypatch):
     store = {NEW: "postgres://neon"}
-    med, spec = _setup(base_settings, monkeypatch, store)
-    info = med.migrate_user_secret_path("DATABASE_URL", spec)
+    sc, spec = _setup(base_settings, monkeypatch, store)
+    info = migrate_cli._migrate_user_secret_path(sc, "DATABASE_URL", spec)
     assert info["status"] == "already"
     assert store == {NEW: "postgres://neon"}  # 変化なし
 
@@ -81,24 +69,24 @@ def test_migrate_idempotent_already_migrated(base_settings, monkeypatch):
 def test_migrate_cleans_up_interrupted(base_settings, monkeypatch):
     # copy 済み・旧 delete 前で中断したケース: 再実行で旧のみ delete
     store = {OLD: "postgres://neon", NEW: "postgres://neon"}
-    med, spec = _setup(base_settings, monkeypatch, store)
-    info = med.migrate_user_secret_path("DATABASE_URL", spec)
+    sc, spec = _setup(base_settings, monkeypatch, store)
+    info = migrate_cli._migrate_user_secret_path(sc, "DATABASE_URL", spec)
     assert info["status"] == "cleaned"
     assert store == {NEW: "postgres://neon"}
 
 
 def test_migrate_missing_both(base_settings, monkeypatch):
     store: dict = {}
-    med, spec = _setup(base_settings, monkeypatch, store)
-    info = med.migrate_user_secret_path("DATABASE_URL", spec)
+    sc, spec = _setup(base_settings, monkeypatch, store)
+    info = migrate_cli._migrate_user_secret_path(sc, "DATABASE_URL", spec)
     assert info["status"] == "missing"
     assert store == {}
 
 
 def test_migrate_dry_run_does_not_write(base_settings, monkeypatch):
     store = {OLD: "postgres://neon"}
-    med, spec = _setup(base_settings, monkeypatch, store)
-    info = med.migrate_user_secret_path("DATABASE_URL", spec, dry_run=True)
+    sc, spec = _setup(base_settings, monkeypatch, store)
+    info = migrate_cli._migrate_user_secret_path(sc, "DATABASE_URL", spec, dry_run=True)
     assert info["status"] == "would-migrate"
     assert store == {OLD: "postgres://neon"}  # 書込みなし
 
@@ -106,9 +94,6 @@ def test_migrate_dry_run_does_not_write(base_settings, monkeypatch):
 # --- CLI フロー: 旧パス削除前の runtime bump 警告 --------------------------------
 
 from types import SimpleNamespace  # noqa: E402
-from unittest import mock  # noqa: E402
-
-from pocket_cli.cli import migrate_cli  # noqa: E402
 
 
 def _patch_secret_paths_flow(monkeypatch, *, plan_status: str):
@@ -120,15 +105,17 @@ def _patch_secret_paths_flow(monkeypatch, *, plan_status: str):
         migrate_cli.Context, "from_toml", classmethod(lambda cls, *, stage: context)
     )
 
-    fake_mediator = mock.MagicMock()
-    fake_mediator.migrate_user_secret_path.return_value = {
-        "status": plan_status,
-        "key": "DATABASE_URL",
-        "type": "neon_database_url",
-        "old": OLD,
-        "new": NEW,
-    }
-    monkeypatch.setattr("pocket_cli.mediator.Mediator", lambda context: fake_mediator)
+    monkeypatch.setattr(
+        migrate_cli,
+        "_migrate_user_secret_path",
+        lambda sc, key, spec, *, dry_run=False: {
+            "status": plan_status,
+            "key": "DATABASE_URL",
+            "type": "neon_database_url",
+            "old": OLD,
+            "new": NEW,
+        },
+    )
 
 
 def test_secret_paths_warns_runtime_bump_before_acting(monkeypatch, capsys):

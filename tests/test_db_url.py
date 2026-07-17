@@ -1,7 +1,7 @@
-"""`pocket <db> url` と関連ヘルパー (url_helper / Mediator.read_user_secret) のテスト。
+"""`pocket <db> url` と関連ヘルパー (url_helper / StoredUserSecretStore.read) のテスト。
 
 検証対象:
-- Mediator.read_user_secret: stored user secret 名からの読み取り (ssm/sm/未 provision)
+- StoredUserSecretStore.read: stored user secret 名からの読み取り (ssm/sm/未 provision)
 - run_get_url: stored-first (default) / live fallback / --live 明示 / 解決不能時の raise
 - _read_stored_url: 複数候補の曖昧エラー
 """
@@ -13,7 +13,6 @@ from typing import Any
 import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.cli import url_helper
-from pocket_cli.mediator import Mediator
 from pydantic import ValidationError
 
 from pocket import settings
@@ -56,28 +55,25 @@ class _FakeAws:
         return {"SecretString": self.value}
 
 
-# --- Mediator.read_user_secret -----------------------------------------------
+# --- StoredUserSecretStore.read ------------------------------------------------
 
 
 def test_read_user_secret_ssm_returns_value(base_settings, monkeypatch):
     sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws("postgres://stored"))
-    mediator = Mediator(_ctx_stub(sc))
-    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) == "postgres://stored"
+    assert sc.user_store.read(sc.user["DATABASE_URL"]) == "postgres://stored"
 
 
 def test_read_user_secret_sm_returns_value(base_settings, monkeypatch):
     sc = _make_sc(base_settings, "sm", {"DATABASE_URL": "neon_database_url"})
     monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws("postgres://sm"))
-    mediator = Mediator(_ctx_stub(sc))
-    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) == "postgres://sm"
+    assert sc.user_store.read(sc.user["DATABASE_URL"]) == "postgres://sm"
 
 
 def test_read_user_secret_missing_returns_none(base_settings, monkeypatch):
     sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))
-    mediator = Mediator(_ctx_stub(sc))
-    assert mediator.read_user_secret(sc.user["DATABASE_URL"]) is None
+    assert sc.user_store.read(sc.user["DATABASE_URL"]) is None
 
 
 # --- run_get_url -------------------------------------------------------------

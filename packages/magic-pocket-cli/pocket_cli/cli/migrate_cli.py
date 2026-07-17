@@ -17,8 +17,8 @@ import hashlib
 import click
 import yaml
 
-from pocket import __version__
-from pocket.context import Context
+from pocket import __version__, secret_store
+from pocket.context import Context, SecretsContext, user_secret_path
 from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
 
@@ -165,6 +165,61 @@ def _run_template_hash(stage: str, *, yes: bool) -> None:
 
 # --- secret-paths migration (0.11 -> 0.12) -----------------------------------
 
+
+def _migrate_user_secret_path(
+    sc: SecretsContext, key: str, spec, *, dry_run: bool = False
+) -> dict:
+    """0.11→0.12: user secret を旧キー基準パス→新 type 基準パスへ移設する。
+
+    旧 /{pocket_key}-user/{key} の値を新 /{pocket_key}-user/{type} へ copy し、
+    verify 後に旧を delete する。冪等 (新在+旧在なら旧のみ delete して cleanup を
+    完了)。戻り値の status: ``migrated`` / ``cleaned`` / ``already`` / ``missing``
+    / ``skip-name`` (dry_run では ``would-migrate`` / ``would-clean``)。
+    """
+    if spec.type is None:  # name モードは移設対象外
+        return {"status": "skip-name", "key": key}
+    store = spec.store or sc.store
+    old_name = user_secret_path(sc.pocket_key, key, store)
+    new_name = sc.stored_url_name(spec.type, store)
+    info = {
+        "status": None,
+        "key": key,
+        "type": spec.type,
+        "old": old_name,
+        "new": new_name,
+    }
+    if old_name == new_name:  # 既に type == key (レア) なら移設不要
+        info["status"] = "already"
+        return info
+    region = sc.region
+    new_exists = secret_store.exists_stored_value(new_name, store, region)
+    old_exists = secret_store.exists_stored_value(old_name, store, region)
+    if new_exists:
+        if old_exists:
+            if not dry_run:
+                secret_store.delete_stored_value(old_name, store, region)
+            info["status"] = "would-clean" if dry_run else "cleaned"
+        else:
+            info["status"] = "already"
+        return info
+    if not old_exists:
+        info["status"] = "missing"
+        return info
+    if dry_run:
+        info["status"] = "would-migrate"
+        return info
+    value = secret_store.read_stored_value(old_name, store, region)
+    if value is None:
+        info["status"] = "missing"
+        return info
+    secret_store.put_stored_value(new_name, store, value, region)
+    if secret_store.read_stored_value(new_name, store, region) != value:
+        raise RuntimeError("copy verify failed: %s" % new_name)
+    secret_store.delete_stored_value(old_name, store, region)
+    info["status"] = "migrated"
+    return info
+
+
 _SECRET_PATH_LABELS = {
     "would-migrate": "移設予定 (copy→旧削除)",
     "would-clean": "旧パス削除予定 (移行済)",
@@ -219,23 +274,17 @@ def _warn_runtime_bump_required(stage: str) -> None:
 
 def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
     """stored user secret を旧キー基準→新 type 基準パスへ移設する (冪等)。"""
-    from pocket_cli.mediator import Mediator
-
     context = Context.from_toml(stage=stage)
     sc = context.awscontainer.secrets if context.awscontainer else None
     type_specs = (
         [(k, s) for k, s in sc.user.items() if s.type is not None] if sc else []
     )
-    if not type_specs:
+    if sc is None or not type_specs:
         echo.info("secret-paths: type-mode の user secret がありません。")
         return
 
-    mediator = Mediator(context)
-
     # まず dry-run で計画を出す (AWS への書込みなし)
-    plans = [
-        mediator.migrate_user_secret_path(k, s, dry_run=True) for k, s in type_specs
-    ]
+    plans = [_migrate_user_secret_path(sc, k, s, dry_run=True) for k, s in type_specs]
     for info in plans:
         _report_secret_path(info)
     to_act = [p for p in plans if p["status"] in ("would-migrate", "would-clean")]
@@ -252,7 +301,7 @@ def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
         click.confirm("上記の移設を実行しますか？", abort=True)
 
     for key, spec in type_specs:
-        info = mediator.migrate_user_secret_path(key, spec, dry_run=False)
+        info = _migrate_user_secret_path(sc, key, spec, dry_run=False)
         _report_secret_path(info)
     echo.success("secret-paths: 移設が完了しました。")
 

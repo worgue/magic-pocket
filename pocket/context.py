@@ -13,6 +13,7 @@ from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.aws.ssm import SsmStore
+from .secret_store import StoredUserSecretStore
 from .settings import (
     BuildBackend,
     BuildConfig,
@@ -166,6 +167,11 @@ class SecretsContext(BaseModel):
         if self.store == "ssm":
             return SsmStore(self)
         return SecretsManager(self)
+
+    @cached_property
+    def user_store(self):
+        """stored user secret の per-name I/O (pocket_store の user secret 版)"""
+        return StoredUserSecretStore(self)
 
     def stored_url_name(self, secret_type: str, store: str | None = None) -> str:
         """type 基準の stored URL 正準名を導出する (宣言が無くても引ける)。

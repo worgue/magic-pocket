@@ -9,8 +9,6 @@ import boto3
 from pocket.general_context import GeneralContext
 
 from .context import Context
-from .resources.aws.secretsmanager import SecretsManager
-from .resources.aws.ssm import SsmStore
 from .settings import ManagedSecretSpec
 from .utils import echo, get_stage
 
@@ -69,21 +67,10 @@ def get_secrets(stage: str | None = None) -> dict:
             continue
         envs = _pocket_secret_to_envs(key, value, sc.managed[key])
         secrets.update(envs)
-    # user: 各specのstoreに応じてSM/SSMクライアントを使い分け
-    sm_client: SecretsManager | None = None
-    ssm_client: SsmStore | None = None
+    # user: stored user secret store 経由で読む (CLI の store-url / verify と同一実装)。
+    # 欠落 (NotFound) は required=True で ClientError のまま即失敗させる
     for key, spec in sc.user.items():
-        effective_store = spec.store or sc.store
-        if effective_store == "sm":
-            if sm_client is None:
-                sm_client = SecretsManager(sc)
-            res = sm_client.client.get_secret_value(SecretId=spec.name)
-            secrets[key] = res["SecretString"]
-        else:
-            if ssm_client is None:
-                ssm_client = SsmStore(sc)
-            res = ssm_client.client.get_parameter(Name=spec.name, WithDecryption=True)
-            secrets[key] = res["Parameter"]["Value"]
+        secrets[key] = sc.user_store.read(spec, required=True)
     return secrets
 
 
