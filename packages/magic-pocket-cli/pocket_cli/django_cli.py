@@ -2,7 +2,6 @@ import importlib.util
 import json
 import os
 import shutil
-import warnings
 import webbrowser
 from pathlib import Path
 from subprocess import run
@@ -197,17 +196,10 @@ def _staticfiles_publish_mode(context: Context) -> str:
     return "deploy"
 
 
-def _get_management_command_handler(context: Context, key: str | None = None):
+def _get_management_command_handler(context: Context):
     if not context.awscontainer:
         raise Exception("awscontainer is not configured for this stage")
     ac = AwsContainer(context.awscontainer)
-    if key:
-        warnings.warn(
-            "Do not use key to get management command handler",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return ac.handlers[key]
     target_command = "pocket.django.lambda_handlers.management_command_handler"
     for key, handler_context in context.awscontainer.handlers.items():
         if handler_context.command == target_command:
@@ -356,13 +348,12 @@ def deploystatic(stage: str, skip_collectstatic: bool, delete: bool, link: bool)
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.argument("command")
 @click.argument("args", nargs=-1)
-@click.option("--handler")
 @click.option("--timeout-seconds", type=int)
-def manage(stage, command, args, handler, timeout_seconds):
+def manage(stage, command, args, timeout_seconds):
     if not django_installed:
         raise Exception("django is not installed")
     context = Context.from_toml(stage=stage)
-    handler = _get_management_command_handler(context, key=handler)
+    handler = _get_management_command_handler(context)
     res = handler.invoke(json.dumps({"command": command, "args": args}))
     if timeout_seconds:
         handler.show_logs(res, timeout_seconds)

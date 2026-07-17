@@ -282,7 +282,6 @@ pocket django manage createsuperuser --username=admin --email=admin@example.com 
 | オプション | 説明 |
 |-----------|------|
 | `--stage` | 対象ステージ |
-| `--handler` | 特定のハンドラーを指定（非推奨） |
 | `--timeout-seconds` | ログ表示のタイムアウト（秒） |
 
 ### pocket django resetdb

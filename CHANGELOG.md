@@ -73,8 +73,11 @@
 ### Removed
 - **breaking**: `pocket.django.utils.get_static_storage` を削除しました。
   `get_storages()["staticfiles"]` で同じ storage を取得できます。
-
-## [0.17.0](https://github.com/worgue/magic-pocket/releases/tag/0.17.0) - 2026-07-12
+- **breaking**: `pocket django manage` の `--handler` オプションを削除しました。
+  このオプションは指定すると即 `DeprecationWarning`（"Do not use key ..."）を出す
+  状態で、management command handler は `command` が
+  `pocket.django.lambda_handlers.management_command_handler` の handler を
+  自動選択します。絞り込みが必要なケースは無かったため削除しました。
 
 ### Added
 - Neon の ensure + 接続 URL 算出を、import 可能な公開 API
