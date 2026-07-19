@@ -3,6 +3,7 @@ pub mod error;
 pub mod rds;
 pub mod resources;
 pub mod secrets;
+pub mod sqs;
 
 use error::Result;
 use tracing::info;

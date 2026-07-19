@@ -424,6 +424,7 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
+              # {% if scheduler.invoked_function_arns %}
               - Effect: Allow
                 Action:
                   - "lambda:InvokeFunction"
@@ -431,12 +432,26 @@ Resources:
                   # {% for arn in scheduler.invoked_function_arns %}
                   - Fn::Sub: "{{ arn }}"
                   # {% endfor %}
+              # {% endif %}
+              # {% if scheduler.sqs_queue_logical_names %}
+              - Effect: Allow
+                Action:
+                  - "sqs:SendMessage"
+                Resource:
+                  # {% for queue_logical_name in scheduler.sqs_queue_logical_names %}
+                  - Fn::GetAtt: "{{ queue_logical_name }}.Arn"
+                  # {% endfor %}
+              # {% endif %}
 
   # {% for entry in scheduler.schedules %}
   "{{ entry.yaml_key }}Schedule":
     Type: AWS::Scheduler::Schedule
     DependsOn:
+      # {% if entry.is_sqs %}
+      - "{{ entry.handler|capitalize }}SqsQueue"
+      # {% else %}
       - "{{ entry.handler|capitalize }}LambdaFunction"
+      # {% endif %}
       - SchedulerExecutionRole
     Properties:
       Name: "{{ entry.name }}"
@@ -444,8 +459,14 @@ Resources:
       FlexibleTimeWindow:
         Mode: "OFF"
       Target:
+        # {% if entry.is_sqs %}
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "{{ entry.handler|capitalize }}SqsQueue.Arn"
+        # {% else %}
         Arn:
           Fn::GetAtt: "{{ entry.handler|capitalize }}LambdaFunction.Arn"
+        # {% endif %}
         RoleArn:
           Fn::GetAtt: SchedulerExecutionRole.Arn
         Input: {{ entry.input_json|tojson }}

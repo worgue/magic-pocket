@@ -297,7 +297,8 @@ class ApiGateway(BaseModel):
 
 _LAMBDA_SCHEDULER = "pocket.lambda_scheduler"
 _DJANGO_MANAGEMENT_SCHEDULER = "pocket.django.management_lambda_scheduler"
-_BUILTIN_SCHEDULERS = (_LAMBDA_SCHEDULER, _DJANGO_MANAGEMENT_SCHEDULER)
+_SQS_SCHEDULER = "pocket.sqs_scheduler"
+_BUILTIN_SCHEDULERS = (_LAMBDA_SCHEDULER, _DJANGO_MANAGEMENT_SCHEDULER, _SQS_SCHEDULER)
 
 
 class _ScheduleEntryBase(BaseModel):
@@ -349,8 +350,22 @@ class DjangoManagementScheduleEntry(_ScheduleEntryBase):
         return self
 
 
+class SqsScheduleEntry(_ScheduleEntryBase):
+    """handler の SQS queue へメッセージを送る scheduler entry。
+
+    Lambda を直接 invoke せず queue を挟むことで、リトライ/失敗系を SQS の
+    visibility timeout / redrive (DLQ) に一元化する。handler は ``sqs`` を
+    持つ必要がある。message は JSON 化されて MessageBody になる
+    (Django の SQS management handler へは command / args / kwargs の 3 キー、
+    Rust worker へはアプリの Job 型に一致する形を書く)。
+    """
+
+    scheduler: Literal["pocket.sqs_scheduler"]
+    message: dict = {}
+
+
 ScheduleEntry = Annotated[
-    LambdaScheduleEntry | DjangoManagementScheduleEntry,
+    LambdaScheduleEntry | DjangoManagementScheduleEntry | SqsScheduleEntry,
     Field(discriminator="scheduler"),
 ]
 
@@ -1085,6 +1100,14 @@ class Settings(BaseModel):
                         f"handler '{entry.handler}' to use command="
                         f"'{management_handler_command}', "
                         f"got '{handler.command}'"
+                    )
+            if isinstance(entry, SqsScheduleEntry):
+                handler = self.awscontainer.handlers[entry.handler]
+                if handler.sqs is None:
+                    raise ValueError(
+                        f"scheduler.schedules.{key}: scheduler="
+                        f"'{_SQS_SCHEDULER}' requires the target handler "
+                        f"'{entry.handler}' to have sqs configured"
                     )
         return self
 

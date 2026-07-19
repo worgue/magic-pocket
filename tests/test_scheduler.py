@@ -18,7 +18,7 @@ def test_scheduler_dev_loads_global_schedules(use_toml):
     context = Context.from_toml(stage="dev")
     assert context.scheduler is not None
     keys = [e.key for e in context.scheduler.schedules]
-    assert sorted(keys) == ["daily_digest", "rotate_logs"]
+    assert sorted(keys) == ["cleanup", "daily_digest", "rotate_logs"]
     by_key = {e.key: e for e in context.scheduler.schedules}
     rotate = by_key["rotate_logs"]
     assert rotate.schedule_expression == "rate(1 hour)"
@@ -31,6 +31,15 @@ def test_scheduler_dev_loads_global_schedules(use_toml):
     assert digest.schedule_expression == "cron(0 18 * * ? *)"
     assert digest.is_django_management
     assert json.loads(digest.input_json) == {"manage": "send_daily_digest --verbose"}
+    cleanup = by_key["cleanup"]
+    assert cleanup.is_sqs
+    assert not cleanup.is_django_management
+    assert cleanup.handler == "sqsworker"
+    assert json.loads(cleanup.input_json) == {
+        "command": "clearsessions",
+        "args": [],
+        "kwargs": {},
+    }
 
 
 @mock_aws
@@ -40,7 +49,7 @@ def test_scheduler_prod_deep_merges_overrides(use_toml):
     context = Context.from_toml(stage="prod")
     assert context.scheduler is not None
     by_key = {e.key: e for e in context.scheduler.schedules}
-    assert sorted(by_key) == ["daily_digest", "month_end", "rotate_logs"]
+    assert sorted(by_key) == ["cleanup", "daily_digest", "month_end", "rotate_logs"]
     assert by_key["rotate_logs"].schedule_expression == "rate(10 minutes)"
     # daily_digest はグローバル定義のままマージされる
     assert by_key["daily_digest"].is_django_management
@@ -57,6 +66,9 @@ def test_scheduler_invoked_function_arns(use_toml):
     arns = context.scheduler.invoked_function_arns
     assert any("management" in arn for arn in arns)
     assert any("worker" in arn for arn in arns)
+    # sqs_scheduler の handler は Lambda を直接 invoke しないので含まれない
+    assert not any("sqsworker" in arn for arn in arns)
+    assert context.scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
 
 
 def test_lambda_schedule_entry_requires_cron_or_rate():
@@ -189,6 +201,81 @@ def test_scheduler_cfn_template_renders(use_toml):
     assert "rotate_logs" in yaml
     assert "manage" in yaml
     assert "task" in yaml
+    # sqs_scheduler entry は Lambda ではなく queue が Target になる
+    assert '"CleanupSchedule"' in yaml
+    assert "SqsworkerSqsQueue.Arn" in yaml
+    assert "sqs:SendMessage" in yaml
+    assert "clearsessions" in yaml
+
+
+@mock_aws
+def test_sqs_scheduler_requires_handler_with_sqs():
+    """sqs_scheduler は対象 handler に sqs 設定を要求する"""
+    with pytest.raises(ValueError, match="to have sqs configured"):
+        Settings.model_validate(
+            {
+                "stage": "dev",
+                "general": {
+                    "region": "ap-southeast-1",
+                    "project_name": "testprj",
+                    "stages": ["dev"],
+                },
+                "s3": {},
+                "awscontainer": {
+                    "dockerfile_path": "tests/sampleprj/Dockerfile",
+                    "handlers": {
+                        "worker": {
+                            "command": "pocket.lambda_handlers.worker_handler",
+                        },
+                    },
+                },
+                "scheduler": {
+                    "schedules": {
+                        "cleanup": {
+                            "scheduler": "pocket.sqs_scheduler",
+                            "rate": "15 minutes",
+                            "handler": "worker",
+                            "message": {"command": "clearsessions"},
+                        },
+                    }
+                },
+            }
+        )
+
+
+@mock_aws
+def test_sqs_only_scheduler_omits_lambda_invoke_policy(use_toml, tmp_path):
+    """schedule が sqs_scheduler だけの場合、lambda:InvokeFunction 文が出力されない"""
+    import shutil
+
+    src = "tests/data/toml/scheduler.toml"
+    dst = tmp_path / "pocket.toml"
+    shutil.copy(src, dst)
+    # 最初の schedule section 以降 (prod override 含む) を落とし、sqs entry だけ残す
+    text = dst.read_text().split("[scheduler.schedules")[0]
+    text += (
+        "\n[scheduler.schedules.cleanup]\n"
+        'scheduler = "pocket.sqs_scheduler"\n'
+        'rate = "15 minutes"\n'
+        'handler = "sqsworker"\n'
+        'message = { command = "clearsessions", args = [], kwargs = {} }\n'
+    )
+    dst.write_text(text)
+    use_toml(str(dst))
+    context = Context.from_toml(stage="dev")
+    assert context.scheduler is not None
+    assert context.scheduler.invoked_function_arns == []
+    assert context.scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
+    from pocket_cli.resources.aws.cloudformation import ContainerStack
+
+    assert context.awscontainer
+    stack = ContainerStack(
+        context.awscontainer,
+        scheduler_context=context.scheduler,
+    )
+    yaml = stack.yaml
+    assert "lambda:InvokeFunction" not in yaml
+    assert "sqs:SendMessage" in yaml
 
 
 @mock_aws

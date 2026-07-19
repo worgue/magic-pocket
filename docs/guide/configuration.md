@@ -1828,7 +1828,7 @@ manage = "send_daily_digest --verbose"
 
 | フィールド | 型 | デフォルト | 説明 |
 |---|---|---|---|
-| `scheduler` | `"pocket.lambda_scheduler"` \| `"pocket.django.management_lambda_scheduler"` | `pocket.lambda_scheduler` | スケジューラ実装。default は汎用 Lambda |
+| `scheduler` | `"pocket.lambda_scheduler"` \| `"pocket.django.management_lambda_scheduler"` \| `"pocket.sqs_scheduler"` | `pocket.lambda_scheduler` | スケジューラ実装。default は汎用 Lambda |
 | `cron` | str \| None | None | EventBridge cron 式（`cron(...)` のラッパー部分は不要、中身だけ書く） |
 | `rate` | str \| None | None | EventBridge rate 式（`rate(...)` のラッパー部分は不要） |
 | `handler` | str | **必須** | `awscontainer.handlers.{key}` の key を指定 |
@@ -1872,6 +1872,31 @@ manage = "send_daily_digest some_param --verbose --batch-size 100"
 
 実装的には、Lambda には `{"manage": "<コマンド文字列>"}` が渡され、handler 側で `shlex.split` → `call_command` を行います。既存の `{command, args, kwargs}` 形式と完全に共存しており、後方互換性は壊しません。
 
+### `pocket.sqs_scheduler`
+
+Lambda を直接 invoke せず、**handler の SQS queue へ `SendMessage`** します（EventBridge Scheduler の universal target。`message` が JSON 化されて MessageBody になります）。定期実行を queue に載せることで、リトライは SQS の visibility timeout / redrive に一元化され、**失敗系の監視は queue の DLQ 1 箇所だけ**になります。worker handler は SQS event だけを受ければよく、「EventBridge 直接 invoke と SQS event の両受け」を実装する必要がありません。
+
+```toml
+[awscontainer.handlers.sqsmanagement]
+command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+timeout = 60
+sqs = {}
+
+[scheduler.schedules.cleanup]
+scheduler = "pocket.sqs_scheduler"
+rate = "15 minutes"
+handler = "sqsmanagement"
+message = { command = "clearsessions", args = [], kwargs = {} }
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `message` | dict | `{}` | JSON 化されて SQS MessageBody として送られる dict |
+
+**制約**: 参照する `handler` は `sqs` を設定している必要があります（deploy 前にバリデーションエラーになります）。
+
+`message` の形式は受け側の worker が決めます。Django の SQS management handler (`sqs_management_command_report_failures_handler`) へ送る場合は `command` / `args` / `kwargs` の 3 キーが必須です。Rust worker の場合はアプリ側で定義した Job 型（serde タグ付き enum 等）に一致する形を書きます。
+
 ### ステージ別 schedule
 
 dict 形式は **deep merge** が効くため、entry 単位で stage オーバーライド・追加・調整が自然に書けます。
@@ -1910,7 +1935,7 @@ manage = "send_monthly_invoice"
 
 ### CloudFormation リソース構成
 
-各 entry に対して 1 つの `AWS::Scheduler::Schedule` が出力されます。Lambda Permission は不要で、共有の `AWS::IAM::Role` (`{resource_prefix}scheduler`) が EventBridge Scheduler に対して `lambda:InvokeFunction` を許可します。`Resource` は schedule で参照されている Lambda 関数 ARN に絞り込まれます。
+各 entry に対して 1 つの `AWS::Scheduler::Schedule` が出力されます。Lambda Permission は不要で、共有の `AWS::IAM::Role` (`{resource_prefix}scheduler`) が EventBridge Scheduler に対して `lambda:InvokeFunction` を許可します。`Resource` は schedule で参照されている Lambda 関数 ARN に絞り込まれます。`pocket.sqs_scheduler` の entry は Lambda ではなく対象 queue が Target になり、role には対象 queue に絞った `sqs:SendMessage` が付きます（その handler の Lambda ARN は `lambda:InvokeFunction` に含まれません）。
 
 ### wsgi handler のウォームアップは非対応
 

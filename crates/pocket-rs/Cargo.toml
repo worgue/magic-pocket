@@ -20,6 +20,7 @@ tracing = "0.1"
 # RDS パスワードの percent-encode 用。aws-sdk-* が既に依存しているため
 # 依存ツリーは増えない (Python 側 urllib.parse.quote との一致が要件)
 percent-encoding = "2"
+aws_lambda_events = { version = "1.2.0", default-features = false, features = ["sqs"] }
 
 [dev-dependencies]
 # 本体は async fn を提供するだけで tokio API を直接使わない (runtime は利用側が

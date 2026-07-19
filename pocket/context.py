@@ -646,6 +646,11 @@ class ScheduleEntryContext(BaseModel):
     def is_django_management(self) -> bool:
         return self.scheduler == "pocket.django.management_lambda_scheduler"
 
+    @computed_field
+    @property
+    def is_sqs(self) -> bool:
+        return self.scheduler == "pocket.sqs_scheduler"
+
     @classmethod
     def from_settings(
         cls,
@@ -658,6 +663,8 @@ class ScheduleEntryContext(BaseModel):
 
         if isinstance(entry, settings.DjangoManagementScheduleEntry):
             input_payload: dict = {"manage": entry.manage}
+        elif isinstance(entry, settings.SqsScheduleEntry):
+            input_payload = entry.message
         else:
             input_payload = entry.input
         return cls(
@@ -675,6 +682,9 @@ class SchedulerContext(BaseModel):
     schedules: list[ScheduleEntryContext] = []
     role_name: str
     invoked_function_arns: list[str] = []
+    # sqs_scheduler entry が SendMessage する queue の CFN logical name
+    # (例: "SqsmanagementSqsQueue")。scheduler role の policy Resource に使う
+    sqs_queue_logical_names: list[str] = []
 
     @computed_field
     @property
@@ -696,18 +706,32 @@ class SchedulerContext(BaseModel):
             )
             for key, entry in scheduler.schedules.items()
         ]
-        # Lambda invoke 対象は scheduler.schedules で参照される handler のみ
-        referenced_handlers = {entry.handler for entry in scheduler.schedules.values()}
+        # Lambda invoke 対象は Lambda を直接 invoke する entry の handler のみ。
+        # sqs_scheduler entry は queue へ SendMessage するだけなので含めない
+        invoked_handlers = {
+            entry.handler
+            for entry in scheduler.schedules.values()
+            if not isinstance(entry, settings.SqsScheduleEntry)
+        }
         invoked_function_arns = sorted(
             f"arn:aws:lambda:{root.region}:${{AWS::AccountId}}:function:"
             + awscontainer_ctx.handlers[h].function_name
-            for h in referenced_handlers
+            for h in invoked_handlers
             if h in awscontainer_ctx.handlers
+        )
+        sqs_handlers = {
+            entry.handler
+            for entry in scheduler.schedules.values()
+            if isinstance(entry, settings.SqsScheduleEntry)
+        }
+        sqs_queue_logical_names = sorted(
+            f"{h.capitalize()}SqsQueue" for h in sqs_handlers
         )
         return cls(
             schedules=schedules,
             role_name=f"{resource_prefix}scheduler",
             invoked_function_arns=invoked_function_arns,
+            sqs_queue_logical_names=sqs_queue_logical_names,
         )
 
 

@@ -16,6 +16,17 @@ timeout = 300
 command = "pocket.lambda_handlers.worker_handler"
 timeout = 60
 
+[awscontainer.handlers.sqsworker]
+command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+timeout = 60
+sqs = {}
+
+[scheduler.schedules.cleanup]
+scheduler = "pocket.sqs_scheduler"
+rate = "15 minutes"
+handler = "sqsworker"
+message = { command = "clearsessions", args = [], kwargs = {} }
+
 [scheduler.schedules.rotate_logs]
 rate = "1 hour"
 handler = "worker"

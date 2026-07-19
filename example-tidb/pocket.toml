@@ -22,6 +22,14 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
+# SQS 駆動の非同期 worker。queue + DLQ + EventSourceMapping が自動生成され、
+# runtime には POCKET_SQSMANAGEMENT_QUEUEURL が注入される (pocket_call_command が
+# これを見て SQS 経由になる)。timeout×6 が queue の visibility timeout になる。
+[awscontainer.handlers.sqsmanagement]
+command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+timeout = 30
+sqs = {}
+
 [dev.awscontainer.handlers.wsgi]
 apigateway = {}
 
@@ -45,6 +53,15 @@ DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 # へ保存しておく。deploy は TiDB API キー無しで保存済み URL を読むだけ。
 [awscontainer.secrets.user]
 DATABASE_URL = { type = "tidb_database_url" }
+
+# 定期実行は Lambda 直接 invoke ではなく queue を挟む (pocket.sqs_scheduler)。
+# リトライ/失敗系が SQS の visibility timeout / redrive に一元化され、監視は
+# queue の DLQ 1 箇所だけになる。message は sqs management handler の形式。
+[sandbox.scheduler.schedules.worker_heartbeat]
+scheduler = "pocket.sqs_scheduler"
+rate = "15 minutes"
+handler = "sqsmanagement"
+message = { command = "post_scheduled_comment", args = [], kwargs = {} }
 
 [sandbox.cloudfront.web]
 # deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
