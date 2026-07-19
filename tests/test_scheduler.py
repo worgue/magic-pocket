@@ -172,8 +172,11 @@ def test_django_management_requires_management_handler():
 
 
 @mock_aws
-def test_scheduler_cfn_template_renders(use_toml):
+def test_scheduler_cfn_template_renders(use_toml, monkeypatch):
     """awscontainer.yaml に Scheduler リソース + Role が出力されること"""
+    # forge VM は POCKET_PERMISSIONS_BOUNDARY_ARN を注入するため、fixture の
+    # boundary を検証できるよう env override を外す
+    monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
     use_toml("tests/data/toml/scheduler.toml")
     context = Context.from_toml(stage="prod")
     from pocket_cli.resources.aws.cloudformation import ContainerStack
@@ -206,6 +209,9 @@ def test_scheduler_cfn_template_renders(use_toml):
     assert "SqsworkerSqsQueue.Arn" in yaml
     assert "sqs:SendMessage" in yaml
     assert "clearsessions" in yaml
+    # boundary 強制 account 対応: LambdaRole と SchedulerExecutionRole の両方に
+    # PermissionsBoundary が付くこと
+    assert yaml.count("arn:aws:iam::123456789012:policy/test-boundary") == 2
 
 
 @mock_aws

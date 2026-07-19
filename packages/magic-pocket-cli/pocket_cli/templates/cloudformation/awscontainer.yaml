@@ -412,6 +412,11 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: "{{ scheduler.role_name }}"
+      # {% if permissions_boundary %}
+      # boundary 強制 account (iam:CreateRole が boundary 付きのみ許可) では
+      # LambdaRole と同様に boundary が無いと作成できない
+      PermissionsBoundary: "{{ permissions_boundary }}"
+      # {% endif %}
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
