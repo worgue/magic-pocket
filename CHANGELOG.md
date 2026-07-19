@@ -6,7 +6,30 @@
 
 ## [Unreleased]
 
+## [0.18.0](https://github.com/worgue/magic-pocket/releases/tag/0.18.0) - 2026-07-19
+
 ### Added
+- スケジュール実行の新しい entry 種別 `pocket.sqs_scheduler` を追加しました。
+  EventBridge Scheduler が Lambda を直接 invoke する代わりに、**handler の SQS queue
+  へ直接 `SendMessage`** します（`message` が JSON 化されて MessageBody になる）。
+  定期実行を queue に載せることで、リトライは SQS の visibility timeout / redrive に
+  一元化され、失敗系の監視は queue の DLQ 1 箇所だけになります。worker handler は
+  SQS event だけを受ければよく、「EventBridge 直接 invoke と SQS event の両受け」を
+  実装する必要がありません。対象 handler には `sqs` 設定が必須です（デプロイ前に
+  バリデーションエラーになります）。scheduler の IAM role には対象 queue に絞った
+  `sqs:SendMessage` が付与され、schedule が全て SQS 型の場合は
+  `lambda:InvokeFunction` 文は出力されません。
+- Rust runtime (`magic-pocket-rs`) に SQS worker / enqueue ヘルパ
+  (`magic_pocket_rs::sqs`) を追加しました。
+  - `process_sqs_records(event, handler)`: SqsEvent を record 単位で dispatch し、
+    失敗した record だけを partial batch response (`batchItemFailures`) として集約
+    します。`report_batch_item_failures` が既定で有効な pocket の event source
+    mapping では、例外でバッチ全体を落とすと成功済み record まで再配信され二重実行
+    される（`BaseCommandHandler` で修正済みの問題と同型）ため、Rust worker でも
+    record 単位の失敗報告を最初から強制する形にしています。
+  - `enqueue_json(queue_key, message)` / `queue_url(queue_key)`: runtime が注入する
+    `POCKET_<KEY>_QUEUEURL` を読んで SendMessage する糖衣。メッセージ本文の形式
+    （Job enum 等）と dispatch の中身はアプリ側の責務です。
 - Rust runtime (`magic-pocket-rs`) の `set_envs()` が RDS と CloudFront に対応しました。
   - `DATABASE_URL = { type = "rds_database_url" }` 構成で、Secrets Manager / SSM の
     認証情報から `DATABASE_URL` を実行時に構築します（Python runtime の
@@ -78,6 +101,8 @@
   状態で、management command handler は `command` が
   `pocket.django.lambda_handlers.management_command_handler` の handler を
   自動選択します。絞り込みが必要なケースは無かったため削除しました。
+
+## [0.17.0](https://github.com/worgue/magic-pocket/releases/tag/0.17.0) - 2026-07-12
 
 ### Added
 - Neon の ensure + 接続 URL 算出を、import 可能な公開 API
