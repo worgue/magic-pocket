@@ -173,7 +173,8 @@ Resources:
         Variables:
           "POCKET_STAGE": "{{ stage }}"
           # {% for env_key, value in envs.items() %}
-          "{{ env_key }}": "{{ value }}"
+          # {# tojson で YAML セーフに埋め込む (値内の二重引用符等で ParserError にしない) #}
+          {{ env_key | tojson }}: {{ value | tojson }}
           # {% endfor %}
           # {% for env_key, import_name in signing_key_imports.items() %}
           "{{ env_key }}":
