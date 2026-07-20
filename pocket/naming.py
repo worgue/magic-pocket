@@ -1,9 +1,12 @@
-"""stored user secret の SSM / Secrets Manager 名を導出する公開 API。
+"""pocket の内部命名 (stored user secret / ECR repo 等) を導出する公開 API。
 
-外部 provisioner (URL を焼く側) が「pocket がどのパスに backend の接続 URL を
-保存/読み取りするか」を再実装せずに済むよう、pocket 側の正準導出を single source
-of truth として公開する。値を put する側 (provisioner) と read する側 (deploy) が
-同じ導出を共有でき、パス不一致による ParameterNotFound を構造的に防ぐ。
+外部ツールが pocket の命名規約を再実装せずに済むよう、pocket 側の正準導出を
+single source of truth として公開する。
+
+- stored user secret: 外部 provisioner (URL を焼く側) と deploy (読む側) が同じ
+  導出を共有でき、パス不一致による ParameterNotFound を構造的に防ぐ
+- ECR repo 名 / image タグ: pocket と併走する deploy 系が pocket のビルドした
+  イメージを参照する際の repo 名 / タグ規約の drift を防ぐ
 
 Python から:
 
@@ -31,6 +34,12 @@ STORE_SM = "sm"
 
 DEFAULT_NAMESPACE = "pocket"
 DEFAULT_POCKET_KEY_FORMAT = "{stage}-{project}-{namespace}"
+
+#: [general].prefix_template の既定値 (general_settings.GeneralSettings と一致させる)。
+DEFAULT_PREFIX_TEMPLATE = "{stage}-{project}-{namespace}-"
+
+#: ECR repository 名の suffix (repo 名 = resource_prefix + この値)。
+ECR_REPO_SUFFIX = "lambda"
 
 
 def user_secret_path(pocket_key: str, segment: str, store: str) -> str:
@@ -90,3 +99,47 @@ def stored_user_secret_name(
         pocket_key_format=pocket_key_format,
     )
     return user_secret_path(key, secret_type, store)
+
+
+def ecr_repo_name(
+    *,
+    project: str,
+    stage: str,
+    namespace: str = DEFAULT_NAMESPACE,
+    prefix_template: str = DEFAULT_PREFIX_TEMPLATE,
+    ecr_name: str | None = None,
+) -> str:
+    """pocket が build / deploy に使う ECR repository 名を導出する。
+
+    既定は ``{stage}-{project}-{namespace}-lambda``
+    (例: ``sandbox-myprj-pocket-lambda``)。外部ツール (pocket と併走する deploy 系)
+    が pocket のビルドしたイメージを参照する際、内部命名の再実装による drift を
+    防ぐための SoT。
+
+    例) ``project="myprj"``, ``stage="sandbox"`` → ``"sandbox-myprj-pocket-lambda"``
+
+    注意: この関数は pocket.toml を読まない純関数のため、toml で規約を上書きして
+    いる構成ではその値を引数で渡すこと。渡さないと実際の repo 名と食い違う:
+
+    - ``[awscontainer].ecr_name`` を明示している場合は ``ecr_name=`` に渡す
+      (そのまま返る)
+    - ``[general].prefix_template`` を変えている場合は ``prefix_template=`` に渡す
+
+    pocket.toml を読んで常に正確な値 (deploy 済み実イメージの digest 付き URI) を
+    得たい場合は CLI の ``pocket resource image uri --stage <stage>`` を使う。
+    """
+    if ecr_name:
+        return ecr_name
+    prefix = prefix_template.format(stage=stage, project=project, namespace=namespace)
+    return prefix + ECR_REPO_SUFFIX
+
+
+def ecr_image_tag(stage: str) -> str:
+    """deploy 済みイメージの正準タグ (= stage) を返す。
+
+    deploy は常に ``:{stage}`` タグの image を参照する。build once 運用では
+    ``:{commit_hash}`` タグも併存するが、昇格 (promote) で ``:{stage}`` が
+    その image に付け替えられるため、「今 deploy されている image」は常に
+    ``:{stage}`` で引ける。
+    """
+    return stage

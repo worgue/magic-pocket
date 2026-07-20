@@ -10,6 +10,7 @@ from pocket_cli.cli import (
     deploy_cli,
     destroy_cli,
     dsql_cli,
+    image_cli,
     migrate_cli,
     neon_cli,
     permissions_cli,
@@ -91,3 +92,4 @@ resource.add_command(s3_cli.s3)
 resource.add_command(cloudfront_cli.cloudfront)
 resource.add_command(cloudfront_keys_cli.cloudfront_keys)
 resource.add_command(cloudfront_waf_cli.cloudfront_waf)
+resource.add_command(image_cli.image)

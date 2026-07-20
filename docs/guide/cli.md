@@ -418,6 +418,24 @@ pocket resource awscontainer secrets create-pocket-managed --stage=dev
 pocket resource awscontainer secrets delete-pocket-managed --stage=dev
 ```
 
+### image
+
+pocket がビルド・デプロイしたコンテナイメージの参照情報を出力します。外部ツール
+（pocket と併走するデプロイ系）が pocket の内部命名を再実装せずにイメージを参照
+するための導線です。stdout には値のみが出るため `$(...)` でスクリプトから使えます。
+
+```bash
+# ECR リポジトリ名（ecr_name 上書きを含め pocket.toml 準拠）
+pocket resource image repo --stage=sandbox
+
+# deploy 済み実イメージの URI（{repo_uri}@{digest}。以後の deploy でタグが動いても壊れない）
+pocket resource image uri --stage=sandbox
+```
+
+toml を読まない静的導出には Python API の `pocket.naming.ecr_repo_name()` /
+`pocket.naming.ecr_image_tag()` も利用できます（`ecr_name` や `prefix_template` を
+上書きしている構成では引数で渡す必要があります。詳細は docstring 参照）。
+
 ### neon
 
 ```bash
