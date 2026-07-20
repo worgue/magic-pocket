@@ -6,6 +6,41 @@
 
 ## [Unreleased]
 
+## [0.19.0](https://github.com/worgue/magic-pocket/releases/tag/0.19.0) - 2026-07-20
+
+### Added
+- `platform = "linux/arm64"` で Lambda が arm64 (`Architectures`) で作成される
+  ようになりました。従来は build だけ arm64 で Lambda が x86_64 固定のため、
+  起動時に exec format error (Runtime.InvalidEntrypoint) で必ず失敗していました。
+  未知の platform 値は設定読込時にエラーになります
+- handler 単位の環境変数上書き `[awscontainer.handlers.<name>].envs` を追加
+  しました。`[awscontainer].envs` とマージされ handler 側が優先されます。
+  同一イメージ・同一バイナリを環境変数でモード切替して複数の Lambda に並べる
+  用途 (Rust 単一バイナリの管理系 handler 等) に使えます
+- ECR repo 名 / deploy 済みイメージ参照の正準導出 API を追加しました。外部
+  ツールが pocket の内部命名を再実装せずに済みます
+  - `pocket.naming.ecr_repo_name()` / `ecr_image_tag()` (純関数)
+  - `pocket resource image repo` / `pocket resource image uri --stage <s>`
+    (pocket.toml 準拠。uri は `{repo_uri}@{digest}` を stdout 出力)
+- distribution 単位の Basic 認証 `[<stage>.cloudfront.<name>].basic_auth` を
+  追加しました。公開前の sandbox/stg サイト全体 (S3/SPA/lambda の全 behavior)
+  を隠す用途で、credential は新 managed secret type `basic_auth_credential`
+  (`username` 必須 / `password` 固定可・省略時ランダム) で生成し、deploy 時に
+  KVS へ書き込みます。Authorization ヘッダを占有するため、ヘッダ認証
+  (Bearer 等) を使う API とは併用できません (cookie/session 認証は可)
+
+### Fixed
+- `pocket destroy` / `pocket resource neon delete` が Neon の root branch で
+  422 (cannot delete the root branch) になり異常終了していました。root branch
+  は project 内に他 branch がなければ project ごと削除し、他 branch が同居する
+  場合は巻き添え防止のため警告してスキップします
+- `[<stage>.awscontainer.envs]` の値に二重引用符 (JSON 文字列等) が含まれると
+  CloudFormation テンプレートが YAML ParserError で壊れていました。埋め込みを
+  YAML セーフにし、引用符・バックスラッシュ・改行を含む値を扱えるようにしました
+- prefix 付き SPA route (`path_pattern = "/admin/*"` 等) の fallback URI に
+  glob の `*` がリテラルで残り (`/admin/*/index.html`)、SPA が一切配信できません
+  でした。prefix 部分だけを使い `/admin/index.html` に解決するよう修正しました
+
 ## [0.18.1](https://github.com/worgue/magic-pocket/releases/tag/0.18.1) - 2026-07-20
 
 ### Fixed
