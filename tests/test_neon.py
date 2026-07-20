@@ -415,6 +415,105 @@ def test_neon_api_401_with_none_key_hints_missing_env(capsys):
     assert "NEON_API_KEY" in out
 
 
+def test_neon_destroy_plan_branch_for_non_root():
+    """非 root branch (parent_id あり) は従来どおり branch 単位で削除できる"""
+    from pocket_cli.resources.neon import Branch, Neon
+
+    neon = Neon(_idempotency_ctx())
+    with patch.object(
+        Neon, "branch", new=Branch(id="br-x", name="sandbox", parent_id="br-main")
+    ):
+        assert neon.destroy_plan() == "branch"
+
+
+def test_neon_destroy_plan_project_for_sole_root():
+    """root branch が project 内で単独なら project ごと削除する計画になる
+
+    root は branch 単位で削除できない (422: cannot delete the root branch) ため、
+    branch delete を試みると destroy が異常終了していた (回帰テスト)。
+    """
+    from pocket_cli.resources.neon import Branch, Neon
+
+    root = Branch(id="br-main", name="main")
+    neon = Neon(_idempotency_ctx())
+    with (
+        patch.object(Neon, "branch", new=root),
+        patch.object(Neon, "branches", new_callable=PropertyMock, return_value=[root]),
+    ):
+        assert neon.destroy_plan() == "project"
+
+
+def test_neon_destroy_plan_blocked_when_root_has_siblings():
+    """root branch でも他 branch が同居するなら project 削除は巻き添えになるため
+    blocked (何も消さない)"""
+    from pocket_cli.resources.neon import Branch, Neon
+
+    root = Branch(id="br-main", name="main")
+    sibling = Branch(id="br-x", name="sandbox", parent_id="br-main")
+    neon = Neon(_idempotency_ctx())
+    with (
+        patch.object(Neon, "branch", new=root),
+        patch.object(
+            Neon, "branches", new_callable=PropertyMock, return_value=[root, sibling]
+        ),
+    ):
+        assert neon.destroy_plan() == "blocked"
+
+
+def test_neon_destroy_plan_raises_when_branch_missing():
+    """branch 不在で destroy_plan を呼んだら NeonNotFound (呼び出し側の前提確認)"""
+    from pocket_cli.resources.neon import Neon
+
+    neon = Neon(_idempotency_ctx())
+    with patch.object(Neon, "branch", new=None):
+        with pytest.raises(NeonNotFound):
+            neon.destroy_plan()
+
+
+def test_neon_delete_project_deletes_by_project_id():
+    """delete_project は DELETE /projects/{project_id} を叩く"""
+    from pocket_cli.resources.neon import Neon, NeonApi
+
+    neon = Neon(_idempotency_ctx())
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch.object(NeonApi, "delete") as mock_delete,
+    ):
+        neon.delete_project()
+    mock_delete.assert_called_once_with("projects/proj-1")
+
+
+def test_neon_branch_parses_parent_id_from_api_listing():
+    """branch cached_property が API 一覧の parent_id を保持する (root 判定に必要)"""
+    from pocket_cli.resources.neon import Neon
+
+    from pocket.context import NeonContext
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="sandbox",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    branches = {
+        "branches": [
+            {"id": "br-main", "name": "main"},
+            {"id": "br-x", "name": "sandbox", "parent_id": "br-main"},
+        ]
+    }
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        mock_req.return_value = _fake_response(200, branches)
+        branch = neon.branch
+    assert branch is not None
+    assert branch.parent_id == "br-main"
+
+
 def test_neon_database_url_percent_encodes_credentials():
     """password の特殊文字が percent-encode され、解析側の unquote と対称なこと"""
     from pocket_cli.resources.neon import Neon, Role

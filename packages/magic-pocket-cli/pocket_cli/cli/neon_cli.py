@@ -69,12 +69,41 @@ def branch_out(stage, base_stage):
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
 def delete(stage, yes):
+    """stage の Neon ブランチを削除する。
+
+    root branch は Neon 仕様で branch 単位の削除ができない (422: cannot delete the
+    root branch) ため、project 内に他 branch が無ければ再確認のうえ project ごと
+    削除する。他 branch が同居している場合は巻き添えになるためエラーで中断する。
+    """
     if not yes:
         click.confirm(
             "stage '%s' の Neon ブランチを削除しますか？(データは失われます)" % stage,
             abort=True,
         )
     neon = get_neon_resource(stage)
+    if neon.branch is None:
+        raise click.ClickException(
+            "Neon branch '%s' が見つかりません" % neon.context.branch_name
+        )
+    plan = neon.destroy_plan()
+    if plan == "blocked":
+        raise click.ClickException(
+            "branch '%s' は root branch のため単体削除できません (Neon 仕様)。"
+            "project '%s' には他の branch が残っているため project 削除も行いません。"
+            "他の branch を先に削除してください。"
+            % (neon.context.branch_name, neon.context.project_name)
+        )
+    if plan == "project":
+        if not yes:
+            click.confirm(
+                "branch '%s' は root branch のため、project '%s' を丸ごと削除します。"
+                "よろしいですか？"
+                % (neon.context.branch_name, neon.context.project_name),
+                abort=True,
+            )
+        neon.delete_project()
+        echo.success("Project '%s' was deleted." % neon.context.project_name)
+        return
     neon.delete_branch()
     echo.success("Branch was deleted successfully.")
 

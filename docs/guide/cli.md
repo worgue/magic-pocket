@@ -135,7 +135,9 @@ pocket destroy --stage=dev
 6. S3 バケット
 7. TiDB クラスタ
 8. Upstash Redis
-9. Neon ブランチ
+9. Neon ブランチ（root branch は Neon 仕様で単体削除できないため、project 内に
+   他の branch がなければ project ごと削除。他の branch が残っている場合は
+   巻き添えを避けるため警告してスキップ）
 10. ステートバケット（`--with-state-bucket` 指定時のみ）
 
 !!! note "ECR リポジトリの扱い"
@@ -435,6 +437,8 @@ pocket resource neon reset-database --stage=dev
 pocket resource neon branch-out --stage=feature1 --base-stage=dev
 
 # ブランチの削除
+# (root branch は Neon 仕様で単体削除できないため、project 内に他の branch が
+#  なければ再確認のうえ project ごと削除。他の branch が残る場合はエラーで中断)
 pocket resource neon delete --stage=dev
 
 # provisioning="command" 用: branch/role/db を ensure し DATABASE_URL を stored user

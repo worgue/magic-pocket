@@ -89,6 +89,62 @@ def test_destroy_subcommands_require_confirmation(monkeypatch):
     _assert_confirm_guard(runner, tidb, ["delete", "--stage", "dev"])
 
 
+def _fake_neon(plan: str, calls: list[str]):
+    """destroy_plan の結果に応じた削除経路を検証する Neon スタブ"""
+
+    class _FakeNeon:
+        branch = object()
+
+        def destroy_plan(self):
+            return plan
+
+        def delete_project(self):
+            calls.append("project")
+
+        def delete_branch(self):
+            calls.append("branch")
+
+    return _FakeNeon()
+
+
+def test_destroy_neon_root_branch_deletes_project(use_toml, monkeypatch):
+    """root branch 単独の project は branch delete (422 で異常終了) ではなく
+    project delete で丸ごと削除すること (回帰テスト)"""
+    from pocket.context import Context
+
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    calls: list[str] = []
+    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("project", calls))
+    destroy_cli._destroy_neon(context)
+    assert calls == ["project"]
+
+
+def test_destroy_neon_blocked_skips_without_error(use_toml, monkeypatch):
+    """root branch に他 branch が同居する場合は何も消さず警告して続行すること
+    (project 削除は他 stage の巻き添えになる)"""
+    from pocket.context import Context
+
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    calls: list[str] = []
+    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("blocked", calls))
+    destroy_cli._destroy_neon(context)
+    assert calls == []
+
+
+def test_destroy_neon_non_root_deletes_branch(use_toml, monkeypatch):
+    """非 root branch は従来どおり branch 単位で削除すること"""
+    from pocket.context import Context
+
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    calls: list[str] = []
+    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("branch", calls))
+    destroy_cli._destroy_neon(context)
+    assert calls == ["branch"]
+
+
 def test_collect_database_targets_skips_command_provisioned(use_toml):
     """provisioning="command" の DB は削除対象一覧に載らないこと"""
     from pocket.context import Context

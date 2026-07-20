@@ -59,6 +59,10 @@ class Project(BaseModel):
 class Branch(BaseModel):
     id: str
     name: str
+    # root branch (project 作成時の default) には parent_id が無い。root は Neon 仕様で
+    # branch 単位の削除ができない (422: cannot delete the root branch) ため、削除経路の
+    # 分岐 (destroy_plan) に使う。
+    parent_id: str | None = None
 
 
 class Database(BaseModel):
@@ -417,6 +421,35 @@ class Neon:
             raise Exception("Branch or endpoint not found. Something is wrong.")
         self.delete("endpoints", self.endpoint.id)
         self.delete("branches", self.branch.id)
+
+    @property
+    def branches(self) -> list[Branch]:
+        """project 内の全 branch (root 判定・同居 branch の確認用)。"""
+        return [Branch(**b) for b in self.get("branches").json()["branches"]]
+
+    def delete_project(self):
+        """project を丸ごと削除する。
+
+        root branch は branch 単位で削除できないため、root を消すには project delete
+        (`DELETE /projects/{project_id}`) が唯一の経路。
+        """
+        self.api.delete("projects/%s" % self.project.id)
+
+    def destroy_plan(self) -> Literal["branch", "project", "blocked"]:
+        """stage の branch 削除の実行計画を返す。
+
+        - "branch": 非 root branch。従来どおり branch 単位で削除できる。
+        - "project": root branch かつ project 内に他 branch が無い。branch 単位の
+          削除は 422 (cannot delete the root branch) になるため project ごと削除する。
+        - "blocked": root branch だが他 branch が同居 (dev project に複数 stage 等)。
+          project 削除は他 stage の巻き添えになるため何も消せない。
+        """
+        if self.branch is None:
+            raise NeonNotFound("branch '%s' not found" % self.context.branch_name)
+        if self.branch.parent_id is not None:
+            return "branch"
+        others = [b for b in self.branches if b.id != self.branch.id]
+        return "blocked" if others else "project"
 
     def ensure_database(self):
         if self.database is None:

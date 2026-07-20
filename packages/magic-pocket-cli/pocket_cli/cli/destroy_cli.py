@@ -114,8 +114,18 @@ def _collect_external_database_targets(context: Context) -> list[str]:
         if Upstash(context.upstash).database:
             targets.append("Upstash Redis: %s" % context.upstash.database_name)
     if context.neon and context.neon.provisioning != "command":
-        if Neon(context.neon).branch:
-            targets.append("Neon ブランチ")
+        neon = Neon(context.neon)
+        if neon.branch:
+            plan = neon.destroy_plan()
+            if plan == "project":
+                targets.append(
+                    "Neon プロジェクト '%s' (root branch のため project ごと削除)"
+                    % context.neon.project_name
+                )
+            elif plan == "branch":
+                targets.append("Neon ブランチ")
+            # "blocked" (root だが他 branch 同居) は削除できないため一覧に載せない
+            # (destroy 実行時に警告する)
     return targets
 
 
@@ -292,16 +302,38 @@ def _destroy_upstash(context: Context):
 
 
 def _destroy_neon(context: Context):
-    """Neon ブランチを削除 (provisioning="command" は管理外)"""
+    """Neon ブランチを削除 (provisioning="command" は管理外)
+
+    root branch は Neon 仕様で branch 単位の削除ができない (422: cannot delete the
+    root branch) ため、project 内に他 branch が無ければ project ごと削除する。他
+    branch が同居している場合は巻き添えになるため何も消さず警告して続行する
+    (destroy 全体を異常終了させない)。
+    """
     if not context.neon:
         return
     if context.neon.provisioning == "command":
         _warn_command_provisioned("Neon", "pocket resource neon delete")
         return
-    if Neon(context.neon).branch:
-        echo.log("Destroying Neon branch...")
-        Neon(context.neon).delete_branch()
-        echo.success("Neon branch was deleted.")
+    neon = Neon(context.neon)
+    if not neon.branch:
+        return
+    plan = neon.destroy_plan()
+    if plan == "blocked":
+        echo.warning(
+            "Neon branch '%s' は root branch のため単体削除できず、project '%s' には"
+            "他の branch が残っているため project 削除も行いません。"
+            "他 stage の destroy 後に pocket resource neon delete で削除してください。"
+            % (context.neon.branch_name, context.neon.project_name)
+        )
+        return
+    if plan == "project":
+        echo.log("Destroying Neon project (root branch のため project ごと削除)...")
+        neon.delete_project()
+        echo.success("Neon project '%s' was deleted." % context.neon.project_name)
+        return
+    echo.log("Destroying Neon branch...")
+    neon.delete_branch()
+    echo.success("Neon branch was deleted.")
 
 
 def _destroy_cloudfront_and_acm(context: Context):
