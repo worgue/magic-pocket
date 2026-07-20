@@ -11,12 +11,15 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
+  # {# basic_auth 時に素の behavior へ付ける単体 Function 名 (redirect prelude 同居)。
+  #    非 basic_auth 時は従来どおり HostRedirectFunction #}
+  # {% set bare_viewer_fn = "BasicAuthFunction" if basic_auth else "HostRedirectFunction" %}
   # {% if has_token_kvs %}
   TokenKvs:
     Type: AWS::CloudFront::KeyValueStore
     Properties:
       Name: "{{ slug }}-token-kvs"
-      Comment: "KVS for SPA token secret"
+      Comment: "KVS for SPA token secret / basic auth credential"
   # {% endif %}
 
   # {% for route in routes %}
@@ -40,7 +43,7 @@ Resources:
       FunctionConfig:
         Comment: "CloudFront function for {{ route.name }}"
         Runtime: cloudfront-js-2.0
-        # {% if route.require_token %}
+        # {% if route.require_token or basic_auth %}
         KeyValueStoreAssociations:
           - KeyValueStoreARN:
               Fn::GetAtt: TokenKvs.Arn
@@ -69,6 +72,11 @@ Resources:
       FunctionConfig:
         Comment: "Strip deploy hash prefix for {{ route.name }}"
         Runtime: cloudfront-js-2.0
+        # {% if basic_auth %}
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+        # {% endif %}
   # {% endif %}
   # {% endfor %}
 
@@ -83,13 +91,19 @@ Resources:
       FunctionConfig:
         Comment: "Add X-Forwarded-Host for API routes"
         Runtime: cloudfront-js-2.0
+        # {% if basic_auth %}
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+        # {% endif %}
   # {% endif %}
 
-  # {% if has_redirect_from %}
+  # {% if has_redirect_from and not basic_auth %}
   # 非 canonical host (redirect_from ドメイン) を canonical domain へ 301 する
   # viewer-request Function。既存 viewer-request Function を持たない behavior
   # (プレーン S3 route / managed asset) にのみ association する。既存 Function を
   # 持つ behavior には各 Function コード側に同等の redirect prelude を注入済み。
+  # basic_auth 時は BasicAuthFunction に redirect prelude が同居するため作らない。
   HostRedirectFunction:
     Type: AWS::CloudFront::Function
     Properties:
@@ -100,6 +114,26 @@ Resources:
       FunctionConfig:
         Comment: "Redirect non-canonical hosts to {{ domain }}"
         Runtime: cloudfront-js-2.0
+  # {% endif %}
+
+  # {% if basic_auth %}
+  # distribution 全体の Basic 認証。既存 viewer-request Function を持たない
+  # behavior (プレーン S3 route / managed asset) にのみ association する。既存
+  # Function を持つ behavior には各 Function コード側に同等の prelude を注入済み。
+  # redirect_from 有効時は host redirect prelude もこの Function に同居する。
+  BasicAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "{{ slug }}-basic-auth"
+      AutoPublish: true
+      FunctionCode: |
+        {{ basic_auth_function_code }}
+      FunctionConfig:
+        Comment: "Basic auth gate for {{ slug }}"
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
   # {% endif %}
 
   CloudFrontDistribution:
@@ -120,8 +154,11 @@ Resources:
       # {% if has_lambda_route %}
       - ApiHostFunction
       # {% endif %}
-      # {% if has_redirect_from %}
+      # {% if has_redirect_from and not basic_auth %}
       - HostRedirectFunction
+      # {% endif %}
+      # {% if basic_auth %}
+      - BasicAuthFunction
       # {% endif %}
     Properties:
       DistributionConfig:
@@ -198,11 +235,11 @@ Resources:
             - EventType: viewer-request
               FunctionARN:
                 Fn::GetAtt: UrlFallbackFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
-          # {% elif has_redirect_from %}
+          # {% elif basic_auth or has_redirect_from %}
           FunctionAssociations:
             - EventType: viewer-request
               FunctionARN:
-                Fn::GetAtt: HostRedirectFunction.FunctionMetadata.FunctionARN
+                Fn::GetAtt: {{ bare_viewer_fn }}.FunctionMetadata.FunctionARN
           # {% endif %}
           # {% if default_route.versioning %}
           ResponseHeadersPolicyId:
@@ -232,11 +269,11 @@ Resources:
                 FunctionARN:
                   Fn::GetAtt: DeployHashStripFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
             # {% endif %}
-            # {% if not route.is_spa and not route.is_deploy_hash and has_redirect_from %}
+            # {% if not route.is_spa and not route.is_deploy_hash and (basic_auth or has_redirect_from) %}
             FunctionAssociations:
               - EventType: viewer-request
                 FunctionARN:
-                  Fn::GetAtt: HostRedirectFunction.FunctionMetadata.FunctionARN
+                  Fn::GetAtt: {{ bare_viewer_fn }}.FunctionMetadata.FunctionARN
             # {% endif %}
             # {% if route.versioning %}
             ResponseHeadersPolicyId:
@@ -271,11 +308,11 @@ Resources:
             TargetOriginId: "{{ resource_prefix }}pocket-managed"
             ViewerProtocolPolicy: "redirect-to-https"
             PathPattern: "/{{ filename }}"
-            # {% if has_redirect_from %}
+            # {% if basic_auth or has_redirect_from %}
             FunctionAssociations:
               - EventType: viewer-request
                 FunctionARN:
-                  Fn::GetAtt: HostRedirectFunction.FunctionMetadata.FunctionARN
+                  Fn::GetAtt: {{ bare_viewer_fn }}.FunctionMetadata.FunctionARN
             # {% endif %}
           # {% endfor %}
         # {% endif %}

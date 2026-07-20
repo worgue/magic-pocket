@@ -108,26 +108,25 @@ class Mediator:
         sc.pocket_store.delete_secret_keys(orphaned)
 
     def _generate_secret(self, spec: ManagedSecretSpec):
-        if spec.type == "auto_database_url":
-            return self._get_auto_database_url()
-        elif spec.type == "password":
-            return self._generate_password(spec.options)
-        elif spec.type == "neon_database_url":
-            return self._get_neon_database_url()
-        elif spec.type == "tidb_database_url":
-            return self._get_tidb_database_url()
-        elif spec.type == "rds_database_url":
-            return self._get_rds_database_url()
-        elif spec.type == "upstash_redis_url":
-            return self._get_upstash_redis_url()
-        elif spec.type == "rsa_pem_base64":
-            return self._generate_rsa_pem()
-        elif spec.type == "cloudfront_signing_key":
-            return self._generate_rsa_pem()
-        elif spec.type in ("spa_token_secret", "origin_verify_secret"):
-            return secrets.token_hex(32)
-        else:
+        generators = {
+            "auto_database_url": self._get_auto_database_url,
+            "password": lambda: self._generate_password(spec.options),
+            "neon_database_url": self._get_neon_database_url,
+            "tidb_database_url": self._get_tidb_database_url,
+            "rds_database_url": self._get_rds_database_url,
+            "upstash_redis_url": self._get_upstash_redis_url,
+            "rsa_pem_base64": self._generate_rsa_pem,
+            "cloudfront_signing_key": self._generate_rsa_pem,
+            "spa_token_secret": lambda: secrets.token_hex(32),
+            "origin_verify_secret": lambda: secrets.token_hex(32),
+            "basic_auth_credential": lambda: self._generate_basic_auth_credential(
+                spec.options
+            ),
+        }
+        generator = generators.get(spec.type)
+        if generator is None:
             raise RuntimeError("Unknown secret type: %s" % spec.type)
+        return generator()
 
     def _generate_rsa_pem(self) -> dict[str, str]:
         try:
@@ -152,6 +151,32 @@ class Mediator:
             "pem": base64.b64encode(pem_private_key).decode("utf-8"),
             "pub": base64.b64encode(pem_public_key).decode("utf-8"),
         }
+
+    def _generate_basic_auth_credential(self, options):
+        """Basic 認証の credential "user:pass" を生成する。
+
+        username は必須 (settings で検証済みだが直接呼び出しに備え再検証)。
+        password は options で固定値を指定でき、省略時は length/chars でランダム
+        生成する。固定値は pocket.toml (= git) に入る点に注意 (公開前サイトの
+        隠蔽用の共有credential を想定)。
+        """
+        username = options.get("username")
+        if not isinstance(username, str) or not username or ":" in username:
+            raise Exception(
+                "basic_auth_credential requires options.username (str, ':' 不可)"
+            )
+        password = options.get("password")
+        if password is None:
+            # Basic 認証はブラウザ入力なので記号を避けた英数字既定にする
+            password = self._generate_password(
+                {
+                    "length": options.get("length", 16),
+                    "chars": options.get("chars", "abcdefghijkmnpqrstuvwxyz23456789"),
+                }
+            )
+        elif not isinstance(password, str) or not password:
+            raise Exception("basic_auth_credential options.password must be str")
+        return "%s:%s" % (username, password)
 
     def _generate_password(self, options):
         length = options.get("length", 16)

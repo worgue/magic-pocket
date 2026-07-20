@@ -105,11 +105,15 @@ class ManagedSecretSpec(BaseModel):
         "cloudfront_signing_key",
         "spa_token_secret",
         "origin_verify_secret",
+        "basic_auth_credential",
     ]
     options: dict[str, str | int] = {}
     # Used in mediator
     # PasswordOptions:
     #     length: int
+    # BasicAuthCredentialOptions:
+    #     username: str (必須)
+    #     password: str (省略時は length/chars でランダム生成)
     # Used in runtime
     # RsaPemBase64Options:
     #     pem_base64_environ_suffix: str = "_PEM_BASE64"
@@ -118,6 +122,27 @@ class ManagedSecretSpec(BaseModel):
     #     pem_base64_environ_suffix: str = "_PEM_BASE64"
     #     pub_base64_environ_suffix: str = "_PUB_BASE64"
     #     id_environ_suffix: str = "_ID"
+
+    @model_validator(mode="after")
+    def check_basic_auth_options(self):
+        """basic_auth_credential の options を設定読込時に fail-loud で検証する。
+
+        username 欠落や ':' 混入は生成値 "user:pass" の形式を壊し、認証が silent に
+        通らなくなるため deploy 前に落とす。
+        """
+        if self.type != "basic_auth_credential":
+            return self
+        username = self.options.get("username")
+        if not isinstance(username, str) or not username:
+            raise ValueError("basic_auth_credential requires options.username (str)")
+        if ":" in username:
+            raise ValueError("basic_auth_credential username must not contain ':'")
+        password = self.options.get("password")
+        if password is not None and (not isinstance(password, str) or not password):
+            raise ValueError(
+                "basic_auth_credential options.password must be a non-empty string"
+            )
+        return self
 
 
 # user secret の stored mode 用 type。
@@ -810,6 +835,12 @@ class CloudFront(BaseModel):
     routes: list[Route] = []
     signing_key: str | None = None
     token_secret: str | None = None
+    # distribution 全体 (lambda route 含む全 behavior) に Basic 認証を掛ける。
+    # 値は managed secret (type="basic_auth_credential") のキー名。公開前の
+    # sandbox/stg サイトを雑に隠す用途。Authorization ヘッダを占有するため、
+    # アプリ自身が Authorization ヘッダ認証 (Bearer 等) を使う API とは併用不可
+    # (cookie/session 認証は問題ない)。
+    basic_auth: str | None = None
     managed_assets: str | None = None
     waf: CloudFrontWaf | None = None
     # CloudFront → origin に詐称耐性のある client IP / origin 直叩き防止の secret
@@ -1022,6 +1053,28 @@ class Settings(BaseModel):
                 f"not found in awscontainer.secrets.managed"
             )
 
+    def _check_cloudfront_basic_auth(self, name: str, cf: CloudFront):
+        if not cf.basic_auth:
+            return
+        if not self.awscontainer or not self.awscontainer.secrets:
+            raise ValueError(
+                f"cloudfront.{name}: awscontainer.secrets is required "
+                f"when basic_auth is set"
+            )
+        spec = self.awscontainer.secrets.managed.get(cf.basic_auth)
+        if spec is None:
+            raise ValueError(
+                f"cloudfront.{name}: basic_auth '{cf.basic_auth}' "
+                f"not found in awscontainer.secrets.managed"
+            )
+        # 値は "user:pass" 形式である必要がある。他 type (password 等) を参照すると
+        # 形式不一致で認証が silent に壊れるため type を固定する
+        if spec.type != "basic_auth_credential":
+            raise ValueError(
+                f"cloudfront.{name}: basic_auth '{cf.basic_auth}' must be "
+                f"type='basic_auth_credential' (got '{spec.type}')"
+            )
+
     def _check_cloudfront_entry(self, name: str, cf: CloudFront):
         for route in cf.routes:
             if route.signed and not cf.signing_key:
@@ -1052,6 +1105,7 @@ class Settings(BaseModel):
                         f"must have apigateway configured for lambda route"
                     )
         self._check_cloudfront_token_secret(name, cf)
+        self._check_cloudfront_basic_auth(name, cf)
         self._check_cloudfront_origin_verify(name, cf)
 
     def _check_cloudfront_origin_verify(self, name: str, cf: CloudFront):

@@ -965,6 +965,19 @@ DATABASE_URL = { type = "auto_database_url" }
     ```
     → 環境変数 `SPA_TOKEN_SECRET` が secrets 経由で登録されます。Django 側で `pocket.django.spa_auth` を使ってトークン生成・検証が可能です。
 
+**type = "basic_auth_credential"**
+:   CloudFront の Basic 認証用 credential（`user:pass` 形式）を生成します。
+    CloudFront の [`basic_auth`](#cloudfrontbasic_auth) で参照します。
+    `username` は必須、`password` は省略時に英数字ランダム（`length`、既定 16 文字）で生成されます。
+
+    ```toml
+    [awscontainer.secrets.managed]
+    BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview" } }
+    # password を固定したい場合 (値が pocket.toml = git に入る点に注意):
+    # BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview", password = "shared-pass" } }
+    ```
+    → 生成値は `pocket resource awscontainer secrets list --show-values` で確認できます。
+
 #### secrets.user
 
 自分で作成したシークレットを参照する場合に使います。
@@ -1264,9 +1277,38 @@ routes = [
 | `routes` | list[Route] | **必須** | ルーティング設定（最低1つ必要） |
 | `signing_key` | str \| None | None | 署名付きURL用のmanaged secret名 |
 | `token_secret` | str \| None | None | SPA トークン認証用の managed secret 名（`type = "spa_token_secret"`） |
+| `basic_auth` | str \| None | None | distribution 全体の Basic 認証用 managed secret 名（`type = "basic_auth_credential"`。下記 [basic_auth](#cloudfrontbasic_auth) 参照） |
 | `managed_assets` | str \| None | None | ステージ別アセットのディレクトリ（下記参照） |
 | `waf` | dict \| None | None | WAFv2 IP allowlist を attach（下記 [waf](#waf) 参照） |
 | `enable_origin_verify` | bool | `false` | origin 直叩き防止 + 詐称耐性 client IP（下記 [origin verify](#origin-verify-enable_origin_verify) 参照） |
+
+### cloudfront.basic_auth
+
+一般公開前の sandbox / stg サイト全体を Basic 認証で隠せます。distribution 単位の設定で、S3 / SPA / lambda を含む**全 behavior** に適用されます。
+
+```toml
+[awscontainer.secrets.managed]
+BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview" } }
+
+[sandbox.cloudfront.web]
+domain = "www.sandbox.example.com"
+basic_auth = "BASIC_AUTH"   # managed secret のキー名を参照 (token_secret と同じ方式)
+```
+
+- 検証は viewer-request の CloudFront Function が行い、期待する `Authorization` ヘッダ値（`Basic <base64>`）を KVS から読んで文字列比較します。不一致は 401 + `WWW-Authenticate` を返します
+- credential は deploy 時に KVS へ書き込まれるため、rotation（secret の再生成 → 再 deploy）にスタック更新は不要です
+- `redirect_from` や SPA トークン認証（`require_token`）とは併用可能です（各 Function に認証処理が合成されます）
+
+!!! warning "Authorization ヘッダの占有"
+    Basic 認証は `Authorization` ヘッダを使うため、アプリ自身が Authorization ヘッダ認証
+    （Bearer トークン等）を使う API とは併用できません。cookie / session 認証
+    （Django admin、SPA トークン認証の cookie を含む）は問題ありません。
+    また cross-origin の API クライアントは preflight で弾かれます。
+    「開発中のサイトを隠す」用途に限定してください。
+
+!!! note "awscontainer.secrets が必要"
+    credential の置き場所として managed secrets を使うため、`[awscontainer.secrets]`
+    の宣言が必要です（静的サイトのみの構成でも同様）。
 
 ### managed_assets
 

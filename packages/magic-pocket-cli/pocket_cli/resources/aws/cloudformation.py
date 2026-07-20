@@ -401,7 +401,10 @@ class CloudFrontStack(Stack):
 
     @property
     def _has_token_kvs(self) -> bool:
-        return any(r.require_token for r in self.context.routes)
+        # KVS は spa auth の token_secret と basic_auth の期待ヘッダ値を共用する
+        return any(r.require_token for r in self.context.routes) or bool(
+            self.context.basic_auth
+        )
 
     @property
     def export(self):
@@ -477,6 +480,11 @@ class CloudFrontStack(Stack):
         prelude = self._render_host_redirect_prelude()
         if not prelude:
             return code
+        return self._inject_after_request_line(code, prelude)
+
+    @staticmethod
+    def _inject_after_request_line(code: str, prelude: str) -> str:
+        """`var request = event.request;` の直後に prelude を差し込む。"""
         out: list[str] = []
         injected = False
         for line in code.splitlines():
@@ -485,6 +493,44 @@ class CloudFrontStack(Stack):
                 out.append(prelude)
                 injected = True
         return "\n".join(out)
+
+    def _render_basic_auth_prelude(self) -> str:
+        """Basic 認証 prelude (4 スペース字下げ)。basic_auth 未設定なら空文字。"""
+        if not self.context.basic_auth:
+            return ""
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_basic_auth_prelude.js")
+        return template.render().rstrip("\n")
+
+    def _inject_basic_auth(self, code: str) -> str:
+        """生成済み Function コードに Basic 認証 prelude を差し込む
+        (basic_auth 有効時のみ)。
+
+        KVS 参照のため handler を async 化し、kvsHandle を持たない Function には
+        引数なし `cf.kvs()` (その Function に関連付けられた唯一の KVS を返す) の
+        宣言を前置する。呼び出し側はこの Function に KeyValueStoreAssociations を
+        必ず付けること (テンプレート側で basic_auth 時に一括付与)。
+        """
+        prelude = self._render_basic_auth_prelude()
+        if not prelude:
+            return code
+        if "kvsHandle" not in code:
+            code = "import cf from 'cloudfront';\nconst kvsHandle = cf.kvs();\n" + code
+        if "async function handler" not in code:
+            code = code.replace("function handler(", "async function handler(", 1)
+        return self._inject_after_request_line(code, prelude)
+
+    def _inject_viewer_preludes(self, code: str) -> str:
+        """全 viewer-request Function 共通の prelude 合成。
+
+        basic auth を先に差し込み、その後 host redirect を同じ位置に差し込むことで
+        実行順は host redirect → basic auth になる (非 canonical host はまず 301 し、
+        認証プロンプトは canonical domain でのみ出す)。
+        """
+        return self._inject_host_redirect(self._inject_basic_auth(code))
 
     @staticmethod
     def _reindent(code: str, indent: int) -> str:
@@ -509,6 +555,22 @@ class CloudFrontStack(Stack):
         )
         return self._reindent(code, 8)
 
+    def _generate_basic_auth_function(self) -> str:
+        """viewer-request Function を持たない behavior 用の単体 Basic 認証 Function。
+
+        behavior に付けられる viewer-request Function は 1 つだけのため、
+        redirect_from 有効時は host redirect prelude もここに同居させる
+        (単体 HostRedirectFunction は basic_auth 時には生成しない)。
+        """
+        code = (
+            "function handler(event) {\n"
+            "    var request = event.request;\n"
+            "    return request;\n"
+            "}"
+        )
+        code = self._inject_viewer_preludes(code)
+        return self._reindent(code, 8)
+
     def _build_deploy_hash_function_codes(self) -> dict[str, str]:
         """deploy_hash route 用の hash prefix strip Function コードを生成する"""
         codes: dict[str, str] = {}
@@ -525,7 +587,7 @@ class CloudFrontStack(Stack):
                 "    return request;\n"
                 "}" % deploy_hash
             )
-            code = self._inject_host_redirect(code)
+            code = self._inject_viewer_preludes(code)
             codes[route.yaml_key] = self._reindent(code, 8)
         return codes
 
@@ -550,7 +612,7 @@ class CloudFrontStack(Stack):
         )
         template = env.get_template("cloudformation/cf_function_spa_fallback.js")
         code = template.render(fallback_uri=fallback_uri)
-        code = self._inject_host_redirect(code)
+        code = self._inject_viewer_preludes(code)
         # FunctionCode: | の下は8スペース
         return self._reindent(code, 8)
 
@@ -566,7 +628,7 @@ class CloudFrontStack(Stack):
             fallback_uri=fallback_uri,
             login_path=route.login_path,
         )
-        code = self._inject_host_redirect(code)
+        code = self._inject_viewer_preludes(code)
         # Fn::Sub の2パラメータ形式で - | の下は12スペース
         return self._reindent(code, 12)
 
@@ -578,7 +640,7 @@ class CloudFrontStack(Stack):
         )
         template = env.get_template("cloudformation/cf_function_api_host.js")
         code = template.render()
-        code = self._inject_host_redirect(code)
+        code = self._inject_viewer_preludes(code)
         return self._reindent(code, 8)
 
     @property
@@ -590,21 +652,28 @@ class CloudFrontStack(Stack):
         api_host_function_code = ""
         if self.context.has_lambda_route:
             api_host_function_code = self._generate_api_host_function()
+        # basic_auth 時、素の behavior には単体 BasicAuthFunction を付ける
+        # (redirect prelude も同居)。単体 HostRedirectFunction は非 basic_auth 時のみ。
+        basic_auth_function_code = ""
+        if self.context.basic_auth:
+            basic_auth_function_code = self._generate_basic_auth_function()
         host_redirect_function_code = ""
-        if self.context.has_redirect_from:
+        if self.context.has_redirect_from and not self.context.basic_auth:
             host_redirect_function_code = self._generate_host_redirect_function()
 
         return self._render_yaml(
             context_data=self.context.model_dump(
-                exclude={"signing_key", "token_secret"}
+                exclude={"signing_key", "token_secret", "basic_auth"}
             ),
             signing_key=bool(self.context.signing_key),
+            basic_auth=bool(self.context.basic_auth),
             acm_certificate_arn=acm_certificate_arn,
             waf_acl_arn=waf_acl_arn,
             function_codes=function_codes,
             deploy_hash_function_codes=deploy_hash_function_codes,
             api_host_function_code=api_host_function_code,
             host_redirect_function_code=host_redirect_function_code,
+            basic_auth_function_code=basic_auth_function_code,
             has_token_kvs=self._has_token_kvs,
             origin_verify_secret=self._origin_verify_secret_value,
         )

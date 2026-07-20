@@ -907,6 +907,8 @@ class CloudFrontContext(BaseModel):
     routes: list[RouteContext] = []
     signing_key: str | None = None
     token_secret: str | None = None
+    # distribution 全体に Basic 認証を掛ける managed secret のキー名
+    basic_auth: str | None = None
     api_origins: dict[str, str] = {}
     managed_assets: str | None = None
     deploy_hash: str = ""
@@ -1044,6 +1046,7 @@ class CloudFrontContext(BaseModel):
             deploy_hash=deploy_hash,
             signing_key=cf.signing_key,
             token_secret=cf.token_secret,
+            basic_auth=cf.basic_auth,
             managed_assets=cf.managed_assets,
             waf=(
                 CloudFrontWafContext(

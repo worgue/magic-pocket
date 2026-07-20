@@ -46,6 +46,8 @@ class CloudFront:
         self.cf_client = boto3.client("cloudfront")
         self._token_secret_value: str = ""
         self._origin_verify_secret_value: str = ""
+        # Basic 認証の期待 Authorization ヘッダ値 ("Basic <base64(user:pass)>")
+        self._basic_auth_expected: str = ""
 
     @property
     def description(self):
@@ -80,6 +82,7 @@ class CloudFront:
         deploy 済み hash と一致せず、毎回 REQUIRE_UPDATE になる。
         """
         self._prepare_token_secret(mediator)
+        self._prepare_basic_auth(mediator)
         self._prepare_origin_verify_secret(mediator)
 
     def create(self, mediator: Mediator | None = None):
@@ -144,6 +147,32 @@ class CloudFront:
                 % self.context.token_secret
             )
 
+    def _prepare_basic_auth(self, mediator: Mediator | None):
+        """basic_auth の managed secret ("user:pass") から期待ヘッダ値を組み立てる。
+
+        値は CloudFront Function が比較する "Basic <base64(user:pass)>" 形式で、
+        テンプレートには入れず deploy 後に KVS へ書き込む (token_secret と同経路)。
+        """
+        import base64
+
+        if not self.context.basic_auth:
+            return
+        if not mediator:
+            return
+        ac = mediator.context.awscontainer
+        if not ac or not ac.secrets:
+            return
+        secrets = ac.secrets.pocket_store.secrets
+        value = secrets.get(self.context.basic_auth)
+        if not isinstance(value, str) or ":" not in value:
+            echo.warning(
+                "basic_auth '%s' の値が 'user:pass' 形式ではありません"
+                % self.context.basic_auth
+            )
+            return
+        encoded = base64.b64encode(value.encode()).decode()
+        self._basic_auth_expected = "Basic %s" % encoded
+
     def _prepare_origin_verify_secret(self, mediator: Mediator | None):
         """enable_origin_verify 時に origin verify secret の値を store から読む。
 
@@ -172,7 +201,13 @@ class CloudFront:
             )
 
     def _write_token_secret_to_kvs(self):
-        if not self._token_secret_value:
+        """KVS に token_secret / basic_auth を書き込む (設定されているもののみ)。"""
+        entries = {
+            "token_secret": self._token_secret_value,
+            "basic_auth": self._basic_auth_expected,
+        }
+        entries = {k: v for k, v in entries.items() if v}
+        if not entries:
             return
         if not self.stack.output:
             echo.warning("スタック出力が取得できません。KVS 書き込みをスキップします。")
@@ -184,15 +219,16 @@ class CloudFront:
         kvs_client = boto3.client(
             "cloudfront-keyvaluestore", region_name=self.context.region
         )
-        desc = kvs_client.describe_key_value_store(KvsARN=kvs_arn)
-        etag = desc["ETag"]
-        kvs_client.put_key(
-            KvsARN=kvs_arn,
-            Key="token_secret",
-            Value=self._token_secret_value,
-            IfMatch=etag,
-        )
-        echo.info("KVS にトークンシークレットを書き込みました")
+        for key, value in entries.items():
+            # put_key ごとに ETag が変わるため毎回 describe で取り直す
+            desc = kvs_client.describe_key_value_store(KvsARN=kvs_arn)
+            kvs_client.put_key(
+                KvsARN=kvs_arn,
+                Key=key,
+                Value=value,
+                IfMatch=desc["ETag"],
+            )
+            echo.info("KVS に %s を書き込みました" % key)
 
     def upload_managed_assets(self):
         """managed_assets のファイルを S3 に同期する (全件 upload + 不要削除)。"""
