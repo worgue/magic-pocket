@@ -257,7 +257,10 @@ class AwsContainer(BaseModel):
     handlers: dict[str, LambdaHandler] = {}
     dockerfile_path: str
     envs: dict[str, str] = {}
-    platform: str = "linux/amd64"
+    # Lambda の Architectures もこの値から導出する (build と実行アーキテクチャを
+    # 揃える)。未知の値は typo で x86_64 Lambda + arm64 イメージのような不一致を
+    # 起こすため Literal で fail-loud にする。
+    platform: Literal["linux/amd64", "linux/arm64"] = "linux/amd64"
     django: Django | None = None
     permissions_boundary: str | None = None
     iam: AwsContainerIam = AwsContainerIam()
@@ -285,6 +288,10 @@ class LambdaHandler(BaseModel):
     reserved_concurrency: int | None = None
     apigateway: ApiGateway | None = None
     sqs: Sqs | None = None
+    # handler 単位の env 追加/上書き ([awscontainer].envs とマージし handler 側が
+    # 優先)。同一イメージを env でモード切替して複数 Lambda に並べる用途
+    # (モジュールパス切替が使えない Rust 単一バイナリ等) に使う。
+    envs: dict[str, str] = {}
 
 
 class ApiGateway(BaseModel):

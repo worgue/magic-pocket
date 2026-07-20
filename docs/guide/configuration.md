@@ -656,7 +656,7 @@ dockerfile_path = "pocket.Dockerfile"
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `dockerfile_path` | str | **必須** | Dockerfileのパス |
-| `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム |
+| `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム（`"linux/amd64"` / `"linux/arm64"`）。Lambda の `Architectures` もこの値から導出される |
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
 | `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
 | `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-lambda` |
@@ -782,6 +782,19 @@ timeout = 600
 | `timeout` | int | `30` | タイムアウト（秒） |
 | `memory_size` | int | `512` | メモリサイズ（MB） |
 | `reserved_concurrency` | int \| None | None | 予約済み同時実行数 |
+| `envs` | dict[str, str] | `{}` | handler 単位の環境変数。[awscontainer].envs とマージされ handler 側が優先 |
+
+`envs` を使うと、同一イメージ・同一バイナリを環境変数でモード切替して複数の Lambda に並べられます（Rust バイナリなど、Django の management ハンドラーのようなモジュールパス切替が使えない場合に有用です）:
+
+```toml
+[awscontainer.handlers.web]
+command = "myapp-lambda"
+
+[awscontainer.handlers.admin]
+command = "myapp-lambda"
+timeout = 600
+envs = { MYAPP_MODE = "admin" }
+```
 
 `command` は Lambda コンテナイメージの CMD を上書きする値です（CloudFormation の `ImageConfig.Command` にマップされます）。ENTRYPOINT はオーバーライドしません。
 

@@ -156,6 +156,8 @@ Resources:
     Properties:
       FunctionName: "{{ handler.function_name }}"
       PackageType: Image
+      Architectures:
+        - "{{ lambda_architecture }}"
       MemorySize: "{{ handler.memory_size }}"
       Timeout: "{{ handler.timeout }}"
       # {% if handler.reserved_concurrency %}
@@ -172,8 +174,15 @@ Resources:
       Environment:
         Variables:
           "POCKET_STAGE": "{{ stage }}"
+          # {# tojson で YAML セーフに埋め込む (値内の二重引用符等で ParserError にしない)。
+          #    container 共通 envs に handler.envs をマージし handler 側を優先する。
+          #    重複キーを 2 回出さないよう共通側は handler.envs にあるキーをスキップ #}
           # {% for env_key, value in envs.items() %}
-          # {# tojson で YAML セーフに埋め込む (値内の二重引用符等で ParserError にしない) #}
+          # {% if env_key not in handler.envs %}
+          {{ env_key | tojson }}: {{ value | tojson }}
+          # {% endif %}
+          # {% endfor %}
+          # {% for env_key, value in handler.envs.items() %}
           {{ env_key | tojson }}: {{ value | tojson }}
           # {% endfor %}
           # {% for env_key, import_name in signing_key_imports.items() %}

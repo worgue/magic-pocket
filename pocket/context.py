@@ -102,6 +102,8 @@ class LambdaHandlerContext(BaseModel):
     timeout: int = 30
     memory_size: int = 512
     reserved_concurrency: int | None = None
+    # handler 単位の env 上書き (container 共通 envs とのマージはテンプレート側)
+    envs: dict[str, str] = {}
     region: str
     apigateway: ApiGatewayContext | None = None
     sqs: SqsContext | None = None
@@ -141,6 +143,7 @@ class LambdaHandlerContext(BaseModel):
             timeout=handler.timeout,
             memory_size=handler.memory_size,
             reserved_concurrency=handler.reserved_concurrency,
+            envs=handler.envs,
             region=root.region,
             apigateway=apigw_ctx,
             sqs=sqs_ctx,
@@ -360,6 +363,17 @@ class AwsContainerContext(BaseModel):
     iam: AwsContainerIamContext = AwsContainerIamContext()
     efs_local_mount_path: str = ""
     build: BuildContext = BuildContext()
+
+    @computed_field
+    @property
+    def lambda_architecture(self) -> str:
+        """Lambda の Architectures 値。build platform から導出して必ず一致させる。
+
+        CFn テンプレートが Architectures を出さないと Lambda は常に x86_64 で作成
+        され、arm64 イメージが exec format error (Runtime.InvalidEntrypoint) で
+        INIT 失敗する。
+        """
+        return "arm64" if self.platform == "linux/arm64" else "x86_64"
 
     @classmethod
     def from_settings(
