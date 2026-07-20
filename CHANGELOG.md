@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+## [0.18.1](https://github.com/worgue/magic-pocket/releases/tag/0.18.1) - 2026-07-20
+
+### Fixed
+- `SchedulerExecutionRole` に `permissions_boundary` が反映されていませんでした。
+  permissions boundary が強制される AWS アカウントでは、scheduler 構成の stack が
+  `iam:CreateRole` の条件で拒否され作成できなかったため、`LambdaRole` と同様に
+  boundary を付与するよう修正しました。0.18.0 で `pocket.sqs_scheduler` を含む
+  scheduler 構成を boundary 強制環境へ deploy する場合はこの版へ更新してください。
+
 ## [0.18.0](https://github.com/worgue/magic-pocket/releases/tag/0.18.0) - 2026-07-19
 
 ### Added
