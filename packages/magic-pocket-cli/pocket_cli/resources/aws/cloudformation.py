@@ -529,11 +529,21 @@ class CloudFrontStack(Stack):
             codes[route.yaml_key] = self._reindent(code, 8)
         return codes
 
+    @staticmethod
+    def _spa_fallback_uri(route) -> str:
+        """SPA fallback の書き換え先 URI を組み立てる。
+
+        path_pattern の glob (`/admin/*` 等) をそのまま連結するとリテラル URI に
+        `*` が残り (`/admin/*/index.html`)、S3 に該当キーが無く全リクエストが 403 に
+        なる。prefix 部分だけを使う (`/admin/*` → `/admin/index.html`)。catch-all
+        (path_pattern 空) は従来どおり `/index.html`。
+        """
+        prefix = route.path_pattern.rstrip("*").rstrip("/")
+        return prefix + "/" + route.spa_fallback_html
+
     def _generate_spa_fallback_function(self, route) -> str:  # type: ignore
         """SPA URL フォールバック用 CloudFront Function コードを生成する"""
-        fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
-        if not route.path_pattern:
-            fallback_uri = "/" + route.spa_fallback_html
+        fallback_uri = self._spa_fallback_uri(route)
         env = Environment(
             loader=PackageLoader("pocket_cli"),
             autoescape=select_autoescape(),
@@ -546,9 +556,7 @@ class CloudFrontStack(Stack):
 
     def _generate_spa_auth_function(self, route) -> str:  # type: ignore
         """KVS + HMAC 検証付き async CloudFront Function コードを生成する"""
-        fallback_uri = route.path_pattern + "/" + route.spa_fallback_html
-        if not route.path_pattern:
-            fallback_uri = "/" + route.spa_fallback_html
+        fallback_uri = self._spa_fallback_uri(route)
         env = Environment(
             loader=PackageLoader("pocket_cli"),
             autoescape=select_autoescape(),
