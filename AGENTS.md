@@ -94,3 +94,13 @@ uv run pyright
 CLI 専用だったロジックを runtime 側へ移設して公開 API 化する場合（例: 外部 provisioner から import 共有させる）、その依存を runtime に持ち込まないこと。**HTTP なら `requests` ではなく stdlib `urllib` で書き換える**（`pocket.provisioning.neon` はこの方針で実装済み）。やむを得ず runtime に依存を足す判断が要る場合は、**ユーザーに確認**してください。
 
 なお CLI が runtime の新モジュールを import（re-export 含む）するようになったら、`packages/magic-pocket-cli/pyproject.toml` の `magic-pocket>=X.Y.Z` pin を、そのモジュールが載る版へ**必ず引き上げる**こと（古い runtime との組み合わせで import 落ちを防ぐ）。
+
+## リリース手順
+
+tag `X.Y.Z` の push で GHA `release.yml` が両パッケージを PyPI へ publish します（tag と両 pyproject の version 一致が必須）。バンプは bug 修正 = patch、新機能 = minor（0.x でも feature は minor）。
+
+1. `pyproject.toml` と `packages/magic-pocket-cli/pyproject.toml` の version を同値にバンプ（後者は依存 `magic-pocket>=X.Y.Z` も）→ `uv lock`
+2. CHANGELOG の `[Unreleased]` を `[X.Y.Z] - <日付>`（リンクは `releases/tag/X.Y.Z`）へ確定
+3. `:bookmark: X.Y.Z リリース` でコミット → push → `git tag X.Y.Z` → tag push → GHA 成功と PyPI 反映（`https://pypi.org/pypi/<pkg>/json`）を確認
+
+**リリース後フォローアップ**: `example-neon` / `example-tidb` の `magic-pocket[django]==X.Y.Z` pin を新版へ更新し、各ディレクトリで `uv lock` してコミットする（examples は Dependabot 対象外の手動作業。旧 vendor wheel 方式は 2026-07-20 の PyPI 化で廃止済み）。sandbox のデプロイ済み Lambda への反映は次回の example 再 deploy 時。
