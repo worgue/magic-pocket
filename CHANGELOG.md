@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.20.0](https://github.com/worgue/magic-pocket/releases/tag/0.20.0) - 2026-07-25
+
 ### Added
 - `[dsql]` の deploy が cluster endpoint を stored user secret の正準パス
   `/{stage}-{project}-{namespace}-user/dsql_endpoint` へ publish するように
