@@ -438,6 +438,30 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が自動設定されます。
 `set_envs()` の呼び出し時に、IAM 認証トークンが `POCKET_DSQL_TOKEN` に設定されます。
 
+!!! info "endpoint の publish（deploy の外から endpoint を引く）"
+    DSQL の cluster identifier は AWS 自動生成のため、endpoint
+    （`{id}.dsql.{region}.on.aws`）は命名規約から導出できません。このため deploy は
+    cluster の provision 完了時に、endpoint を stored user secret の正準パス
+    `/{stage}-{project}-{namespace}-user/dsql_endpoint`（`secrets.store` が `sm` の
+    場合は先頭 `/` なしの Secrets Manager secret）へ書き込みます。cluster を再作成
+    した場合も deploy が上書きし、常に deploy 済み実体を反映します（値が同じなら
+    書き込みません）。`pocket destroy` で cluster を削除すると publish も削除されます。
+
+    deploy の外の消費者（migration ツール・外部 provisioner 等）は
+    `pocket.naming` で正準名を導出して読み出せます:
+
+    ```python
+    from pocket.naming import DSQL_ENDPOINT, stored_user_secret_name
+
+    name = stored_user_secret_name(
+        project="myprj", stage="dev", secret_type=DSQL_ENDPOINT, store="ssm"
+    )
+    # -> "/dev-myprj-pocket-user/dsql_endpoint"
+    ```
+
+    `store` は対象プロジェクトの `[awscontainer.secrets].store`（未設定なら既定の
+    `"sm"`）に合わせてください。
+
 !!! warning "互換性に関する注意"
     DSQL は PostgreSQL 互換ですが、完全な互換ではありません。
     Django ORM のマイグレーション、contrib（auth, admin 等）、およびほとんどの 3rd パーティライブラリは正常に動作しません。

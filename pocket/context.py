@@ -37,6 +37,7 @@ ORIGIN_VERIFY_SECRET_KEY = "POCKET_ORIGIN_VERIFY_SECRET"  # noqa: S105 secret �
 # stored user secret 名の正準導出は公開 API (pocket.naming) に一元化した。
 # 外部 provisioner が再実装せず import できるようにするため。後方互換のため
 # `from pocket.context import user_secret_path` はこの再エクスポートで維持する。
+from pocket import naming  # noqa: E402
 from pocket.naming import user_secret_path  # noqa: E402,F401 (re-export)
 
 
@@ -545,14 +546,29 @@ class DsqlContext(BaseModel):
     region: str
     tag_name: str  # Name タグで検索するための識別名
     deletion_protection: bool = False
+    # endpoint の publish 先 (stored user secret の type 基準正準パス)。DSQL は
+    # cluster identifier が AWS 自動生成で endpoint を naming から導出できないため、
+    # deploy が作成記録としてここへ endpoint を書き込む。空文字なら publish しない
+    endpoint_secret_name: str = ""
+    endpoint_secret_store: StoreType = "sm"  # noqa: S105 保存先種別であって secret 値ではない
 
     @classmethod
     def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
         resource_prefix = root.resource_prefix
+        # publish 先は stored user secret 機構 (pocket_key / store) に相乗りする。
+        # secrets 未設定でも publish はする (その場合は既定の sm / 既定 key format)
+        secrets = root.awscontainer.secrets if root.awscontainer else None
+        if secrets is None:
+            secrets = settings.Secrets()
+        pocket_key = secrets.pocket_key_format.format(**root.format_vars)
         return cls(
             region=root.region,
             tag_name=f"{resource_prefix}dsql",
             deletion_protection=dsql.deletion_protection,
+            endpoint_secret_name=user_secret_path(
+                pocket_key, naming.DSQL_ENDPOINT, secrets.store
+            ),
+            endpoint_secret_store=secrets.store,
         )
 
 

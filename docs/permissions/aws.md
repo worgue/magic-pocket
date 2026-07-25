@@ -16,7 +16,7 @@
 | **IAM** | `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PassRole`, `iam:TagRole`, `iam:UntagRole`, `iam:ListRoleTags`, `iam:ListRolePolicies` | Lambda 実行ロールの管理（CFn が LambdaRole に Tag を付与するため Tag 系 Action も必要。`ListRolePolicies` は CodeBuild ロール削除時の inline policy 列挙） |
 | **CloudWatch Logs** | `logs:*` | ログの作成・参照 |
 | **Secrets Manager** | `secretsmanager:*` | シークレットの生成・保存・取得 |
-| **SSM Parameter Store** | `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameters`, `ssm:GetParametersByPath` | パラメータストア利用時 |
+| **SSM Parameter Store** | `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameter`, `ssm:DeleteParameters`, `ssm:GetParametersByPath` | パラメータストア利用時（`DeleteParameter` は dsql endpoint の unpublish / `migrate-secret-paths` の単一パラメータ削除用） |
 | **STS** | `sts:GetCallerIdentity` | アカウント ID の取得 |
 
 !!! note "Secrets Manager と SSM"
@@ -85,6 +85,9 @@
 | 権限 | 用途 |
 |------|------|
 | `dsql:*` | DSQL クラスターの作成・参照・削除 |
+
+endpoint の publish（stored user secret 正準パスへの書き込み・削除）はコア権限の
+Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされます。
 
 ### EventBridge Scheduler（`[scheduler]` 使用時）
 

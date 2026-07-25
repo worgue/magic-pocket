@@ -81,6 +81,8 @@ def test_secrets_store_ssm():
     assert "secretsmanager:*" not in actions
     assert "ssm:GetParameter" in actions
     assert "ssm:PutParameter" in actions
+    # 単数 DeleteParameter は dsql endpoint unpublish / migrate の単一削除経路用
+    assert "ssm:DeleteParameter" in actions
     assert "ssm:DeleteParameters" in actions
     assert "ssm:GetParametersByPath" in actions
 

@@ -66,3 +66,15 @@ def test_backward_compat_context_reexport():
 def test_exposed_at_package_root():
     assert pocket.stored_user_secret_name is stored_user_secret_name
     assert pocket.TIDB_DATABASE_URL == "tidb_database_url"
+
+
+def test_stored_user_secret_name_dsql_endpoint():
+    """deploy が publish する dsql endpoint の正準パスと一致する。"""
+    from pocket.naming import DSQL_ENDPOINT
+
+    assert DSQL_ENDPOINT == "dsql_endpoint"
+    assert pocket.DSQL_ENDPOINT is DSQL_ENDPOINT
+    assert (
+        stored_user_secret_name(project="myprj", stage="dev", secret_type=DSQL_ENDPOINT)
+        == "/dev-myprj-pocket-user/dsql_endpoint"
+    )

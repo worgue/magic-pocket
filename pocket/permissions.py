@@ -48,9 +48,12 @@ _CORE_ACTIONS: list[str] = [
 _SM_ACTIONS: list[str] = ["secretsmanager:*"]
 
 # secrets.store == "ssm" 時
+# DeleteParameter (単数) は単一パラメータ削除経路 (secret_store.delete_stored_value:
+# dsql endpoint の unpublish / migrate-secret-paths の旧パス削除) 用
 _SSM_ACTIONS: list[str] = [
     "ssm:GetParameter",
     "ssm:PutParameter",
+    "ssm:DeleteParameter",
     "ssm:DeleteParameters",
     "ssm:GetParametersByPath",
 ]

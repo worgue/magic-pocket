@@ -28,6 +28,13 @@ NEON_DATABASE_URL = "neon_database_url"
 TIDB_DATABASE_URL = "tidb_database_url"  # noqa: S105 (type 名であって secret 値ではない)
 UPSTASH_REDIS_URL = "upstash_redis_url"  # noqa: S105 (同上)
 
+# deploy が publish する作成記録の segment (consumer が pocket.toml で宣言する
+# UserSecretType ではない)。DSQL は cluster identifier が AWS 自動生成で endpoint を
+# naming から導出できない稀なリソースのため、[dsql] の deploy が cluster endpoint を
+# この正準パスへ書き込む。外部ツールは stored_user_secret_name(...,
+# secret_type=DSQL_ENDPOINT, store=<project の secrets.store>) で読み出せる。
+DSQL_ENDPOINT = "dsql_endpoint"
+
 #: user_secret_path が受け付ける store。
 STORE_SSM = "ssm"
 STORE_SM = "sm"

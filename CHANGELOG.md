@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Added
+- `[dsql]` の deploy が cluster endpoint を stored user secret の正準パス
+  `/{stage}-{project}-{namespace}-user/dsql_endpoint` へ publish するように
+  なりました。DSQL は cluster identifier が AWS 自動生成で endpoint を命名規約
+  から導出できないため、deploy の外の消費者 (migration ツール・外部 provisioner
+  等) が endpoint を決定的に引ける作成記録を deploy が書き込みます
+  - 保存先は stored user secret 機構に相乗り (`secrets.store` に応じた
+    SSM SecureString / Secrets Manager)。毎 deploy で冪等に上書きし
+    (値が同じなら書き込まない)、cluster 削除時には publish も削除します
+  - `pocket.naming` に secret_type 定数 `DSQL_ENDPOINT` を追加しました。
+    消費者は `stored_user_secret_name(project=..., stage=...,
+    secret_type=DSQL_ENDPOINT, store=...)` で正準名を導出できます
+  - ssm feature group に `ssm:DeleteParameter` (単数) を追加しました
+    (`secrets.store = "ssm"` 構成での unpublish / `pocket migrate-secret-paths`
+    の旧パス削除用)
+
 ## [0.19.0](https://github.com/worgue/magic-pocket/releases/tag/0.19.0) - 2026-07-20
 
 ### Added

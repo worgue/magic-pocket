@@ -3,6 +3,7 @@
 from importlib.metadata import version
 
 from pocket.naming import (
+    DSQL_ENDPOINT,
     NEON_DATABASE_URL,
     TIDB_DATABASE_URL,
     UPSTASH_REDIS_URL,
@@ -16,6 +17,7 @@ from pocket.naming import (
 __version__ = version("magic-pocket")
 
 __all__ = [
+    "DSQL_ENDPOINT",
     "NEON_DATABASE_URL",
     "TIDB_DATABASE_URL",
     "UPSTASH_REDIS_URL",

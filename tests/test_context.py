@@ -238,3 +238,29 @@ def test_secrets_user_name_plain_is_noop(base_settings):
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
     assert ctx.user["API_KEY"].name == arn
+
+
+def test_dsql_context_endpoint_secret_name_defaults(base_settings):
+    """[dsql] のみ (secrets 未設定) では既定の sm / 既定 key format で導出。"""
+    from pocket import settings
+    from pocket.context import DsqlContext
+
+    base_settings.dsql = settings.Dsql()
+    ctx = DsqlContext.from_settings(base_settings.dsql, base_settings)
+    # base_settings: stage="test", project_name="testprj", namespace="pocket"
+    assert ctx.endpoint_secret_name == "test-testprj-pocket-user/dsql_endpoint"
+    assert ctx.endpoint_secret_store == "sm"
+
+
+def test_dsql_context_endpoint_secret_name_follows_secrets_store(base_settings):
+    """[awscontainer.secrets] store = "ssm" なら SSM パス (先頭 /) で導出。"""
+    from pocket import settings
+    from pocket.context import DsqlContext
+
+    base_settings.dsql = settings.Dsql()
+    base_settings.awscontainer = settings.AwsContainer(
+        dockerfile_path="Dockerfile", secrets=settings.Secrets(store="ssm")
+    )
+    ctx = DsqlContext.from_settings(base_settings.dsql, base_settings)
+    assert ctx.endpoint_secret_name == "/test-testprj-pocket-user/dsql_endpoint"
+    assert ctx.endpoint_secret_store == "ssm"
