@@ -102,6 +102,102 @@ def test_neon_context_branch_name_defaults_to_main():
     assert ctx.parent_branch_name is None
 
 
+def test_neon_context_records_branch_name_specified_and_stage():
+    """from_settings が branch_name の明示有無と stage を context に記録する
+    (未指定 fallback の警告判定に使う)。"""
+    from pocket import settings
+    from pocket.context import NeonContext
+
+    unspecified = NeonContext.from_settings(
+        settings.Neon(project_name="dev-myapp"), _fake_root(stage="dev")
+    )
+    assert unspecified.branch_name_specified is False
+    assert unspecified.stage == "dev"
+
+    specified = NeonContext.from_settings(
+        settings.Neon(project_name="dev-myapp", branch_name="{stage}"),
+        _fake_root(stage="dev"),
+    )
+    assert specified.branch_name_specified is True
+
+
+def _branches_payload():
+    return {
+        "branches": [
+            {"id": "br-main", "name": "main"},
+            {"id": "br-dev", "name": "dev", "parent_id": "br-main"},
+        ]
+    }
+
+
+def _shadowing_ctx(**overrides):
+    from pocket.context import NeonContext
+
+    kwargs = {
+        "pg_version": 15,
+        "api_key": "fake",
+        "project_name": "dev-myapp",
+        "branch_name": "main",
+        "branch_name_specified": False,
+        "stage": "dev",
+        "name": "myapp",
+        "role_name": "myapp",
+    }
+    kwargs.update(overrides)
+    return NeonContext(**kwargs)
+
+
+def test_neon_warns_when_default_branch_shadows_stage_branch(capsys):
+    """branch_name 未指定 (default main) で stage 名 branch が存在したら警告する
+
+    0.5.0 のデフォルト変更 (stage 名 → main) を跨ぐ移行で、store-url が実データと
+    別の branch の URL を焼き、アプリが空 DB を参照した実害への回帰テスト
+    (2026-07-24 受領の利用プロジェクト feedback)。
+    """
+    from pocket_cli.resources.neon import Neon
+
+    neon = Neon(_shadowing_ctx())
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        mock_req.return_value = _fake_response(200, _branches_payload())
+        branch = neon.branch
+    assert branch is not None
+    assert branch.name == "main"
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "branch_name" in err
+    assert "'dev'" in err
+
+
+def test_neon_no_warning_when_branch_name_specified(capsys):
+    """branch_name を明示していれば stage 名 branch が存在しても警告しない"""
+    from pocket_cli.resources.neon import Neon
+
+    neon = Neon(_shadowing_ctx(branch_name_specified=True))
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        mock_req.return_value = _fake_response(200, _branches_payload())
+        assert neon.branch is not None
+    assert "branch_name" not in capsys.readouterr().err
+
+
+def test_neon_no_warning_when_stage_branch_absent(capsys):
+    """未指定でも stage 名 branch が無ければ警告しない (新規 project の通常運用)"""
+    from pocket_cli.resources.neon import Neon
+
+    neon = Neon(_shadowing_ctx(stage="prod"))
+    with (
+        patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        mock_req.return_value = _fake_response(200, _branches_payload())
+        assert neon.branch is not None
+    assert "branch_name" not in capsys.readouterr().err
+
+
 def test_neon_context_branch_name_override():
     """branch_name を明示すると (per-stage 上書き含む) その値が使われる"""
     from pocket import settings

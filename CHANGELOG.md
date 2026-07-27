@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Added
+- 廃止済みフラグ `--skip-check-existing` (0.6.0 で削除) を渡した場合に、click の
+  "No such option" ではなく `provisioning = "command"` + `pocket resource <db>
+  store-url` への移行手順を示してエラーになるようにしました (`pocket deploy` /
+  `pocket promote` / `pocket django deploy` / `pocket django promote`)。旧
+  バージョンからの一括アップデートで CI が案内なしに停止する実害への対応です
+  (設定キー側の fail-fast ガイドと対になる CLI フラグ版)
+- `[neon]` の `branch_name` 未指定 (default branch fallback) で、project に
+  stage 名の branch が存在する場合に警告を出すようにしました。0.5.0 の
+  デフォルト変更 (stage 名 → default branch) を跨いで移行すると、store-url /
+  deploy が実データと別の branch へ接続 URL を焼く事故 (空 DB 参照) につながる
+  ため、branch 一覧の取得済みデータから追加 API call なしで検出します。意図が
+  stage 名 branch なら `branch_name = "{stage}"` の明示を案内します
+
 ## [0.20.0](https://github.com/worgue/magic-pocket/releases/tag/0.20.0) - 2026-07-25
 
 ### Added

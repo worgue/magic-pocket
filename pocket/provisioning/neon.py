@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from pocket.context import NeonContext
 from pocket.resources.base import ResourceStatus
+from pocket.utils import echo
 
 # basicConfig / setLevel はライブラリ import の副作用として呼び出し側の
 # root logger 設定を書き換えるため行わない (レベル設定は呼び出し側の責務)
@@ -291,9 +292,45 @@ class Neon:
     @cached_property
     def branch(self) -> Branch | None:
         if self.project:
-            for branch in self.get("branches").json()["branches"]:
+            branches = self.get("branches").json()["branches"]
+            self._warn_default_branch_shadows_stage_branch(branches)
+            for branch in branches:
                 if branch["name"] == self.context.branch_name:
                     return Branch(**branch)
+
+    def _warn_default_branch_shadows_stage_branch(self, branches: list[dict]) -> None:
+        """branch_name 未指定なのに stage 名の branch が存在するとき警告する。
+
+        0.5.0 で branch_name 省略時のデフォルトが stage 名 → project の default
+        branch (main) に変わった。旧バージョンで作られた stage 名 branch が残る
+        project で未指定のまま store-url / deploy すると、実データと別の branch に
+        接続 URL を焼いてしまう (利用プロジェクトで実際に発生し、空 DB 参照になった)。
+        branch 一覧の取得済みデータだけで判定し、追加の API call はしない。
+        """
+        ctx = self.context
+        if ctx.branch_name_specified or not ctx.stage:
+            return
+        if ctx.stage == ctx.branch_name:
+            return
+        if getattr(self, "_stage_branch_warned", False):
+            return
+        if any(b["name"] == ctx.stage for b in branches):
+            self._stage_branch_warned = True
+            echo.warning(
+                "[neon] branch_name が未指定のため default branch '%s' を使いますが、"
+                "project '%s' には stage 名の branch '%s' も存在します。"
+                "0.5.0 で branch_name 省略時のデフォルトが stage 名から default branch "
+                "に変わりました。接続先が branch '%s' のつもりなら、pocket.toml の "
+                '[%s.neon] に branch_name = "%s" を明示してください。'
+                % (
+                    ctx.branch_name,
+                    ctx.project_name,
+                    ctx.stage,
+                    ctx.stage,
+                    ctx.stage,
+                    ctx.stage,
+                )
+            )
 
     @cached_property
     def parent_branch(self) -> Branch | None:

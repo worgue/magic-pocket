@@ -14,6 +14,7 @@ from pocket.context import Context
 from pocket.django import django_installed
 from pocket.django.utils import get_storages
 from pocket.utils import echo
+from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.resources.awscontainer import AwsContainer
 
 
@@ -81,6 +82,7 @@ def _update_dotenv(jinja2_env):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
+@removed_skip_check_existing
 def deploy(stage: str, openpath, yes):
     from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
 
@@ -129,6 +131,7 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
+@removed_skip_check_existing
 def promote(stage: str, commit_hash, openpath, yes):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 

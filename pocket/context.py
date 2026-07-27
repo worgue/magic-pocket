@@ -470,6 +470,11 @@ class NeonContext(BaseModel):
     api_key: str | None = None
     project_name: str
     branch_name: str
+    # branch_name が設定で明示されたか。False (未指定 = default branch fallback) の
+    # とき、provisioning 側は stage 名 branch の存在を確認して警告する (0.5.0 の
+    # デフォルト変更 [stage 名 → default branch] を跨ぐ移行での誤 branch 接続対策)。
+    branch_name_specified: bool = True
+    stage: str | None = None
     parent_branch_name: str | None = None
     name: str
     role_name: str
@@ -483,6 +488,8 @@ class NeonContext(BaseModel):
             api_key=neon.api_key,
             project_name=neon.project_name,
             branch_name=(neon.branch_name or "main").format(**format_vars),
+            branch_name_specified=neon.branch_name is not None,
+            stage=root.stage,
             parent_branch_name=(
                 neon.parent_branch_name.format(**format_vars)
                 if neon.parent_branch_name
