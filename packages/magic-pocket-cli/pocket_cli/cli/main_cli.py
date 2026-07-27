@@ -48,21 +48,27 @@ def version():
 @main.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
-    """Context を JSON で出力する（AWS API 呼び出しを伴う）。"""
+    """Context を JSON で出力する（AWS API 呼び出しを伴う）。secret はマスク。"""
+    import json
+
     from pocket.context import Context
+    from pocket.utils import mask_secret_values
 
     ctx = Context.from_toml(stage=stage)
-    print(ctx.model_dump_json(indent=2))
+    print(json.dumps(mask_secret_values(ctx.model_dump(mode="json")), indent=2))
 
 
 @main.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def settings(stage):
-    """Settings を JSON で出力する（pocket.toml のみ、AWS 不要）。"""
+    """Settings を JSON で出力する（pocket.toml のみ、AWS 不要）。secret はマスク。"""
+    import json
+
     from pocket.settings import Settings
+    from pocket.utils import mask_secret_values
 
     s = Settings.from_toml(stage=stage)
-    print(s.model_dump_json(indent=2))
+    print(json.dumps(mask_secret_values(s.model_dump(mode="json")), indent=2))
 
 
 main.add_command(deploy_cli.deploy)

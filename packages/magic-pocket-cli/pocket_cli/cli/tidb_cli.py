@@ -3,7 +3,7 @@ from pprint import pprint
 import click
 
 from pocket.context import Context
-from pocket.utils import echo
+from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
@@ -28,7 +28,7 @@ def get_tidb_resource(stage):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
     resource = get_tidb_resource(stage)
-    pprint(resource.context.model_dump())
+    pprint(mask_secret_values(resource.context.model_dump()))
 
 
 @tidb.command()

@@ -3,7 +3,7 @@ from pprint import pprint
 import click
 
 from pocket.context import Context
-from pocket.utils import echo
+from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
@@ -28,7 +28,7 @@ def get_neon_resource(stage):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
     neon = get_neon_resource(stage)
-    pprint(neon.context.model_dump())
+    pprint(mask_secret_values(neon.context.model_dump()))
 
 
 @neon.command()
@@ -197,4 +197,10 @@ def status(stage):
     else:
         echo.warning("Role not found")
     if neon.role and neon.endpoint:
-        echo.success("Database url: %s" % neon.database_url)
+        # password は表示しない (status は状態確認用途。session log 等に secret を
+        # 残さない)。フル URL は url コマンドが担う。
+        echo.success("Database url: %s" % neon.masked_database_url)
+        echo.info(
+            "接続 URL (password 込み) は "
+            "`pocket resource neon url --stage %s` を使用してください。" % stage
+        )

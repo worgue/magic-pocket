@@ -551,3 +551,43 @@ def test_neon_database_url_percent_encodes_credentials():
     assert creds["USER"] == "myapp"
     assert creds["HOST"] == "h.example"
     assert creds["NAME"] == "myapp"
+
+
+def test_neon_masked_database_url_hides_password_and_skips_reveal():
+    """status 表示用の masked URL が password を含まず、reveal API も呼ばないこと
+
+    `pocket resource neon status` が password 込み URL を出力して session log に
+    secret が残った実害への回帰テスト (2026-07-24 受領の利用プロジェクト feedback)。
+    """
+    from pocket_cli.resources.neon import Neon, Role
+
+    from pocket.context import NeonContext
+    from pocket.provisioning.neon import Endpoint
+
+    ctx = NeonContext(
+        pg_version=15,
+        api_key="fake",
+        project_name="dev-myapp",
+        branch_name="sandbox",
+        name="myapp",
+        role_name="myapp",
+    )
+    neon = Neon(ctx)
+    with (
+        patch.object(Neon, "role", new=Role(name="myapp", password=None)),
+        patch.object(
+            Neon,
+            "endpoint",
+            new=Endpoint(
+                id="ep-rw",
+                host="h.example",
+                autoscaling_limit_min_cu=0.25,
+                autoscaling_limit_max_cu=0.25,
+                type="read_write",
+            ),
+        ),
+        patch("pocket.provisioning.neon._http_request") as mock_req,
+    ):
+        url = neon.masked_database_url
+    assert url == "postgres://myapp:****@h.example:5432/myapp?sslmode=require"
+    mock_req.assert_not_called()

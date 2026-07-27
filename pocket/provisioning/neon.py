@@ -333,6 +333,16 @@ class Neon:
                 ):
                     return Endpoint(**endpoint)
 
+    def _build_database_url(self, password_part: str) -> str:
+        if self.role is None or self.endpoint is None:
+            raise NeonResourceIsNotReady("Create role and endpoint first")
+        return "postgres://%s:%s@%s:5432/%s?sslmode=require" % (
+            quote(self.context.role_name, safe=""),
+            password_part,
+            self.endpoint.host,
+            self.context.name,
+        )
+
     @property
     def database_url(self):
         if self.role is None or self.endpoint is None:
@@ -341,12 +351,12 @@ class Neon:
             self.set_role_password()
         # 解析側 (pocket.django.db_url) は unquote するため、生成側は必ず quote する
         # (runtime._set_rds_database_url と同じ対称性)
-        return "postgres://%s:%s@%s:5432/%s?sslmode=require" % (
-            quote(self.context.role_name, safe=""),
-            quote(self.role.password or "", safe=""),
-            self.endpoint.host,
-            self.context.name,
-        )
+        return self._build_database_url(quote(self.role.password or "", safe=""))
+
+    @property
+    def masked_database_url(self):
+        """password を伏せた表示用 URL。reveal API を呼ばず secret を取得しない。"""
+        return self._build_database_url("****")
 
     @property
     def status(self) -> ResourceStatus:

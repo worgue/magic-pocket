@@ -4,6 +4,7 @@ import re
 import sys
 from functools import cache
 from pathlib import Path
+from typing import Any
 
 import boto3
 from rich.console import Console
@@ -53,6 +54,34 @@ def version_tuple(version: str) -> tuple[int, ...]:
                 break
         parts.append(int(digits) if digits else 0)
     return tuple(parts)
+
+
+# context / settings の表示用 dump で値を伏せるキー名。api_key (Neon/Upstash)、
+# private_key (TiDB)、token_secret (CloudFront signed URL)、password
+# (basic_auth_credential options) 等、pocket.toml / env 由来の credential が対象。
+# 値の取得経路は url 系コマンドや SSM が担うため、表示系では常にマスクする。
+SECRET_DUMP_KEYS = frozenset(
+    {"api_key", "private_key", "public_key", "token_secret", "password"}
+)
+
+
+def mask_secret_values(data: Any) -> Any:
+    """表示用 dump (dict/list) の secret キーの値を "****" に置換して返す。
+
+    None は「未設定」の情報として残し、値がある場合のみマスクする。
+    """
+    if isinstance(data, dict):
+        return {
+            k: (
+                "****"
+                if k in SECRET_DUMP_KEYS and v is not None
+                else mask_secret_values(v)
+            )
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [mask_secret_values(v) for v in data]
+    return data
 
 
 # 診断・状態メッセージ (echo.*) はすべて stderr に出す。stdout は

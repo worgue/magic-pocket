@@ -1,7 +1,9 @@
+import json
+
 import click
 
 from pocket.context import Context
-from pocket.utils import echo
+from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.resources.cloudfront import CloudFront
 
@@ -47,7 +49,8 @@ def yaml_diff(stage, name):
 def context(stage, name):
     for cf in get_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)
-        print(cf.context.model_dump_json(indent=2))
+        dump = mask_secret_values(cf.context.model_dump(mode="json"))
+        print(json.dumps(dump, indent=2))
 
 
 @cloudfront.command()
