@@ -20,9 +20,9 @@ import logging
 import re
 import time
 from functools import cached_property
-from typing import Literal
+from typing import Literal, NamedTuple
 from urllib.error import HTTPError
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from urllib.request import Request, urlopen
 
 from pydantic import BaseModel
@@ -534,16 +534,50 @@ class Neon:
             self.set_role_password()
 
 
-def ensure_url_for_context(context: NeonContext) -> str:
-    """`NeonContext` から branch/role/db を ensure し接続 URL を算出する。
+class EnsureUrlInfo(NamedTuple):
+    """ensure + URL 算出の結果と、表示用の解決情報。
+
+    url 以外は secret を含まない (endpoint_host は URL の host 部)。呼び出し側が
+    「どの branch / endpoint に焼いたか」を利用者へ見せるために使う。
+    """
+
+    url: str
+    project_name: str
+    branch_name: str
+    endpoint_host: str
+    # この ensure で branch を新規作成した (= 空の branch に接続する) か。
+    # 意図しない branch 名で空 DB を掴む事故の警告判定に使う。
+    branch_created: bool
+
+
+def ensure_url_for_context_with_info(context: NeonContext) -> EnsureUrlInfo:
+    """`ensure_url_for_context` の解決情報付き版。
 
     branch が無ければ (parent 指定があればそこから) 作成し、role と database を
     ensure したうえで、ensure 後の状態を確実に反映するため fresh instance で URL を
     算出して返す。Neon の URL は reveal_password 方式で冪等なので何度呼んでも同じ。
+    endpoint_host は算出済み URL から解析し、追加の API call はしない。
     """
     neon = Neon(context)
+    branch_created = neon.branch is None
     neon.create()
-    return Neon(context).database_url
+    url = Neon(context).database_url
+    return EnsureUrlInfo(
+        url=url,
+        project_name=context.project_name,
+        branch_name=context.branch_name,
+        endpoint_host=urlsplit(url).hostname or "",
+        branch_created=branch_created,
+    )
+
+
+def ensure_url_for_context(context: NeonContext) -> str:
+    """`NeonContext` から branch/role/db を ensure し接続 URL を算出する。
+
+    挙動は :func:`ensure_url_for_context_with_info` と同一で、URL のみを返す
+    (公開 API の従来シグネチャ維持)。
+    """
+    return ensure_url_for_context_with_info(context).url
 
 
 def ensure_and_compute_url(

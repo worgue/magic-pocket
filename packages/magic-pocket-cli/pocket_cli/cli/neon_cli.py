@@ -7,7 +7,11 @@ from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.cli.url_helper import run_get_url
-from pocket_cli.resources.neon import Neon, ensure_url_for_context
+from pocket_cli.resources.neon import (
+    EnsureUrlInfo,
+    Neon,
+    ensure_url_for_context_with_info,
+)
 
 
 @click.group()
@@ -108,6 +112,26 @@ def delete(stage, yes):
     echo.success("Branch was deleted successfully.")
 
 
+def _echo_store_url_resolution(stage: str, info: EnsureUrlInfo) -> None:
+    """store-url が焼く接続先の解決結果を表示する。
+
+    意図と異なる branch へ焼いても「保存しました」だけでは気づけず、アプリが
+    空 DB / 別 DB に接続して初めて発覚する (利用プロジェクトで実際に発生)。
+    store-url は書き込む前に branch / endpoint を Neon に解決済みなので、
+    既に手元にある情報を見せて pocket.toml の意図と目視照合できるようにする。
+    """
+    echo.info(
+        "stage=%s → project=%s → branch=%s → endpoint=%s"
+        % (stage, info.project_name, info.branch_name, info.endpoint_host)
+    )
+    if info.branch_created:
+        echo.warning(
+            "branch '%s' はこの実行で新規作成されました (空の branch)。既存データ"
+            "へ接続するつもりなら、pocket.toml の [<stage>.neon] branch_name が"
+            "意図した branch を指しているか確認してください。" % info.branch_name
+        )
+
+
 @neon.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option(
@@ -127,7 +151,9 @@ def store_url(stage, key, force):
                 "neon が pocket.toml に宣言されていません (store-url 不可)"
             )
         # ensure + URL 算出は runtime package の共有ヘルパに一本化 (公開 API と同一経路)
-        return ensure_url_for_context(context.neon)
+        info = ensure_url_for_context_with_info(context.neon)
+        _echo_store_url_resolution(stage, info)
+        return info.url
 
     run_store_url(
         stage=stage,

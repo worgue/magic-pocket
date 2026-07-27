@@ -7,6 +7,14 @@
 ## [Unreleased]
 
 ### Added
+- `pocket resource neon store-url` が保存前に、解決した接続先
+  (`stage=... → project=... → branch=... → endpoint=...`) を表示するように
+  なりました。意図と異なる branch へ焼いても「保存しました」だけでは気づけない
+  ため、書き込み前に解決済みの情報を見せて pocket.toml の意図と目視照合できる
+  ようにします。この実行で branch を新規作成した場合 (= 空の branch に接続する)
+  は警告を添えます。あわせて公開 API に `ensure_url_for_context_with_info`
+  (解決情報付き版。endpoint host は URL から解析し追加 API call なし) を追加
+  しました
 - build context の非可読ファイル (other-read なし、mode 600 等) を build 前に
   検出して警告するようにしました (`docker` / `depot` backend)。Lambda の実行
   ユーザーは非 root のため、該当ファイルが image に COPY されると全 handler が

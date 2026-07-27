@@ -464,6 +464,16 @@ pocket resource neon delete --stage=dev
 pocket resource neon store-url --stage=dev
 ```
 
+`store-url` は保存前に、解決した接続先を表示します（pocket.toml の意図と目視照合
+できます）。この実行で branch を新規作成した場合（= 空の branch に接続する）は
+警告が添えられるため、既存データへ接続するつもりで意図しない branch 名を焼いた
+ことに気づけます:
+
+```
+stage=dev → project=dev-myapp → branch=main → endpoint=ep-misty-cherry-xxxx.ap-southeast-1.aws.neon.tech
+Neon URL を DATABASE_URL (/dev-myapp-pocket-user/neon_database_url) に保存しました。
+```
+
 ### tidb
 
 ```bash

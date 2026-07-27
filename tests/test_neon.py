@@ -408,6 +408,89 @@ def test_ensure_url_for_context_skips_branch_create_when_present():
     mock_ensure_database.assert_called_once()
 
 
+def test_ensure_url_for_context_with_info_reports_resolution():
+    """with_info 版が branch / endpoint host (URL から解析) / 既存 branch 利用を
+    返すこと。追加 API call なしで store-url の接続先表示に使う。"""
+    from pocket.provisioning.neon import Branch, Neon, ensure_url_for_context_with_info
+
+    expected = "postgres://myapp:pw@ep-x.host.example:5432/myapp?sslmode=require"
+    with (
+        patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
+        patch.object(Neon, "create_branch"),
+        patch.object(Neon, "ensure_role"),
+        patch.object(Neon, "ensure_database"),
+        patch.object(
+            Neon, "database_url", new_callable=PropertyMock, return_value=expected
+        ),
+    ):
+        info = ensure_url_for_context_with_info(_idempotency_ctx())
+    assert info.url == expected
+    assert info.project_name == "dev-myapp"
+    assert info.branch_name == "main"
+    assert info.endpoint_host == "ep-x.host.example"
+    assert info.branch_created is False
+
+
+def test_ensure_url_for_context_with_info_marks_created_branch():
+    """branch をこの実行で新規作成した場合 branch_created=True (空 branch 警告用)"""
+    from pocket.provisioning.neon import Neon, ensure_url_for_context_with_info
+
+    expected = "postgres://myapp:pw@host:5432/myapp?sslmode=require"
+    with (
+        patch.object(Neon, "branch", new=None),
+        patch.object(Neon, "parent_branch", new=None),
+        patch.object(Neon, "create_branch"),
+        patch.object(Neon, "ensure_role"),
+        patch.object(Neon, "ensure_database"),
+        patch.object(
+            Neon, "database_url", new_callable=PropertyMock, return_value=expected
+        ),
+    ):
+        info = ensure_url_for_context_with_info(_idempotency_ctx())
+    assert info.branch_created is True
+
+
+def test_store_url_resolution_echo_shows_branch_and_endpoint(capsys):
+    """store-url の解決表示が branch / endpoint を含み、URL (secret) を含まないこと"""
+    from pocket_cli.cli.neon_cli import _echo_store_url_resolution
+
+    from pocket.provisioning.neon import EnsureUrlInfo
+
+    info = EnsureUrlInfo(
+        url="postgres://myapp:pw@ep-x.host.example:5432/myapp?sslmode=require",
+        project_name="dev-myapp",
+        branch_name="main",
+        endpoint_host="ep-x.host.example",
+        branch_created=False,
+    )
+    _echo_store_url_resolution("dev", info)
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "stage=dev" in err
+    assert "branch=main" in err
+    assert "endpoint=ep-x.host.example" in err
+    assert "pw" not in err.replace("ep-x", "")  # URL の password を出さない
+    assert "新規作成" not in err
+
+
+def test_store_url_resolution_echo_warns_on_created_branch(capsys):
+    """この実行で branch を新規作成した (= 空 DB に接続する) 場合は警告を添える"""
+    from pocket_cli.cli.neon_cli import _echo_store_url_resolution
+
+    from pocket.provisioning.neon import EnsureUrlInfo
+
+    info = EnsureUrlInfo(
+        url="postgres://myapp:pw@h:5432/myapp?sslmode=require",
+        project_name="dev-myapp",
+        branch_name="feature-x",
+        endpoint_host="h",
+        branch_created=True,
+    )
+    _echo_store_url_resolution("dev", info)
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "新規作成" in err
+    assert "branch_name" in err
+
+
 def test_ensure_url_for_context_creates_branch_when_absent():
     """branch が無いとき ensure_url_for_context は parent から branch を作成する。"""
     from pocket.provisioning.neon import Neon, ensure_url_for_context

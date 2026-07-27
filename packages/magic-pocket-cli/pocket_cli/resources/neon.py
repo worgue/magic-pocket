@@ -12,6 +12,7 @@ from pocket.provisioning.neon import (
     Branch,
     Database,
     Endpoint,
+    EnsureUrlInfo,
     Neon,
     NeonApi,
     NeonNotFound,
@@ -21,12 +22,14 @@ from pocket.provisioning.neon import (
     Role,
     ensure_and_compute_url,
     ensure_url_for_context,
+    ensure_url_for_context_with_info,
 )
 
 __all__ = [
     "Branch",
     "Database",
     "Endpoint",
+    "EnsureUrlInfo",
     "Neon",
     "NeonApi",
     "NeonNotFound",
@@ -36,4 +39,5 @@ __all__ = [
     "Role",
     "ensure_and_compute_url",
     "ensure_url_for_context",
+    "ensure_url_for_context_with_info",
 ]
