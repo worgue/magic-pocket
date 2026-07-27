@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN uv venv $VIRTUAL_ENV
-COPY uv.lock pyproject.toml ./
+COPY --chmod=644 uv.lock pyproject.toml ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 FROM base AS final
@@ -21,6 +21,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/venv/bin:${PATH}"
 WORKDIR /app
 COPY --from=builder /venv /venv
-COPY . .
+# --chmod: host 側で mode 600 になったファイルをそのまま COPY すると Lambda の
+# 非 root 実行ユーザーが読めず INIT フェーズで失敗するため、build 段で正規化する。
+# --chmod はディレクトリにも同じ mode が付くため、traverse に x が必要な 755 を使う
+COPY --chmod=755 . .
 
 ENTRYPOINT [ "/venv/bin/python", "-m", "awslambdaric" ]

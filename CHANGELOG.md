@@ -7,6 +7,15 @@
 ## [Unreleased]
 
 ### Added
+- build context の非可読ファイル (other-read なし、mode 600 等) を build 前に
+  検出して警告するようにしました (`docker` / `depot` backend)。Lambda の実行
+  ユーザーは非 root のため、該当ファイルが image に COPY されると全 handler が
+  INIT フェーズで失敗しサイトごと 500 になります (`codebuild` backend は従来
+  どおり source zip 作成時に 0644/0755 へ自動正規化)。あわせて
+  - `pocket django init` 生成の Dockerfile テンプレートの COPY に `--chmod` を
+    付け、host 側の permission 事故を build 段で吸収するようにしました
+  - management handler の INIT 失敗メッセージに、runtime 版不整合と並ぶ原因候補
+    として build context のファイル permission を追記しました
 - 廃止済みフラグ `--skip-check-existing` (0.6.0 で削除) を渡した場合に、click の
   "No such option" ではなく `provisioning = "command"` + `pocket resource <db>
   store-url` への移行手順を示してエラーになるようにしました (`pocket deploy` /

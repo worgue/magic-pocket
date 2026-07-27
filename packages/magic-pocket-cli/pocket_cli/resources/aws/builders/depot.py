@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import os
 import subprocess
+from pathlib import Path
 
 from python_on_whales import docker
+
+from pocket_cli.resources.aws.builders.context_check import (
+    warn_files_without_world_read,
+)
 
 
 class DepotBuilder:
@@ -30,6 +35,10 @@ class DepotBuilder:
         platform: str,
     ) -> None:
         token = self._get_token()
+
+        # context は生の permission のまま image に入るため build 前に検査する
+        # (codebuild backend は zip 時に正規化されるので不要)
+        warn_files_without_world_read(Path(".").resolve())
 
         print("ECR にログインします...")
         docker.login_ecr(region_name=self.region)

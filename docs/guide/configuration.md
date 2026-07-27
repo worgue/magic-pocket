@@ -741,6 +741,24 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
     Docker ビルドコンテキストに配置されます。
     Dockerfile で `COPY pocket.runtime.toml ./` としてコピーしてください。
 
+!!! warning "ビルドコンテキストのファイル permission"
+    Lambda の実行ユーザーは非 root のため、other-read の無いファイル（編集操作の
+    副作用で生まれる mode 600 等）が image にそのまま COPY されると読めず、
+    **全 handler が INIT フェーズで失敗します**（wsgi も同じ image のためサイトごと
+    500。表面のエラーは `Runtime.Unknown` で原因が分かりにくい）。
+
+    - `backend = "codebuild"` はソース zip 作成時に mode を 0644/0755 へ自動正規化
+      します
+    - `backend = "docker"` / `"depot"` は生の permission のまま image に入るため、
+      build 前にコンテキストを走査して該当ファイルを警告します
+    - 自前の Dockerfile では COPY に `--chmod` を付けて build 段で正規化するのが
+      確実です（`pocket django init` 生成のテンプレートは適用済み）:
+
+    ```dockerfile
+    # --chmod はディレクトリにも同じ mode が付くため、traverse に x が必要な 755 を使う
+    COPY --chmod=755 . .
+    ```
+
 ### pocket runtime-config
 
 `pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build_dir` 等）を除外した TOML を生成します。
