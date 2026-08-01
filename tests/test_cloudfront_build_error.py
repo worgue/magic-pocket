@@ -73,3 +73,59 @@ def test_upload_skip_build_does_not_invoke_subprocess():
     ):
         cf.upload(skip_build=True)
         run.assert_not_called()
+
+
+def _make_cf_without_build() -> CloudFront:
+    """build_dir だけ宣言し build 未宣言の route を持つ CloudFront。"""
+    ctx = CloudFrontContext(
+        name="web",
+        region="ap-northeast-1",
+        s3_region="ap-northeast-1",
+        stage="dev",
+        slug="dev-testprj-web",
+        bucket_name="dev-testprj-bucket",
+        resource_prefix="dev-testprj-",
+        routes=[
+            RouteContext(
+                is_default=True,
+                is_spa=True,
+                origin_path="/app",
+                build_dir="frontend/dist",
+            ),
+        ],
+    )
+    with mock.patch("boto3.client"):
+        return CloudFront(ctx)
+
+
+def test_upload_without_build_warns_stale_risk(capsys):
+    """build 未宣言の build_dir route は「build は実行されない」旨を警告する。
+
+    build_dir の中身がソースより古いままアップロードされても出力が正常系
+    そのもので気づけない (stale SPA 配信の実害報告あり) ため、deploy 毎に明示する。
+    """
+    cf = _make_cf_without_build()
+    with (
+        mock.patch.object(cf, "_upload_route"),
+        mock.patch.object(cf, "_invalidate"),
+    ):
+        cf.upload()
+
+    out = capsys.readouterr().err
+    assert "build コマンドが未設定" in out
+    assert "frontend/dist" in out
+    assert 'build = "..."' in out
+
+
+def test_upload_with_build_does_not_warn(capsys):
+    """build 宣言済みの route では stale 警告を出さない。"""
+    cf = _make_cf()
+    with (
+        mock.patch("subprocess.run"),
+        mock.patch.object(cf, "_upload_route"),
+        mock.patch.object(cf, "_invalidate"),
+    ):
+        cf.upload()
+
+    out = capsys.readouterr().err
+    assert "build コマンドが未設定" not in out

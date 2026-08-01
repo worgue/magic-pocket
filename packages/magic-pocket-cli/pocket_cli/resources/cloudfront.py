@@ -291,6 +291,18 @@ class CloudFront:
                         " (`rm -rf node_modules && npm ci` 等で復旧)。"
                     )
                     raise
+            elif not route.build:
+                # build_dir だけ宣言して build 未宣言のまま deploy すると、古い
+                # 成果物がそのまま配信される (lambda 側だけ新しくなる片肺状態)。
+                # 出力が正常系そのもので気づけないため、ここで明示する。
+                echo.warning(
+                    "route %s: build コマンドが未設定のため、%s の現在の中身を"
+                    "そのままアップロードします。ソース変更後にフロントエンドの"
+                    " build を実行していない場合、古い成果物が配信されます。"
+                    ' route に build = "..." を設定すると deploy が自動実行します'
+                    " (docs: best-practices.md)。"
+                    % (route.path_pattern or "default", route.build_dir)
+                )
             self._upload_route(route)
         if self.context.uploadable_routes:
             self._invalidate()
