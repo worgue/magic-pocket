@@ -625,6 +625,13 @@ class RedirectFrom(BaseModel):
 Versioning = Literal["content_hash", "deploy_hash"]
 
 
+class RouteBuild(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dir: str
+    cmd: str
+
+
 class Route(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -638,8 +645,8 @@ class Route(BaseModel):
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
     signed: bool = False
-    build: str | None = None
-    build_dir: str | None = None
+    build: RouteBuild | None = None
+    upload_dir: str | None = None
     origin_path: str | None = None
     require_token: bool = False
     login_path: str = "/api/auth/login"
@@ -653,6 +660,37 @@ class Route(BaseModel):
                 "is_versioned は廃止されました。"
                 'versioning = "content_hash" を使ってください。'
             )
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_build_dir(cls, data):
+        """旧 build_dir / 文字列 build を明示エラーにする。
+
+        build_dir 単独宣言は「pocket がビルドもしてくれる」誤解を招き、古い
+        成果物の stale 配信 (deploy 成功ログのまま画面だけ古い) につながった。
+        新スキーマでは意図を宣言で分離する:
+        - pocket にビルドさせる → build = { dir, cmd } (cmd 必須)
+        - ビルドは外部 (CI 等) の責任でアップロードのみ → upload_dir
+        """
+        if isinstance(data, dict):
+            if "build_dir" in data:
+                raise ValueError(
+                    "build_dir は廃止されました。pocket にビルドさせる場合は"
+                    ' build = { dir = "...", cmd = "..." } を、ビルド済み成果物を'
+                    'アップロードするだけの場合は upload_dir = "..." を'
+                    "使ってください。\n"
+                    '  例) build = { dir = "frontend/dist",'
+                    ' cmd = "just frontend-build" }\n'
+                    '  例) upload_dir = "frontend/dist"  # ビルドは CI 等の責任'
+                )
+            if isinstance(data.get("build"), str):
+                raise ValueError(
+                    "build の文字列指定は廃止されました。ビルドコマンドと成果物"
+                    "ディレクトリを組で宣言してください。\n"
+                    '  例) build = { dir = "frontend/dist",'
+                    ' cmd = "just frontend-build" }'
+                )
         return data
 
     @model_validator(mode="before")
@@ -750,16 +788,20 @@ class Route(BaseModel):
                     "type = 'lambda' cannot use "
                     "is_spa, versioning, signed, or require_token"
                 )
-            if self.build or self.build_dir:
-                raise ValueError("type = 'lambda' cannot use build or build_dir")
+            if self.build or self.upload_dir:
+                raise ValueError("type = 'lambda' cannot use build or upload_dir")
         if self.handler and self.type != "lambda":
             raise ValueError("handler requires type = 'lambda'")
         return self
 
     @model_validator(mode="after")
     def check_build(self):
-        if self.build and not self.build_dir:
-            raise ValueError("build_dir is required when build is set")
+        if self.build and self.upload_dir:
+            raise ValueError(
+                "build と upload_dir は同時に設定できません。pocket にビルド"
+                "させるなら build、外部でビルドした成果物をアップロードするだけ"
+                "なら upload_dir を選んでください"
+            )
         return self
 
     @model_validator(mode="after")

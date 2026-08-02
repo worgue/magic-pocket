@@ -40,7 +40,7 @@ _CLOUDFRONT_REMOVE_KEYS = {
 # route から除外するキー
 _ROUTE_REMOVE_KEYS = {
     "build",
-    "build_dir",
+    "upload_dir",
     "require_token",
     "login_path",
 }

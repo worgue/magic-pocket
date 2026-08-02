@@ -272,16 +272,16 @@ class CloudFront:
 
     def upload(self, *, skip_build: bool = False):
         for route in self.context.uploadable_routes:
-            if route.build and not skip_build:
-                echo.info("ビルド実行: %s" % route.build)
+            if route.build_cmd and not skip_build:
+                echo.info("ビルド実行: %s" % route.build_cmd)
                 try:
-                    # route.build は pocket.toml の build コマンド (設定者 =
+                    # route.build_cmd は pocket.toml の build.cmd (設定者 =
                     # デプロイ実行者)。意図的な shell 実行のため S602 / semgrep を抑制。
-                    subprocess.run(route.build, shell=True, check=True)  # noqa: S602  # nosemgrep
+                    subprocess.run(route.build_cmd, shell=True, check=True)  # noqa: S602  # nosemgrep
                 except subprocess.CalledProcessError as e:
                     echo.danger(
                         "build コマンドが失敗しました (exit %d): %s"
-                        % (e.returncode, route.build)
+                        % (e.returncode, route.build_cmd)
                     )
                     echo.warning(
                         "deploy ホスト側で依存を入れ直してから再実行してください。"
@@ -291,27 +291,15 @@ class CloudFront:
                         " (`rm -rf node_modules && npm ci` 等で復旧)。"
                     )
                     raise
-            elif not route.build:
-                # build_dir だけ宣言して build 未宣言のまま deploy すると、古い
-                # 成果物がそのまま配信される (lambda 側だけ新しくなる片肺状態)。
-                # 出力が正常系そのもので気づけないため、ここで明示する。
-                echo.warning(
-                    "route %s: build コマンドが未設定のため、%s の現在の中身を"
-                    "そのままアップロードします。ソース変更後にフロントエンドの"
-                    " build を実行していない場合、古い成果物が配信されます。"
-                    ' route に build = "..." を設定すると deploy が自動実行します'
-                    " (docs: best-practices.md)。"
-                    % (route.path_pattern or "default", route.build_dir)
-                )
             self._upload_route(route)
         if self.context.uploadable_routes:
             self._invalidate()
 
     def _upload_route(self, route: RouteContext):
         s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
-        if not route.build_dir:
-            raise RuntimeError("route.build_dir is not set")
-        local_dir = Path(route.build_dir)
+        if not route.upload_dir:
+            raise RuntimeError("route.upload_dir is not set")
+        local_dir = Path(route.upload_dir)
         uploaded_keys: set[str] = set()
         for file in local_dir.rglob("*"):
             if file.is_dir():
@@ -368,7 +356,7 @@ class CloudFront:
     def warn_contents(self):
         bucket = self.context.bucket_name
         for route in self.context.routes:
-            if route.build_dir:
+            if route.upload_dir:
                 continue
             origin = route.origin_path + route.path_pattern
             echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))

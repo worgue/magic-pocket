@@ -37,7 +37,19 @@
   ため、branch 一覧の取得済みデータから追加 API call なしで検出します。意図が
   stage 名 branch なら `branch_name = "{stage}"` の明示を案内します
 
-## [0.20.0](https://github.com/worgue/magic-pocket/releases/tag/0.20.0) - 2026-07-25
+### Changed
+- **破壊的変更**: CloudFront route の `build_dir` と文字列形式の `build = "..."` を
+  廃止し、ビルド責任を宣言で分離しました。旧キーは起動時に移行手順つきのエラーに
+  なります
+  - pocket にビルドさせる場合: `build = { dir = "frontend/dist",
+    cmd = "just frontend-build" }` (`dir` / `cmd` とも必須。deploy が upload 前に
+    `cmd` を shell 実行)
+  - ビルドは外部 (CI 等) の責任でアップロードのみの場合: `upload_dir =
+    "frontend/dist"` (deploy はビルドを実行しない。成果物の最新化は利用者の責任)
+  - 背景: 旧スキーマは `build_dir` 単独で有効なため「宣言すれば pocket がビルド
+    してくれる」誤解を招き、古い成果物のまま配信される事故 (deploy は成功ログ・
+    API は新しい・画面だけ古い) が実際に発生しました。ビルドさせる/させないを
+    どちらも明示宣言にすることで、この見落としを構造的に防ぎます
 
 ### Added
 - `[dsql]` の deploy が cluster endpoint を stored user secret の正準パス

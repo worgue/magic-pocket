@@ -59,7 +59,7 @@ staticfiles = { store = "s3", distribution = "web", route = "static", static = t
 # SPA + API 同一ドメイン
 [cloudfront.web]
 routes = [
-    { is_default = true, is_spa = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
+    { is_default = true, is_spa = true, build = { dir = "frontend/dist", cmd = "just frontend-build" }, origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
     { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]
@@ -99,10 +99,12 @@ domain = "media.example.com"
     各 route の `origin_path` で S3 Origin の `OriginPath` を設定し、
     S3 上では `web/app/` 配下に SPA、`web/static/` 配下に staticfiles を分離配置します。
 
-**`build` / `build_dir` でフロントエンド自動デプロイ**
-:   `pocket deploy` でインフラ更新に加え、SPA のビルド → S3 アップロード → CloudFront キャッシュ無効化が自動実行されます。
+**`build = { dir, cmd }` でフロントエンド自動デプロイ**
+:   `pocket deploy` でインフラ更新に加え、SPA のビルド（`cmd` を shell 実行）→ `dir` の S3 アップロード → CloudFront キャッシュ無効化が自動実行されます。
     SPA の HTML は `no-cache`、アセットは `max-age=1年` のキャッシュヘッダーが設定されます。
-    インフラのみ更新したい場合は `--skip-frontend` で抑制できます。
+    インフラのみ更新したい場合は `--skip-frontend`、ビルドだけ飛ばす場合は `--skip-build` で抑制できます。
+    CI 等の外部でビルドする運用なら、代わりに `upload_dir = "frontend/dist"` を宣言してください。
+    この場合 deploy はアップロードだけを行うため、**成果物を deploy 前に最新化するのは利用者（CI workflow）の責任**です。
 
 **SPA の画像・フォントはビルドパイプラインを通す**
 :   Vite / SvelteKit 等の `public/` (`static/`) に置いたファイルはビルドを通らずファイル名にハッシュが付きません。
@@ -180,7 +182,7 @@ SPA_TOKEN_SECRET = { type = "spa_token_secret" }
 [cloudfront.web]
 token_secret = "SPA_TOKEN_SECRET"
 routes = [
-    { is_default = true, is_spa = true, require_token = true, build = "just frontend-build", build_dir = "frontend/dist", origin_path = "/web/app" },
+    { is_default = true, is_spa = true, require_token = true, build = { dir = "frontend/dist", cmd = "just frontend-build" }, origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
     { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
 ]

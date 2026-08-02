@@ -761,7 +761,7 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
 
 ### pocket runtime-config
 
-`pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build_dir` 等）を除外した TOML を生成します。
+`pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を生成します。
 
 ```bash
 # 標準出力に出力
@@ -1389,7 +1389,7 @@ assets/managed/
 ファイル単位のマージは行いません。ステージディレクトリがあればそれだけ、なければ default だけが配信されます。
 
 !!! note "SPA のビルド成果物との分離"
-    managed_assets は S3 の `pocket_managed/` プレフィックスに配置されるため、SPA の `build_dir` アップロードとは独立しています。`--delete` による意図しない削除の心配はありません。
+    managed_assets は S3 の `pocket_managed/` プレフィックスに配置されるため、SPA の `build` / `upload_dir` アップロードとは独立しています。`--delete` による意図しない削除の心配はありません。
 
 !!! note "Django のみ（CloudFront なし）の場合"
     CloudFront を使用しない構成では、同じディレクトリ形式で Django view から配信できます（[Django連携 - ステージ別ファイル配信](django.md#ステージ別ファイル配信-managed_assets) を参照）。
@@ -1625,8 +1625,8 @@ routes = [
 | `versioned_max_age` | int | `31536000` | バージョン付きアセットのmax-age（秒、デフォルト1年） |
 | `ref` | str | `""` | ルートの参照名（Django storage の route で参照） |
 | `signed` | bool | `false` | 署名付きURL（distribution に `signing_key` が必要） |
-| `build` | str \| None | None | ビルドコマンド（省略時はビルドスキップ） |
-| `build_dir` | str \| None | None | ビルド成果物ディレクトリ（設定時に自動アップロード対象） |
+| `build` | `{ dir, cmd }` \| None | None | pocket にビルドさせる宣言。`dir`（成果物ディレクトリ = アップロード対象）と `cmd`（ビルドコマンド、deploy が upload 前に shell 実行）は**両方必須** |
+| `upload_dir` | str \| None | None | ビルドは外部（CI 等）の責任と宣言し、このディレクトリの中身をアップロードだけする。**deploy はビルドを実行しない**ため、成果物を最新にするのは利用者の責任 |
 | `require_token` | bool | `false` | SPA トークン認証を有効化（`is_spa = true` 必須） |
 | `login_path` | str | `"/api/auth/login"` | 未認証時のリダイレクト先パス |
 
@@ -1636,12 +1636,13 @@ routes = [
     - `is_spa` と `versioning` は同時に設定できません。
     - `path_pattern` は空でないルートは `/` で始まる必要があります。
     - `signed = true` のルートには、distribution に `signing_key` の設定が必要です。
-    - `type = "lambda"` のルートでは `origin_path`, `is_spa`, `versioning`, `signed`, `require_token`, `build`, `build_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
+    - `type = "lambda"` のルートでは `origin_path`, `is_spa`, `versioning`, `signed`, `require_token`, `build`, `upload_dir` は使用できません。`is_default = true` は許可されており、Django 単体構成（全リクエストを API Gateway に流す）で利用できます。
     - `origin_path` は `/` で始まり `/` で終わらない必要があります。バケット直下を配信する `origin_path = "/"` はサポートしません（後述の warning を参照）。
     - 旧 `type = "api"` は廃止されました。`type = "lambda"` を使ってください（起動時に分かりやすいエラーが出ます）。
     - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
     - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
-    - `build` を指定する場合は `build_dir` が必須です。
+    - `build` と `upload_dir` は同時に設定できません（ビルド責任の宣言はどちらか一方）。
+    - 旧 `build_dir` と旧文字列形式の `build = "..."` は廃止されました。`build = { dir = "...", cmd = "..." }` または `upload_dir = "..."` を使ってください（起動時に移行手順つきのエラーが出ます）。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
 
 !!! tip "S3 key の二重 prefix を避ける（`origin_path` 省略）"

@@ -1,6 +1,6 @@
 """CloudFront.upload の build subprocess 失敗時の UX 検証。
 
-`pocket deploy` で `subprocess.run(route.build, ..., check=True)` が落ちた
+`pocket deploy` で `subprocess.run(route.build_cmd, ..., check=True)` が落ちた
 ときに、生 traceback だけで放り投げるのではなく actionable な hint を
 echo に出してから再 raise することを確認する。
 """
@@ -30,8 +30,8 @@ def _make_cf() -> CloudFront:
                 is_default=True,
                 is_spa=True,
                 origin_path="/app",
-                build="just frontend-build",
-                build_dir="frontend/dist",
+                build_cmd="just frontend-build",
+                upload_dir="frontend/dist",
             ),
         ],
     )
@@ -75,8 +75,8 @@ def test_upload_skip_build_does_not_invoke_subprocess():
         run.assert_not_called()
 
 
-def _make_cf_without_build() -> CloudFront:
-    """build_dir だけ宣言し build 未宣言の route を持つ CloudFront。"""
+def _make_cf_upload_only() -> CloudFront:
+    """upload_dir 単独 (外部ビルド) の route を持つ CloudFront。"""
     ctx = CloudFrontContext(
         name="web",
         region="ap-northeast-1",
@@ -90,7 +90,7 @@ def _make_cf_without_build() -> CloudFront:
                 is_default=True,
                 is_spa=True,
                 origin_path="/app",
-                build_dir="frontend/dist",
+                upload_dir="frontend/dist",
             ),
         ],
     )
@@ -98,34 +98,15 @@ def _make_cf_without_build() -> CloudFront:
         return CloudFront(ctx)
 
 
-def test_upload_without_build_warns_stale_risk(capsys):
-    """build 未宣言の build_dir route は「build は実行されない」旨を警告する。
-
-    build_dir の中身がソースより古いままアップロードされても出力が正常系
-    そのもので気づけない (stale SPA 配信の実害報告あり) ため、deploy 毎に明示する。
-    """
-    cf = _make_cf_without_build()
+def test_upload_only_route_does_not_invoke_subprocess():
+    """build_cmd なし (upload_dir 単独 = 外部ビルド宣言) では subprocess を
+    呼ばず upload だけ行う。"""
+    cf = _make_cf_upload_only()
     with (
-        mock.patch.object(cf, "_upload_route"),
+        mock.patch("subprocess.run") as run,
+        mock.patch.object(cf, "_upload_route") as upload_route,
         mock.patch.object(cf, "_invalidate"),
     ):
         cf.upload()
-
-    out = capsys.readouterr().err
-    assert "build コマンドが未設定" in out
-    assert "frontend/dist" in out
-    assert 'build = "..."' in out
-
-
-def test_upload_with_build_does_not_warn(capsys):
-    """build 宣言済みの route では stale 警告を出さない。"""
-    cf = _make_cf()
-    with (
-        mock.patch("subprocess.run"),
-        mock.patch.object(cf, "_upload_route"),
-        mock.patch.object(cf, "_invalidate"),
-    ):
-        cf.upload()
-
-    out = capsys.readouterr().err
-    assert "build コマンドが未設定" not in out
+        run.assert_not_called()
+        upload_route.assert_called_once()

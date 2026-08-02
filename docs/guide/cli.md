@@ -67,7 +67,7 @@ pocket deploy --stage=dev
 - コンテナイメージの作成とECRへのアップロード
 - CloudFormationによるLambda関連リソースの作成・更新
 - CloudFormationによるCloudFront関連リソースの作成・更新
-- フロントエンドのビルドとS3アップロード（`build_dir` が設定されたルートがある場合）
+- フロントエンドのビルドとS3アップロード（`build` / `upload_dir` が設定されたルートがある場合。ビルドを実行するのは `build` のみ）
 
 | オプション | 説明 |
 |-----------|------|
@@ -148,7 +148,7 @@ pocket destroy --stage=dev
 
 ### pocket runtime-config
 
-Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build_dir` 等）が除外されます。
+Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）が除外されます。
 
 ```bash
 # 標準出力に出力
@@ -587,7 +587,7 @@ pocket resource cloudfront upload --stage=dev --skip-build
 pocket resource cloudfront upload --stage=dev --name=main
 ```
 
-`upload` は `build_dir` が設定されたルートに対して、ビルド → S3アップロード → CloudFrontキャッシュ無効化を実行します。
+`upload` は `build` / `upload_dir` が設定されたルートに対して、ビルド（`build` のルートのみ）→ S3アップロード → CloudFrontキャッシュ無効化を実行します。
 `pocket deploy` 実行時にも自動的に呼ばれます（`--skip-frontend` で抑制可能）。
 
 ### cloudfront_keys

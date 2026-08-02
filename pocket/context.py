@@ -856,8 +856,11 @@ class RouteContext(BaseModel):
     versioned_max_age: int = 60 * 60 * 24 * 365
     ref: str = ""
     signed: bool = False
-    build: str | None = None
-    build_dir: str | None = None
+    # build_cmd はアップロード前に pocket が実行するコマンド (settings.RouteBuild.cmd)。
+    # upload_dir はアップロード対象 dir で、build 宣言時は build.dir、
+    # upload_dir 宣言時 (外部ビルド) はそのまま、を正規化して持つ。
+    build_cmd: str | None = None
+    upload_dir: str | None = None
     origin_path: str = ""
     require_token: bool = False
     login_path: str = "/api/auth/login"
@@ -903,8 +906,8 @@ class RouteContext(BaseModel):
             versioned_max_age=route.versioned_max_age,
             ref=route.ref,
             signed=route.signed,
-            build=route.build,
-            build_dir=route.build_dir,
+            build_cmd=route.build.cmd if route.build else None,
+            upload_dir=route.build.dir if route.build else route.upload_dir,
             origin_path=route.origin_path or "",
             require_token=route.require_token,
             login_path=route.login_path,
@@ -988,7 +991,7 @@ class CloudFrontContext(BaseModel):
     @computed_field
     @property
     def uploadable_routes(self) -> list[RouteContext]:
-        return [r for r in self.routes if r.build_dir]
+        return [r for r in self.routes if r.upload_dir]
 
     @computed_field
     @property

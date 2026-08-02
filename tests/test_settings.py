@@ -263,42 +263,108 @@ def test_yaml(use_toml):
 
 
 @mock_aws
-def test_route_build_dir(use_toml):
+def test_route_build(use_toml):
     use_toml("tests/data/toml/cloudfront_spa_build.toml")
     context = Context.from_toml(stage="dev")
     cf = context.cloudfront["web"]
     default_route = cf.default_route
-    assert default_route.build == "just frontend-build"
-    assert default_route.build_dir == "frontend/dist"
+    assert default_route.build_cmd == "just frontend-build"
+    assert default_route.upload_dir == "frontend/dist"
     assert default_route.origin_path == "/web/app"
 
 
-def test_route_build_without_build_dir_fails():
-    with pytest.raises(ValueError, match="build_dir is required when build is set"):
-        CloudFront.model_validate(
+def test_route_upload_dir_without_build():
+    """upload_dir 単独 (外部ビルド) は build_cmd なしの upload 対象になる"""
+    route = Route.model_validate(
+        {
+            "is_default": True,
+            "is_spa": True,
+            "upload_dir": "frontend/dist",
+            "origin_path": "/spa",
+        }
+    )
+    assert route.build is None
+    assert route.upload_dir == "frontend/dist"
+
+
+def test_route_build_requires_dir_and_cmd():
+    """build は dir / cmd とも必須 (どちらか欠けは migration 見落としの温床)"""
+    with pytest.raises(ValueError, match="cmd"):
+        Route.model_validate(
             {
-                "routes": [
-                    {
-                        "is_default": True,
-                        "is_spa": True,
-                        "build": "npm run build",
-                        "origin_path": "/spa",
-                    },
-                ],
+                "is_default": True,
+                "is_spa": True,
+                "build": {"dir": "frontend/dist"},
+                "origin_path": "/spa",
+            }
+        )
+    with pytest.raises(ValueError, match="dir"):
+        Route.model_validate(
+            {
+                "is_default": True,
+                "is_spa": True,
+                "build": {"cmd": "npm run build"},
+                "origin_path": "/spa",
             }
         )
 
 
+def test_route_build_and_upload_dir_exclusive():
+    with pytest.raises(ValueError, match="build と upload_dir は同時に設定できません"):
+        Route.model_validate(
+            {
+                "is_default": True,
+                "is_spa": True,
+                "build": {"dir": "frontend/dist", "cmd": "npm run build"},
+                "upload_dir": "frontend/dist",
+                "origin_path": "/spa",
+            }
+        )
+
+
+def test_route_rejects_legacy_build_dir():
+    """旧 build_dir は upload_dir / build = { dir, cmd } への移行文つきでエラー"""
+    with pytest.raises(ValueError) as excinfo:
+        Route.model_validate(
+            {
+                "is_default": True,
+                "is_spa": True,
+                "build_dir": "frontend/dist",
+                "origin_path": "/spa",
+            }
+        )
+    msg = str(excinfo.value)
+    assert "build_dir は廃止されました" in msg
+    assert 'build = { dir = "frontend/dist", cmd = "just frontend-build" }' in msg
+    assert "upload_dir" in msg
+
+
+def test_route_rejects_legacy_build_str():
+    """旧文字列 build は build = { dir, cmd } への移行文つきでエラー"""
+    with pytest.raises(ValueError) as excinfo:
+        Route.model_validate(
+            {
+                "is_default": True,
+                "is_spa": True,
+                "build": "npm run build",
+                "origin_path": "/spa",
+            }
+        )
+    msg = str(excinfo.value)
+    assert "build の文字列指定は廃止されました" in msg
+    assert "build = { dir =" in msg
+
+
 def test_lambda_route_with_build_fails():
     with pytest.raises(
-        ValueError, match="type = 'lambda' cannot use build or build_dir"
+        ValueError, match="type = 'lambda' cannot use build or upload_dir"
     ):
         Route.model_validate(
             {
                 "type": "lambda",
                 "handler": "wsgi",
                 "path_pattern": "/api/*",
-                "build_dir": "dist",
+                "upload_dir": "dist",
             }
         )
 
@@ -309,7 +375,7 @@ def test_uploadable_routes(use_toml):
     context = Context.from_toml(stage="dev")
     cf = context.cloudfront["web"]
     assert len(cf.uploadable_routes) == 1
-    assert cf.uploadable_routes[0].build_dir == "frontend/dist"
+    assert cf.uploadable_routes[0].upload_dir == "frontend/dist"
 
 
 def test_route_origin_path():
@@ -344,8 +410,8 @@ def test_route_origin_path():
 
 
 @mock_aws
-def test_route_build_dir_origin_path(use_toml):
-    """build_dir route の origin_path が正しく設定される"""
+def test_route_build_origin_path(use_toml):
+    """build route の origin_path が正しく設定される"""
     use_toml("tests/data/toml/cloudfront_spa_build.toml")
     context = Context.from_toml(stage="dev")
     cf = context.cloudfront["web"]
