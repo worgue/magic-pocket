@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.21.0](https://github.com/worgue/magic-pocket/releases/tag/0.21.0) - 2026-08-02
 
 ### Added
 - `pocket resource neon store-url` が保存前に、解決した接続先
