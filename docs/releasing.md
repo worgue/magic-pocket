@@ -18,7 +18,10 @@ build & publish** する。
 1. **version をバンプする** (tag と一致が必須。`release.yml` の "Check tag matches
    package versions" が両 pyproject の version == tag を検証する):
    - `pyproject.toml` の `version`
-   - `packages/magic-pocket-cli/pyproject.toml` の `version` と依存 `magic-pocket>=X.Y.Z`
+   - `packages/magic-pocket-cli/pyproject.toml` の `version` と依存
+     `magic-pocket>=X.Y.Z,<X.(Y+1)` (**上限も同 minor に束縛する**。0.x では minor が
+     breaking の単位のため、上限なしだと cli を version pin した消費者にも lib の
+     破壊的変更がリリース当日に届いて deploy が壊れる)
 2. **`uv.lock` を反映する** (version バンプで差分が出る。`uv lock` か `uv run` で更新)。
 3. **CHANGELOG を確定する**: `[Unreleased]` を
    `## [X.Y.Z](https://github.com/worgue/magic-pocket/releases/tag/X.Y.Z) - YYYY-MM-DD`

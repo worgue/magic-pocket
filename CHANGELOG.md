@@ -4,6 +4,27 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.22.0](https://github.com/worgue/magic-pocket/releases/tag/0.22.0) - 2026-08-03
+
+### Added
+- `pocket resource dsql backup` / `pocket resource dsql backup-status` を追加
+  しました。DSQL には組み込みの自動バックアップ (PITR・スナップショット) が無く、
+  AWS Backup 統合が唯一のバックアップ手段のため、オンデマンドバックアップの開始と
+  job の状態確認を CLI から行えるようにします。両コマンドとも `--watch` で終端
+  状態まで待機できます (`backup` は開始後に確認コマンドの案内も表示)。前提と
+  なる vault (`pocket-backup`) とサービスロール (`forge-pocket-backup-role`、
+  permissions boundary 対応) は初回実行時に冪等に自動作成されます。既存の vault /
+  ロールは `--vault` / `--iam-role-arn` で指定でき、`--retention-days` で recovery
+  point の保持日数を設定できます。`[dsql]` 使用時の必要権限に backup 系 5 Action
+  が追加されています (`docs/permissions/aws.md` 参照)
+
+### Changed
+- magic-pocket-cli の依存 `magic-pocket` を同 minor に束縛しました
+  (`>=0.22.0,<0.23`)。従来は下限のみだったため、cli を version pin している
+  消費者にも lib 側の破壊的変更がリリース当日に届き deploy が壊れる事象が
+  ありました。0.x では minor が breaking の単位のため、これで「cli の pin =
+  lib の pin」になります
+
 ## [0.21.0](https://github.com/worgue/magic-pocket/releases/tag/0.21.0) - 2026-08-02
 
 ### Added
