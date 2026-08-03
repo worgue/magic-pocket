@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import time
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -18,6 +20,20 @@ from pocket_cli.resources.aws.poll import wait_until
 if TYPE_CHECKING:
     from pocket.context import DsqlContext
 
+# AWS Backup の backup job 終端状態。これ以外は進行中として扱う
+BACKUP_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED", "EXPIRED", "PARTIAL"}
+
+# pocket 管理のバックアップ前提リソース。AWS Backup の Default vault /
+# AWSBackupDefaultServiceRole は console 初回操作で作られるもので、API しか
+# 使わないアカウントには存在しないため、pocket 側で冪等に ensure する。
+# ロール名の forge- prefix は codebuild ロールの命名に合わせている
+BACKUP_VAULT_NAME = "pocket-backup"
+BACKUP_ROLE_NAME = "forge-pocket-backup-role"
+_BACKUP_ROLE_POLICIES = (
+    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
+    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
+)
+
 
 class Dsql:
     context: DsqlContext
@@ -25,6 +41,10 @@ class Dsql:
     def __init__(self, context: DsqlContext) -> None:
         self.context = context
         self._client = boto3.client("dsql", region_name=context.region)
+        # DSQL に組み込みの自動バックアップは無く、AWS Backup 統合が唯一の
+        # バックアップ手段のため、オンデマンドバックアップをここで扱う
+        self._backup = boto3.client("backup", region_name=context.region)
+        self._iam = boto3.client("iam", region_name=context.region)
 
     @cached_property
     def cluster(self) -> dict | None:
@@ -158,6 +178,123 @@ class Dsql:
             swallow_not_found=True,
         )
         echo.log("Removed published DSQL endpoint: %s" % name)
+
+    def start_backup(
+        self,
+        vault_name: str | None = None,
+        iam_role_arn: str | None = None,
+        retention_days: int | None = None,
+    ) -> str:
+        """AWS Backup のオンデマンドバックアップを開始し job id を返す。
+
+        vault / ロール省略時は pocket 管理のものを冪等に ensure して使う
+        (明示指定されたものは呼び出し側の管理物とみなし存在確認しない)。
+        AWS Backup の service model は dsql と異なり PascalCase。
+        """
+        if not self.arn:
+            raise ValueError("Cluster not found")
+        if vault_name is None:
+            vault_name = BACKUP_VAULT_NAME
+            self._ensure_backup_vault(vault_name)
+        if iam_role_arn is None:
+            iam_role_arn = self._ensure_backup_role()
+        params: dict = {
+            "BackupVaultName": vault_name,
+            "ResourceArn": self.arn,
+            "IamRoleArn": iam_role_arn,
+        }
+        if retention_days is not None:
+            params["Lifecycle"] = {"DeleteAfterDays": retention_days}
+        res = self._backup.start_backup_job(**params)
+        return res["BackupJobId"]
+
+    def _ensure_backup_vault(self, name: str) -> None:
+        try:
+            self._backup.describe_backup_vault(BackupVaultName=name)
+            return
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "ResourceNotFoundException":
+                raise
+        echo.log("Creating backup vault: %s" % name)
+        self._backup.create_backup_vault(BackupVaultName=name)
+
+    def _ensure_backup_role(self) -> str:
+        """AWS Backup サービスロールを冪等に ensure して ARN を返す。
+
+        codebuild の _ensure_role と同型。boundary 必須のアカウントでも作成
+        できるよう context.permissions_boundary を付与する。
+        """
+        try:
+            return self._iam.get_role(RoleName=BACKUP_ROLE_NAME)["Role"]["Arn"]
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "NoSuchEntity":
+                raise
+        echo.log("Creating AWS Backup service role: %s" % BACKUP_ROLE_NAME)
+        assume_role_policy = json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"Service": "backup.amazonaws.com"},
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
+        )
+        create_kwargs: dict = {
+            "RoleName": BACKUP_ROLE_NAME,
+            "AssumeRolePolicyDocument": assume_role_policy,
+        }
+        if self.context.permissions_boundary:
+            create_kwargs["PermissionsBoundary"] = self.context.permissions_boundary
+        role_arn: str = self._iam.create_role(**create_kwargs)["Role"]["Arn"]
+        for policy_arn in _BACKUP_ROLE_POLICIES:
+            self._iam.attach_role_policy(
+                RoleName=BACKUP_ROLE_NAME, PolicyArn=policy_arn
+            )
+        # IAM ロールの伝播待ち (作成直後の StartBackupJob 失敗を避ける)
+        echo.log("Waiting for IAM role propagation...")
+        time.sleep(10)
+        return role_arn
+
+    def get_backup_job(self, job_id: str) -> dict:
+        return self._backup.describe_backup_job(BackupJobId=job_id)
+
+    def latest_backup_job(self) -> dict | None:
+        """このクラスターを対象にした最新の backup job を返す。
+
+        ListBackupJobs の並び順は保証されていないため CreationDate で選ぶ。
+        """
+        if not self.arn:
+            return None
+        jobs: list[dict] = []
+        paginator = self._backup.get_paginator("list_backup_jobs")
+        for page in paginator.paginate(ByResourceArn=self.arn):
+            jobs.extend(page["BackupJobs"])
+        if not jobs:
+            return None
+        return max(jobs, key=lambda j: j["CreationDate"])
+
+    def wait_backup(self, job_id: str, timeout: int = 3600, interval: int = 15) -> dict:
+        """backup job が終端状態になるまで待機し、最終の job 情報を返す。"""
+        result: dict = {}
+
+        def poll():
+            job = self.get_backup_job(job_id)
+            if job["State"] in BACKUP_TERMINAL_STATES:
+                result.update(job)
+                return True
+            return False
+
+        wait_until(
+            poll,
+            timeout=timeout,
+            interval=interval,
+            start_message="Waiting for backup job to complete",
+            timeout_message=("Backup job did not complete within %s seconds" % timeout),
+        )
+        return result
 
     def _wait_active(self, identifier: str, timeout: int = 600, interval: int = 5):
         def poll():

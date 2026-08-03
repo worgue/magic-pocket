@@ -558,6 +558,9 @@ class DsqlContext(BaseModel):
     # deploy が作成記録としてここへ endpoint を書き込む。空文字なら publish しない
     endpoint_secret_name: str = ""
     endpoint_secret_store: StoreType = "sm"  # noqa: S105 保存先種別であって secret 値ではない
+    # AWS Backup サービスロールを ensure する際に付与する boundary
+    # (sandbox アカウント等、ロール作成に boundary が必須の環境用)
+    permissions_boundary: str | None = None
 
     @classmethod
     def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
@@ -576,6 +579,14 @@ class DsqlContext(BaseModel):
                 pocket_key, naming.DSQL_ENDPOINT, secrets.store
             ),
             endpoint_secret_store=secrets.store,
+            permissions_boundary=(
+                os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN")
+                or (
+                    root.awscontainer.permissions_boundary
+                    if root.awscontainer
+                    else None
+                )
+            ),
         )
 
 

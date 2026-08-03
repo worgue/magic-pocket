@@ -103,8 +103,18 @@ _SES_ACTIONS: list[str] = ["ses:SendEmail", "ses:SendRawEmail"]
 # awscontainer.build.backend == "codebuild" (デフォルト) 時
 _CODEBUILD_ACTIONS: list[str] = ["codebuild:*"]
 
-# [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)
-_DSQL_ACTIONS: list[str] = ["dsql:*"]
+# [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)。
+# backup:* は `pocket resource dsql backup` (オンデマンドバックアップ) 用。
+# vault の ensure に Describe/CreateBackupVault、サービスロールの ensure と
+# 受け渡しは core の iam 系 (CreateRole/AttachRolePolicy/PassRole 等) でカバー
+_DSQL_ACTIONS: list[str] = [
+    "dsql:*",
+    "backup:StartBackupJob",
+    "backup:DescribeBackupJob",
+    "backup:ListBackupJobs",
+    "backup:DescribeBackupVault",
+    "backup:CreateBackupVault",
+]
 
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
 _SCHEDULER_ACTIONS: list[str] = ["scheduler:*"]

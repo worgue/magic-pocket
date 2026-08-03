@@ -438,6 +438,15 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が自動設定されます。
 `set_envs()` の呼び出し時に、IAM 認証トークンが `POCKET_DSQL_TOKEN` に設定されます。
 
+!!! warning "バックアップ"
+    DSQL に組み込みの自動バックアップ（PITR や日次スナップショット）はありません。
+    論理破壊（誤 DELETE 等）に備えるには AWS Backup 経由のバックアップが唯一の
+    手段です。`pocket resource dsql backup` でオンデマンドバックアップを取得できます
+    （[CLI リファレンス](cli.md) 参照。前提となる vault とサービスロールは初回実行時に
+    冪等に自動作成されます）。復元は AWS Backup が常に新規クラスターを
+    作成する形で行われます。定期バックアップが必要な場合は AWS Backup の
+    backup plan を別途設定してください。
+
 !!! info "endpoint の publish（deploy の外から endpoint を引く）"
     DSQL の cluster identifier は AWS 自動生成のため、endpoint
     （`{id}.dsql.{region}.on.aws`）は命名規約から導出できません。このため deploy は

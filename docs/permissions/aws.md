@@ -85,6 +85,7 @@
 | 権限 | 用途 |
 |------|------|
 | `dsql:*` | DSQL クラスターの作成・参照・削除 |
+| `backup:StartBackupJob`, `backup:DescribeBackupJob`, `backup:ListBackupJobs`, `backup:DescribeBackupVault`, `backup:CreateBackupVault` | `pocket resource dsql backup` / `backup-status`（AWS Backup オンデマンドバックアップ。vault は pocket 管理の `pocket-backup` を冪等に ensure。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー） |
 
 endpoint の publish（stored user secret 正準パスへの書き込み・削除）はコア権限の
 Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされます。
@@ -180,6 +181,11 @@ Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされま�
         "ses:*",
         "codebuild:*",
         "dsql:*",
+        "backup:StartBackupJob",
+        "backup:DescribeBackupJob",
+        "backup:ListBackupJobs",
+        "backup:DescribeBackupVault",
+        "backup:CreateBackupVault",
         "scheduler:*",
         "tag:TagResources",
         "tag:UntagResources"

@@ -518,6 +518,23 @@ pocket resource dsql endpoint --stage=dev
 pocket resource dsql endpoint --stage=dev --format=json
 # => {"endpoint": "xxxxx.dsql.ap-northeast-1.on.aws", "region": "ap-northeast-1", "port": 5432}
 
+# オンデマンドバックアップの開始（AWS Backup。DSQL に組み込みの自動バックアップは
+# 無いため、これが唯一のバックアップ手段。--watch で完了まで待機）
+# 前提リソース（vault "pocket-backup" とサービスロール "forge-pocket-backup-role"）は
+# 初回実行時に冪等に自動作成される
+pocket resource dsql backup --stage=dev
+pocket resource dsql backup --stage=dev --watch
+
+# 既存の vault・サービスロールを使う場合や保持日数の指定（指定したものは存在確認しない）
+pocket resource dsql backup --stage=dev --vault=my-vault \
+  --iam-role-arn=arn:aws:iam::123456789012:role/my-backup-role --retention-days=35
+
+# バックアップ job の状態確認（--job-id 省略時はこのクラスターの最新 job。
+# --watch で終端状態まで待機。aws CLI 直接でも可:
+#   aws backup describe-backup-job --backup-job-id <id> --region <region>）
+pocket resource dsql backup-status --stage=dev
+pocket resource dsql backup-status --stage=dev --job-id=<id> --watch
+
 # クラスターの削除（確認プロンプト付き）
 pocket resource dsql destroy --stage=dev
 ```
