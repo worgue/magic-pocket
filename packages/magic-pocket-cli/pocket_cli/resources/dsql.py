@@ -108,7 +108,19 @@ class Dsql:
         }
 
     def deploy_init(self):
-        pass
+        # DSQL は他の DB backend と違い、組み込みの自動バックアップ (PITR /
+        # 日次スナップショット) を一切持たない。deploy が黙って通ると「managed
+        # DB だから守られている」と誤解されたまま、誤削除・論理破壊からの復元
+        # 手段がゼロの状態で本番が動くため、毎 deploy で明示する。
+        # backup 方針を pocket.toml で宣言できるようになったら、宣言済みの
+        # stage では出さない条件付きに切り替える。
+        echo.warning(
+            "DSQL には自動バックアップ (PITR / スナップショット) がありません。"
+        )
+        echo.warning(
+            "  誤削除・論理破壊に備えるには `pocket resource dsql backup` で"
+            "定期的にバックアップを取得してください。"
+        )
 
     def create(self):
         echo.log("Creating DSQL cluster: %s" % self.context.tag_name)

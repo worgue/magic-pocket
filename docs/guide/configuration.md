@@ -526,9 +526,22 @@ dockerfile_path = "pocket.Dockerfile"
 | `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU）。`managed = true` のみ |
 | `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU）。`managed = true` のみ |
 | `snapshot_identifier` | str \| None | None | 初回作成時に復元する snapshot の ID / ARN。`managed = true` のみ |
+| `backup.retention_days` | int | `7` | 自動バックアップ（PITR）の保持日数（1〜35）。`managed = true` のみ |
 | `database` | str \| None | None | DB 名の上書き。未指定なら `{stage}_{project}`（他リソース名と同じ順序）。`managed = true` のみ |
 | `secret_arn` | str \| None | None | 既存 RDS の Secrets Manager ARN。`managed = false` 時必須 |
 | `security_group_id` | str \| None | None | 既存 RDS の SG ID。`managed = false` 時必須 |
+
+!!! info "自動バックアップ（PITR）の保持期間"
+    Aurora の自動バックアップは常時有効で、保持期間内の任意の時点に復元（PITR）できます。pocket は保持日数を **7 日** で作成します（AWS 既定は 1 日）。1 日だと「PITR があるからいつでも戻せる」という理解と実態（24 時間しか遡れない）が乖離するためです。
+
+    ```toml
+    [rds.backup]
+    retention_days = 14
+    ```
+
+    保持日数はクラスターのネイティブ属性なので、追加リソースも追加権限も不要です。Aurora のバックアップストレージはクラスター容量までは無課金のため、通常は増分コストも生じません。既存クラスターの値が設定と異なる場合は、次の deploy で `ModifyDBCluster`（`ApplyImmediately`）により収束します。
+
+    35 日を超える長期保持（週次・1 年など）は PITR では実現できず、AWS Backup の backup plan が別途必要です。
 
 !!! info "DATABASE_URL の設定"
     `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。

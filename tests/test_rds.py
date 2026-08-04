@@ -5,6 +5,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.rds import Rds
+from pydantic import ValidationError
 
 from pocket.context import Context
 from pocket.settings import Rds as RdsSettings
@@ -822,3 +823,99 @@ def test_endpoint_cli_json_outputs_to_stdout(use_toml, monkeypatch):
         "database": "dev_testprj",
         "username": "postgres",
     }
+
+
+def _rds_settings_data(rds_extra: dict | None = None) -> dict:
+    data: dict = {
+        "stage": "dev",
+        "general": {
+            "region": "ap-northeast-1",
+            "project_name": "testprj",
+            "stages": ["dev"],
+        },
+        "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}},
+        "awscontainer": {
+            "dockerfile_path": "Dockerfile",
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        },
+    }
+    if rds_extra:
+        data["rds"].update(rds_extra)
+    return data
+
+
+def test_rds_backup_retention_defaults_to_7():
+    """AWS 既定の 1 日ではなく pocket 既定の 7 日が settings/context に載る"""
+    settings = Settings.model_validate(_rds_settings_data())
+    assert settings.rds is not None
+    assert settings.rds.backup.retention_days == 7
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.backup_retention_days == 7
+
+
+def test_rds_backup_retention_override():
+    """[rds.backup] retention_days が settings→context へ伝搬する"""
+    settings = Settings.model_validate(
+        _rds_settings_data({"backup": {"retention_days": 30}})
+    )
+    assert settings.rds is not None
+    assert settings.rds.backup.retention_days == 30
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.backup_retention_days == 30
+
+
+@pytest.mark.parametrize("days", [0, 36])
+def test_rds_backup_retention_rejects_out_of_range(days):
+    """PITR の保持日数は 1..35 (35 日超は AWS Backup 側の責務)"""
+    with pytest.raises(ValidationError):
+        Settings.model_validate(
+            _rds_settings_data({"backup": {"retention_days": days}})
+        )
+
+
+def test_rds_backup_forbidden_when_unmanaged():
+    """managed = false では backup 設定を持てない (既存クラスタ側の管理物)"""
+    with pytest.raises(ValidationError, match="backup"):
+        RdsSettings.model_validate(
+            {
+                "managed": False,
+                "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:1:secret:x",
+                "security_group_id": "sg-123",
+                "backup": {"retention_days": 30},
+            }
+        )
+
+
+@mock_aws
+def test_rds_create_sets_backup_retention(use_toml):
+    """create したクラスタに BackupRetentionPeriod が設定される"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.backup_retention_days = 14
+
+    rds = _create_vpc_and_cluster(context)
+    assert (rds.cluster or {})["BackupRetentionPeriod"] == 14
+    assert rds.status == "COMPLETED"
+
+
+@mock_aws
+def test_rds_backup_retention_drift_converges(use_toml):
+    """保持日数を変えると REQUIRE_UPDATE になり、update() で収束する"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    _create_vpc_and_cluster(context)  # 既定 7 日
+    assert Rds(context.rds).status == "COMPLETED"
+
+    context.rds.backup_retention_days = 21
+    assert Rds(context.rds).status == "REQUIRE_UPDATE"
+
+    Rds(context.rds).update()
+    after = Rds(context.rds)
+    assert (after.cluster or {})["BackupRetentionPeriod"] == 21
+    assert after.status == "COMPLETED"

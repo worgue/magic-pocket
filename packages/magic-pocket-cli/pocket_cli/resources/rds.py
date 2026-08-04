@@ -173,6 +173,8 @@ class Rds:
         if cluster_status == "available":
             if not self._scaling_config_matches():
                 return "REQUIRE_UPDATE"
+            if not self._backup_retention_matches():
+                return "REQUIRE_UPDATE"
             if not self._password_state_matches():
                 return "REQUIRE_UPDATE"
             return "COMPLETED"
@@ -204,6 +206,14 @@ class Rds:
         return (
             config.get("MinCapacity") == self.context.min_capacity
             and config.get("MaxCapacity") == self.context.max_capacity
+        )
+
+    def _backup_retention_matches(self) -> bool:
+        if not self.cluster:
+            return False
+        return (
+            self.cluster.get("BackupRetentionPeriod")
+            == self.context.backup_retention_days
         )
 
     def _actual_is_managed(self) -> bool:
@@ -372,6 +382,7 @@ class Rds:
                     "MinCapacity": self.context.min_capacity,
                     "MaxCapacity": self.context.max_capacity,
                 },
+                BackupRetentionPeriod=self.context.backup_retention_days,
                 Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
             )
             return True, None
@@ -395,6 +406,7 @@ class Rds:
                 "MinCapacity": self.context.min_capacity,
                 "MaxCapacity": self.context.max_capacity,
             },
+            BackupRetentionPeriod=self.context.backup_retention_days,
             Tags=[{"Key": "Name", "Value": self.context.cluster_identifier}],
             **password_kwargs,
         )
@@ -540,19 +552,29 @@ class Rds:
 
     def update(self):
         self.clear_cache()
-        scaling_changed = not self._scaling_config_matches()
-        if scaling_changed:
-            echo.log("Updating RDS scaling configuration...")
+        # 変更点を 1 回の modify にまとめる。連続で modify_db_cluster を撃つと
+        # 直前の変更で cluster が "modifying" のまま弾かれるため。
+        # ApplyImmediately を付けないと保持日数の変更が次の maintenance window
+        # まで保留され、その間 drift 判定が解消せず毎 deploy で modify を
+        # 撃ち続けることになる
+        modify_kwargs: dict = {}
+        if not self._scaling_config_matches():
+            modify_kwargs["ServerlessV2ScalingConfiguration"] = {
+                "MinCapacity": self.context.min_capacity,
+                "MaxCapacity": self.context.max_capacity,
+            }
+        if not self._backup_retention_matches():
+            modify_kwargs["BackupRetentionPeriod"] = self.context.backup_retention_days
+        if modify_kwargs:
+            echo.log("Updating RDS cluster configuration...")
             self._rds_client.modify_db_cluster(
                 DBClusterIdentifier=self.context.cluster_identifier,
-                ServerlessV2ScalingConfiguration={
-                    "MinCapacity": self.context.min_capacity,
-                    "MaxCapacity": self.context.max_capacity,
-                },
+                ApplyImmediately=True,
+                **modify_kwargs,
             )
-            echo.success("RDS scaling configuration updated.")
+            echo.success("RDS cluster configuration updated.")
         if not self._password_state_matches():
-            if scaling_changed:
+            if modify_kwargs:
                 self._wait_cluster_available(timeout=600)
             self._migrate_password()
 

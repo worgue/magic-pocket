@@ -4,6 +4,26 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- `[rds.backup] retention_days` を追加しました (1〜35、既定 **7 日**)。Aurora の
+  自動バックアップ (PITR) の保持日数で、クラスターのネイティブ属性のため追加
+  リソース・追加権限は不要です。設定と異なる既存クラスターは次の deploy で
+  `ModifyDBCluster` (`ApplyImmediately`) により収束します
+- `[dsql]` を設定した stage の deploy で、DSQL に自動バックアップ (PITR /
+  スナップショット) が無いことを警告するようにしました。他の DB backend と
+  違い黙って通ると「managed DB だから守られている」と誤解されたまま、誤削除・
+  論理破壊からの復元手段がゼロの状態で運用されるためです
+
+### Changed
+- **RDS の自動バックアップ保持日数の既定が 1 日 (AWS 既定) から 7 日に変わります**。
+  1 日だと「PITR があるからいつでも戻せる」という理解と実態 (24 時間しか遡れない)
+  が乖離するためです。既存クラスターも次の deploy で 7 日へ収束します (保持期間が
+  延びる方向のみ)。Aurora のバックアップストレージはクラスター容量までは無課金の
+  ため、通常は増分コストは生じません。従来の挙動を保つ場合は
+  `[rds.backup] retention_days = 1` を明示してください
+
 ## [0.22.0](https://github.com/worgue/magic-pocket/releases/tag/0.22.0) - 2026-08-03
 
 ### Added

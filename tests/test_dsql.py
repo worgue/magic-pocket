@@ -505,3 +505,16 @@ def test_endpoint_cli_json_cluster_not_found_exits_nonzero(monkeypatch):
     result = runner.invoke(dsql_cli.dsql, ["endpoint", "--stage", "dev"])
     assert result.exit_code == 0, result.output
     assert result.stdout == ""
+
+
+def test_deploy_init_warns_about_missing_automatic_backup(capsys):
+    """DSQL には自動バックアップが無いため、deploy で毎回明示する。
+
+    他の DB backend (neon / tidb / rds) と違い黙って通ると「managed DB だから
+    守られている」と誤解されるため、警告と次の一手を出すことを固定する。
+    """
+    dsql, _ = _make_dsql()
+    dsql.deploy_init()
+    err = capsys.readouterr().err
+    assert "自動バックアップ" in err
+    assert "pocket resource dsql backup" in err

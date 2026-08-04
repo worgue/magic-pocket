@@ -510,10 +510,23 @@ class Dsql(BaseModel):
     deletion_protection: bool = False
 
 
+class RdsBackup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Aurora の自動バックアップ (PITR) 保持日数。AWS 既定は 1 日だが、pocket は
+    # 7 日を既定にする。1 日だと「PITR があるからいつでも戻せる」という理解と
+    # 実態 (24 時間しか遡れない) が乖離するため。cluster のネイティブ属性で
+    # 追加リソース・追加権限は不要、Aurora のバックアップストレージは
+    # cluster 容量までは無課金なので通常は増分コストも生じない。
+    # 35 日を超える長期保持は AWS Backup の backup plan 側の責務。
+    retention_days: Annotated[int, Field(ge=1, le=35)] = 7
+
+
 class Rds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     managed: bool = True
+    backup: RdsBackup = RdsBackup()
     vpc: Vpc | None = None  # resolve_vpc で解決
     min_capacity: float = 0.5
     max_capacity: float = 2.0
@@ -546,6 +559,7 @@ class Rds(BaseModel):
             "max_capacity (非デフォルト)": self.max_capacity != 2.0,
             "snapshot_identifier": self.snapshot_identifier is not None,
             "database": self.database is not None,
+            "backup (非デフォルト)": self.backup != RdsBackup(),
         }
         has_managed_custom = any(managed_fields.values())
 

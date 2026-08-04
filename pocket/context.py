@@ -596,6 +596,9 @@ class RdsContext(BaseModel):
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
+    # 自動バックアップ (PITR) の保持日数。settings 既定は 7 日 (AWS 既定の 1 日
+    # ではない)。managed = false では参照されない
+    backup_retention_days: int = 7
     region: str
     cluster_identifier: str = ""
     instance_identifier: str = ""
@@ -644,6 +647,7 @@ class RdsContext(BaseModel):
             min_capacity=rds.min_capacity,
             max_capacity=rds.max_capacity,
             snapshot_identifier=rds.snapshot_identifier,
+            backup_retention_days=rds.backup.retention_days,
             region=root.region,
             cluster_identifier=f"{resource_prefix}aurora",
             instance_identifier=f"{resource_prefix}aurora-1",
