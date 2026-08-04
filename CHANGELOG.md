@@ -18,6 +18,14 @@
   365 日後に削除」で、`cron` / `timezone` / `cold_storage_after_days` /
   `delete_after_days` で変更できます。`pocket destroy` は plan と selection を
   削除しますが、vault と recovery point (バックアップデータ) は削除しません
+- `pocket resource dsql restore` / `restore-status` を追加しました。recovery point
+  (`--latest` で最新) から復元し、現用クラスターの切り替え (Name タグの付け替えと
+  SSM の endpoint 更新) まで行います。復元前に現用クラスターのバックアップを取るか
+  確認します (`--skip-backup` / `--yes`)。AWS Backup の復元は常に**新しい
+  クラスター**を作るため、切り替え後は `pocket deploy` が必要です (Lambda の
+  `POCKET_DSQL_ENDPOINT` と `dsql:DbConnectAdmin` の対象 ARN が CloudFormation
+  管理のため)。旧クラスターは戻り先として残します (明示的に削除するまで課金され
+  続けます)。どちらもコマンドが警告として案内します
 - `[dsql]` を設定していて `[dsql.backup]` の宣言が無い stage の deploy で、
   自動バックアップが無いことを警告するようにしました。他の DB backend と
   違い黙って通ると「managed DB だから守られている」と誤解されたまま、誤削除・

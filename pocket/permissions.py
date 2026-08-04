@@ -126,6 +126,11 @@ _DSQL_ACTIONS: list[str] = [
     "backup:GetBackupSelection",
     "backup:ListBackupSelections",
     "backup:DeleteBackupSelection",
+    # `pocket resource dsql restore` 用 (復元は新クラスターを作るだけで、
+    # 既存クラスターも recovery point も破壊しない)
+    "backup:StartRestoreJob",
+    "backup:DescribeRestoreJob",
+    "backup:ListRecoveryPointsByResource",
 ]
 
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)

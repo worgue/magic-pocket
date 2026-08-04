@@ -22,6 +22,8 @@ if TYPE_CHECKING:
 
 # AWS Backup の backup job 終端状態。これ以外は進行中として扱う
 BACKUP_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED", "EXPIRED", "PARTIAL"}
+# restore job の終端状態
+RESTORE_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED"}
 
 # pocket 管理のバックアップ前提リソース。AWS Backup の Default vault /
 # AWSBackupDefaultServiceRole は console 初回操作で作られるもので、API しか
@@ -422,6 +424,94 @@ class Dsql:
         echo.log("Waiting for IAM role propagation...")
         time.sleep(10)
         return role_arn
+
+    def latest_recovery_point(self) -> dict | None:
+        """現用クラスターの最新 recovery point (完了済み) を返す。"""
+        if not self.arn:
+            return None
+        points: list[dict] = []
+        paginator = self._backup.get_paginator("list_recovery_points_by_resource")
+        for page in paginator.paginate(ResourceArn=self.arn):
+            points.extend(page["RecoveryPoints"])
+        completed = [p for p in points if p.get("Status") == "COMPLETED"]
+        if not completed:
+            return None
+        return max(completed, key=lambda p: p["CreationDate"])
+
+    def start_restore(
+        self, recovery_point_arn: str, iam_role_arn: str | None = None
+    ) -> str:
+        """recovery point から復元を開始し restore job id を返す。
+
+        AWS Backup の DSQL 復元は常に**新しいクラスター**を作る (既存を上書き
+        しない)。削除保護は指定しないと AWS 既定で ON になるため、pocket.toml の
+        値を明示して現用クラスターと揃える。
+        """
+        res = self._backup.start_restore_job(
+            RecoveryPointArn=recovery_point_arn,
+            IamRoleArn=iam_role_arn or self._ensure_backup_role(),
+            Metadata={
+                "regionalConfig": json.dumps(
+                    [
+                        {
+                            "region": self.context.region,
+                            "isDeletionProtectionEnabled": (
+                                self.context.deletion_protection
+                            ),
+                        }
+                    ]
+                )
+            },
+        )
+        return res["RestoreJobId"]
+
+    def get_restore_job(self, job_id: str) -> dict:
+        return self._backup.describe_restore_job(RestoreJobId=job_id)
+
+    def wait_restore(
+        self, job_id: str, timeout: int = 3600, interval: int = 15
+    ) -> dict:
+        result: dict = {}
+
+        def poll():
+            job = self.get_restore_job(job_id)
+            if job["Status"] in RESTORE_TERMINAL_STATES:
+                result.update(job)
+                return True
+            return False
+
+        wait_until(
+            poll,
+            timeout=timeout,
+            interval=interval,
+            start_message="Waiting for restore job to complete",
+            timeout_message="Restore job did not complete within %s seconds" % timeout,
+        )
+        return result
+
+    def switch_to_cluster(self, new_arn: str) -> None:
+        """Name タグを復元先クラスターへ付け替える (現用クラスターの切り替え)。
+
+        pocket は Name タグでクラスターを探すため、同じタグを持つクラスターが
+        2 つあると deploy がどちらを掴むか不定になる。先に旧クラスターの Name を
+        退避名へ書き換えてから新クラスターに付けることで、重複する瞬間を作らない。
+        旧クラスターは削除しない (復元結果が期待どおりでなかったときの戻り先)。
+        冪等: 既に切り替え済みなら旧 = 新となり付け替えは起きない。
+        """
+        old_arn = self.arn
+        old_identifier = self.identifier
+        if old_arn and old_arn != new_arn:
+            self._client.tag_resource(
+                resourceArn=old_arn,
+                tags={
+                    "Name": "%s-replaced-%s" % (self.context.tag_name, old_identifier)
+                },
+            )
+            echo.log("Renamed previous cluster: %s" % old_identifier)
+        self._client.tag_resource(
+            resourceArn=new_arn, tags={"Name": self.context.tag_name}
+        )
+        self.clear_cache()
 
     def get_backup_job(self, job_id: str) -> dict:
         return self._backup.describe_backup_job(BackupJobId=job_id)

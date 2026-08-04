@@ -163,6 +163,112 @@ def _finish_backup_watch(r: Dsql, job_id: str):
 
 @dsql.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.argument("recovery_point_arn", required=False)
+@click.option(
+    "--latest", is_flag=True, help="このクラスターの最新バックアップから復元する"
+)
+@click.option("--yes", is_flag=True, help="確認プロンプトを自動承認する")
+@click.option(
+    "--skip-backup", is_flag=True, help="復元前に現用クラスターのバックアップを取らない"
+)
+def restore(stage, recovery_point_arn, latest, yes, skip_backup):
+    """バックアップから復元し、現用クラスターを切り替える"""
+    r = _get_dsql_resource(stage)
+    recovery_point_arn = _resolve_recovery_point(r, recovery_point_arn, latest)
+    echo.info("Restore from: %s" % recovery_point_arn)
+    if r.identifier:
+        echo.info("Current cluster: %s" % r.identifier)
+
+    if not skip_backup and r.arn:
+        # 復元結果が期待どおりでなかったときの唯一の戻り先になるため、
+        # 切り替え前に現用クラスターを固めておく
+        if yes or click.confirm("Backup current cluster?", default=True):
+            job_id = r.start_backup()
+            echo.log("Backup job started: %s" % job_id)
+            job = r.wait_backup(job_id)
+            if job["State"] != "COMPLETED":
+                raise click.ClickException(
+                    "現用クラスターのバックアップが %s で終了しました: %s"
+                    % (job["State"], job.get("StatusMessage", "(no message)"))
+                )
+            echo.success("Current cluster backed up.")
+
+    job_id = r.start_restore(recovery_point_arn)
+    echo.success("Restore job started: %s" % job_id)
+    _finish_restore(r, stage, job_id)
+
+
+@dsql.command("restore-status")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option("--job-id", required=True, help="restore job ID")
+def restore_status(stage, job_id):
+    """復元 job の状態確認（完了していれば切り替えを完了させる）"""
+    r = _get_dsql_resource(stage)
+    job = r.get_restore_job(job_id)
+    echo.info("Job ID: %s" % job_id)
+    echo.info("Status: %s" % job["Status"])
+    if job.get("StatusMessage"):
+        echo.info("Message: %s" % job["StatusMessage"])
+    _finish_restore(r, stage, job_id)
+
+
+def _resolve_recovery_point(r: Dsql, recovery_point_arn, latest) -> str:
+    if recovery_point_arn and latest:
+        raise click.ClickException(
+            "recovery point の指定と --latest は同時に使えません"
+        )
+    if recovery_point_arn:
+        return recovery_point_arn
+    if not latest:
+        raise click.ClickException(
+            "復元元の recovery point ARN を指定するか --latest を付けてください"
+        )
+    point = r.latest_recovery_point()
+    if point is None:
+        raise click.ClickException(
+            "このクラスターの完了済みバックアップが見つかりません"
+            " (クラスターが存在しない場合は recovery point ARN を直接指定してください)"
+        )
+    echo.info("Latest recovery point: %s" % point["CreationDate"])
+    return point["RecoveryPointArn"]
+
+
+def _finish_restore(r: Dsql, stage: str, job_id: str):
+    """restore job の完了を待ち、現用クラスターの切り替えまで行う。
+
+    切り替え (Name タグの付け替えと endpoint の publish) は冪等なので、待機が
+    中断された後に restore-status から再実行しても安全。
+    """
+    job = r.wait_restore(job_id)
+    if job["Status"] != "COMPLETED":
+        raise click.ClickException(
+            "Restore job finished with status %s: %s"
+            % (job["Status"], job.get("StatusMessage", "(no message)"))
+        )
+    new_arn = job.get("CreatedResourceArn")
+    if not new_arn:
+        raise click.ClickException(
+            "restore job は完了しましたが復元先 ARN を取得できませんでした: %s" % job_id
+        )
+    previous_identifier = r.identifier
+    r.switch_to_cluster(new_arn)
+    r.publish_endpoint()
+    echo.success("Restored cluster is now current: %s" % r.identifier)
+    echo.success("Endpoint: %s" % r.endpoint)
+    echo.warning(
+        "まだアプリは切り替わっていません。`pocket deploy --stage=%s` を実行するまで、"
+        "Lambda は旧クラスターに書き込み続けます"
+        " (endpoint と IAM ポリシーが CloudFormation 管理のため)。" % stage
+    )
+    if previous_identifier and previous_identifier != r.identifier:
+        echo.warning(
+            "旧クラスター %s は削除していません。明示的に削除するまで課金され続けます"
+            " (戻り先として残しています)。" % previous_identifier
+        )
+
+
+@dsql.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def destroy(stage):
     """確認付き削除"""
     r = _get_dsql_resource(stage)

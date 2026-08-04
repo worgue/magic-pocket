@@ -765,3 +765,164 @@ def test_delete_removes_plan_but_not_recovery_points(monkeypatch):
     # vault / recovery point の削除 API は登録していない = 呼ばれていない
     backup_stub.assert_no_pending_responses()
     dsql_stub.assert_no_pending_responses()
+
+
+def test_switch_to_cluster_renames_old_before_tagging_new():
+    """Name タグが重複する瞬間を作らない (旧を退避名にしてから新に付ける)。
+
+    重複すると cluster 探索がどちらを返すか不定になり、deploy が旧クラスターを
+    掴む事故になるため、順序を固定する。
+    """
+    dsql, stubber = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("old123")
+    new_arn = "arn:aws:dsql:us-east-1:123456789012:cluster/new456"
+    stubber.add_response(
+        "tag_resource",
+        {},
+        {"resourceArn": ARN, "tags": {"Name": "%s-replaced-old123" % TAG_NAME}},
+    )
+    stubber.add_response(
+        "tag_resource", {}, {"resourceArn": new_arn, "tags": {"Name": TAG_NAME}}
+    )
+    with stubber:
+        dsql.switch_to_cluster(new_arn)
+    stubber.assert_no_pending_responses()
+
+
+def test_switch_to_cluster_is_idempotent():
+    """既に切り替え済み (旧 = 新) なら退避リネームをしない"""
+    dsql, stubber = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    stubber.add_response(
+        "tag_resource", {}, {"resourceArn": ARN, "tags": {"Name": TAG_NAME}}
+    )
+    with stubber:
+        dsql.switch_to_cluster(ARN)
+    stubber.assert_no_pending_responses()
+
+
+def test_start_restore_passes_deletion_protection_from_settings(monkeypatch):
+    """復元先の削除保護は AWS 既定 (ON) ではなく pocket.toml の値に合わせる"""
+    context = DsqlContext(region=REGION, tag_name=TAG_NAME, deletion_protection=False)
+    dsql = Dsql(context)
+    monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
+    rp_arn = "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-1"
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "start_restore_job",
+        {"RestoreJobId": "restore-1"},
+        {
+            "RecoveryPointArn": rp_arn,
+            "IamRoleArn": ROLE_ARN,
+            "Metadata": {
+                "regionalConfig": json.dumps(
+                    [{"region": REGION, "isDeletionProtectionEnabled": False}]
+                )
+            },
+        },
+    )
+    with stubber:
+        assert dsql.start_restore(rp_arn) == "restore-1"
+    stubber.assert_no_pending_responses()
+
+
+def test_latest_recovery_point_ignores_incomplete():
+    """未完了の recovery point は復元候補にしない"""
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "list_recovery_points_by_resource",
+        {
+            "RecoveryPoints": [
+                {
+                    "RecoveryPointArn": "arn:aws:backup:us-east-1:1:recovery-point:old",
+                    "Status": "COMPLETED",
+                    "CreationDate": datetime(2026, 8, 1),
+                },
+                {
+                    "RecoveryPointArn": "arn:aws:backup:us-east-1:1:recovery-point:new",
+                    "Status": "PARTIAL",
+                    "CreationDate": datetime(2026, 8, 3),
+                },
+            ]
+        },
+        {"ResourceArn": ARN},
+    )
+    with stubber:
+        point = dsql.latest_recovery_point()
+    assert point is not None
+    assert point["RecoveryPointArn"].endswith(":old")
+
+
+def test_restore_cli_switches_and_warns(monkeypatch):
+    """復元完了後に切り替え、deploy 未実施と旧クラスター課金を警告する"""
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    dsql, dsql_stub = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("old123")
+    new_arn = "arn:aws:dsql:us-east-1:123456789012:cluster/new456"
+    rp_arn = "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-1"
+    monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
+    monkeypatch.setattr(Dsql, "publish_endpoint", lambda self: None)
+
+    backup_stub = Stubber(dsql._backup)
+    backup_stub.add_response("start_restore_job", {"RestoreJobId": "restore-1"})
+    backup_stub.add_response(
+        "describe_restore_job",
+        {
+            "RestoreJobId": "restore-1",
+            "Status": "COMPLETED",
+            "CreatedResourceArn": new_arn,
+        },
+        {"RestoreJobId": "restore-1"},
+    )
+    dsql_stub.add_response(
+        "tag_resource",
+        {},
+        {"resourceArn": ARN, "tags": {"Name": "%s-replaced-old123" % TAG_NAME}},
+    )
+    dsql_stub.add_response(
+        "tag_resource", {}, {"resourceArn": new_arn, "tags": {"Name": TAG_NAME}}
+    )
+    # 切り替え後の cluster 解決 (新クラスターを返す)
+    dsql_stub.add_response(
+        "list_clusters", {"clusters": [{"identifier": "new456", "arn": new_arn}]}
+    )
+    dsql_stub.add_response(
+        "get_cluster",
+        {
+            "identifier": "new456",
+            "arn": new_arn,
+            "status": "ACTIVE",
+            "creationTime": CREATED,
+            "deletionProtectionEnabled": False,
+        },
+        {"identifier": "new456"},
+    )
+    dsql_stub.add_response(
+        "list_tags_for_resource", {"tags": {"Name": TAG_NAME}}, {"resourceArn": new_arn}
+    )
+    monkeypatch.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+    runner = CliRunner()
+    with backup_stub, dsql_stub:
+        result = runner.invoke(
+            dsql_cli.dsql,
+            ["restore", "--stage", "dev", rp_arn, "--skip-backup"],
+        )
+    assert result.exit_code == 0, result.output
+    err = result.stderr.replace("\n", "")
+    assert "pocket deploy" in err
+    assert "旧クラスター" in err and "課金" in err
+    backup_stub.assert_no_pending_responses()
+    dsql_stub.assert_no_pending_responses()
+
+
+def test_restore_cli_requires_source():
+    """recovery point 未指定かつ --latest なしはエラー"""
+    dsql, _ = _make_dsql()
+    runner = CliRunner()
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+        result = runner.invoke(dsql_cli.dsql, ["restore", "--stage", "dev"])
+    assert result.exit_code == 1
+    assert "--latest" in result.stderr

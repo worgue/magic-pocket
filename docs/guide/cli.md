@@ -535,9 +535,25 @@ pocket resource dsql backup --stage=dev --vault=my-vault \
 pocket resource dsql backup-status --stage=dev
 pocket resource dsql backup-status --stage=dev --job-id=<id> --watch
 
+# バックアップからの復元（新しいクラスターを作成して現用に切り替える）
+# 復元前に現用クラスターのバックアップを取るか確認する（--skip-backup で省略、
+# --yes で自動承認）。restore job の完了まで待機する
+pocket resource dsql restore --stage=dev --latest
+pocket resource dsql restore --stage=dev <recovery-point-arn>
+
+# 待機が中断された場合に、切り替えを再開・完了させる（冪等）
+pocket resource dsql restore-status --stage=dev --job-id=<id>
+
 # クラスターの削除（確認プロンプト付き）
 pocket resource dsql destroy --stage=dev
 ```
+
+!!! warning "復元後は deploy が必要です"
+    復元は常に**新しいクラスター**を作成します（AWS Backup は既存クラスターを上書きしません）。`restore` は Name タグの付け替えと SSM の endpoint 更新まで行いますが、**Lambda の `POCKET_DSQL_ENDPOINT` と `dsql:DbConnectAdmin` の対象 ARN は CloudFormation 管理**のため、`pocket deploy` を実行するまでアプリは旧クラスターに書き込み続けます。
+
+    旧クラスターは削除しません（復元結果が期待どおりでなかったときの戻り先）。Name タグを `<tag_name>-replaced-<identifier>` へ退避するだけなので、**明示的に削除するまで課金され続けます**。
+
+    マルチリージョンクラスターの復元には witness / peer リージョンの指定が必要で、pocket は対応していません（AWS Backup のコンソールまたは CLI を使用してください）。
 
 ### rds
 
