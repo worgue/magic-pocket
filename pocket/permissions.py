@@ -114,6 +114,10 @@ _DSQL_ACTIONS: list[str] = [
     "backup:ListBackupJobs",
     "backup:DescribeBackupVault",
     "backup:CreateBackupVault",
+    # CreateBackupVault の必須付随権限 (Resource は * 固定)。これが無いと
+    # pocket-backup vault の初回作成が AccessDenied になる
+    # https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html
+    "backup-storage:MountCapsule",
     # [dsql.backup] の backup plan / selection 管理用。バックアップ「設定」は
     # 作成・更新・削除できるが、バックアップ「データ」を消す権限
     # (DeleteBackupVault / DeleteRecoveryPoint) は意図的に含めない

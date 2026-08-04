@@ -85,7 +85,7 @@
 | 権限 | 用途 |
 |------|------|
 | `dsql:*` | DSQL クラスターの作成・参照・削除 |
-| `backup:StartBackupJob`, `backup:DescribeBackupJob`, `backup:ListBackupJobs`, `backup:DescribeBackupVault`, `backup:CreateBackupVault` | `pocket resource dsql backup` / `backup-status`（AWS Backup オンデマンドバックアップ。vault は pocket 管理の `pocket-backup` を冪等に ensure。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー） |
+| `backup:StartBackupJob`, `backup:DescribeBackupJob`, `backup:ListBackupJobs`, `backup:DescribeBackupVault`, `backup:CreateBackupVault`, `backup-storage:MountCapsule` | `pocket resource dsql backup` / `backup-status`（AWS Backup オンデマンドバックアップ。vault は pocket 管理の `pocket-backup` を冪等に ensure。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー）。`backup-storage:MountCapsule` は [`CreateBackupVault` の必須付随権限](https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html)で、無いと vault の初回作成が AccessDenied になります |
 | `backup:CreateBackupPlan`, `backup:UpdateBackupPlan`, `backup:GetBackupPlan`, `backup:ListBackupPlans`, `backup:DeleteBackupPlan`, `backup:CreateBackupSelection`, `backup:GetBackupSelection`, `backup:ListBackupSelections`, `backup:DeleteBackupSelection` | `[dsql.backup]`（定期バックアップの backup plan / selection の provision と destroy）。バックアップ**データ**を削除する権限（`DeleteBackupVault` / `DeleteRecoveryPoint`）は意図的に含めていません |
 | `backup:StartRestoreJob`, `backup:DescribeRestoreJob`, `backup:ListRecoveryPointsByResource` | `pocket resource dsql restore` / `restore-status`（復元は新しいクラスターを作るのみで、既存クラスターも recovery point も破壊しません） |
 
@@ -188,6 +188,7 @@ Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされま�
         "backup:ListBackupJobs",
         "backup:DescribeBackupVault",
         "backup:CreateBackupVault",
+        "backup-storage:MountCapsule",
         "backup:CreateBackupPlan",
         "backup:UpdateBackupPlan",
         "backup:GetBackupPlan",
