@@ -434,18 +434,53 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `deletion_protection` | bool | `false` | 削除保護の有効化 |
+| `backup` | table \| None | None | 定期バックアップ設定（後述）。未宣言なら作成しない |
+
+!!! tip "stage ごとに値を変える"
+    stage 名で挙動が変わるデフォルトは持たせていません（`prod` という名前に特別な意味を与えないため）。stage ごとに変えたい場合は stage override で明示してください。
+
+    ```toml
+    [dsql]
+    # dev はこのまま
+
+    [prod.dsql]
+    deletion_protection = true
+    ```
 
 Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が自動設定されます。
 `set_envs()` の呼び出し時に、IAM 認証トークンが `POCKET_DSQL_TOKEN` に設定されます。
 
-!!! warning "バックアップ"
-    DSQL に組み込みの自動バックアップ（PITR や日次スナップショット）はありません。
-    論理破壊（誤 DELETE 等）に備えるには AWS Backup 経由のバックアップが唯一の
-    手段です。`pocket resource dsql backup` でオンデマンドバックアップを取得できます
-    （[CLI リファレンス](cli.md) 参照。前提となる vault とサービスロールは初回実行時に
-    冪等に自動作成されます）。復元は AWS Backup が常に新規クラスターを
-    作成する形で行われます。定期バックアップが必要な場合は AWS Backup の
-    backup plan を別途設定してください。
+### 定期バックアップ（`[dsql.backup]`）
+
+DSQL に組み込みの自動バックアップ（PITR や日次スナップショット）はありません。何も設定しなければ、誤削除・論理破壊からの復元手段はゼロです（宣言が無い stage では deploy が毎回警告します）。`[dsql.backup]` を宣言すると、deploy が AWS Backup の vault・サービスロール・backup plan・selection を冪等に provision します。
+
+```toml
+[dsql.backup]
+cron = "0 3 * * ? *"          # 毎日 3:00
+timezone = "Asia/Tokyo"        # 日本時間で回す場合
+cold_storage_after_days = 35   # 35 日はすぐ取り出せる、その後 cold storage へ
+delete_after_days = 365        # 365 日で削除
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `cron` | str | `"0 3 * * ? *"` | 実行スケジュール。`[scheduler]` と同じ表記（`cron(...)` は pocket が付けます） |
+| `timezone` | str | `"UTC"` | `cron` を解釈するタイムゾーン（AWS 既定に合わせて UTC） |
+| `cold_storage_after_days` | int | `35` | cold storage（Glacier 相当）へ移動するまでの日数。`0` で移動しない |
+| `delete_after_days` | int | `365` | recovery point を削除するまでの日数 |
+
+!!! info "保存先は backup vault（S3 バケットではありません）"
+    AWS Backup の保存先は AWS 管理の **backup vault**（pocket 管理の `pocket-backup`）で、任意の S3 バケットを保存先に指定することはできません。ただし vault のライフサイクルが「即時取り出し可能な warm → cold storage → 削除」を表現するため、S3 の Standard → Glacier → 有効期限と同じ保持ポリシーを組めます。
+
+!!! warning "cold storage の最低保持期間"
+    AWS Backup の cold storage は最低 90 日課金されます。このため `delete_after_days` は `cold_storage_after_days + 90` 以上である必要があり、違反する設定は pocket.toml の検証で弾かれます（例: `cold_storage_after_days = 35` なら `delete_after_days` は 125 以上）。
+
+!!! info "destroy とバックアップデータ"
+    `pocket destroy` はバックアップ**設定**（backup plan / selection）を削除しますが、バックアップ**データ**（vault と recovery point）は削除しません。クラスターを消した後こそ復元が必要になりうるためで、deploy role にもデータ削除権限（`DeleteBackupVault` / `DeleteRecoveryPoint`）は付与していません。不要になったデータは AWS Backup のコンソール等から明示的に削除してください。
+
+    復元は AWS Backup が常に**新規クラスター**を作成する形で行われます（元のクラスターは変更されません）。
+
+単発のバックアップは `pocket resource dsql backup` で取得できます（[CLI リファレンス](cli.md) 参照）。
 
 !!! info "endpoint の publish（deploy の外から endpoint を引く）"
     DSQL の cluster identifier は AWS 自動生成のため、endpoint

@@ -549,10 +549,28 @@ class UpstashContext(BaseModel):
         )
 
 
+class DsqlBackupContext(BaseModel):
+    schedule_expression: str
+    timezone: str
+    cold_storage_after_days: int
+    delete_after_days: int
+
+    @classmethod
+    def from_settings(cls, backup: settings.DsqlBackup) -> DsqlBackupContext:
+        return cls(
+            schedule_expression=f"cron({backup.cron})",
+            timezone=backup.timezone,
+            cold_storage_after_days=backup.cold_storage_after_days,
+            delete_after_days=backup.delete_after_days,
+        )
+
+
 class DsqlContext(BaseModel):
     region: str
     tag_name: str  # Name タグで検索するための識別名
     deletion_protection: bool = False
+    # 定期バックアップ (AWS Backup backup plan)。None なら plan を作らない
+    backup: DsqlBackupContext | None = None
     # endpoint の publish 先 (stored user secret の type 基準正準パス)。DSQL は
     # cluster identifier が AWS 自動生成で endpoint を naming から導出できないため、
     # deploy が作成記録としてここへ endpoint を書き込む。空文字なら publish しない
@@ -575,6 +593,9 @@ class DsqlContext(BaseModel):
             region=root.region,
             tag_name=f"{resource_prefix}dsql",
             deletion_protection=dsql.deletion_protection,
+            backup=(
+                DsqlBackupContext.from_settings(dsql.backup) if dsql.backup else None
+            ),
             endpoint_secret_name=user_secret_path(
                 pocket_key, naming.DSQL_ENDPOINT, secrets.store
             ),

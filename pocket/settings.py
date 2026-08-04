@@ -504,10 +504,55 @@ class Upstash(BaseSettings):
         return _reject_skip_check_existing(data, resource="upstash")
 
 
+class DsqlBackup(BaseModel):
+    """DSQL の定期バックアップ (AWS Backup の backup plan) 設定。
+
+    宣言すると deploy が vault / サービスロール / plan / selection を冪等に
+    provision する。DSQL は組み込みの自動バックアップを持たないため、これが
+    唯一の定期バックアップ手段になる。
+
+    保存先は AWS Backup の vault (AWS 管理ストレージ)。顧客の S3 バケットを
+    保存先に指定することはできないが、vault のライフサイクルが
+    「warm → cold storage (Glacier 相当) → 削除」を表現するので、S3 の
+    Standard → Glacier → 有効期限と同じ保持ポリシーを組める。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # scheduler の schedule entry と同じ表記 (cron(...) は pocket が付ける)。
+    # 既定は毎日 3:00
+    cron: str = "0 3 * * ? *"
+    # cron を解釈するタイムゾーン。AWS 既定に合わせて UTC。日本時間で回すなら
+    # timezone = "Asia/Tokyo"
+    timezone: str = "UTC"
+    # cold storage (Glacier 相当) へ移動するまでの日数。0 で移動しない
+    cold_storage_after_days: Annotated[int, Field(ge=0)] = 35
+    # recovery point を削除するまでの日数
+    delete_after_days: Annotated[int, Field(ge=1)] = 365
+
+    @model_validator(mode="after")
+    def check_lifecycle(self):
+        # AWS Backup の制約: cold storage は最低 90 日保持されるため、
+        # delete_after_days は cold_storage_after_days + 90 以上でなければ
+        # ならない (違反すると API が InvalidParameterValueException を返す)
+        if self.cold_storage_after_days:
+            minimum = self.cold_storage_after_days + 90
+            if self.delete_after_days < minimum:
+                raise ValueError(
+                    "delete_after_days は cold_storage_after_days + 90 以上に"
+                    " してください (AWS Backup の cold storage 最低保持期間)。"
+                    f" cold_storage_after_days = {self.cold_storage_after_days}"
+                    f" なら {minimum} 以上が必要です。"
+                )
+        return self
+
+
 class Dsql(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     deletion_protection: bool = False
+    # 未宣言なら定期バックアップを作らない (deploy が無防備である旨を警告する)
+    backup: DsqlBackup | None = None
 
 
 class RdsBackup(BaseModel):

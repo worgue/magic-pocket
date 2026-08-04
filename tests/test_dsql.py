@@ -12,13 +12,16 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+import pytest
 from botocore.stub import ANY, Stubber
 from click.testing import CliRunner
 from pocket_cli.cli import dsql_cli
 from pocket_cli.resources import dsql as dsql_module
 from pocket_cli.resources.dsql import Dsql
+from pydantic import ValidationError
 
-from pocket.context import DsqlContext
+from pocket.context import DsqlBackupContext, DsqlContext
+from pocket.settings import DsqlBackup as DsqlBackupSettings
 
 REGION = "us-east-1"
 TAG_NAME = "test-dsql"
@@ -143,6 +146,9 @@ def test_delete_uses_lowercamel_params(monkeypatch):
         {"tags": {"Name": TAG_NAME}},
         {"resourceArn": ARN},
     )
+    backup_stubber = Stubber(dsql._backup)
+    backup_stubber.add_response("list_backup_plans", {"BackupPlansList": []})
+    backup_stubber.activate()
     stubber.add_response(
         "delete_cluster",
         {
@@ -207,6 +213,9 @@ def test_delete_unpublishes_endpoint(monkeypatch):
     store = _StoreRecorder(monkeypatch)
     dsql, stubber = _make_dsql(ENDPOINT_SECRET_NAME)
     dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    backup_stubber = Stubber(dsql._backup)
+    backup_stubber.add_response("list_backup_plans", {"BackupPlansList": []})
+    backup_stubber.activate()
     stubber.add_response(
         "delete_cluster",
         {
@@ -515,6 +524,244 @@ def test_deploy_init_warns_about_missing_automatic_backup(capsys):
     """
     dsql, _ = _make_dsql()
     dsql.deploy_init()
-    err = capsys.readouterr().err
+    # rich console が端末幅で折り返すため、改行を潰してから判定する
+    err = capsys.readouterr().err.replace("\n", "")
     assert "自動バックアップ" in err
+    assert "[dsql.backup]" in err
     assert "pocket resource dsql backup" in err
+
+
+def _backup_context(**overrides) -> DsqlContext:
+    data: dict = {
+        "schedule_expression": "cron(0 3 * * ? *)",
+        "timezone": "Asia/Tokyo",
+        "cold_storage_after_days": 35,
+        "delete_after_days": 365,
+    }
+    data.update(overrides)
+    return DsqlContext(
+        region=REGION,
+        tag_name=TAG_NAME,
+        backup=DsqlBackupContext(**data),
+    )
+
+
+def test_backup_settings_defaults_match_nightly_policy():
+    """[dsql.backup] の既定は 毎日 3:00 / 35 日で cold / 365 日で削除"""
+    backup = DsqlBackupSettings()
+    assert backup.cron == "0 3 * * ? *"
+    assert backup.timezone == "UTC"
+    assert backup.cold_storage_after_days == 35
+    assert backup.delete_after_days == 365
+    ctx = DsqlBackupContext.from_settings(backup)
+    assert ctx.schedule_expression == "cron(0 3 * * ? *)"
+
+
+def test_backup_settings_rejects_cold_storage_shorter_than_90_days():
+    """AWS Backup の cold storage 最低保持期間 (90 日) を settings で弾く"""
+    with pytest.raises(ValidationError, match="cold_storage_after_days"):
+        DsqlBackupSettings(cold_storage_after_days=35, delete_after_days=100)
+    # 境界 (35 + 90) は許容される
+    assert (
+        DsqlBackupSettings(
+            cold_storage_after_days=35, delete_after_days=125
+        ).delete_after_days
+        == 125
+    )
+
+
+def test_backup_not_declared_creates_no_plan():
+    """[dsql.backup] 未宣言なら plan を一切触らない (API も呼ばない)"""
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    stubber = Stubber(dsql._backup)
+    with stubber:  # 応答を登録しない = 呼んだら例外になる
+        dsql.ensure_backup_plan()
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_backup_plan_creates_plan_and_selection(monkeypatch):
+    """宣言時は vault / plan / selection を作り、lifecycle と timezone を渡す"""
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    dsql = Dsql(_backup_context())
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "describe_backup_vault",
+        {"BackupVaultName": "pocket-backup"},
+        {"BackupVaultName": "pocket-backup"},
+    )
+    stubber.add_response("list_backup_plans", {"BackupPlansList": []})
+    stubber.add_response(
+        "create_backup_plan",
+        {"BackupPlanId": "plan-1"},
+        {
+            "BackupPlan": {
+                "BackupPlanName": "%s-backup" % TAG_NAME,
+                "Rules": [
+                    {
+                        "RuleName": "daily",
+                        "TargetBackupVaultName": "pocket-backup",
+                        "ScheduleExpression": "cron(0 3 * * ? *)",
+                        "ScheduleExpressionTimezone": "Asia/Tokyo",
+                        "Lifecycle": {
+                            "DeleteAfterDays": 365,
+                            "MoveToColdStorageAfterDays": 35,
+                        },
+                    }
+                ],
+            }
+        },
+    )
+    stubber.add_response(
+        "list_backup_selections",
+        {"BackupSelectionsList": []},
+        {"BackupPlanId": "plan-1"},
+    )
+    stubber.add_response(
+        "create_backup_selection",
+        {"SelectionId": "sel-1"},
+        {
+            "BackupPlanId": "plan-1",
+            "BackupSelection": {
+                "SelectionName": "%s-backup" % TAG_NAME,
+                "IamRoleArn": ROLE_ARN,
+                "Resources": [ARN],
+            },
+        },
+    )
+    with stubber:
+        dsql.ensure_backup_plan()
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_backup_plan_is_idempotent(monkeypatch):
+    """既存 plan/selection が宣言どおりなら update も再作成もしない。
+
+    AWS が補完する既定値 (StartWindowMinutes 等) は drift 判定に含めない。
+    """
+    dsql = Dsql(_backup_context())
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "describe_backup_vault",
+        {"BackupVaultName": "pocket-backup"},
+        {"BackupVaultName": "pocket-backup"},
+    )
+    stubber.add_response(
+        "list_backup_plans",
+        {
+            "BackupPlansList": [
+                {"BackupPlanId": "plan-1", "BackupPlanName": "%s-backup" % TAG_NAME}
+            ]
+        },
+    )
+    stubber.add_response(
+        "get_backup_plan",
+        {
+            "BackupPlan": {
+                "BackupPlanName": "%s-backup" % TAG_NAME,
+                "Rules": [
+                    {
+                        "RuleName": "daily",
+                        "RuleId": "generated-by-aws",
+                        "TargetBackupVaultName": "pocket-backup",
+                        "ScheduleExpression": "cron(0 3 * * ? *)",
+                        "ScheduleExpressionTimezone": "Asia/Tokyo",
+                        "StartWindowMinutes": 60,
+                        "CompletionWindowMinutes": 180,
+                        "Lifecycle": {
+                            "DeleteAfterDays": 365,
+                            "MoveToColdStorageAfterDays": 35,
+                            "OptInToArchiveForSupportedResources": False,
+                        },
+                    }
+                ],
+            }
+        },
+        {"BackupPlanId": "plan-1"},
+    )
+    stubber.add_response(
+        "list_backup_selections",
+        {
+            "BackupSelectionsList": [
+                {"SelectionId": "sel-1", "SelectionName": "%s-backup" % TAG_NAME}
+            ]
+        },
+        {"BackupPlanId": "plan-1"},
+    )
+    stubber.add_response(
+        "get_backup_selection",
+        {
+            "BackupSelection": {
+                "SelectionName": "%s-backup" % TAG_NAME,
+                "IamRoleArn": ROLE_ARN,
+                "Resources": [ARN],
+            }
+        },
+        {"BackupPlanId": "plan-1", "SelectionId": "sel-1"},
+    )
+    with stubber:
+        dsql.ensure_backup_plan()
+    stubber.assert_no_pending_responses()
+
+
+def test_deploy_init_skips_warning_when_backup_declared(capsys):
+    """[dsql.backup] を宣言した stage では無防備警告を出さない"""
+    dsql = Dsql(_backup_context())
+    dsql.deploy_init()
+    assert capsys.readouterr().err == ""
+
+
+def test_delete_removes_plan_but_not_recovery_points(monkeypatch):
+    """destroy は plan/selection を消すが vault/recovery point は消さない"""
+    monkeypatch.setattr("time.sleep", lambda *_: None)
+    dsql = Dsql(_backup_context())
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    backup_stub = Stubber(dsql._backup)
+    backup_stub.add_response(
+        "list_backup_plans",
+        {
+            "BackupPlansList": [
+                {"BackupPlanId": "plan-1", "BackupPlanName": "%s-backup" % TAG_NAME}
+            ]
+        },
+    )
+    backup_stub.add_response(
+        "list_backup_selections",
+        {
+            "BackupSelectionsList": [
+                {"SelectionId": "sel-1", "SelectionName": "%s-backup" % TAG_NAME}
+            ]
+        },
+        {"BackupPlanId": "plan-1"},
+    )
+    backup_stub.add_response(
+        "delete_backup_selection",
+        {},
+        {"BackupPlanId": "plan-1", "SelectionId": "sel-1"},
+    )
+    backup_stub.add_response("delete_backup_plan", {}, {"BackupPlanId": "plan-1"})
+    dsql_stub = Stubber(dsql._client)
+    dsql_stub.add_response(
+        "delete_cluster",
+        {
+            "identifier": "abc123",
+            "arn": ARN,
+            "status": "DELETING",
+            "creationTime": CREATED,
+        },
+        {"identifier": "abc123"},
+    )
+    dsql_stub.add_client_error(
+        "get_cluster",
+        service_error_code="ResourceNotFoundException",
+        expected_params={"identifier": "abc123"},
+    )
+    with backup_stub, dsql_stub:
+        dsql.delete()
+    # vault / recovery point の削除 API は登録していない = 呼ばれていない
+    backup_stub.assert_no_pending_responses()
+    dsql_stub.assert_no_pending_responses()

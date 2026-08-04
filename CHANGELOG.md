@@ -11,8 +11,15 @@
   自動バックアップ (PITR) の保持日数で、クラスターのネイティブ属性のため追加
   リソース・追加権限は不要です。設定と異なる既存クラスターは次の deploy で
   `ModifyDBCluster` (`ApplyImmediately`) により収束します
-- `[dsql]` を設定した stage の deploy で、DSQL に自動バックアップ (PITR /
-  スナップショット) が無いことを警告するようにしました。他の DB backend と
+- `[dsql.backup]` を追加しました。宣言すると deploy が AWS Backup の
+  vault / サービスロール / backup plan / selection を冪等に provision します。
+  DSQL は組み込みの自動バックアップを持たないため、これが唯一の定期バックアップ
+  手段になります。既定は「毎日 3:00 (UTC) / 35 日後に cold storage へ移動 /
+  365 日後に削除」で、`cron` / `timezone` / `cold_storage_after_days` /
+  `delete_after_days` で変更できます。`pocket destroy` は plan と selection を
+  削除しますが、vault と recovery point (バックアップデータ) は削除しません
+- `[dsql]` を設定していて `[dsql.backup]` の宣言が無い stage の deploy で、
+  自動バックアップが無いことを警告するようにしました。他の DB backend と
   違い黙って通ると「managed DB だから守られている」と誤解されたまま、誤削除・
   論理破壊からの復元手段がゼロの状態で運用されるためです
 

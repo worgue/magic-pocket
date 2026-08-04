@@ -114,6 +114,18 @@ _DSQL_ACTIONS: list[str] = [
     "backup:ListBackupJobs",
     "backup:DescribeBackupVault",
     "backup:CreateBackupVault",
+    # [dsql.backup] の backup plan / selection 管理用。バックアップ「設定」は
+    # 作成・更新・削除できるが、バックアップ「データ」を消す権限
+    # (DeleteBackupVault / DeleteRecoveryPoint) は意図的に含めない
+    "backup:CreateBackupPlan",
+    "backup:UpdateBackupPlan",
+    "backup:GetBackupPlan",
+    "backup:ListBackupPlans",
+    "backup:DeleteBackupPlan",
+    "backup:CreateBackupSelection",
+    "backup:GetBackupSelection",
+    "backup:ListBackupSelections",
+    "backup:DeleteBackupSelection",
 ]
 
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
