@@ -95,11 +95,22 @@ CLI 専用だったロジックを runtime 側へ移設して公開 API 化す�
 
 なお CLI が runtime の新モジュールを import（re-export 含む）するようになったら、`packages/magic-pocket-cli/pyproject.toml` の `magic-pocket>=X.Y.Z` pin を、そのモジュールが載る版へ**必ず引き上げる**こと（古い runtime との組み合わせで import 落ちを防ぐ）。
 
+### 設定 (pocket.toml) を追加するときの方針
+
+**ステージ名に意味を持たせないこと。** 「`prod` のときだけデフォルトを安全側にする」といった分岐を実装しないでください。ステージ名は `general.stages` に書かれた任意の文字列で、プロジェクトによって `prod` / `production` / `live` と揺れます。特定の名前を特別扱いすると、命名が違うだけで安全側のデフォルトが効かなくなり、**効いていないことに気づけない**ぶん無設定より危険になりえます。現状このリポジトリにステージ名依存の分岐は 1 つもありません（`__none__` センチネル判定や data のキー参照は該当しません）。
+
+判断は次の 2 択に落とします。
+
+- **全ステージで安全側にすべき** → ステージで分けず、デフォルト自体を変える（例: `[rds.backup]` の `retention_days` は AWS 既定の 1 日ではなく 7 日）
+- **ステージによって変えたい** → デフォルトは共通のまま。利用者がステージ上書き（`[prod.dsql]` 等）で明示する。docs にその書き方を示す
+
+「prod だけ特別扱い」という中間案は採りません。
+
 ## リリース手順
 
 tag `X.Y.Z` の push で GHA `release.yml` が両パッケージを PyPI へ publish します（tag と両 pyproject の version 一致が必須）。バンプは bug 修正 = patch、新機能 = minor（0.x でも feature は minor）。
 
-1. `pyproject.toml` と `packages/magic-pocket-cli/pyproject.toml` の version を同値にバンプ（後者は依存 `magic-pocket>=X.Y.Z` も）→ `uv lock`
+1. `pyproject.toml` と `packages/magic-pocket-cli/pyproject.toml` の version を同値にバンプ → `uv lock`。後者の依存は **`magic-pocket>=X.Y.Z,<X.(Y+1)` と上限も同 minor に束縛する**（0.x では minor が breaking の単位なので、上限がないと CLI を version pin した利用者にも lib の破壊的変更がリリース当日に届いて deploy が壊れる）
 2. CHANGELOG の `[Unreleased]` を `[X.Y.Z] - <日付>`（リンクは `releases/tag/X.Y.Z`）へ確定
 3. `:bookmark: X.Y.Z リリース` でコミット → push → `git tag X.Y.Z` → tag push → GHA 成功と PyPI 反映（`https://pypi.org/pypi/<pkg>/json`）を確認
 
