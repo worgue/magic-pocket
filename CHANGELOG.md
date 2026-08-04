@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.23.1](https://github.com/worgue/magic-pocket/releases/tag/0.23.1) - 2026-08-04
+
+### Fixed
+- `[dsql]` 使用時の必要権限に `backup-storage:MountCapsule` が抜けていたのを
+  修正しました。`backup:CreateBackupVault` の実行にはこの権限 (Resource `*`) が
+  必須で、`pocket permissions list` の出力から deploy 用 IAM policy を組んでいる
+  環境では `pocket-backup` vault の初回作成が AccessDenied で失敗していました。
+  service prefix が `backup` ではなく `backup-storage` である点に注意してください
+
 ## [0.23.0](https://github.com/worgue/magic-pocket/releases/tag/0.23.0) - 2026-08-04
 
 ### Added
