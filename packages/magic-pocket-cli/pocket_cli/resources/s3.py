@@ -253,16 +253,18 @@ class S3:
             return None
         rules: list[dict] = []
         for rule in self.context.lifecycle_rules:
-            rules.append(
-                {
-                    "ID": rule.id,
-                    "Status": "Enabled",
-                    "Filter": {"Prefix": rule.prefix},
-                    "NoncurrentVersionExpiration": {
-                        "NoncurrentDays": rule.noncurrent_version_expiration_days,
-                    },
+            desired: dict = {
+                "ID": rule.id,
+                "Status": "Enabled",
+                "Filter": {"Prefix": rule.prefix},
+            }
+            if rule.expiration_days is not None:
+                desired["Expiration"] = {"Days": rule.expiration_days}
+            if rule.noncurrent_version_expiration_days is not None:
+                desired["NoncurrentVersionExpiration"] = {
+                    "NoncurrentDays": rule.noncurrent_version_expiration_days,
                 }
-            )
+            rules.append(desired)
         return rules
 
     @cached_property

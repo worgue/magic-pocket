@@ -816,7 +816,8 @@ class S3CorsContext(BaseModel):
 class S3LifecycleRuleContext(BaseModel):
     id: str
     prefix: str
-    noncurrent_version_expiration_days: int
+    expiration_days: int | None = None
+    noncurrent_version_expiration_days: int | None = None
 
 
 class S3Context(BaseModel):
@@ -843,6 +844,7 @@ class S3Context(BaseModel):
             S3LifecycleRuleContext(
                 id=rule.id,
                 prefix=rule.prefix,
+                expiration_days=rule.expiration_days,
                 noncurrent_version_expiration_days=rule.noncurrent_version_expiration_days,
             )
             for rule in s3.lifecycle_rules

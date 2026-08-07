@@ -654,7 +654,19 @@ class S3LifecycleRule(BaseModel):
 
     id: str
     prefix: str
-    noncurrent_version_expiration_days: int = Field(ge=1)
+    expiration_days: int | None = Field(default=None, ge=1)
+    noncurrent_version_expiration_days: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_at_least_one_action(self):
+        if self.expiration_days is None and (
+            self.noncurrent_version_expiration_days is None
+        ):
+            raise ValueError(
+                "expiration_days か noncurrent_version_expiration_days の"
+                "少なくとも一方を指定してください。"
+            )
+        return self
 
 
 class S3(BaseModel):

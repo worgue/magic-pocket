@@ -68,6 +68,40 @@ def test_s3_lifecycle_rule_requires_positive_days():
         )
 
 
+def test_s3_lifecycle_rule_expiration_days(base_root_settings):
+    s3 = settings.S3.model_validate(
+        {
+            "lifecycle_rules": [
+                {"id": "trash-expire", "prefix": "trash/", "expiration_days": 30}
+            ],
+        }
+    )
+    ctx = S3Context.from_settings(s3, base_root_settings)
+    assert ctx.lifecycle_rules[0].expiration_days == 30
+    assert ctx.lifecycle_rules[0].noncurrent_version_expiration_days is None
+
+
+def test_s3_lifecycle_rule_requires_positive_expiration_days():
+    with pytest.raises(ValueError):
+        settings.S3LifecycleRule(id="bad", prefix="x/", expiration_days=0)
+
+
+def test_s3_lifecycle_rule_requires_at_least_one_action():
+    with pytest.raises(ValueError):
+        settings.S3LifecycleRule(id="bad", prefix="x/")
+
+
+def test_s3_lifecycle_rule_allows_both_actions():
+    rule = settings.S3LifecycleRule(
+        id="both",
+        prefix="x/",
+        expiration_days=30,
+        noncurrent_version_expiration_days=7,
+    )
+    assert rule.expiration_days == 30
+    assert rule.noncurrent_version_expiration_days == 7
+
+
 @mock_aws
 def test_s3_create_enables_versioning_when_true():
     res = S3(_ctx(versioning=True))
@@ -156,6 +190,31 @@ def test_s3_create_applies_lifecycle_rules():
     assert by_id["expire-static"]["Filter"]["Prefix"] == "static/"
     assert by_id["expire-static"]["NoncurrentVersionExpiration"]["NoncurrentDays"] == 1
     assert by_id["expire-media"]["NoncurrentVersionExpiration"]["NoncurrentDays"] == 7
+
+
+@mock_aws
+def test_s3_create_applies_expiration_rule():
+    rules = [
+        S3LifecycleRuleContext(id="trash-expire", prefix="trash/", expiration_days=30),
+        S3LifecycleRuleContext(
+            id="both",
+            prefix="media/",
+            expiration_days=60,
+            noncurrent_version_expiration_days=7,
+        ),
+    ]
+    res = S3(_ctx(versioning=True, lifecycle_rules=rules))
+    res.create()
+    client = boto3.client("s3", region_name=REGION)
+    got = client.get_bucket_lifecycle_configuration(Bucket=BUCKET)["Rules"]
+    by_id = {r["ID"]: r for r in got}
+    assert by_id["trash-expire"]["Expiration"]["Days"] == 30
+    assert "NoncurrentVersionExpiration" not in by_id["trash-expire"]
+    assert by_id["both"]["Expiration"]["Days"] == 60
+    assert by_id["both"]["NoncurrentVersionExpiration"]["NoncurrentDays"] == 7
+    # 適用後は drift なし (Expiration を含む比較が冪等であること)
+    res2 = S3(_ctx(versioning=True, lifecycle_rules=rules))
+    assert res2.lifecycle_require_update is False
 
 
 @mock_aws

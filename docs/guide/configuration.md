@@ -254,25 +254,33 @@ versioning = true
 
 ### lifecycle_rules
 
-Non-current version expiration を中心とした S3 Lifecycle ルールを宣言できます。`pocket resource s3 create` で冪等に reconcile されます。
+S3 Lifecycle ルールを宣言できます。`pocket resource s3 create` で冪等に reconcile されます。
 
 ```toml
+# 旧バージョンの期限切れ (versioning 有効時の掃除)
 [[s3.lifecycle_rules]]
 id = "expire-non-current-static"
 prefix = "static/"
 noncurrent_version_expiration_days = 1
 
+# 現行オブジェクトの日数削除 (trash prefix の自動削除など)
 [[s3.lifecycle_rules]]
-id = "expire-non-current-media"
-prefix = "media/"
-noncurrent_version_expiration_days = 1
+id = "trash-expire"
+prefix = "trash/"
+expiration_days = 30
 ```
 
 | フィールド | 型 | 説明 |
 |-----------|------|------|
 | `id` | str | ルール ID（バケット内で一意） |
 | `prefix` | str | 適用対象の prefix（`""` で全オブジェクト） |
-| `noncurrent_version_expiration_days` | int (≥1) | 旧バージョンを期限切れにするまでの日数 |
+| `expiration_days` | int (≥1) \| None | 現行バージョンを削除するまでの日数（Expiration.Days） |
+| `noncurrent_version_expiration_days` | int (≥1) \| None | 旧バージョンを期限切れにするまでの日数 |
+
+`expiration_days` と `noncurrent_version_expiration_days` は少なくとも一方の指定が必要です（両方の同時指定も可）。
+
+!!! note "宣言的に管理されます"
+    lifecycle は versioning と同じく宣言的に reconcile されます。pocket.toml に無いルール（コンソール等で手動追加したものを含む）は次回の reconcile で削除されるため、ルールは必ず pocket.toml に宣言してください。
 
 | 設定 | 動作 |
 |------|------|

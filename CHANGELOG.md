@@ -4,6 +4,14 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- `[[s3.lifecycle_rules]]` に `expiration_days` (Expiration.Days) を追加しました。
+  現行バージョンのオブジェクトを prefix 単位で日数削除できます (trash prefix の
+  自動削除など)。従来の `noncurrent_version_expiration_days` は optional になり、
+  少なくとも一方の指定が必要です (両方の同時指定も可)
+
 ## [0.23.1](https://github.com/worgue/magic-pocket/releases/tag/0.23.1) - 2026-08-04
 
 ### Fixed
