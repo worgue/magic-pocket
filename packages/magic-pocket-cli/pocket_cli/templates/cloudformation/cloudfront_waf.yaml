@@ -13,6 +13,10 @@ Description: WAFv2 IPSet + WebACL for CloudFront (us-east-1)
 #   - DefaultAction = Allow
 #   - IPSet / ip-allow Rule は出力しない
 #   - managed_rule_groups (必須) で「許可ベース + 怪しいリクエストのみ block」
+# - waf.allow_rules:
+#   - IPSet / managed rules より先 (priority 0..n-1) に評価される allow
+#   - header rule の SearchString は managed secret 値の焼き込み
+#     (enable_origin_verify の OriginCustomHeaders と同じ exposure class)
 
 Resources:
   # {% if waf.enable_ip_set %}
@@ -46,9 +50,61 @@ Resources:
         CloudWatchMetricsEnabled: true
         MetricName: "{{ slug }}-waf"
       Rules:
+        # {% for rule in waf.allow_rules %}
+        - Name: "allow-{{ loop.index0 }}"
+          Priority: {{ loop.index0 }}
+          Action:
+            Allow: {}
+          Statement:
+            # {% if rule.path and rule.header %}
+            AndStatement:
+              Statements:
+                - ByteMatchStatement:
+                    FieldToMatch:
+                      UriPath: {}
+                    PositionalConstraint: "{{ rule.path_positional_constraint }}"
+                    SearchString: "{{ rule.path_search_string }}"
+                    TextTransformations:
+                      - Priority: 0
+                        Type: NONE
+                - ByteMatchStatement:
+                    FieldToMatch:
+                      SingleHeader:
+                        Name: x-pocket-waf-allow
+                    PositionalConstraint: EXACTLY
+                    SearchString: "{{ allow_secret_values.get(rule.header, '') }}"
+                    TextTransformations:
+                      - Priority: 0
+                        Type: NONE
+            # {% elif rule.path %}
+            ByteMatchStatement:
+              FieldToMatch:
+                UriPath: {}
+              PositionalConstraint: "{{ rule.path_positional_constraint }}"
+              SearchString: "{{ rule.path_search_string }}"
+              TextTransformations:
+                - Priority: 0
+                  Type: NONE
+            # {% else %}
+            ByteMatchStatement:
+              FieldToMatch:
+                SingleHeader:
+                  Name: x-pocket-waf-allow
+              PositionalConstraint: EXACTLY
+              SearchString: "{{ allow_secret_values.get(rule.header, '') }}"
+              TextTransformations:
+                - Priority: 0
+                  Type: NONE
+            # {% endif %}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "{{ slug }}-waf-allow-{{ loop.index0 }}"
+        # {% endfor %}
+        # {% set priority_offset = waf.allow_rules|length %}
         # {% if waf.enable_ip_set %}
         - Name: ip-allow
-          Priority: 0
+          Priority: {{ priority_offset }}
           Action:
             Allow: {}
           Statement:
@@ -62,7 +118,7 @@ Resources:
         # {% endif %}
         # {% for group_name in waf.managed_rule_groups %}
         - Name: "managed-{{ loop.index0 }}-{{ group_name }}"
-          Priority: {{ loop.index if waf.enable_ip_set else loop.index0 }}
+          Priority: {{ priority_offset + (loop.index if waf.enable_ip_set else loop.index0) }}
           OverrideAction:
             None: {}
           Statement:

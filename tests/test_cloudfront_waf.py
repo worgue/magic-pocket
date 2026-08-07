@@ -203,6 +203,215 @@ def test_waf_stack_yaml_enable_ip_set_false_skips_ipset():
 
 
 # ---------------------------------------------------------------------------
+# allow_rules: schema / cross validation / context / template
+# ---------------------------------------------------------------------------
+
+
+def test_waf_allow_rule_accepts_path_only():
+    waf = CloudFrontWaf.model_validate({"allow_rules": [{"path": "/api/health"}]})
+    assert waf.allow_rules[0].path == "/api/health"
+    assert waf.allow_rules[0].header is None
+
+
+def test_waf_allow_rule_accepts_header_only_and_both():
+    waf = CloudFrontWaf.model_validate(
+        {
+            "allow_rules": [
+                {"header": "SMOKE_ALLOW_SECRET"},
+                {"path": "/api/health", "header": "SMOKE_ALLOW_SECRET"},
+            ]
+        }
+    )
+    assert waf.allow_rules[0].header == "SMOKE_ALLOW_SECRET"
+    assert waf.allow_rules[1].path == "/api/health"
+
+
+def test_waf_allow_rule_rejects_empty_rule():
+    with pytest.raises(ValidationError) as exc:
+        CloudFrontWaf.model_validate({"allow_rules": [{}]})
+    assert "path か header" in str(exc.value)
+
+
+def test_waf_allow_rule_rejects_relative_path():
+    with pytest.raises(ValidationError):
+        CloudFrontWaf.model_validate({"allow_rules": [{"path": "api/health"}]})
+
+
+def test_waf_allow_rule_rejects_mid_wildcard():
+    """'*' は末尾 (prefix 一致) のみ。WAFv2 ByteMatch は中間 wildcard 不可。"""
+    with pytest.raises(ValidationError):
+        CloudFrontWaf.model_validate({"allow_rules": [{"path": "/api/*/health"}]})
+
+
+def test_waf_allow_rule_rejects_invalid_header_key():
+    """header は managed secret のキー名 (EnvStr) なので '-' 等は不可。"""
+    with pytest.raises(ValidationError):
+        CloudFrontWaf.model_validate({"allow_rules": [{"header": "BAD-KEY"}]})
+
+
+def _root_settings_dict(*, waf: dict, awscontainer: bool = True) -> dict:
+    data: dict = {
+        "stage": "dev",
+        "general": {
+            "region": "ap-northeast-1",
+            "project_name": "testprj",
+            "stages": ["dev"],
+        },
+        "s3": {},
+        "cloudfront": {
+            "web": {
+                "routes": [
+                    {"is_default": True, "is_spa": True, "origin_path": "/main"}
+                ],
+                "waf": waf,
+            }
+        },
+    }
+    if awscontainer:
+        data["awscontainer"] = {
+            "dockerfile_path": "Dockerfile",
+            "handlers": {
+                "wsgi": {
+                    "command": "pocket.django.lambda_handlers.wsgi_handler",
+                    "apigateway": {},
+                }
+            },
+        }
+    return data
+
+
+def test_waf_allow_rule_header_requires_awscontainer():
+    from pocket import settings
+
+    data = _root_settings_dict(
+        waf={"allow_rules": [{"header": "SMOKE_ALLOW_SECRET"}]}, awscontainer=False
+    )
+    with pytest.raises(ValidationError) as exc:
+        settings.Settings.model_validate(data)
+    assert "awscontainer" in str(exc.value)
+
+
+def test_waf_allow_rule_path_only_works_without_awscontainer():
+    from pocket import settings
+
+    data = _root_settings_dict(
+        waf={"allow_rules": [{"path": "/api/health"}]}, awscontainer=False
+    )
+    s = settings.Settings.model_validate(data)
+    assert s.cloudfront["web"].waf is not None
+
+
+def test_waf_allow_rule_header_rejects_declared_secret_collision():
+    from pocket import settings
+
+    data = _root_settings_dict(waf={"allow_rules": [{"header": "MY_SECRET"}]})
+    data["awscontainer"]["secrets"] = {"managed": {"MY_SECRET": {"type": "password"}}}
+    with pytest.raises(ValidationError) as exc:
+        settings.Settings.model_validate(data)
+    assert "MY_SECRET" in str(exc.value)
+
+
+def test_context_injects_waf_allow_secret():
+    """header 宣言から managed secret (type=waf_allow_secret) が自動注入される。"""
+    from pocket import settings
+    from pocket.context import Context
+
+    data = _root_settings_dict(
+        waf={"allow_rules": [{"path": "/api/health", "header": "SMOKE_ALLOW_SECRET"}]}
+    )
+    s = settings.Settings.model_validate(data)
+    context = Context.from_settings(s)
+    assert context.awscontainer is not None
+    assert context.awscontainer.secrets is not None
+    managed = context.awscontainer.secrets.managed
+    assert "SMOKE_ALLOW_SECRET" in managed
+    assert managed["SMOKE_ALLOW_SECRET"].type == "waf_allow_secret"
+    waf_ctx = context.cloudfront["web"].waf
+    assert waf_ctx is not None
+    assert waf_ctx.header_secret_keys == ["SMOKE_ALLOW_SECRET"]
+
+
+def test_waf_allow_rule_context_path_match_derivation():
+    from pocket.context import CloudFrontWafAllowRuleContext
+
+    exact = CloudFrontWafAllowRuleContext(path="/api/health")
+    assert exact.path_positional_constraint == "EXACTLY"
+    assert exact.path_search_string == "/api/health"
+    prefix = CloudFrontWafAllowRuleContext(path="/api/smoke/*")
+    assert prefix.path_positional_constraint == "STARTS_WITH"
+    assert prefix.path_search_string == "/api/smoke/"
+
+
+def _waf_ctx_with_allow_rules() -> CloudFrontWafContext:
+    from pocket.context import CloudFrontWafAllowRuleContext
+
+    return CloudFrontWafContext(
+        allow_rules=[
+            CloudFrontWafAllowRuleContext(path="/api/health"),
+            CloudFrontWafAllowRuleContext(
+                path="/api/smoke/*", header="SMOKE_ALLOW_SECRET"
+            ),
+        ],
+        managed_rule_groups=["AWSManagedRulesCommonRuleSet"],
+    )
+
+
+def test_waf_stack_yaml_allow_rules_precede_ip_set():
+    """allow rules が priority 0.. を取り、ip-allow / managed rules は後ろへずれる。"""
+    import yaml as pyyaml
+
+    ctx = _make_cf_context(waf=_waf_ctx_with_allow_rules())
+    with mock.patch("boto3.client"):
+        rendered = CloudFrontWafStack(
+            ctx, allow_secret_values={"SMOKE_ALLOW_SECRET": "secret-value"}
+        ).yaml
+    rules = pyyaml.safe_load(rendered)["Resources"]["WebACL"]["Properties"]["Rules"]
+    by_name = {r["Name"]: r for r in rules}
+    assert by_name["allow-0"]["Priority"] == 0
+    assert by_name["allow-1"]["Priority"] == 1
+    assert by_name["ip-allow"]["Priority"] == 2
+    assert by_name["managed-0-AWSManagedRulesCommonRuleSet"]["Priority"] == 3
+    # path のみ: UriPath 単体の ByteMatch
+    stmt0 = by_name["allow-0"]["Statement"]["ByteMatchStatement"]
+    assert stmt0["FieldToMatch"] == {"UriPath": {}}
+    assert stmt0["PositionalConstraint"] == "EXACTLY"
+    assert stmt0["SearchString"] == "/api/health"
+    # path + header: AND で固定ヘッダ名 + secret 値
+    and_stmts = by_name["allow-1"]["Statement"]["AndStatement"]["Statements"]
+    header_stmt = and_stmts[1]["ByteMatchStatement"]
+    assert header_stmt["FieldToMatch"] == {
+        "SingleHeader": {"Name": "x-pocket-waf-allow"}
+    }
+    assert header_stmt["SearchString"] == "secret-value"
+    assert and_stmts[0]["ByteMatchStatement"]["PositionalConstraint"] == "STARTS_WITH"
+
+
+def test_waf_stack_yaml_no_allow_rules_keeps_ip_allow_priority_zero():
+    """allow_rules 無しの既存構成でテンプレートが変わらない (回帰)。"""
+    ctx = _make_cf_context(waf=CloudFrontWafContext())
+    with mock.patch("boto3.client"):
+        rendered = CloudFrontWafStack(ctx).yaml
+    assert "allow-0" not in rendered
+    assert "Priority: 0" in rendered
+
+
+def test_waf_resource_prepare_deploy_reads_allow_secrets():
+    from pocket_cli.resources.cloudfront_waf import CloudFrontWaf as WafResource
+
+    ctx = _make_cf_context(waf=_waf_ctx_with_allow_rules())
+    mediator = mock.MagicMock()
+    mediator.context.awscontainer.secrets.pocket_store.secrets = {
+        "SMOKE_ALLOW_SECRET": "secret-value",
+        "OTHER": "x",
+    }
+    with mock.patch("boto3.client"):
+        res = WafResource(ctx)
+        res.prepare_deploy(mediator)
+        assert res._allow_secret_values == {"SMOKE_ALLOW_SECRET": "secret-value"}
+        assert 'SearchString: "secret-value"' in res.stack.yaml
+
+
+# ---------------------------------------------------------------------------
 # CFn template: CloudFront distribution に WebACLId が attach されるか
 # ---------------------------------------------------------------------------
 

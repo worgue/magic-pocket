@@ -1499,6 +1499,7 @@ managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
 |-----------|------|----------|------|
 | `enable_ip_set` | bool | `true` | IPSet + IP allow rule を生成して IP allowlist で運用 |
 | `managed_rule_groups` | list[str] | `[]` | AWS managed rule group 名のリスト |
+| `allow_rules` | list | `[]` | 他ルールより先に評価される allow（下記 [allow_rules](#allow_rules) 参照） |
 
 `[cloudfront.<name>.waf]` block を書くと us-east-1 に `AWS::WAFv2::WebACL` が
 CFn で作成され、CloudFront distribution の `WebACLId` に attach されます。
@@ -1576,6 +1577,63 @@ pocket waf ip clear --name admin --stage prod
 初回 `pocket deploy` の直後は IPSet が空 (deny-all) なので、最低 1 件 CIDR
 を追加するまで CloudFront は全リクエストを 403 で拒否します。デプロイ直後に
 `pocket waf ip add self ...` を実行してください。
+
+#### allow_rules
+
+IP allowlist で閉じた stage でも、外形 smoke・uptime チェックなど特定の経路
+だけを宣言的に開けられます。`allow_rules` は **IPSet / managed rules より先に
+評価される allow** で、match したら通し、しなければ従来どおりの判定に落ちます。
+
+```toml
+[prod.cloudfront.web.waf]
+enable_ip_set = true
+
+# (a) path 素通し: IP に関係なく誰でも通す (公開しても実害が無いもの向け)
+[[prod.cloudfront.web.waf.allow_rules]]
+path = "/api/health"
+
+# (b) secret header: pocket が managed secret を自動生成し、
+#     固定ヘッダ x-pocket-waf-allow に同値を載せた呼び手だけ通す
+[[prod.cloudfront.web.waf.allow_rules]]
+path = "/api/smoke/*"
+header = "SMOKE_ALLOW_SECRET"
+```
+
+| フィールド | 型 | 説明 |
+|-----------|------|------|
+| `path` | str \| None | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致 |
+| `header` | str \| None | managed secret のキー名。指定するとヘッダ `x-pocket-waf-allow` の値が secret と一致するリクエストのみ allow |
+
+- `path` / `header` の**少なくとも一方が必要**です。両方指定した場合は AND
+  (その path かつ secret 持ちのみ allow) になります
+- `header` の secret は **toml に値を書かず**、pocket が自動生成して
+  SSM に保存します (`enable_origin_verify` の `POCKET_ORIGIN_VERIFY_SECRET` と
+  同じ managed secret 経路)。ヘッダ名は `x-pocket-waf-allow` 固定です
+- `header` を使う場合は `[awscontainer]` が必要です (secret の保存先のため)
+- allow_rules は **WAF を弱める宣言**なので、deploy のたびに一覧が表示されます。
+  `pocket settings --stage=<stage>` の出力でも確認できます
+
+CI (GitHub Actions 等) から secret header 付きで叩く例:
+
+```bash
+# store = "ssm" の場合 (パラメータ名は /{pocket_key}/<KEY>)
+SECRET=$(aws ssm get-parameter \
+  --name "/{stage}-{project}-pocket/SMOKE_ALLOW_SECRET" \
+  --with-decryption --query Parameter.Value --output text)
+curl -H "x-pocket-waf-allow: $SECRET" https://example.com/api/smoke/health
+```
+
+!!! note "managed secret は Lambda の設定 env には現れません"
+    managed secret は Lambda の「設定」(GetFunctionConfiguration で見える env)
+    には焼き込まれず、**runtime 起動時に SSM/SM から注入**されます。CI 等の
+    外部から値を読む場合は Lambda の設定ではなく secret store
+    (SSM: `/{stage}-{project}-pocket/<KEY>`) を参照してください。
+
+!!! note "secret 値は WAF ルールに焼き込まれます"
+    header rule の期待値は WebACL の rule 定義 (CFn template) に含まれます。
+    `cloudformation:GetTemplate` / `wafv2:GetWebACL` が可能な principal からは
+    値が見える点は `enable_origin_verify` の origin custom header と同じ
+    exposure class です。
 
 #### 必要な IAM 権限
 

@@ -119,6 +119,7 @@ class Mediator:
             "cloudfront_signing_key": self._generate_rsa_pem,
             "spa_token_secret": lambda: secrets.token_hex(32),
             "origin_verify_secret": lambda: secrets.token_hex(32),
+            "waf_allow_secret": lambda: secrets.token_hex(32),
             "basic_auth_credential": lambda: self._generate_basic_auth_credential(
                 spec.options
             ),

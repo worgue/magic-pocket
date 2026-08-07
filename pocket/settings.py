@@ -105,6 +105,7 @@ class ManagedSecretSpec(BaseModel):
         "cloudfront_signing_key",
         "spa_token_secret",
         "origin_verify_secret",
+        "waf_allow_secret",
         "basic_auth_credential",
     ]
     options: dict[str, str | int] = {}
@@ -908,6 +909,44 @@ class Route(BaseModel):
         return self
 
 
+class CloudFrontWafAllowRule(BaseModel):
+    """WAF の他ルールより先に評価される allow ルールの宣言。
+
+    IP allowlist で閉じた stage でも、外形 smoke や uptime チェックの経路を
+    宣言的に開けるための口。`path` / `header` の少なくとも一方が必要:
+
+    - `path` のみ: その path を誰でも素通し (公開しても実害が無いもの向け)
+    - `header` のみ: managed secret のキー名。pocket が secret を自動生成し、
+      固定ヘッダ `x-pocket-waf-allow` に同値を載せた呼び手だけを通す
+    - 両方: path と header の AND (その path かつ secret 持ちのみ)
+
+    どちらも「WAF を弱める」宣言なので、deploy 時に一覧が表示される。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str | None = None
+    header: EnvStr | None = None
+
+    @model_validator(mode="after")
+    def check_rule(self):
+        if self.path is None and self.header is None:
+            raise ValueError(
+                "allow_rules: path か header の少なくとも一方を指定してください。"
+            )
+        if self.path is not None:
+            if not self.path.startswith("/"):
+                raise ValueError(
+                    "allow_rules: path は '/' で始めてください: %s" % self.path
+                )
+            if "*" in self.path[:-1]:
+                raise ValueError(
+                    "allow_rules: path の '*' は末尾 (prefix 一致) のみ"
+                    "使用できます: %s" % self.path
+                )
+        return self
+
+
 class CloudFrontWaf(BaseModel):
     """CloudFront に attach する WAFv2 WebACL の宣言。
 
@@ -919,13 +958,16 @@ class CloudFrontWaf(BaseModel):
 
     `IPSet` の中身 (実際の CIDR 一覧) は `pocket waf ip ...` CLI で投入する
     (toml には IP リテラルを書けない設計; 真実源を CLI 一本に絞ることで
-    drift 事故を防ぐ)。
+    drift 事故を防ぐ)。`allow_rules` の secret も同じ思想で toml に値を
+    書かせず、pocket の managed secret 経路で自動生成・管理する。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     enable_ip_set: bool = True
     managed_rule_groups: list[str] = []
+    # IPSet / managed rules より先に評価される allow (match しなければ従来どおり)
+    allow_rules: list[CloudFrontWafAllowRule] = []
 
     @model_validator(mode="after")
     def _must_have_some_rule(self):
@@ -1220,6 +1262,33 @@ class Settings(BaseModel):
         self._check_cloudfront_token_secret(name, cf)
         self._check_cloudfront_basic_auth(name, cf)
         self._check_cloudfront_origin_verify(name, cf)
+        self._check_cloudfront_waf_allow_rules(name, cf)
+
+    def _check_cloudfront_waf_allow_rules(self, name: str, cf: CloudFront):
+        if not cf.waf:
+            return
+        headers = {r.header for r in cf.waf.allow_rules if r.header}
+        if not headers:
+            return
+        # header 付き allow rule の secret は managed secret 経路 (pocket_store)
+        # で生成・保存されるため awscontainer が前提になる
+        if not self.awscontainer:
+            raise ValueError(
+                f"cloudfront.{name}: awscontainer is required when "
+                f"waf.allow_rules has header"
+            )
+        if self.awscontainer.secrets:
+            declared = set(self.awscontainer.secrets.managed) | set(
+                self.awscontainer.secrets.user
+            )
+            for header in sorted(headers):
+                if header in declared:
+                    raise ValueError(
+                        f"cloudfront.{name}: waf.allow_rules header '{header}' は "
+                        f"awscontainer.secrets に既に宣言されています。"
+                        f"secret は pocket が自動生成するため、別のキー名を"
+                        f"使ってください。"
+                    )
 
     def _check_cloudfront_origin_verify(self, name: str, cf: CloudFront):
         if not cf.enable_origin_verify:

@@ -339,6 +339,16 @@ class CloudFrontWafStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront_waf"
 
+    def __init__(
+        self,
+        context: CloudFrontContext,
+        allow_secret_values: dict[str, str] | None = None,
+    ):
+        # allow_rules の header secret 値。テンプレートに焼き込まれるため
+        # template hash に影響する (CloudFrontStack の origin verify と同型)
+        self._allow_secret_values = allow_secret_values or {}
+        super().__init__(context)
+
     def get_client(self):
         return boto3.client("cloudformation", region_name="us-east-1")
 
@@ -349,6 +359,10 @@ class CloudFrontWafStack(Stack):
     @property
     def export(self):
         return {}
+
+    @property
+    def yaml(self) -> str:
+        return self._render_yaml(allow_secret_values=self._allow_secret_values)
 
 
 class CloudFrontKeysStack(Stack):

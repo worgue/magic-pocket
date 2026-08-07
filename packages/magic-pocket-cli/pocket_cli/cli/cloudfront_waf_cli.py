@@ -3,6 +3,7 @@ import click
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.resource_helper import require_configured
+from pocket_cli.mediator import Mediator
 from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
 
 
@@ -16,13 +17,17 @@ def get_cloudfront_waf_resources(stage, name=None):
     require_configured(
         context.cloudfront, "cloudfront is not configured for this stage"
     )
+    mediator = Mediator(context)
     results = []
     for cf_name, cf_ctx in context.cloudfront.items():
         if cf_ctx.waf is None:
             continue
         if name and cf_name != name:
             continue
-        results.append(CloudFrontWaf(cf_ctx))
+        waf = CloudFrontWaf(cf_ctx)
+        # allow secret が template hash に影響するため、status / yaml の前に読む
+        waf.prepare_deploy(mediator)
+        results.append(waf)
     if name and not results:
         raise click.ClickException("cloudfront_waf '%s' is not configured" % name)
     return results

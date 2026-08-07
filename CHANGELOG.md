@@ -7,6 +7,16 @@
 ## [Unreleased]
 
 ### Added
+- `[cloudfront.<name>.waf]` に `allow_rules` を追加しました。IPSet / managed
+  rules より先に評価される allow ルールを宣言でき、IP allowlist で閉じた
+  stage でも外形 smoke や uptime チェックの経路を開けられます。
+  `path` (末尾 `*` で prefix 一致) の素通しと、`header` (managed secret を
+  自動生成し、固定ヘッダ `x-pocket-waf-allow` の値一致で allow) の 2 形を
+  サポートし、両方指定で AND になります。WAF を弱める宣言のため、deploy 時に
+  一覧が表示されます
+- docs: managed secret が Lambda の設定 env に現れず runtime 注入である旨と、
+  外部 (CI 等) からは secret store (SSM `/{pocket_key}/<KEY>`) を読む必要が
+  ある旨を明記しました
 - `[[s3.lifecycle_rules]]` に `expiration_days` (Expiration.Days) を追加しました。
   現行バージョンのオブジェクトを prefix 単位で日数削除できます (trash prefix の
   自動削除など)。従来の `noncurrent_version_expiration_days` は optional になり、

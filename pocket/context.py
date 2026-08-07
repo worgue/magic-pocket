@@ -329,6 +329,46 @@ class SesContext(BaseModel):
         )
 
 
+def _build_secrets_context(
+    ac: settings.AwsContainer, root: settings.Settings
+) -> SecretsContext | None:
+    """awscontainer の SecretsContext を組み立てる。
+
+    enable_origin_verify の検証用 secret と waf.allow_rules の header secret は
+    managed secret として自動注入する。これにより生成 (mediator) / 保存 (SM/SSM) /
+    IAM / runtime env 注入の既存経路にそのまま乗る。origin verify のキー名は
+    magic-pocket の内部詳細に閉じ、waf 側は利用者宣言のキー名を使う
+    (既存 secret との衝突は settings 側で検証済み)。
+    """
+    needs_origin_verify = any(
+        cf.enable_origin_verify for cf in root.cloudfront.values()
+    )
+    waf_allow_keys = sorted(
+        {
+            rule.header
+            for cf in root.cloudfront.values()
+            if cf.waf
+            for rule in cf.waf.allow_rules
+            if rule.header
+        }
+    )
+    if not (ac.secrets or needs_origin_verify or waf_allow_keys):
+        return None
+    secrets_settings = ac.secrets or settings.Secrets()
+    injected: dict[str, ManagedSecretSpec] = {}
+    if needs_origin_verify:
+        injected[ORIGIN_VERIFY_SECRET_KEY] = ManagedSecretSpec(
+            type="origin_verify_secret"
+        )
+    for key in waf_allow_keys:
+        injected[key] = ManagedSecretSpec(type="waf_allow_secret")
+    if injected:
+        secrets_settings = secrets_settings.model_copy(
+            update={"managed": {**secrets_settings.managed, **injected}}
+        )
+    return SecretsContext.from_settings(secrets_settings, root)
+
+
 class AwsContainerIamContext(BaseModel):
     managed_policy_arns: list[str] = []
     inline_policies: dict[str, dict] = {}
@@ -386,29 +426,7 @@ class AwsContainerContext(BaseModel):
         if ac.vpc:
             vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
 
-        # enable_origin_verify が有効な cloudfront があれば、検証用 secret を
-        # managed secret として自動注入する。これにより生成 (mediator) / 保存
-        # (SM/SSM) / IAM / runtime env 注入の既存経路にそのまま乗る。利用者は
-        # secret を宣言する必要がなく、名前は magic-pocket の内部詳細に閉じる。
-        needs_origin_verify = any(
-            cf.enable_origin_verify for cf in root.cloudfront.values()
-        )
-
-        secrets_ctx = None
-        if ac.secrets or needs_origin_verify:
-            secrets_settings = ac.secrets or settings.Secrets()
-            if needs_origin_verify:
-                secrets_settings = secrets_settings.model_copy(
-                    update={
-                        "managed": {
-                            **secrets_settings.managed,
-                            ORIGIN_VERIFY_SECRET_KEY: ManagedSecretSpec(
-                                type="origin_verify_secret"
-                            ),
-                        }
-                    }
-                )
-            secrets_ctx = SecretsContext.from_settings(secrets_settings, root)
+        secrets_ctx = _build_secrets_context(ac, root)
 
         handlers = {}
         use_route53 = False
@@ -952,9 +970,40 @@ class RouteContext(BaseModel):
         )
 
 
+# waf.allow_rules の header 判定に使う固定リクエストヘッダ名。呼び手 (CI 等) は
+# managed secret の値をこのヘッダに載せる。宣言可能にせず固定 (実装・利用の単純さ優先)。
+WAF_ALLOW_HEADER_NAME = "x-pocket-waf-allow"
+
+
+class CloudFrontWafAllowRuleContext(BaseModel):
+    path: str | None = None
+    header: str | None = None
+
+    # 末尾 '*' は prefix 一致、それ以外は完全一致 (settings で検証済み)
+    @computed_field
+    @property
+    def path_positional_constraint(self) -> str:
+        if self.path and self.path.endswith("*"):
+            return "STARTS_WITH"
+        return "EXACTLY"
+
+    @computed_field
+    @property
+    def path_search_string(self) -> str:
+        if not self.path:
+            return ""
+        return self.path[:-1] if self.path.endswith("*") else self.path
+
+
 class CloudFrontWafContext(BaseModel):
     enable_ip_set: bool = True
     managed_rule_groups: list[str] = []
+    allow_rules: list[CloudFrontWafAllowRuleContext] = []
+
+    @computed_field
+    @property
+    def header_secret_keys(self) -> list[str]:
+        return sorted({r.header for r in self.allow_rules if r.header})
 
 
 class CloudFrontContext(BaseModel):
@@ -1116,6 +1165,12 @@ class CloudFrontContext(BaseModel):
                 CloudFrontWafContext(
                     enable_ip_set=cf.waf.enable_ip_set,
                     managed_rule_groups=cf.waf.managed_rule_groups,
+                    allow_rules=[
+                        CloudFrontWafAllowRuleContext(
+                            path=rule.path, header=rule.header
+                        )
+                        for rule in cf.waf.allow_rules
+                    ],
                 )
                 if cf.waf is not None
                 else None
