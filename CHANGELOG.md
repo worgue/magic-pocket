@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.24.0](https://github.com/worgue/magic-pocket/releases/tag/0.24.0) - 2026-08-07
 
 ### Added
 - `[cloudfront.<name>.waf]` に `allow_rules` を追加しました。IPSet / managed
