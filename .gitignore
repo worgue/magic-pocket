@@ -30,6 +30,9 @@ forge.local.toml
 
 /CLAUDE.md
 
+# Kadai
+/kadai
+
 # Activity Docs (作業ローカルの working doc。公開 repo には出さない)
 /docs/activity/
 
