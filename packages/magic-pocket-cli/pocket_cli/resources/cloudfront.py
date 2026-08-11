@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import subprocess
@@ -271,6 +272,7 @@ class CloudFront:
         )
 
     def upload(self, *, skip_build: bool = False):
+        changed_routes: list[RouteContext] = []
         for route in self.context.uploadable_routes:
             if route.build_cmd and not skip_build:
                 echo.info("ビルド実行: %s" % route.build_cmd)
@@ -291,22 +293,33 @@ class CloudFront:
                         " (`rm -rf node_modules && npm ci` 等で復旧)。"
                     )
                     raise
-            self._upload_route(route)
-        if self.context.uploadable_routes:
-            self._invalidate()
+            if self._upload_route(route):
+                changed_routes.append(route)
+        self._invalidate(changed_routes)
 
-    def _upload_route(self, route: RouteContext):
+    def _upload_route(self, route: RouteContext) -> bool:
+        """route の upload_dir を S3 へ同期する。変更があれば True を返す。
+
+        内容が一致するオブジェクトは skip する (差分アップロード)。数千ファイル
+        規模の配信アセットを upload_dir に置いても deploy 時間が伸びない。
+        """
         s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
         if not route.upload_dir:
             raise RuntimeError("route.upload_dir is not set")
         local_dir = Path(route.upload_dir)
+        existing = self._list_objects(s3_prefix)
         uploaded_keys: set[str] = set()
+        uploaded = 0
+        skipped = 0
         for file in local_dir.rglob("*"):
             if file.is_dir():
                 continue
             relative = file.relative_to(local_dir)
             s3_key = s3_prefix + "/" + str(relative)
             uploaded_keys.add(s3_key)
+            if _is_unchanged(file, existing.get(s3_key)):
+                skipped += 1
+                continue
             extra_args: dict[str, str] = {
                 "ContentType": mimetypes.guess_type(str(file))[0]
                 or "application/octet-stream"
@@ -322,36 +335,56 @@ class CloudFront:
                 s3_key,
                 ExtraArgs=extra_args,
             )
+            uploaded += 1
             echo.log("アップロード: s3://%s/%s" % (self.context.bucket_name, s3_key))
-        self._delete_stale_objects(s3_prefix, uploaded_keys)
+        deleted = self._delete_stale_objects(existing, uploaded_keys)
         echo.info(
-            "%d ファイルをアップロードしました (prefix: %s)"
-            % (len(uploaded_keys), s3_prefix)
+            "%d ファイルをアップロードしました (skip %d / 削除 %d、prefix: %s)"
+            % (uploaded, skipped, deleted, s3_prefix)
         )
+        return bool(uploaded or deleted)
 
-    def _delete_stale_objects(self, prefix: str, uploaded_keys: set[str]):
+    def _list_objects(self, prefix: str) -> dict[str, str]:
+        """prefix 配下の {key: ETag} を返す (ETag は前後の `"` を除去済み)。"""
+        objects: dict[str, str] = {}
         paginator = self.s3_client.get_paginator("list_objects_v2")
         for page in paginator.paginate(
             Bucket=self.context.bucket_name, Prefix=prefix + "/"
         ):
             for obj in page.get("Contents", []):
-                if obj["Key"] not in uploaded_keys:
-                    self.s3_client.delete_object(
-                        Bucket=self.context.bucket_name, Key=obj["Key"]
-                    )
-                    echo.log(
-                        "削除: s3://%s/%s" % (self.context.bucket_name, obj["Key"])
-                    )
+                objects[obj["Key"]] = obj["ETag"].strip('"')
+        return objects
 
-    def _invalidate(self):
+    def _delete_stale_objects(
+        self, existing: dict[str, str], uploaded_keys: set[str]
+    ) -> int:
+        deleted = 0
+        for key in existing:
+            if key not in uploaded_keys:
+                self.s3_client.delete_object(Bucket=self.context.bucket_name, Key=key)
+                deleted += 1
+                echo.log("削除: s3://%s/%s" % (self.context.bucket_name, key))
+        return deleted
+
+    def _invalidate(self, routes: list[RouteContext]):
+        """変更があった route の path_pattern だけを invalidate する。
+
+        変更が無ければ invalidation 自体を出さない。配信専用 route や
+        immutable な versioned route のキャッシュを巻き添えで落とさないため。
+        """
+        if not routes:
+            return
+        paths = sorted({(route.path_pattern or "/*") for route in routes})
         self.cf_client.create_invalidation(
             DistributionId=self.distribution_id,
             InvalidationBatch={
-                "Paths": {"Quantity": 1, "Items": ["/*"]},
+                "Paths": {"Quantity": len(paths), "Items": paths},
                 "CallerReference": str(int(time.time())),
             },
         )
-        echo.info("CloudFront キャッシュ無効化をリクエストしました")
+        echo.info(
+            "CloudFront キャッシュ無効化をリクエストしました: %s" % ", ".join(paths)
+        )
 
     def warn_contents(self):
         bucket = self.context.bucket_name
@@ -518,3 +551,22 @@ class CloudFront:
                 }
             },
         }
+
+
+def _is_unchanged(file: Path, etag: str | None) -> bool:
+    """ローカルファイルが S3 上のオブジェクトと同一内容と断定できるか。
+
+    断定できるのは **ETag が素の MD5 (単一 PUT でアップロードされた場合)** で、
+    ローカルの MD5 と一致するときだけ。multipart でアップロードされた
+    オブジェクトの ETag は `<md5 of part md5s>-<part 数>` で、パートサイズが
+    分からないとローカルから再現できない。SSE-KMS 等でも ETag は MD5 に
+    ならない。これらは「不明」= 変更ありとして扱い、常に再アップロードする。
+
+    サイズ比較での代替はしない。同じサイズで内容が違うファイルを「変更なし」と
+    誤判定すると、そのファイルは以後どの deploy でも更新されなくなる。
+    誤って skip する事故に比べれば、再アップロードのコストは安い。
+    """
+    if etag is None or "-" in etag:
+        return False
+    digest = hashlib.md5(file.read_bytes(), usedforsecurity=False).hexdigest()
+    return digest == etag

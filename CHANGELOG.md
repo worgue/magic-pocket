@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### Changed
+- `build` / `upload_dir` route のアップロードを**差分のみ**にしました。S3 上の
+  オブジェクトと内容が一致するファイル (ETag が素の MD5 で、ローカルの MD5 と
+  一致) は skip します。数千ファイル規模の配信アセットを `upload_dir` に置いても
+  deploy 時間が伸びません。multipart アップロード済み (ETag が `<hash>-<n>`) や
+  ETag が MD5 にならないオブジェクト (SSE-KMS 等) は内容を断定できないため常に
+  再アップロードします (サイズ比較での代替はしません)
+- CloudFront の invalidation を**変更があった route の `path_pattern` に限定**し、
+  変更が無ければ invalidation 自体を発行しないようにしました。従来は毎 deploy
+  `/*` 固定で、アップロードしていない配信専用 route のキャッシュまで落ちていました
+
 ### Added
 - `pocket deploy` / `pocket promote` に `-y` / `--yes` を追加しました。
   `pocket django deploy` にしか無く、django を使わない (axum 等の) プロジェクトが

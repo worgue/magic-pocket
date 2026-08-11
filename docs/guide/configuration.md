@@ -1785,6 +1785,24 @@ routes = [
     - 旧 `build_dir` と旧文字列形式の `build = "..."` は廃止されました。`build = { dir = "...", cmd = "..." }` または `upload_dir = "..."` を使ってください（起動時に移行手順つきのエラーが出ます）。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
 
+!!! note "差分アップロードと invalidation の範囲"
+    `build` / `upload_dir` のアップロードは差分のみです。S3 上のオブジェクトと内容が
+    一致するファイルはスキップされるため、数千ファイル規模のアセット（アイコン集・
+    絵文字画像・フォント等）を `upload_dir` に置いても deploy 時間は伸びません。
+
+    - 判定は **ETag**。単一 PUT でアップロードされたオブジェクトの ETag は中身の MD5
+      なので、ローカルの MD5 と一致したときだけスキップします
+    - **multipart でアップロードされたオブジェクト（ETag が `<hash>-<パート数>` 形式）と、
+      ETag が MD5 にならないオブジェクト（SSE-KMS 等）は常に再アップロード**します。
+      内容の同一性を断定できないためで、サイズ比較での代替はしません（同じサイズで
+      内容が違うファイルを「変更なし」と誤判定すると、以後どの deploy でもそのファイルが
+      更新されなくなります）
+    - ローカルに存在しない key は従来どおり削除されます
+    - CloudFront の invalidation は**変更があったルートの `path_pattern` に限定**され、
+      変更が無ければ invalidation 自体を発行しません。配信専用ルート（`upload_dir` を
+      持たないルート）や `versioning = "content_hash"` の immutable なアセットが
+      巻き添えで無効化されることはありません
+
 !!! tip "S3 key の二重 prefix を避ける（`origin_path` 省略）"
     S3 route の S3 key prefix は `origin_path + path_pattern` で計算されます。CloudFront の
     `origin_path` はリクエスト URI の前に付加されるため、`path_pattern = "/media/*"` の route に

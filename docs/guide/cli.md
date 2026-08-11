@@ -625,6 +625,9 @@ pocket resource cloudfront upload --stage=dev --name=main
 `upload` は `build` / `upload_dir` が設定されたルートに対して、ビルド（`build` のルートのみ）→ S3アップロード → CloudFrontキャッシュ無効化を実行します。
 `pocket deploy` 実行時にも自動的に呼ばれます（`--skip-frontend` で抑制可能）。
 
+アップロードは**差分のみ**です。S3 上のオブジェクトと内容が一致するファイルはスキップされるため、数千ファイル規模のアセットを `upload_dir` に置いても deploy 時間は伸びません（判定は ETag。詳細は [routes](configuration.md#routes) を参照）。
+キャッシュ無効化も**変更があったルートの `path_pattern` に限定**され、変更が無ければ invalidation 自体を発行しません。
+
 ### cloudfront_keys
 
 CloudFront 署名付き URL 用の鍵リソースを管理します。`signing_key` が設定されたディストリビューションのみ対象です。
