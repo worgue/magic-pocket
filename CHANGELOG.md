@@ -4,6 +4,14 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- `pocket deploy` / `pocket promote` に `-y` / `--yes` を追加しました。
+  `pocket django deploy` にしか無く、django を使わない (axum 等の) プロジェクトが
+  非対話実行できませんでした。確認は `pocket_cli.cli.interaction.confirm` 経由に
+  なり、deploy 配下で確認が増えてもこのフラグで抑止されます
+
 ## [0.24.0](https://github.com/worgue/magic-pocket/releases/tag/0.24.0) - 2026-08-07
 
 ### Added

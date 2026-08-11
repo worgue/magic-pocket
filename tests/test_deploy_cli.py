@@ -9,7 +9,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from pocket_cli.cli import deploy_cli
+from click.testing import CliRunner
+from pocket_cli.cli import deploy_cli, interaction
 
 from pocket.context import Context
 
@@ -79,3 +80,47 @@ def test_deploy_resources_prepares_before_status(use_toml, monkeypatch):
     _run_deploy(monkeypatch, context, _Resource())
     assert calls[0] == "prepare"
     assert "status" in calls
+
+
+def test_deploy_accepts_yes_flag_and_sets_assume_yes(use_toml, monkeypatch):
+    """plain `pocket deploy` が -y を受け付け、assume yes を有効にすること
+
+    CLAUDE.md テンプレートや justfile の pass-through が `-y` を前提に
+    しているため、django 側だけでなく plain 側にも必要 (KN921)。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    seen: list[bool] = []
+
+    monkeypatch.setattr("pocket_cli.cli.aws_auth.check_aws_credentials", lambda: None)
+    monkeypatch.setattr(
+        deploy_cli.Context, "from_toml", classmethod(lambda cls, stage: MagicMock())
+    )
+    monkeypatch.setattr(
+        deploy_cli,
+        "_deploy_pipeline",
+        lambda context, **kwargs: seen.append(interaction.assume_yes()),
+    )
+
+    runner = CliRunner()
+    interaction.set_assume_yes(False)
+    result = runner.invoke(deploy_cli.deploy, ["--stage=dev", "-y"])
+    assert result.exit_code == 0, result.output
+    assert seen == [True]
+
+    interaction.set_assume_yes(False)
+    result = runner.invoke(deploy_cli.deploy, ["--stage=dev"])
+    assert result.exit_code == 0, result.output
+    assert seen == [True, False]
+    interaction.set_assume_yes(False)
+
+
+def test_interaction_confirm_skips_prompt_when_assume_yes(monkeypatch):
+    """assume yes 有効時は abort=True の確認でも中断せず True を返すこと"""
+    monkeypatch.setattr(
+        interaction.click, "confirm", lambda *a, **kw: pytest.fail("prompt が出た")
+    )
+    interaction.set_assume_yes(True)
+    try:
+        assert interaction.confirm("ok?", abort=True) is True
+    finally:
+        interaction.set_assume_yes(False)

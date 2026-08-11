@@ -74,6 +74,7 @@ pocket deploy --stage=dev
 | `--stage` | 対象ステージ |
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 ### pocket promote
@@ -97,6 +98,7 @@ pocket promote --stage=stg --commit-hash=<full-sha>
 | `--commit-hash` | 昇格するイメージの git commit hash（**必須**） |
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 ### pocket status

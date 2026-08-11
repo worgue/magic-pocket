@@ -14,6 +14,7 @@ from pocket.context import Context
 from pocket.django import django_installed
 from pocket.django.utils import get_storages
 from pocket.utils import echo
+from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.resources.awscontainer import AwsContainer
 
@@ -93,22 +94,25 @@ def deploy(stage: str, openpath, yes):
         stage=stage,
         openpath=None,
         skip_frontend=False,
+        yes=yes,
     )
     _django_post_deploy(stage, yes=yes, openpath=openpath)
 
 
 def _django_post_deploy(stage: str, *, yes: bool, openpath):
     """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。"""
+    if yes:
+        interaction.set_assume_yes(True)
     context = Context.from_toml(stage=stage)
     if _staticfiles_publish_mode(context) == "command":
         echo.info(
             'staticfiles is publish = "command": skipping deploystatic. '
             "Publish with `pocket django deploystatic --stage %s`." % stage
         )
-    elif yes or click.confirm("deploystatic?", default=True):
+    elif interaction.confirm("deploystatic?", default=True):
         collectstatic_locally(stage)
         upload_collected_staticfiles(stage)
-    if yes or click.confirm("migrate?", default=True):
+    if interaction.confirm("migrate?", default=True):
         # handler 解決は migrate 実行が確定してから行う (management handler
         # 未設定 stage で deploy 本体成功後に例外になり URL 表示へ到達しない
         # のを防ぐ)
@@ -148,6 +152,7 @@ def promote(stage: str, commit_hash, openpath, yes):
         commit_hash=commit_hash,
         openpath=None,
         skip_frontend=False,
+        yes=yes,
     )
     _django_post_deploy(stage, yes=yes, openpath=openpath)
 

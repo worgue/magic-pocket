@@ -5,6 +5,7 @@ import click
 
 from pocket.context import Context, deploy_hash_report
 from pocket.utils import echo
+from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore, create_state_store
@@ -213,10 +214,14 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
 @removed_skip_check_existing
-def deploy(stage: str, openpath, skip_frontend):
+def deploy(stage: str, openpath, skip_frontend, yes):
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
+    interaction.set_assume_yes(yes)
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
     _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
@@ -227,8 +232,11 @@ def deploy(stage: str, openpath, skip_frontend):
 @click.option("--commit-hash", required=True, help="昇格する image の git commit hash")
 @click.option("--openpath")
 @click.option("--skip-frontend", is_flag=True, default=False)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
 @removed_skip_check_existing
-def promote(stage: str, commit_hash, openpath, skip_frontend):
+def promote(stage: str, commit_hash, openpath, skip_frontend, yes):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 
     `pocket django build` で push した image に :<stage> タグを移し、
@@ -236,6 +244,7 @@ def promote(stage: str, commit_hash, openpath, skip_frontend):
     """
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
+    interaction.set_assume_yes(yes)
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
     if context.awscontainer is None:
