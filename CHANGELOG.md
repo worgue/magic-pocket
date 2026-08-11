@@ -4,7 +4,13 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.25.0](https://github.com/worgue/magic-pocket/releases/tag/0.25.0) - 2026-08-11
+
+### Added
+- `pocket deploy` / `pocket promote` に `-y` / `--yes` を追加しました。
+  `pocket django deploy` にしか無く、django を使わない (axum 等の) プロジェクトが
+  非対話実行できませんでした。確認は `pocket_cli.cli.interaction.confirm` 経由に
+  なり、deploy 配下で確認が増えてもこのフラグで抑止されます
 
 ### Changed
 - `build` / `upload_dir` route のアップロードを**差分のみ**にしました。S3 上の
@@ -16,12 +22,6 @@
 - CloudFront の invalidation を**変更があった route の `path_pattern` に限定**し、
   変更が無ければ invalidation 自体を発行しないようにしました。従来は毎 deploy
   `/*` 固定で、アップロードしていない配信専用 route のキャッシュまで落ちていました
-
-### Added
-- `pocket deploy` / `pocket promote` に `-y` / `--yes` を追加しました。
-  `pocket django deploy` にしか無く、django を使わない (axum 等の) プロジェクトが
-  非対話実行できませんでした。確認は `pocket_cli.cli.interaction.confirm` 経由に
-  なり、deploy 配下で確認が増えてもこのフラグで抑止されます
 
 ## [0.24.0](https://github.com/worgue/magic-pocket/releases/tag/0.24.0) - 2026-08-07
 
