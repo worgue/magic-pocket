@@ -4,6 +4,21 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.25.1](https://github.com/worgue/magic-pocket/releases/tag/0.25.1) - 2026-08-12
+
+### Fixed
+- DSQL バックアップで使う AWS Backup vault (`pocket-backup`) の自動作成が、
+  vault が 1 つも無いアカウントで `AccessDeniedException` になり失敗する問題を
+  修正しました。AWS Backup は存在しない vault への Describe に
+  ResourceNotFoundException ではなく AccessDeniedException を返すため、
+  「describe → 無ければ create」では未作成を判定できませんでした。
+  CreateBackupVault を先に実行し AlreadyExistsException を握る方式 (create-first)
+  に変更しています。オンデマンドバックアップ・定期バックアップ (backup plan の
+  ensure)・復元の 3 経路すべてに影響していました
+- `pocket resource dsql backup` の AWS エラー表示に、失敗した API 名を含める
+  ようにしました (例: `AccessDeniedException (API: CreateBackupVault): ...`)。
+  従来は AWS の文言だけで、どの呼び出しで落ちたのか分かりませんでした
+
 ## [0.25.0](https://github.com/worgue/magic-pocket/releases/tag/0.25.0) - 2026-08-11
 
 ### Added
