@@ -125,7 +125,7 @@ wheels = [
 
 [[package]]
 name = "magic-pocket"
-version = "0.25.1"
+version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apig-wsgi" },
@@ -136,9 +136,9 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/80/68/51601bfac78dc9b820854046b3349853e3eb5b897845a75d9bba91e244c1/magic_pocket-0.25.1.tar.gz", hash = "sha256:38723a45c3a5aeb38729895cac1ff71bdd42e545fa8d5f054130fb6c014913e8", size = 661764, upload-time = "2026-08-12T07:07:05.751Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/77/ba443f8d73f0c768f019c80717f06c1aad62e9442e8a2ebf038da9621e43/magic_pocket-0.26.0.tar.gz", hash = "sha256:d0399fa1b0f2a2f00056bbb165467604ec76b6b00c81046d67f040d42f4e83f4", size = 663635, upload-time = "2026-08-12T07:17:54.532Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/1c/3415aa31a551850e9faebd4cb3e17411f5f6f18b28d47a9365e89c238711/magic_pocket-0.25.1-py3-none-any.whl", hash = "sha256:b00c3f053cc844aa5f4086a42626b62730688ed32db8a5108b7176be526270e0", size = 95780, upload-time = "2026-08-12T07:07:03.107Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/4a/ee28612c1441a80cbc66bac9d71c78be444b67b6417d8deb5c5ffa83c9a3/magic_pocket-0.26.0-py3-none-any.whl", hash = "sha256:dd6e92cf683b0861d416267708f3ef89588fe1d657ee2f704b4014a19a58cae0", size = 95814, upload-time = "2026-08-12T07:17:51.713Z" },
 ]
 
 [package.optional-dependencies]
@@ -199,7 +199,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.28" },
     { name = "django-tidb", specifier = ">=5.0" },
-    { name = "magic-pocket", extras = ["django"], specifier = "==0.25.1" },
+    { name = "magic-pocket", extras = ["django"], specifier = "==0.26.0" },
     { name = "mysqlclient", specifier = ">=2.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.1" },
 ]
