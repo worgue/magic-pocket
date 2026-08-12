@@ -4,6 +4,24 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.26.0](https://github.com/worgue/magic-pocket/releases/tag/0.26.0) - 2026-08-12
+
+### Added
+- staticfiles 宣言に `link` を追加しました。`link = true` を宣言すると
+  `pocket django deploy` / `promote` / `deploystatic` のすべての経路で
+  collectstatic に `--link` が付き、ビルド先が全量 symlink になります
+  (大容量資産の複製コスト削減。`aws s3 sync` は symlink を追うため
+  アップロード互換)。従来の `deploystatic --link` フラグは
+  `--link/--no-link` になり、宣言の上書き用に使えます
+
+### Changed
+- link 有効時は、ビルド先 (`pocket_cache/static_build/<stage>/`) を
+  collectstatic の前に毎回クリアするようにしました。非 link で作られた
+  実体ファイルが混在すると collectstatic がモード不一致で全ファイルを
+  実体コピーし直すこと、ソース削除後に残る壊れた symlink が
+  `aws s3 sync` を exit 2 で失敗させることを避けるためです。
+  非 link 時は従来どおりクリアしません
+
 ## [0.25.1](https://github.com/worgue/magic-pocket/releases/tag/0.25.1) - 2026-08-12
 
 ### Fixed
