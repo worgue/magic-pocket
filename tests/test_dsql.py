@@ -13,6 +13,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+from botocore.exceptions import ClientError
 from botocore.stub import ANY, Stubber
 from click.testing import CliRunner
 from pocket_cli.cli import dsql_cli
@@ -282,10 +283,10 @@ def test_start_backup_ensures_pocket_managed_vault_and_role(monkeypatch):
     dsql, _ = _make_dsql()
     dsql.__dict__["cluster"] = _get_cluster_response("abc123")
     backup_stub = Stubber(dsql._backup)
-    backup_stub.add_response(
-        "describe_backup_vault",
-        {"BackupVaultName": "pocket-backup"},
-        {"BackupVaultName": "pocket-backup"},
+    backup_stub.add_client_error(
+        "create_backup_vault",
+        service_error_code="AlreadyExistsException",
+        expected_params={"BackupVaultName": "pocket-backup"},
     )
     backup_stub.add_response(
         "start_backup_job",
@@ -308,20 +309,48 @@ def test_start_backup_ensures_pocket_managed_vault_and_role(monkeypatch):
 
 
 def test_ensure_backup_vault_creates_when_missing():
-    """vault 不在 (ResourceNotFound) なら作成する。"""
+    """vault 不在なら create-first で作成する (describe は撃たない)。
+
+    vault ゼロのアカウントでは存在しない vault への Describe が
+    ResourceNotFoundException ではなく AccessDeniedException になるため、
+    describe による存在確認では未作成を判定できない。
+    """
     dsql, _ = _make_dsql()
     stubber = Stubber(dsql._backup)
-    stubber.add_client_error(
-        "describe_backup_vault",
-        service_error_code="ResourceNotFoundException",
-        expected_params={"BackupVaultName": "pocket-backup"},
-    )
     stubber.add_response(
         "create_backup_vault",
         {"BackupVaultName": "pocket-backup"},
         {"BackupVaultName": "pocket-backup"},
     )
     with stubber:
+        dsql._ensure_backup_vault("pocket-backup")
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_backup_vault_noop_when_exists():
+    """既存 vault の AlreadyExistsException は握って noop (冪等)。"""
+    dsql, _ = _make_dsql()
+    stubber = Stubber(dsql._backup)
+    stubber.add_client_error(
+        "create_backup_vault",
+        service_error_code="AlreadyExistsException",
+        expected_params={"BackupVaultName": "pocket-backup"},
+    )
+    with stubber:
+        dsql._ensure_backup_vault("pocket-backup")
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_backup_vault_raises_on_access_denied():
+    """本物の権限不足 (create の AccessDenied) はそのまま raise する。"""
+    dsql, _ = _make_dsql()
+    stubber = Stubber(dsql._backup)
+    stubber.add_client_error(
+        "create_backup_vault",
+        service_error_code="AccessDeniedException",
+        expected_params={"BackupVaultName": "pocket-backup"},
+    )
+    with stubber, pytest.raises(ClientError):
         dsql._ensure_backup_vault("pocket-backup")
     stubber.assert_no_pending_responses()
 
@@ -587,10 +616,10 @@ def test_ensure_backup_plan_creates_plan_and_selection(monkeypatch):
     dsql.__dict__["cluster"] = _get_cluster_response("abc123")
     monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
     stubber = Stubber(dsql._backup)
-    stubber.add_response(
-        "describe_backup_vault",
-        {"BackupVaultName": "pocket-backup"},
-        {"BackupVaultName": "pocket-backup"},
+    stubber.add_client_error(
+        "create_backup_vault",
+        service_error_code="AlreadyExistsException",
+        expected_params={"BackupVaultName": "pocket-backup"},
     )
     stubber.add_response("list_backup_plans", {"BackupPlansList": []})
     stubber.add_response(
@@ -645,10 +674,10 @@ def test_ensure_backup_plan_is_idempotent(monkeypatch):
     dsql.__dict__["cluster"] = _get_cluster_response("abc123")
     monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
     stubber = Stubber(dsql._backup)
-    stubber.add_response(
-        "describe_backup_vault",
-        {"BackupVaultName": "pocket-backup"},
-        {"BackupVaultName": "pocket-backup"},
+    stubber.add_client_error(
+        "create_backup_vault",
+        service_error_code="AlreadyExistsException",
+        expected_params={"BackupVaultName": "pocket-backup"},
     )
     stubber.add_response(
         "list_backup_plans",

@@ -376,14 +376,18 @@ class Dsql:
         return res["BackupJobId"]
 
     def _ensure_backup_vault(self, name: str) -> None:
+        # describe → 無ければ create の順は不可。vault が 1 つも無いアカウントでは
+        # AWS Backup が存在しない vault への Describe に ResourceNotFoundException
+        # ではなく AccessDeniedException を返すため「未作成」を判定できない。
+        # CreateBackupVault は同名 vault があると AlreadyExistsException を返すので
+        # create を先に撃って握る (既存なら noop = 冪等)。
         try:
-            self._backup.describe_backup_vault(BackupVaultName=name)
-            return
+            self._backup.create_backup_vault(BackupVaultName=name)
         except ClientError as e:
-            if e.response["Error"]["Code"] != "ResourceNotFoundException":
-                raise
-        echo.log("Creating backup vault: %s" % name)
-        self._backup.create_backup_vault(BackupVaultName=name)
+            if e.response["Error"]["Code"] == "AlreadyExistsException":
+                return
+            raise
+        echo.log("Created backup vault: %s" % name)
 
     def _ensure_backup_role(self) -> str:
         """AWS Backup サービスロールを冪等に ensure して ARN を返す。

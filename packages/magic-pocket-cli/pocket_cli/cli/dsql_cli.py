@@ -102,8 +102,12 @@ def backup(stage, vault, iam_role_arn, retention_days, watch):
             vault, iam_role_arn=iam_role_arn, retention_days=retention_days
         )
     except ClientError as e:
+        # AWS のエラー文言は API 名を含まないことがある (例: AccessDenied の
+        # "Insufficient privileges...") ため、どの呼び出しで落ちたかを明示する
         err = e.response["Error"]
-        raise click.ClickException("%s: %s" % (err["Code"], err["Message"])) from e
+        raise click.ClickException(
+            "%s (API: %s): %s" % (err["Code"], e.operation_name, err["Message"])
+        ) from e
     echo.success("Backup job started: %s" % job_id)
     echo.info("Status check:")
     echo.info(
