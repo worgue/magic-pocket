@@ -23,6 +23,7 @@ class DjangoStorage(BaseModel):
     distribution: str | None = None
     route: str | None = None
     publish: PublishMode = "deploy"
+    link: bool = False
 
     @model_validator(mode="after")
     def check_manifest(self):
@@ -57,6 +58,12 @@ class DjangoStorage(BaseModel):
     def check_publish(self):
         if self.publish != "deploy" and not self.static:
             raise ValueError("publish can only be used with static storage")
+        return self
+
+    @model_validator(mode="after")
+    def check_link(self):
+        if self.link and not self.static:
+            raise ValueError("link can only be used with static storage")
         return self
 
 

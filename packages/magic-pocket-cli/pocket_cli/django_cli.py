@@ -110,7 +110,7 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
             "Publish with `pocket django deploystatic --stage %s`." % stage
         )
     elif interaction.confirm("deploystatic?", default=True):
-        collectstatic_locally(stage)
+        collectstatic_locally(stage, link=_staticfiles_link(context))
         upload_collected_staticfiles(stage)
     if interaction.confirm("migrate?", default=True):
         # handler 解決は migrate 実行が確定してから行う (management handler
@@ -202,6 +202,14 @@ def _staticfiles_publish_mode(context: Context) -> str:
         if storage:
             return storage.publish
     return "deploy"
+
+
+def _staticfiles_link(context: Context) -> bool:
+    if context.awscontainer and context.awscontainer.django:
+        storage = context.awscontainer.django.storages.get("staticfiles")
+        if storage:
+            return storage.link
+    return False
 
 
 def _get_management_command_handler(context: Context):
@@ -314,7 +322,15 @@ def _get_project_dir(stage: str) -> str | None:
 
 def collectstatic_locally(stage: str, *, link: bool = False):
     local_storage = get_deploystatic_local_storage(stage)
-    echo.info("collectstatic to %s..." % local_storage["OPTIONS"]["location"])
+    location = local_storage["OPTIONS"]["location"]
+    if link:
+        # link 時はビルド先を毎回作り直す。非 link で作られた実体が混在すると
+        # collectstatic がモード不一致で全ファイルを実体コピーし直し、ソース
+        # 削除で残った壊れ symlink は aws s3 sync を exit 2 で失敗させる。
+        # symlink の再作成は安価なのでクリアのコストは無視できる
+        # (非 link 時は従来どおりクリアしない = 実体の全量再コピーを避ける)
+        shutil.rmtree(location, ignore_errors=True)
+    echo.info("collectstatic to %s..." % location)
     set_staticfiles_override_env(local_storage)
     args = ["manage.py", "collectstatic", "--noinput"]
     if link:
@@ -336,13 +352,15 @@ def collectstatic_locally(stage: str, *, link: bool = False):
     " 旧デプロイのアセットを参照中のリクエストや rollback を壊しうるため opt-in",
 )
 @click.option(
-    "--link",
-    is_flag=True,
-    default=False,
+    "--link/--no-link",
+    default=None,
     help="collectstatic に --link を渡す (大容量資産の複製コスト削減。"
-    " aws s3 sync は symlink を追うので upload 互換)",
+    " aws s3 sync は symlink を追うので upload 互換)。省略時は pocket.toml の"
+    " staticfiles 宣言 (link) に従う",
 )
-def deploystatic(stage: str, skip_collectstatic: bool, delete: bool, link: bool):
+def deploystatic(stage: str, skip_collectstatic: bool, delete: bool, link: bool | None):
+    if link is None:
+        link = _staticfiles_link(Context.from_toml(stage=stage))
     if not skip_collectstatic:
         collectstatic_locally(stage, link=link)
     upload_collected_staticfiles(stage, delete=delete)

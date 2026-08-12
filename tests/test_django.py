@@ -1,8 +1,13 @@
+from pathlib import Path
+
 import pytest
+from click.testing import CliRunner
 from pocket_cli.django_cli import (
     _get_management_command_handler,
+    _staticfiles_link,
     _staticfiles_publish_mode,
     collectstatic_locally,
+    deploystatic,
     upload_collected_staticfiles,
 )
 
@@ -207,6 +212,61 @@ def test_collectstatic_locally_link_opt_in(use_toml, monkeypatch):
     assert "--link" not in cmds[0]
     collectstatic_locally("dev", link=True)
     assert "--link" in cmds[1]
+
+
+def test_staticfiles_link_declared(use_toml):
+    """staticfiles 宣言の link は context に伝播し、未宣言の既定は False"""
+    use_toml("tests/data/toml/staticfiles_link.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.awscontainer and context.awscontainer.django
+    assert context.awscontainer.django.storages["staticfiles"].link is True
+    assert _staticfiles_link(context) is True
+
+    use_toml("tests/data/toml/default.toml")
+    context = Context.from_toml(stage="dev")
+    assert _staticfiles_link(context) is False
+
+
+def test_collectstatic_locally_link_clears_build_dir(use_toml, monkeypatch):
+    """link 時のみビルド先を事前クリアする。
+
+    非 link で作られた実体との混在 (collectstatic の全量再コピー) と、
+    ソース削除で残る壊れ symlink (aws s3 sync が exit 2 で失敗) を避ける。
+    非 link 時は従来どおりクリアしない (実体の全量再コピーを避ける)。
+    """
+    use_toml("tests/data/toml/default.toml")
+    removed = []
+    monkeypatch.setattr("pocket_cli.django_cli.run", lambda cmd, **kw: None)
+    monkeypatch.setattr(
+        "pocket_cli.django_cli.shutil.rmtree",
+        lambda path, ignore_errors=False: removed.append(str(path)),
+    )
+    collectstatic_locally("dev")
+    assert removed == []
+    collectstatic_locally("dev", link=True)
+    assert len(removed) == 1
+    assert removed[0].endswith(str(Path("pocket_cache") / "static_build" / "dev"))
+
+
+def test_deploystatic_link_falls_back_to_declaration(use_toml, monkeypatch):
+    """deploystatic はフラグ省略時に pocket.toml の link 宣言へフォールバックし、
+    --no-link で宣言を上書きできる"""
+    use_toml("tests/data/toml/staticfiles_link.toml")
+    calls = []
+    monkeypatch.setattr(
+        "pocket_cli.django_cli.collectstatic_locally",
+        lambda stage, link=False: calls.append(link),
+    )
+    monkeypatch.setattr(
+        "pocket_cli.django_cli.upload_collected_staticfiles",
+        lambda stage, delete=False: None,
+    )
+    runner = CliRunner()
+    result = runner.invoke(deploystatic, ["--stage", "dev"])
+    assert result.exit_code == 0, result.output
+    result = runner.invoke(deploystatic, ["--stage", "dev", "--no-link"])
+    assert result.exit_code == 0, result.output
+    assert calls == [True, False]
 
 
 def test_ses_not_configured_use_ses_false(use_toml):
