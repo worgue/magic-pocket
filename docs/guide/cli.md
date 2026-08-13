@@ -555,6 +555,11 @@ pocket resource dsql restore-status --stage=dev --job-id=<id>
 pocket resource dsql destroy --stage=dev
 ```
 
+!!! info "定期バックアップの job が一覧に出るまでのラグ"
+    `[dsql.backup]` の plan 由来の job は、スケジュール時刻を過ぎても `backup-status`（AWS Backup の `ListBackupJobs`）やコンソールの一覧にすぐには現れません。実測で **30 分ほど遅れて** `CREATED` として見え始めた例があります（`CreationDate` はスケジュール時刻のまま）。
+
+    さらに AWS Backup は指定時刻ちょうどではなく start window 内で開始するため、**一覧に出ない = 実行されなかった、ではありません**。定期実行の確認は時間に余裕を持って行ってください。
+
 !!! warning "復元後は deploy が必要です"
     復元は常に**新しいクラスター**を作成します（AWS Backup は既存クラスターを上書きしません）。`restore` は Name タグの付け替えと SSM の endpoint 更新まで行いますが、**Lambda の `POCKET_DSQL_ENDPOINT` と `dsql:DbConnectAdmin` の対象 ARN は CloudFormation 管理**のため、`pocket deploy` を実行するまでアプリは旧クラスターに書き込み続けます。
 

@@ -500,6 +500,19 @@ delete_after_days = 365        # 365 日で削除
 !!! warning "cold storage の最低保持期間"
     AWS Backup の cold storage は最低 90 日課金されます。このため `delete_after_days` は `cold_storage_after_days + 90` 以上である必要があり、違反する設定は pocket.toml の検証で弾かれます（例: `cold_storage_after_days = 35` なら `delete_after_days` は 125 以上）。
 
+!!! tip "短いサイクルで検証したい stage（sandbox 等）"
+    上の 90 日制約は cold storage へ移動する設定にのみ効きます。`cold_storage_after_days = 0`（移動しない）にすれば `delete_after_days` を自由に短くできるので、検証用 stage は数日で失効させられます。
+
+    ```toml
+    [sandbox.dsql.backup]
+    cron = "0 3 * * ? *"
+    timezone = "Asia/Tokyo"
+    cold_storage_after_days = 0    # cold storage へ移動しない
+    delete_after_days = 7          # 7 日で失効
+    ```
+
+    ステージ上書き（`[sandbox.dsql.backup]`）で宣言すれば、他 stage に plan を作らずに検証できます。
+
 !!! info "destroy とバックアップデータ"
     `pocket destroy` はバックアップ**設定**（backup plan / selection）を削除しますが、バックアップ**データ**（vault と recovery point）は削除しません。クラスターを消した後こそ復元が必要になりうるためで、deploy role にもデータ削除権限（`DeleteBackupVault` / `DeleteRecoveryPoint`）は付与していません。不要になったデータは AWS Backup のコンソール等から明示的に削除してください。
 
