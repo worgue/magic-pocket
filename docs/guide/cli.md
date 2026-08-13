@@ -536,6 +536,9 @@ pocket resource dsql backup --stage=dev --watch
 pocket resource dsql backup --stage=dev --vault=my-vault \
   --iam-role-arn=arn:aws:iam::123456789012:role/my-backup-role --retention-days=35
 
+# 明示的に無期限で残す（pocket からは削除できなくなるため警告が出る）
+pocket resource dsql backup --stage=dev --retention-days=0
+
 # バックアップ job の状態確認（--job-id 省略時はこのクラスターの最新 job。
 # --watch で終端状態まで待機。aws CLI 直接でも可:
 #   aws backup describe-backup-job --backup-job-id <id> --region <region>）
@@ -554,6 +557,13 @@ pocket resource dsql restore-status --stage=dev --job-id=<id>
 # クラスターの削除（確認プロンプト付き）
 pocket resource dsql destroy --stage=dev
 ```
+
+!!! info "オンデマンドバックアップの保持日数"
+    `--retention-days` を省略した場合の保持日数は **`[dsql.backup]` の `delete_after_days` → 宣言が無ければ 1095 日（3 年）** の順で決まります。解決結果は実行時に `Retention: 7 days (from [dsql.backup] delete_after_days)` のように表示されます。復元前に取られる現用クラスターのバックアップも同じ解決を通ります。
+
+    保持日数を渡さないと AWS Backup の recovery point は**無期限**に残ります。pocket にも deploy role にもバックアップ**データ**の削除権限が無いため（[設定ファイル](configuration.md)の「定期バックアップ」節を参照）、無期限の recovery point は console 作業でしか消せません。既定で失効日を付けているのはこのためです。
+
+    意図して無期限にする場合は `--retention-days=0` を明示してください（警告を出したうえで `Lifecycle` を付けずに実行します）。
 
 !!! info "定期バックアップの job が一覧に出るまでのラグ"
     `[dsql.backup]` の plan 由来の job は、スケジュール時刻を過ぎても `backup-status`（AWS Backup の `ListBackupJobs`）やコンソールの一覧にすぐには現れません。実測で **30 分ほど遅れて** `CREATED` として見え始めた例があります（`CreationDate` はスケジュール時刻のまま）。

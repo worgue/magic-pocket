@@ -518,7 +518,7 @@ delete_after_days = 365        # 365 日で削除
 
     復元は AWS Backup が常に**新規クラスター**を作成する形で行われます（元のクラスターは変更されません）。
 
-単発のバックアップは `pocket resource dsql backup` で取得できます（[CLI リファレンス](cli.md) 参照）。
+単発のバックアップは `pocket resource dsql backup` で取得できます（[CLI リファレンス](cli.md) 参照）。**`--retention-days` を省略した単発バックアップは、この `delete_after_days` を継承します**（宣言が無い stage では 1095 日）。宣言している stage では定期と単発で保持ポリシーが一致します。
 
 !!! info "endpoint の publish（deploy の外から endpoint を引く）"
     DSQL の cluster identifier は AWS 自動生成のため、endpoint

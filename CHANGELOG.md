@@ -4,6 +4,24 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- `pocket resource dsql backup` で `--retention-days` を省略したときの保持日数を、
+  `[dsql.backup]` の `delete_after_days` → 宣言が無ければ 1095 日 (3 年) の順で
+  解決するようにしました。従来は Lifecycle を渡さず **無期限保持** になっていましたが、
+  pocket にも deploy role にもバックアップデータの削除権限が無いため、
+  一度作ると console 作業でしか消せない recovery point が積み上がっていました。
+  復元前に取られる現用クラスターのバックアップ (利用者が明示的に頼んでいない分) も
+  同じ解決を通ります。解決結果は実行時に 1 行表示されます。
+  意図的に無期限にする場合は `--retention-days=0` を明示してください
+  (警告のうえ Lifecycle なしで実行します)
+
+### Documentation
+- dsql backup の docs に、短サイクル検証向けの設定例
+  (`cold_storage_after_days = 0` で 90 日制約を外す) と、plan 由来の job が
+  `ListBackupJobs` に現れるまで 30 分ほどラグがある旨の注記を追加しました
+
 ## [0.26.0](https://github.com/worgue/magic-pocket/releases/tag/0.26.0) - 2026-08-12
 
 ### Added

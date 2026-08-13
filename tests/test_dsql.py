@@ -18,7 +18,7 @@ from botocore.stub import ANY, Stubber
 from click.testing import CliRunner
 from pocket_cli.cli import dsql_cli
 from pocket_cli.resources import dsql as dsql_module
-from pocket_cli.resources.dsql import Dsql
+from pocket_cli.resources.dsql import DEFAULT_ON_DEMAND_RETENTION_DAYS, Dsql
 from pydantic import ValidationError
 
 from pocket.context import DsqlBackupContext, DsqlContext
@@ -51,6 +51,12 @@ def _make_dsql(endpoint_secret_name: str = "") -> tuple[Dsql, Stubber]:
     dsql = Dsql(context)
     stubber = Stubber(dsql._client)
     return dsql, stubber
+
+
+def _make_dsql_with_backup(**overrides) -> tuple[Dsql, Stubber]:
+    """[dsql.backup] を宣言した状態の Dsql (_backup_context は後方で定義)。"""
+    dsql = Dsql(_backup_context(**overrides))
+    return dsql, Stubber(dsql._client)
 
 
 class _StoreRecorder:
@@ -295,6 +301,7 @@ def test_start_backup_ensures_pocket_managed_vault_and_role(monkeypatch):
             "BackupVaultName": "pocket-backup",
             "ResourceArn": ARN,
             "IamRoleArn": ROLE_ARN,
+            "Lifecycle": {"DeleteAfterDays": DEFAULT_ON_DEMAND_RETENTION_DAYS},
         },
     )
     iam_stub = Stubber(dsql._iam)
@@ -306,6 +313,84 @@ def test_start_backup_ensures_pocket_managed_vault_and_role(monkeypatch):
     assert job_id == "job-1"
     backup_stub.assert_no_pending_responses()
     iam_stub.assert_no_pending_responses()
+
+
+def test_start_backup_inherits_retention_from_declaration():
+    """保持指定が無ければ [dsql.backup] の delete_after_days を継承する。
+
+    宣言している stage では保持ポリシーが 1 箇所に決まる (定期とオンデマンドで
+    保持が食い違わない)。
+    """
+    dsql, _ = _make_dsql_with_backup(delete_after_days=7)
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "start_backup_job",
+        {"BackupJobId": "job-1", "CreationDate": CREATED},
+        {
+            "BackupVaultName": "my-vault",
+            "ResourceArn": ARN,
+            "IamRoleArn": ROLE_ARN,
+            "Lifecycle": {"DeleteAfterDays": 7},
+        },
+    )
+    with stubber:
+        dsql.start_backup("my-vault", iam_role_arn=ROLE_ARN)
+    stubber.assert_no_pending_responses()
+
+
+def test_start_backup_zero_retention_means_unlimited():
+    """0 は「無期限」の明示指定。Lifecycle を渡さず、警告を出す。
+
+    無期限の recovery point は pocket からも deploy role からも削除できず
+    console 作業でしか消せないため、明示指定でしか作れないようにしている。
+    """
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    stubber = Stubber(dsql._backup)
+    stubber.add_response(
+        "start_backup_job",
+        {"BackupJobId": "job-1", "CreationDate": CREATED},
+        {
+            "BackupVaultName": "my-vault",
+            "ResourceArn": ARN,
+            "IamRoleArn": ROLE_ARN,
+        },
+    )
+    with stubber:
+        dsql.start_backup("my-vault", iam_role_arn=ROLE_ARN, retention_days=0)
+    stubber.assert_no_pending_responses()
+
+
+def test_restore_cli_internal_backup_gets_retention(monkeypatch):
+    """復元前の内部バックアップにも保持日数が付く。
+
+    利用者が明示的に頼んでいない recovery point なので、無期限で残ると
+    復元のたびに console でしか消せないものが積み上がる。
+    """
+    dsql, _ = _make_dsql_with_backup(delete_after_days=7)
+    dsql.__dict__["cluster"] = _get_cluster_response("old123")
+    rp_arn = "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-1"
+    captured: dict = {}
+
+    def _start_backup_job(**params):
+        captured.update(params)
+        return {"BackupJobId": "job-1"}
+
+    monkeypatch.setattr(dsql._backup, "create_backup_vault", lambda **kw: {})
+    monkeypatch.setattr(dsql._backup, "start_backup_job", _start_backup_job)
+    monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
+    monkeypatch.setattr(
+        Dsql, "wait_backup", lambda self, job_id: {"State": "COMPLETED"}
+    )
+    monkeypatch.setattr(Dsql, "start_restore", lambda self, arn: "restore-1")
+    monkeypatch.setattr(dsql_cli, "_finish_restore", lambda r, stage, job_id: None)
+    monkeypatch.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+    result = CliRunner().invoke(
+        dsql_cli.dsql, ["restore", "--stage", "dev", rp_arn, "--yes"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["Lifecycle"] == {"DeleteAfterDays": 7}
 
 
 def test_ensure_backup_vault_creates_when_missing():

@@ -45,6 +45,13 @@ _PLAN_RULE_KEYS = (
     "ScheduleExpressionTimezone",
 )
 _PLAN_LIFECYCLE_KEYS = ("MoveToColdStorageAfterDays", "DeleteAfterDays")
+# オンデマンドバックアップで保持日数の指定も [dsql.backup] 宣言も無いときの既定。
+# AWS Backup の vault は既定ライフサイクルを持たないため、Lifecycle を渡さないと
+# recovery point は無期限に残る。pocket にも deploy role にもデータ削除権限が無く
+# (destroy も recovery point を残す)、console 作業でしか消せなくなるため、
+# 「いつかは失効する」ことを既定で保証する。3 年は復元要件として十分長く、
+# 意図せず消えるより増え続けるほうが困る、という判断
+DEFAULT_ON_DEMAND_RETENTION_DAYS = 1095
 
 
 def _plan_matches(current: dict, desired: dict) -> bool:
@@ -370,10 +377,37 @@ class Dsql:
             "ResourceArn": self.arn,
             "IamRoleArn": iam_role_arn,
         }
-        if retention_days is not None:
-            params["Lifecycle"] = {"DeleteAfterDays": retention_days}
+        resolved = self._resolve_retention_days(retention_days)
+        if resolved is not None:
+            params["Lifecycle"] = {"DeleteAfterDays": resolved}
         res = self._backup.start_backup_job(**params)
         return res["BackupJobId"]
+
+    def _resolve_retention_days(self, retention_days: int | None) -> int | None:
+        """オンデマンドバックアップの保持日数を決める (None を返すと無期限)。
+
+        指定 > [dsql.backup] の宣言 > 既定 の順で解決する。復元時の内部
+        バックアップ (利用者が明示的に頼んでいない recovery point) も
+        start_backup を通るため同じ既定が効く。0 は「無期限」の明示指定。
+        """
+        if retention_days == 0:
+            echo.warning(
+                "この recovery point は無期限保持です。"
+                "pocket からは削除できないため、消すには console 作業が必要です。"
+            )
+            return None
+        if retention_days is not None:
+            echo.log("Retention: %d days (--retention-days)" % retention_days)
+            return retention_days
+        backup = self.context.backup
+        if backup is not None:
+            echo.log(
+                "Retention: %d days (from [dsql.backup] delete_after_days)"
+                % backup.delete_after_days
+            )
+            return backup.delete_after_days
+        echo.log("Retention: %d days (default)" % DEFAULT_ON_DEMAND_RETENTION_DAYS)
+        return DEFAULT_ON_DEMAND_RETENTION_DAYS
 
     def _ensure_backup_vault(self, name: str) -> None:
         # describe → 無ければ create の順は不可。vault が 1 つも無いアカウントでは

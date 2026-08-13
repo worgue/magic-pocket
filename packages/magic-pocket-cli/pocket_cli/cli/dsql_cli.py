@@ -10,6 +10,7 @@ from pocket_cli.resources.dsql import (
     BACKUP_ROLE_NAME,
     BACKUP_TERMINAL_STATES,
     BACKUP_VAULT_NAME,
+    DEFAULT_ON_DEMAND_RETENTION_DAYS,
     Dsql,
 )
 
@@ -87,9 +88,12 @@ def endpoint(stage, format_):
 )
 @click.option(
     "--retention-days",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="recovery point の保持日数 (省略時: vault のライフサイクル既定)",
+    help="recovery point の保持日数"
+    " (省略時: [dsql.backup] の delete_after_days、宣言が無ければ %d 日。"
+    "0 を指定すると無期限保持だが pocket からは削除できなくなる)"
+    % DEFAULT_ON_DEMAND_RETENTION_DAYS,
 )
 @click.option("--watch", is_flag=True, help="バックアップ完了まで待機する")
 def backup(stage, vault, iam_role_arn, retention_days, watch):
