@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.28.1](https://github.com/worgue/magic-pocket/releases/tag/0.28.1) - 2026-08-16
 
 ### Fixed
 - 0.27 以前に `[dsql.backup]` を宣言して deploy した stage で、0.28.0 に
