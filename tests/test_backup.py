@@ -25,6 +25,7 @@ from pocket.settings import Settings
 REGION = "us-east-1"
 DSQL_PLAN = "dev-testprj-pocket-backup-dsql"
 RDS_PLAN = "dev-testprj-pocket-backup-rds"
+LEGACY_DSQL_PLAN = "dev-testprj-pocket-dsql-backup"  # 0.27 以前の旧形式名
 DSQL_ARN = "arn:aws:dsql:us-east-1:123456789012:cluster/abc123"
 RDS_ARN = "arn:aws:rds:us-east-1:123456789012:cluster:dev-testprj-pocket-rds"
 ROLE_ARN = "arn:aws:iam::123456789012:role/forge-pocket-backup-role"
@@ -248,7 +249,9 @@ def test_context_undeclared_is_optin():
     assert context.backup is not None
     assert context.backup.declared is False
     assert context.backup.plans == []
-    assert context.backup.cleanup_plan_names == [DSQL_PLAN]
+    # 旧形式名 (0.27 以前) も destroy の掃除対象に含める
+    assert context.backup.cleanup_plan_names == [DSQL_PLAN, LEGACY_DSQL_PLAN]
+    assert context.backup.legacy_plan_names == [LEGACY_DSQL_PLAN]
     assert context.dsql is not None
     assert context.dsql.backup is None
 
@@ -526,6 +529,120 @@ def test_ensure_undeclared_touches_nothing(monkeypatch):
     with stubber:  # 応答を登録しない = 呼んだら例外になる
         backup.ensure_post_deploy_state()
     stubber.assert_no_pending_responses()
+
+
+def test_ensure_deletes_legacy_plan_before_provisioning(monkeypatch):
+    """0.27 以前の旧形式名 ({prefix}dsql-backup) の plan は deploy で削除する。
+
+    0.28.0 の改名 (dsql-backup → backup-dsql) で旧 plan が孤児として残り、
+    新 plan と同じ cluster に二重でバックアップが走るため (KN1041)。
+    selection → plan の順に消してから通常の provisioning を行う。
+    """
+    _ensure_role(monkeypatch)
+    _set_targets(monkeypatch, {"dsql": DSQL_ARN})
+    backup, stubber = _make_backup(legacy_plan_names=[LEGACY_DSQL_PLAN])
+    # legacy 掃除: 検出 → selection 削除 → plan 削除
+    stubber.add_response(
+        "list_backup_plans",
+        {
+            "BackupPlansList": [
+                {"BackupPlanId": "plan-legacy", "BackupPlanName": LEGACY_DSQL_PLAN}
+            ]
+        },
+    )
+    stubber.add_response(
+        "list_backup_selections",
+        {
+            "BackupSelectionsList": [
+                {"SelectionId": "sel-legacy", "SelectionName": LEGACY_DSQL_PLAN}
+            ]
+        },
+        {"BackupPlanId": "plan-legacy"},
+    )
+    stubber.add_response(
+        "delete_backup_selection",
+        {},
+        {"BackupPlanId": "plan-legacy", "SelectionId": "sel-legacy"},
+    )
+    stubber.add_response("delete_backup_plan", {}, {"BackupPlanId": "plan-legacy"})
+    # 以降は通常の provisioning
+    stubber.add_client_error(
+        "create_backup_vault",
+        service_error_code="AlreadyExistsException",
+        expected_params={"BackupVaultName": "pocket-backup"},
+    )
+    _stub_plan_create(
+        stubber,
+        DSQL_PLAN,
+        "plan-dsql",
+        [
+            {
+                "RuleName": "daily",
+                "TargetBackupVaultName": "pocket-backup",
+                "ScheduleExpression": "cron(0 3 * * ? *)",
+                "ScheduleExpressionTimezone": "Asia/Tokyo",
+                "Lifecycle": {"DeleteAfterDays": 35},
+            },
+            {
+                "RuleName": "monthly",
+                "TargetBackupVaultName": "pocket-backup",
+                "ScheduleExpression": "cron(0 5 1 * ? *)",
+                "ScheduleExpressionTimezone": "Asia/Tokyo",
+                "Lifecycle": {
+                    "DeleteAfterDays": 365,
+                    "MoveToColdStorageAfterDays": 90,
+                },
+            },
+        ],
+    )
+    _stub_selection_create(stubber, DSQL_PLAN, "plan-dsql", [DSQL_ARN])
+    with stubber:
+        backup.ensure_post_deploy_state()
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_deletes_legacy_plan_even_when_undeclared(monkeypatch):
+    """[backup] 未宣言でも旧形式名の plan は deploy で削除する。
+
+    旧スキーマ ([dsql.backup]) から宣言を外して 0.28.0 に上げた場合も、
+    孤児 plan が silent に走り続けるのを防ぐ。新 plan の provisioning は
+    行わない (opt-in のまま)。
+    """
+    _set_targets(monkeypatch, {"dsql": DSQL_ARN})
+    backup, stubber = _make_backup(plans=[], legacy_plan_names=[LEGACY_DSQL_PLAN])
+    stubber.add_response(
+        "list_backup_plans",
+        {
+            "BackupPlansList": [
+                {"BackupPlanId": "plan-legacy", "BackupPlanName": LEGACY_DSQL_PLAN}
+            ]
+        },
+    )
+    stubber.add_response(
+        "list_backup_selections",
+        {"BackupSelectionsList": []},
+        {"BackupPlanId": "plan-legacy"},
+    )
+    stubber.add_response("delete_backup_plan", {}, {"BackupPlanId": "plan-legacy"})
+    with stubber:
+        backup.ensure_post_deploy_state()
+    # vault / role / 新 plan の API は登録していない = 呼ばれていない
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_legacy_cleanup_access_denied_warns_and_continues(monkeypatch, capsys):
+    """legacy 掃除に権限が無くても deploy を落とさない (警告のみ)"""
+    _set_targets(monkeypatch, {"dsql": DSQL_ARN})
+    backup, stubber = _make_backup(plans=[], legacy_plan_names=[LEGACY_DSQL_PLAN])
+    stubber.add_client_error(
+        "list_backup_plans",
+        service_error_code="AccessDeniedException",
+    )
+    with stubber:
+        backup.ensure_post_deploy_state()  # raise しない
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "権限" in err
+    assert LEGACY_DSQL_PLAN in err
 
 
 def test_ensure_noop_without_created_targets(monkeypatch):

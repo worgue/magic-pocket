@@ -4,6 +4,20 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- 0.27 以前に `[dsql.backup]` を宣言して deploy した stage で、0.28.0 に
+  上げても旧形式名 (`{prefix}dsql-backup`) の backup plan が残り、新 plan
+  (`{prefix}backup-dsql`) と**同じ cluster に二重で定期バックアップが走る**
+  問題を修正しました。deploy が旧形式名の plan を検出すると selection → plan
+  の順に自動削除します (`[backup]` 未宣言の stage でも掃除だけ走ります)。
+  destroy の掃除対象にも旧形式名を含めました。recovery point (バックアップ
+  データ) は削除しません。手動で対処する場合は
+  `aws backup list-backup-plans` で旧名の plan を特定し、
+  `aws backup delete-backup-selection` → `aws backup delete-backup-plan` の
+  順に削除してください
+
 ## [0.28.0](https://github.com/worgue/magic-pocket/releases/tag/0.28.0) - 2026-08-16
 
 ### Added

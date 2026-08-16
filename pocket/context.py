@@ -640,8 +640,12 @@ class BackupContext(BaseModel):
     # 宣言されたエンジンの plan (deploy が provision する対象)
     plans: list[BackupPlanContext] = []
     # stage に存在しうる全 plan 名 (destroy の掃除対象。宣言を外した後も消せる
-    # よう、宣言ではなく資源の有無から導出する)
+    # よう、宣言ではなく資源の有無から導出する。旧形式名も含む)
     cleanup_plan_names: list[str] = []
+    # 0.27 以前の plan 名 ({prefix}dsql-backup)。0.28.0 の改名でどのコードからも
+    # 参照されなくなり、残存すると新 plan と二重にバックアップが走るため、
+    # deploy 時にも見つけ次第削除する (改名互換。いずれ削除予定)
+    legacy_plan_names: list[str] = []
     # AWS Backup サービスロールを ensure する際に付与する boundary
     # (sandbox アカウント等、ロール作成に boundary が必須の環境用)
     permissions_boundary: str | None = None
@@ -666,8 +670,10 @@ class BackupContext(BaseModel):
         if backup and backup.rds:
             plans.append(BackupPlanContext.from_settings("rds", backup.rds, root))
         cleanup_plan_names = []
+        legacy_plan_names = []
         if root.dsql:
             cleanup_plan_names.append(f"{root.resource_prefix}backup-dsql")
+            legacy_plan_names.append(f"{root.resource_prefix}dsql-backup")
         if root.rds and root.rds.managed:
             cleanup_plan_names.append(f"{root.resource_prefix}backup-rds")
         return cls(
@@ -675,7 +681,8 @@ class BackupContext(BaseModel):
             deletable=backup.deletable if backup else False,
             timezone=backup.timezone if backup else "UTC",
             plans=plans,
-            cleanup_plan_names=cleanup_plan_names,
+            cleanup_plan_names=cleanup_plan_names + legacy_plan_names,
+            legacy_plan_names=legacy_plan_names,
             permissions_boundary=_permissions_boundary(root),
         )
 

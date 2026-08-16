@@ -33,7 +33,9 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
         resources.append(Dsql(context.dsql))
     if context.rds:
         resources.append(Rds(context.rds))
-    if context.backup and context.backup.declared:
+    # declared でなくても組み込む (0.27 以前の旧形式 plan の掃除が
+    # ensure_post_deploy_state で走るため)
+    if context.backup and (context.backup.declared or context.backup.legacy_plan_names):
         resources.append(
             Backup(context.backup, dsql_context=context.dsql, rds_context=context.rds)
         )

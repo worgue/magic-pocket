@@ -93,6 +93,9 @@ class Backup:
 
     @property
     def description(self):
+        if not self.context.plans:
+            # legacy 掃除のためだけに組み込まれた場合 ([backup] 未宣言)
+            return "Clean up legacy AWS Backup plans"
         return "Configure AWS Backup plans: %s" % ", ".join(
             plan.plan_name for plan in self.context.plans
         )
@@ -132,9 +135,12 @@ class Backup:
     def ensure_post_deploy_state(self):
         """宣言されたエンジンごとに plan / selection を冪等に確保する。
 
-        未宣言なら何もしない (opt-in。宣言を外した後の既存 plan にも触らない。
-        plan の掃除は destroy の責務)。
+        未宣言なら plan を作らない (opt-in。宣言を外した後の既存 plan にも
+        触らない。plan の掃除は destroy の責務)。ただし 0.27 以前の旧形式名の
+        plan は例外で、宣言に依らず削除する (改名で孤児化しており、残存すると
+        新 plan と二重にバックアップが走るため)。
         """
+        self._cleanup_legacy_plans()
         if not self.context.plans:
             return
         try:
@@ -161,6 +167,29 @@ class Backup:
                 "  deploy role に backup:* を付与してください"
                 " (`pocket permissions list` 参照)。"
             )
+
+    def _cleanup_legacy_plans(self) -> None:
+        """0.27 以前の旧形式名 ({prefix}dsql-backup) の plan を削除する。
+
+        0.28.0 で plan 名が {prefix}backup-dsql に変わったため、旧名の plan は
+        どのコードからも参照されない孤児になり、放置すると新 plan と同じ
+        cluster に二重で走る。権限が無ければ警告に留める (deploy を落とさない)。
+        """
+        for plan_name in self.context.legacy_plan_names:
+            try:
+                plan_id = self._find_plan_id(plan_name)
+                if plan_id is None:
+                    continue
+                echo.log("Deleting legacy backup plan: %s" % plan_name)
+                self._delete_plan(plan_id)
+            except ClientError as e:
+                if e.response["Error"]["Code"] != "AccessDeniedException":
+                    raise
+                echo.warning(
+                    "旧形式の backup plan (%s) を確認する権限が無いため、"
+                    "掃除をスキップしました。plan が残っている場合は二重に"
+                    "バックアップが走るため、手動で削除してください。" % plan_name
+                )
 
     def _plan_document(self, plan: BackupPlanContext) -> dict:
         rules = []
@@ -273,13 +302,17 @@ class Backup:
                 return
             if plan_id is None:
                 continue
-            selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
-            for item in selections["BackupSelectionsList"]:
-                self._backup.delete_backup_selection(
-                    BackupPlanId=plan_id, SelectionId=item["SelectionId"]
-                )
-            self._backup.delete_backup_plan(BackupPlanId=plan_id)
+            self._delete_plan(plan_id)
             echo.log("Deleted backup plan: %s" % plan_name)
+
+    def _delete_plan(self, plan_id: str) -> None:
+        """selection → plan の順に削除する (selection が残ると plan を消せない)。"""
+        selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
+        for item in selections["BackupSelectionsList"]:
+            self._backup.delete_backup_selection(
+                BackupPlanId=plan_id, SelectionId=item["SelectionId"]
+            )
+        self._backup.delete_backup_plan(BackupPlanId=plan_id)
 
     def list_recovery_points(self) -> list[dict] | None:
         """対象 DB の recovery point 一覧 (pocket-backup vault 内のもの)。
