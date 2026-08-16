@@ -131,22 +131,41 @@ pocket destroy --stage=dev
 
 1. CloudFront（CFNスタック + バケットポリシー）+ ACM 証明書
 2. AwsContainer（CFNスタック + ECR + CodeBuild + CloudWatch Logs + secrets）+ VPC（CFNスタック + EFS）
-3. DSQL クラスター
-4. RDS Aurora クラスター（Final Snapshot 付き）
-5. CloudFront 署名鍵（`signing_key` 設定時）
-6. S3 バケット
-7. TiDB クラスタ
-8. Upstash Redis
-9. Neon ブランチ（root branch は Neon 仕様で単体削除できないため、project 内に
-   他の branch がなければ project ごと削除。他の branch が残っている場合は
-   巻き添えを避けるため警告してスキップ）
-10. ステートバケット（`--with-state-bucket` 指定時のみ）
+3. AWS Backup plan / selection（DSQL / RDS の cluster 削除より先。recovery point と vault は残す）
+4. DSQL クラスター
+5. RDS Aurora クラスター（Final Snapshot 付き）
+6. CloudFront 署名鍵（`signing_key` 設定時）
+7. S3 バケット
+8. TiDB クラスタ
+9. Upstash Redis
+10. Neon ブランチ（root branch は Neon 仕様で単体削除できないため、project 内に
+    他の branch がなければ project ごと削除。他の branch が残っている場合は
+    巻き添えを避けるため警告してスキップ）
+11. ステートバケット（`--with-state-bucket` 指定時のみ）
 
 !!! note "ECR リポジトリの扱い"
     [`[awscontainer].ecr_name`](configuration.md#awscontainer) を明示指定している場合、
     ECR リポジトリは他ステージと共有されている可能性があるため削除されません（警告を表示してスキップ）。
 
+!!! note "バックアップデータの扱い"
+    バックアップ**データ**（recovery point）は既定では削除されず、残る場合は件数が警告表示されます。[`[backup]` の `deletable = true`](configuration.md#backup) を宣言している場合のみ、destroy 実行中に `[y/N]` で削除するか確認されます（既定 No。`--yes` による一括承認ではデータ削除は行いません）。
+
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
+
+### pocket backup cleanup
+
+ステージのバックアップデータ（AWS Backup の recovery point）を削除します。誤操作でデータを失わないため、[`[backup]` の `deletable = true`](configuration.md#backup) を宣言している場合のみ実行できます（削除する時だけ宣言するのが推奨です）。
+
+```bash
+pocket backup cleanup --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--yes`, `-y` | 確認プロンプトをスキップ |
+
+削除対象は pocket 管理 vault（`pocket-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
 
 ### pocket runtime-config
 
@@ -559,14 +578,14 @@ pocket resource dsql destroy --stage=dev
 ```
 
 !!! info "オンデマンドバックアップの保持日数"
-    `--retention-days` を省略した場合の保持日数は **`[dsql.backup]` の `delete_after_days` → 宣言が無ければ 1095 日（3 年）** の順で決まります。解決結果は実行時に `Retention: 7 days (from [dsql.backup] delete_after_days)` のように表示されます。復元前に取られる現用クラスターのバックアップも同じ解決を通ります。
+    `--retention-days` を省略した場合の保持日数は **`[backup.dsql]` の最長階層（monthly）の `delete_after_days`（既定 1095 日 = 3 年）→ 宣言が無ければ 1095 日** の順で決まります。解決結果は実行時に `Retention: 1095 days (from [backup.dsql] monthly)` のように表示されます。復元前に取られる現用クラスターのバックアップも同じ解決を通ります。
 
-    保持日数を渡さないと AWS Backup の recovery point は**無期限**に残ります。pocket にも deploy role にもバックアップ**データ**の削除権限が無いため（[設定ファイル](configuration.md)の「定期バックアップ」節を参照）、無期限の recovery point は console 作業でしか消せません。既定で失効日を付けているのはこのためです。
+    保持日数を渡さないと AWS Backup の recovery point は**無期限**に残ります。pocket がバックアップ**データ**を削除するのは `[backup]` の `deletable = true` 宣言 + 明示確認の経路だけのため（[設定ファイル](configuration.md)の「backup」節を参照）、無期限の recovery point は放置すると残り続けます。既定で失効日を付けているのはこのためです。
 
     意図して無期限にする場合は `--retention-days=0` を明示してください（警告を出したうえで `Lifecycle` を付けずに実行します）。
 
 !!! info "定期バックアップの job が一覧に出るまでのラグ"
-    `[dsql.backup]` の plan 由来の job は、スケジュール時刻を過ぎても `backup-status`（AWS Backup の `ListBackupJobs`）やコンソールの一覧にすぐには現れません。実測で **30 分ほど遅れて** `CREATED` として見え始めた例があります（`CreationDate` はスケジュール時刻のまま）。
+    `[backup.dsql]` の plan 由来の job は、スケジュール時刻を過ぎても `backup-status`（AWS Backup の `ListBackupJobs`）やコンソールの一覧にすぐには現れません。実測で **30 分ほど遅れて** `CREATED` として見え始めた例があります（`CreationDate` はスケジュール時刻のまま）。
 
     さらに AWS Backup は指定時刻ちょうどではなく start window 内で開始するため、**一覧に出ない = 実行されなかった、ではありません**。定期実行の確認は時間に余裕を持って行ってください。
 

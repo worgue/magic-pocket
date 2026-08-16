@@ -103,38 +103,23 @@ _SES_ACTIONS: list[str] = ["ses:SendEmail", "ses:SendRawEmail"]
 # awscontainer.build.backend == "codebuild" (デフォルト) 時
 _CODEBUILD_ACTIONS: list[str] = ["codebuild:*"]
 
-# [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)。
-# backup:* は `pocket resource dsql backup` (オンデマンドバックアップ) 用。
-# vault の ensure に Describe/CreateBackupVault、サービスロールの ensure と
-# 受け渡しは core の iam 系 (CreateRole/AttachRolePolicy/PassRole 等) でカバー
-_DSQL_ACTIONS: list[str] = [
-    "dsql:*",
-    "backup:StartBackupJob",
-    "backup:DescribeBackupJob",
-    "backup:ListBackupJobs",
-    "backup:DescribeBackupVault",
-    "backup:CreateBackupVault",
-    # CreateBackupVault の必須付随権限 (Resource は * 固定)。これが無いと
-    # pocket-backup vault の初回作成が AccessDenied になる
-    # https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html
+# [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)
+_DSQL_ACTIONS: list[str] = ["dsql:*"]
+
+# AWS Backup 系。[dsql] が設定されている時 (オンデマンドバックアップ / restore
+# CLI 用)、または [backup] 宣言 + 対象 DB (dsql / managed rds) がある時。
+# backup:* にはバックアップデータの削除 (DeleteRecoveryPoint) も含まれるが、
+# pocket がデータを消すのは [backup] deletable = true + 利用者の明示確認を
+# 経た経路 (`pocket backup cleanup` / destroy の確認) のみ。組織としてデータ
+# 削除を禁止したい場合は、role 側で backup:DeleteRecoveryPoint /
+# backup:DeleteBackupVault を Deny する (docs/permissions/aws.md 参照)。
+# vault の ensure に必要な backup-storage:MountCapsule は CreateBackupVault の
+# 必須付随権限 (Resource は * 固定)。サービスロールの ensure と受け渡しは
+# core の iam 系 (CreateRole/AttachRolePolicy/PassRole 等) でカバー
+# https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html
+_BACKUP_ACTIONS: list[str] = [
+    "backup:*",
     "backup-storage:MountCapsule",
-    # [dsql.backup] の backup plan / selection 管理用。バックアップ「設定」は
-    # 作成・更新・削除できるが、バックアップ「データ」を消す権限
-    # (DeleteBackupVault / DeleteRecoveryPoint) は意図的に含めない
-    "backup:CreateBackupPlan",
-    "backup:UpdateBackupPlan",
-    "backup:GetBackupPlan",
-    "backup:ListBackupPlans",
-    "backup:DeleteBackupPlan",
-    "backup:CreateBackupSelection",
-    "backup:GetBackupSelection",
-    "backup:ListBackupSelections",
-    "backup:DeleteBackupSelection",
-    # `pocket resource dsql restore` 用 (復元は新クラスターを作るだけで、
-    # 既存クラスターも recovery point も破壊しない)
-    "backup:StartRestoreJob",
-    "backup:DescribeRestoreJob",
-    "backup:ListRecoveryPointsByResource",
 ]
 
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
@@ -201,6 +186,18 @@ def _uses_external_vpc(settings: Settings) -> bool:
     return bool(ac and ac.vpc and not ac.vpc.manage)
 
 
+def _uses_backup(settings: Settings) -> bool:
+    """AWS Backup 系 Action が必要か。
+
+    dsql はオンデマンドバックアップ / restore CLI が [backup] 宣言の有無に
+    関わらず使えるため常に必要。rds は [backup.rds] を宣言した時だけ
+    (PITR は rds:* のクラスタ属性で、AWS Backup を使わない)。
+    """
+    if settings.dsql is not None:
+        return True
+    return bool(settings.backup and settings.backup.rds)
+
+
 def action_groups() -> dict[str, list[str]]:
     """feature group ごとの Action 一覧を settings 非依存で名前付きで返す。
 
@@ -226,6 +223,7 @@ def action_groups() -> dict[str, list[str]]:
         "ses": list(_SES_ACTIONS),
         "codebuild": list(_CODEBUILD_ACTIONS),
         "dsql": list(_DSQL_ACTIONS),
+        "backup": list(_BACKUP_ACTIONS),
         "scheduler": list(_SCHEDULER_ACTIONS),
         "tag": list(_TAG_ACTIONS),
     }
@@ -252,6 +250,7 @@ def compute_actions(settings: Settings) -> list[str]:
         ("ses", settings.ses is not None),
         ("codebuild", _uses_codebuild(settings)),
         ("dsql", settings.dsql is not None),
+        ("backup", _uses_backup(settings)),
         ("scheduler", _has_scheduler(settings)),
         ("tag", _uses_external_vpc(settings)),
     ]

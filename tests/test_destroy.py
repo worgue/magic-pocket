@@ -110,6 +110,9 @@ def test_destroy_resources_deletes_vpc_after_rds(use_toml, monkeypatch):
         "_destroy_awscontainer",
         lambda c, with_secrets: calls.append("awscontainer"),
     )
+    monkeypatch.setattr(
+        destroy_cli, "_destroy_backup", lambda c, yes: calls.append("backup")
+    )
     monkeypatch.setattr(destroy_cli, "_destroy_dsql", lambda c: calls.append("dsql"))
     monkeypatch.setattr(destroy_cli, "_destroy_rds", lambda c: calls.append("rds"))
     monkeypatch.setattr(destroy_cli, "_destroy_vpc", lambda c: calls.append("vpc"))
@@ -119,6 +122,10 @@ def test_destroy_resources_deletes_vpc_after_rds(use_toml, monkeypatch):
     assert "vpc" in calls
     assert calls.index("awscontainer") < calls.index("vpc")
     assert calls.index("rds") < calls.index("vpc")
+    # backup plan は cluster 削除より先に消す (selection が消えた cluster の
+    # ARN を指したまま残ると以後の backup job が失敗し続けるため)
+    assert calls.index("backup") < calls.index("dsql")
+    assert calls.index("backup") < calls.index("rds")
 
 
 @mock_aws

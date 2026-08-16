@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -15,6 +14,11 @@ from pocket.secret_store import (
     read_stored_value,
 )
 from pocket.utils import echo
+from pocket_cli.resources.aws.backup_common import (
+    BACKUP_VAULT_NAME,
+    ensure_backup_role,
+    ensure_backup_vault,
+)
 from pocket_cli.resources.aws.poll import wait_until
 
 if TYPE_CHECKING:
@@ -25,51 +29,13 @@ BACKUP_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED", "EXPIRED", "PARTIAL"
 # restore job の終端状態
 RESTORE_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED"}
 
-# pocket 管理のバックアップ前提リソース。AWS Backup の Default vault /
-# AWSBackupDefaultServiceRole は console 初回操作で作られるもので、API しか
-# 使わないアカウントには存在しないため、pocket 側で冪等に ensure する。
-# ロール名の forge- prefix は codebuild ロールの命名に合わせている
-BACKUP_VAULT_NAME = "pocket-backup"
-BACKUP_ROLE_NAME = "forge-pocket-backup-role"
-_BACKUP_ROLE_POLICIES = (
-    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
-    "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
-)
-# backup plan の drift 判定で比較する項目。AWS が既定値で補完する項目
-# (StartWindowMinutes / RuleId 等) を含めると毎 deploy で update が走るため、
-# pocket が宣言した項目だけを見る
-_PLAN_RULE_KEYS = (
-    "RuleName",
-    "TargetBackupVaultName",
-    "ScheduleExpression",
-    "ScheduleExpressionTimezone",
-)
-_PLAN_LIFECYCLE_KEYS = ("MoveToColdStorageAfterDays", "DeleteAfterDays")
-# オンデマンドバックアップで保持日数の指定も [dsql.backup] 宣言も無いときの既定。
+# オンデマンドバックアップで保持日数の指定が無く [backup] も未宣言なときの既定。
 # AWS Backup の vault は既定ライフサイクルを持たないため、Lifecycle を渡さないと
 # recovery point は無期限に残る。pocket にも deploy role にもデータ削除権限が無く
 # (destroy も recovery point を残す)、console 作業でしか消せなくなるため、
 # 「いつかは失効する」ことを既定で保証する。3 年は復元要件として十分長く、
 # 意図せず消えるより増え続けるほうが困る、という判断
 DEFAULT_ON_DEMAND_RETENTION_DAYS = 1095
-
-
-def _plan_matches(current: dict, desired: dict) -> bool:
-    current_rules = current.get("Rules", [])
-    desired_rules = desired["Rules"]
-    if len(current_rules) != len(desired_rules):
-        return False
-    for cur, want in zip(current_rules, desired_rules, strict=True):
-        if any(cur.get(key) != want.get(key) for key in _PLAN_RULE_KEYS):
-            return False
-        cur_lifecycle = cur.get("Lifecycle", {})
-        want_lifecycle = want["Lifecycle"]
-        if any(
-            cur_lifecycle.get(key) != want_lifecycle.get(key)
-            for key in _PLAN_LIFECYCLE_KEYS
-        ):
-            return False
-    return True
 
 
 class Dsql:
@@ -156,7 +122,7 @@ class Dsql:
             "DSQL には自動バックアップ (PITR / スナップショット) がありません。"
         )
         echo.warning(
-            "  定期バックアップは [dsql.backup] を宣言してください。"
+            "  定期バックアップは [backup.dsql] を宣言してください。"
             " 単発なら `pocket resource dsql backup` で取得できます。"
         )
 
@@ -180,9 +146,6 @@ class Dsql:
     def delete(self):
         if not self.identifier:
             return
-        # cluster より先に plan を消す (selection が消える cluster の ARN を
-        # 指したまま残ると、以後の backup job が失敗し続ける)
-        self.delete_backup_plan()
         echo.log("Deleting DSQL cluster: %s" % self.identifier)
         self._client.delete_cluster(identifier=self.identifier)
         echo.log("Waiting for DSQL cluster deletion...")
@@ -193,128 +156,13 @@ class Dsql:
     def ensure_post_deploy_state(self):
         # create の有無に関わらず毎 deploy で publish を冪等に確保する。cluster
         # 再作成や旧バージョンで deploy 済みの既存 cluster も常に実体を反映する
+        # (定期バックアップの plan / selection は Backup resource の責務)
         self.publish_endpoint()
-        # plan の selection は cluster ARN を指すため、cluster 作成後に ensure する
-        self.ensure_backup_plan()
 
     @property
-    def backup_plan_name(self) -> str:
-        return "%s-backup" % self.context.tag_name
-
-    def ensure_backup_plan(self) -> None:
-        """[dsql.backup] 宣言に沿って backup plan / selection を冪等に確保する。
-
-        DSQL は組み込みの自動バックアップを持たないため、宣言された stage では
-        pocket が plan まで provision する (native 属性で表現できる RDS の PITR
-        と違い、宣言だけでは何も起きないため)。未宣言なら何もしない。
-        """
-        backup = self.context.backup
-        if backup is None or not self.arn:
-            return
-        self._ensure_backup_vault(BACKUP_VAULT_NAME)
-        role_arn = self._ensure_backup_role()
-        plan_id = self._ensure_plan(backup)
-        self._ensure_selection(plan_id, role_arn)
-
-    def _plan_document(self, backup) -> dict:
-        lifecycle: dict = {"DeleteAfterDays": backup.delete_after_days}
-        if backup.cold_storage_after_days:
-            lifecycle["MoveToColdStorageAfterDays"] = backup.cold_storage_after_days
-        return {
-            "BackupPlanName": self.backup_plan_name,
-            "Rules": [
-                {
-                    "RuleName": "daily",
-                    "TargetBackupVaultName": BACKUP_VAULT_NAME,
-                    "ScheduleExpression": backup.schedule_expression,
-                    "ScheduleExpressionTimezone": backup.timezone,
-                    "Lifecycle": lifecycle,
-                }
-            ],
-        }
-
-    def _find_plan_id(self) -> str | None:
-        paginator = self._backup.get_paginator("list_backup_plans")
-        for page in paginator.paginate():
-            for plan in page["BackupPlansList"]:
-                if plan["BackupPlanName"] == self.backup_plan_name:
-                    return plan["BackupPlanId"]
-        return None
-
-    def _ensure_plan(self, backup) -> str:
-        document = self._plan_document(backup)
-        plan_id = self._find_plan_id()
-        if plan_id is None:
-            echo.log("Creating backup plan: %s" % self.backup_plan_name)
-            return self._backup.create_backup_plan(BackupPlan=document)["BackupPlanId"]
-        # 宣言が変わっていれば追従する (cron / lifecycle の drift 収束)
-        current = self._backup.get_backup_plan(BackupPlanId=plan_id)["BackupPlan"]
-        if not _plan_matches(current, document):
-            echo.log("Updating backup plan: %s" % self.backup_plan_name)
-            self._backup.update_backup_plan(BackupPlanId=plan_id, BackupPlan=document)
-        return plan_id
-
-    def _ensure_selection(self, plan_id: str, role_arn: str) -> None:
-        """cluster ARN を対象にした selection を確保する。
-
-        selection には更新 API が無いため、対象 ARN が変わっていたら
-        (cluster 再作成など) 作り直す。
-        """
-        if not self.arn:
-            return
-        selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
-        for item in selections["BackupSelectionsList"]:
-            if item["SelectionName"] != self.backup_plan_name:
-                continue
-            detail = self._backup.get_backup_selection(
-                BackupPlanId=plan_id, SelectionId=item["SelectionId"]
-            )
-            if detail["BackupSelection"].get("Resources") == [self.arn]:
-                return
-            self._backup.delete_backup_selection(
-                BackupPlanId=plan_id, SelectionId=item["SelectionId"]
-            )
-        echo.log("Creating backup selection for %s" % self.context.tag_name)
-        self._backup.create_backup_selection(
-            BackupPlanId=plan_id,
-            BackupSelection={
-                "SelectionName": self.backup_plan_name,
-                "IamRoleArn": role_arn,
-                "Resources": [self.arn],
-            },
-        )
-
-    def delete_backup_plan(self) -> None:
-        """backup plan / selection を削除する (cluster 削除との対称操作)。
-
-        recovery point と vault は消さない。バックアップ「設定」は stack の
-        付属物だが、バックアップ「データ」は stack より長生きさせるべきで、
-        cluster を消した後こそ必要になりうるため。
-
-        宣言の有無に関わらず走査する ([dsql.backup] を外した後の destroy でも
-        plan を残さないため)。backup 権限を持たない古い deploy role でも
-        destroy 自体は完遂させたいので、権限エラーは警告に留める。
-        """
-        try:
-            plan_id = self._find_plan_id()
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "AccessDeniedException":
-                raise
-            echo.warning(
-                "backup plan を確認する権限がないため、削除をスキップしました"
-                " (backup:ListBackupPlans)。plan が残っている場合は手動で"
-                " 削除してください。"
-            )
-            return
-        if plan_id is None:
-            return
-        selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
-        for item in selections["BackupSelectionsList"]:
-            self._backup.delete_backup_selection(
-                BackupPlanId=plan_id, SelectionId=item["SelectionId"]
-            )
-        self._backup.delete_backup_plan(BackupPlanId=plan_id)
-        echo.log("Deleted backup plan: %s" % self.backup_plan_name)
+    def backup_target_arn(self) -> str | None:
+        """[backup] の selection 対象 ARN (Backup resource が参照する)。"""
+        return self.arn
 
     def publish_endpoint(self):
         """endpoint を stored user secret 正準パスへ publish する (作成記録)。
@@ -386,9 +234,9 @@ class Dsql:
     def _resolve_retention_days(self, retention_days: int | None) -> int | None:
         """オンデマンドバックアップの保持日数を決める (None を返すと無期限)。
 
-        指定 > [dsql.backup] の宣言 > 既定 の順で解決する。復元時の内部
-        バックアップ (利用者が明示的に頼んでいない recovery point) も
-        start_backup を通るため同じ既定が効く。0 は「無期限」の明示指定。
+        指定 > [backup.dsql] の最長階層 (monthly) > 既定 の順で解決する。
+        復元時の内部バックアップ (利用者が明示的に頼んでいない recovery point)
+        も start_backup を通るため同じ既定が効く。0 は「無期限」の明示指定。
         """
         if retention_days == 0:
             echo.warning(
@@ -402,66 +250,18 @@ class Dsql:
         backup = self.context.backup
         if backup is not None:
             echo.log(
-                "Retention: %d days (from [dsql.backup] delete_after_days)"
-                % backup.delete_after_days
+                "Retention: %d days (from [backup.dsql] monthly)"
+                % backup.monthly_delete_after_days
             )
-            return backup.delete_after_days
+            return backup.monthly_delete_after_days
         echo.log("Retention: %d days (default)" % DEFAULT_ON_DEMAND_RETENTION_DAYS)
         return DEFAULT_ON_DEMAND_RETENTION_DAYS
 
     def _ensure_backup_vault(self, name: str) -> None:
-        # describe → 無ければ create の順は不可。vault が 1 つも無いアカウントでは
-        # AWS Backup が存在しない vault への Describe に ResourceNotFoundException
-        # ではなく AccessDeniedException を返すため「未作成」を判定できない。
-        # CreateBackupVault は同名 vault があると AlreadyExistsException を返すので
-        # create を先に撃って握る (既存なら noop = 冪等)。
-        try:
-            self._backup.create_backup_vault(BackupVaultName=name)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "AlreadyExistsException":
-                return
-            raise
-        echo.log("Created backup vault: %s" % name)
+        ensure_backup_vault(self._backup, name)
 
     def _ensure_backup_role(self) -> str:
-        """AWS Backup サービスロールを冪等に ensure して ARN を返す。
-
-        codebuild の _ensure_role と同型。boundary 必須のアカウントでも作成
-        できるよう context.permissions_boundary を付与する。
-        """
-        try:
-            return self._iam.get_role(RoleName=BACKUP_ROLE_NAME)["Role"]["Arn"]
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "NoSuchEntity":
-                raise
-        echo.log("Creating AWS Backup service role: %s" % BACKUP_ROLE_NAME)
-        assume_role_policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"Service": "backup.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }
-                ],
-            }
-        )
-        create_kwargs: dict = {
-            "RoleName": BACKUP_ROLE_NAME,
-            "AssumeRolePolicyDocument": assume_role_policy,
-        }
-        if self.context.permissions_boundary:
-            create_kwargs["PermissionsBoundary"] = self.context.permissions_boundary
-        role_arn: str = self._iam.create_role(**create_kwargs)["Role"]["Arn"]
-        for policy_arn in _BACKUP_ROLE_POLICIES:
-            self._iam.attach_role_policy(
-                RoleName=BACKUP_ROLE_NAME, PolicyArn=policy_arn
-            )
-        # IAM ロールの伝播待ち (作成直後の StartBackupJob 失敗を避ける)
-        echo.log("Waiting for IAM role propagation...")
-        time.sleep(10)
-        return role_arn
+        return ensure_backup_role(self._iam, self.context.permissions_boundary)
 
     def latest_recovery_point(self) -> dict | None:
         """現用クラスターの最新 recovery point (完了済み) を返す。"""

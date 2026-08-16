@@ -6,10 +6,9 @@ from botocore.exceptions import ClientError
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.resource_helper import require_configured
+from pocket_cli.resources.aws.backup_common import BACKUP_ROLE_NAME, BACKUP_VAULT_NAME
 from pocket_cli.resources.dsql import (
-    BACKUP_ROLE_NAME,
     BACKUP_TERMINAL_STATES,
-    BACKUP_VAULT_NAME,
     DEFAULT_ON_DEMAND_RETENTION_DAYS,
     Dsql,
 )
@@ -91,7 +90,7 @@ def endpoint(stage, format_):
     type=click.IntRange(min=0),
     default=None,
     help="recovery point の保持日数"
-    " (省略時: [dsql.backup] の delete_after_days、宣言が無ければ %d 日。"
+    " (省略時: [backup] の delete_after_days、宣言が無ければ %d 日。"
     "0 を指定すると無期限保持だが pocket からは削除できなくなる)"
     % DEFAULT_ON_DEMAND_RETENTION_DAYS,
 )

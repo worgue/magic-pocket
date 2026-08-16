@@ -10,6 +10,7 @@ from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore, create_state_store
 from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
@@ -32,6 +33,10 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
         resources.append(Dsql(context.dsql))
     if context.rds:
         resources.append(Rds(context.rds))
+    if context.backup and context.backup.declared:
+        resources.append(
+            Backup(context.backup, dsql_context=context.dsql, rds_context=context.rds)
+        )
     for _name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
             resources.append(CloudFrontKeys(cf_ctx))

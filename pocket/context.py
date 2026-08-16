@@ -567,19 +567,116 @@ class UpstashContext(BaseModel):
         )
 
 
-class DsqlBackupContext(BaseModel):
-    schedule_expression: str
-    timezone: str
-    cold_storage_after_days: int
+def _permissions_boundary(root: settings.Settings) -> str | None:
+    """IAM ロール作成時に付与する boundary (dsql / backup のサービスロール共通)。"""
+    return os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN") or (
+        root.awscontainer.permissions_boundary if root.awscontainer else None
+    )
+
+
+class BackupRuleContext(BaseModel):
+    """backup plan の 1 rule (GFS の 1 階層)。"""
+
+    name: str  # "daily" | "weekly" | "monthly" (plan 内の RuleName)
+    schedule_expression: str  # cron(...)
     delete_after_days: int
+    cold_storage_after_days: int = 0  # 0 = cold storage へ移動しない (rds は常に 0)
+
+
+class BackupPlanContext(BaseModel):
+    """エンジン 1 つ分の backup plan (rule 構成がエンジンごとに違うため分ける)。"""
+
+    service: Literal["dsql", "rds"]
+    # plan / selection 名。e.g) dev-myprj-pocket-backup-dsql
+    plan_name: str
+    rules: list[BackupRuleContext]
+
+    @property
+    def monthly_delete_after_days(self) -> int:
+        """最長保持 (monthly) の日数。オンデマンド backup の保持継承に使う。"""
+        return max(rule.delete_after_days for rule in self.rules)
 
     @classmethod
-    def from_settings(cls, backup: settings.DsqlBackup) -> DsqlBackupContext:
+    def from_settings(
+        cls,
+        service: Literal["dsql", "rds"],
+        plan: settings.DsqlBackupPlan | settings.RdsBackupPlan,
+        root: settings.Settings,
+    ) -> BackupPlanContext:
+        rules = []
+        for name in ("daily", "weekly", "monthly"):
+            rule = getattr(plan, name, None)
+            if rule is None:
+                continue
+            rules.append(
+                BackupRuleContext(
+                    name=name,
+                    schedule_expression=f"cron({rule.cron})",
+                    delete_after_days=rule.delete_after_days,
+                    cold_storage_after_days=getattr(rule, "cold_storage_after_days", 0),
+                )
+            )
         return cls(
-            schedule_expression=f"cron({backup.cron})",
-            timezone=backup.timezone,
-            cold_storage_after_days=backup.cold_storage_after_days,
-            delete_after_days=backup.delete_after_days,
+            service=service,
+            plan_name=f"{root.resource_prefix}backup-{service}",
+            rules=rules,
+        )
+
+
+class BackupContext(BaseModel):
+    """[backup] (DB 層の定期バックアップ = AWS Backup の backup plan)。
+
+    stage に AWS ネイティブ DB (dsql / managed rds) がある場合だけ構築される。
+    [backup] 未宣言でも構築される (destroy が過去に宣言されていた plan の掃除と
+    recovery point 残存の案内を担うため、plan 名を導出できる必要がある)。
+    plans には宣言されたエンジンの plan だけが入る (未宣言なら空)。
+    """
+
+    region: str
+    # バックアップデータ (recovery point) の削除を pocket に許可するか
+    deletable: bool = False
+    # cron を解釈するタイムゾーン (全 rule 共通)
+    timezone: str = "UTC"
+    # 宣言されたエンジンの plan (deploy が provision する対象)
+    plans: list[BackupPlanContext] = []
+    # stage に存在しうる全 plan 名 (destroy の掃除対象。宣言を外した後も消せる
+    # よう、宣言ではなく資源の有無から導出する)
+    cleanup_plan_names: list[str] = []
+    # AWS Backup サービスロールを ensure する際に付与する boundary
+    # (sandbox アカウント等、ロール作成に boundary が必須の環境用)
+    permissions_boundary: str | None = None
+
+    @property
+    def declared(self) -> bool:
+        return bool(self.plans)
+
+    def plan_for(self, service: str) -> BackupPlanContext | None:
+        for plan in self.plans:
+            if plan.service == service:
+                return plan
+        return None
+
+    @classmethod
+    def from_settings(
+        cls, backup: settings.Backup | None, root: settings.Settings
+    ) -> BackupContext:
+        plans: list[BackupPlanContext] = []
+        if backup and backup.dsql:
+            plans.append(BackupPlanContext.from_settings("dsql", backup.dsql, root))
+        if backup and backup.rds:
+            plans.append(BackupPlanContext.from_settings("rds", backup.rds, root))
+        cleanup_plan_names = []
+        if root.dsql:
+            cleanup_plan_names.append(f"{root.resource_prefix}backup-dsql")
+        if root.rds and root.rds.managed:
+            cleanup_plan_names.append(f"{root.resource_prefix}backup-rds")
+        return cls(
+            region=root.region,
+            deletable=backup.deletable if backup else False,
+            timezone=backup.timezone if backup else "UTC",
+            plans=plans,
+            cleanup_plan_names=cleanup_plan_names,
+            permissions_boundary=_permissions_boundary(root),
         )
 
 
@@ -587,8 +684,10 @@ class DsqlContext(BaseModel):
     region: str
     tag_name: str  # Name タグで検索するための識別名
     deletion_protection: bool = False
-    # 定期バックアップ (AWS Backup backup plan)。None なら plan を作らない
-    backup: DsqlBackupContext | None = None
+    # [backup.dsql] が宣言されているときの参照 (未宣言なら None)。plan の
+    # provisioning は Context.backup (Backup resource) の責務で、ここでは
+    # オンデマンド backup の保持日数継承と deploy_init の無防備警告の判定に使う
+    backup: BackupPlanContext | None = None
     # endpoint の publish 先 (stored user secret の type 基準正準パス)。DSQL は
     # cluster identifier が AWS 自動生成で endpoint を naming から導出できないため、
     # deploy が作成記録としてここへ endpoint を書き込む。空文字なら publish しない
@@ -612,20 +711,15 @@ class DsqlContext(BaseModel):
             tag_name=f"{resource_prefix}dsql",
             deletion_protection=dsql.deletion_protection,
             backup=(
-                DsqlBackupContext.from_settings(dsql.backup) if dsql.backup else None
+                BackupPlanContext.from_settings("dsql", root.backup.dsql, root)
+                if root.backup and root.backup.dsql
+                else None
             ),
             endpoint_secret_name=user_secret_path(
                 pocket_key, naming.DSQL_ENDPOINT, secrets.store
             ),
             endpoint_secret_store=secrets.store,
-            permissions_boundary=(
-                os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN")
-                or (
-                    root.awscontainer.permissions_boundary
-                    if root.awscontainer
-                    else None
-                )
-            ),
+            permissions_boundary=_permissions_boundary(root),
         )
 
 
@@ -635,9 +729,9 @@ class RdsContext(BaseModel):
     min_capacity: float = 0.5
     max_capacity: float = 2.0
     snapshot_identifier: str | None = None
-    # 自動バックアップ (PITR) の保持日数。settings 既定は 7 日 (AWS 既定の 1 日
-    # ではない)。managed = false では参照されない
-    backup_retention_days: int = 7
+    # 自動バックアップ (PITR) の保持日数。settings 既定は 35 日 (AWS 既定の
+    # 1 日ではなくネイティブ上限)。managed = false では参照されない
+    backup_retention_days: int = 35
     region: str
     cluster_identifier: str = ""
     instance_identifier: str = ""
@@ -1274,6 +1368,12 @@ def _build_service_contexts(s: settings.Settings) -> dict:
     ctx["rds"] = RdsContext.from_settings(s.rds, s) if s.rds else None
     ctx["ses"] = SesContext.from_settings(s.ses, s) if s.ses else None
     ctx["s3"] = S3Context.from_settings(s.s3, s) if s.s3 else None
+    # 対象 DB (dsql / managed rds) がある stage だけ構築する。[backup] 未宣言でも
+    # 構築する (destroy が plan の掃除と recovery point 残存の案内を担うため)
+    has_backup_target = bool(s.dsql or (s.rds and s.rds.managed))
+    ctx["backup"] = (
+        BackupContext.from_settings(s.backup, s) if has_backup_target else None
+    )
     return ctx
 
 
@@ -1285,6 +1385,7 @@ class Context(BaseModel):
     upstash: UpstashContext | None = None
     dsql: DsqlContext | None = None
     rds: RdsContext | None = None
+    backup: BackupContext | None = None
     ses: SesContext | None = None
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}

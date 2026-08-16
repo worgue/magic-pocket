@@ -164,6 +164,19 @@ class Rds:
         return self.context.database_name
 
     @property
+    def backup_target_arn(self) -> str | None:
+        """[backup] の selection 対象 ARN (Backup resource が参照する)。
+
+        managed = false の既存クラスタは対象外 (他 stack の管理物にバックアップ
+        設定を足さない)。
+        """
+        if not self.context.managed:
+            return None
+        if self.cluster:
+            return self.cluster.get("DBClusterArn")
+        return None
+
+    @property
     def status(self) -> ResourceStatus:
         if not self.context.managed:
             return "COMPLETED"

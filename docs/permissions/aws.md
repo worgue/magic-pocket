@@ -85,12 +85,31 @@
 | 権限 | 用途 |
 |------|------|
 | `dsql:*` | DSQL クラスターの作成・参照・削除 |
-| `backup:StartBackupJob`, `backup:DescribeBackupJob`, `backup:ListBackupJobs`, `backup:DescribeBackupVault`, `backup:CreateBackupVault`, `backup-storage:MountCapsule` | `pocket resource dsql backup` / `backup-status`（AWS Backup オンデマンドバックアップ。vault は pocket 管理の `pocket-backup` を冪等に ensure。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー）。`backup-storage:MountCapsule` は [`CreateBackupVault` の必須付随権限](https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html)で、無いと vault の初回作成が AccessDenied になります |
-| `backup:CreateBackupPlan`, `backup:UpdateBackupPlan`, `backup:GetBackupPlan`, `backup:ListBackupPlans`, `backup:DeleteBackupPlan`, `backup:CreateBackupSelection`, `backup:GetBackupSelection`, `backup:ListBackupSelections`, `backup:DeleteBackupSelection` | `[dsql.backup]`（定期バックアップの backup plan / selection の provision と destroy）。バックアップ**データ**を削除する権限（`DeleteBackupVault` / `DeleteRecoveryPoint`）は意図的に含めていません |
-| `backup:StartRestoreJob`, `backup:DescribeRestoreJob`, `backup:ListRecoveryPointsByResource` | `pocket resource dsql restore` / `restore-status`（復元は新しいクラスターを作るのみで、既存クラスターも recovery point も破壊しません） |
 
 endpoint の publish（stored user secret 正準パスへの書き込み・削除）はコア権限の
 Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされます。
+
+### AWS Backup（`[dsql]` 使用時、または `[backup.rds]` 宣言時）
+
+dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言の有無に関わらず使えるため常にこの群が必要で、rds は `[backup.rds]` を宣言した時のみ必要です（PITR は `rds:*` のクラスタ属性で AWS Backup を使いません）。
+
+| 権限 | 用途 |
+|------|------|
+| `backup:*` | 定期バックアップ（`[backup.dsql]` / `[backup.rds]` の plan / selection の provision と destroy）、オンデマンドバックアップ（`pocket resource dsql backup` / `backup-status`）、復元（`pocket resource dsql restore` / `restore-status`）、バックアップデータの削除（`pocket backup cleanup`。`[backup]` の `deletable = true` 宣言 + 明示確認の経路のみ） |
+| `backup-storage:MountCapsule` | [`CreateBackupVault` の必須付随権限](https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html)（Resource は `*` 固定）。無いと vault（pocket 管理の `pocket-backup`）の初回作成が AccessDenied になります。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー |
+
+!!! note "バックアップデータの削除を権限で禁止したい場合"
+    `backup:*` にはバックアップ**データ**の削除（`DeleteRecoveryPoint` / `DeleteBackupVault`）も含まれます。pocket 自体は `[backup]` の `deletable = true` 宣言と利用者の明示確認を経ない限りデータを削除しませんが、組織のポリシーとして権限レベルで禁止したい場合は、deploy role 側で明示 Deny を足してください。
+
+    ```json
+    {
+      "Effect": "Deny",
+      "Action": ["backup:DeleteRecoveryPoint", "backup:DeleteBackupVault"],
+      "Resource": "*"
+    }
+    ```
+
+    より強い保護（root 含め誰も消せない）が必要なら AWS Backup Vault Lock を検討してください。
 
 ### EventBridge Scheduler（`[scheduler]` 使用時）
 
@@ -183,24 +202,8 @@ Secrets Manager / SSM（`secrets.store` に応じた側）でカバーされま�
         "ses:*",
         "codebuild:*",
         "dsql:*",
-        "backup:StartBackupJob",
-        "backup:DescribeBackupJob",
-        "backup:ListBackupJobs",
-        "backup:DescribeBackupVault",
-        "backup:CreateBackupVault",
+        "backup:*",
         "backup-storage:MountCapsule",
-        "backup:CreateBackupPlan",
-        "backup:UpdateBackupPlan",
-        "backup:GetBackupPlan",
-        "backup:ListBackupPlans",
-        "backup:DeleteBackupPlan",
-        "backup:CreateBackupSelection",
-        "backup:GetBackupSelection",
-        "backup:ListBackupSelections",
-        "backup:DeleteBackupSelection",
-        "backup:StartRestoreJob",
-        "backup:DescribeRestoreJob",
-        "backup:ListRecoveryPointsByResource",
         "scheduler:*",
         "tag:TagResources",
         "tag:UntagResources"

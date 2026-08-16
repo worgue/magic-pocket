@@ -4,6 +4,7 @@ from pocket import __version__
 from pocket_cli import django_cli
 from pocket_cli.cli import (
     awscontainer_cli,
+    backup_cli,
     cloudfront_cli,
     cloudfront_keys_cli,
     cloudfront_waf_cli,
@@ -80,6 +81,7 @@ main.add_command(runtime_config_cli.runtime_config)
 main.add_command(migrate_cli.migrate)
 main.add_command(permissions_cli.permissions)
 main.add_command(waf_cli.waf)
+main.add_command(backup_cli.backup)
 
 
 @main.group()

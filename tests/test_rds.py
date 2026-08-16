@@ -845,14 +845,15 @@ def _rds_settings_data(rds_extra: dict | None = None) -> dict:
     return data
 
 
-def test_rds_backup_retention_defaults_to_7():
-    """AWS 既定の 1 日ではなく pocket 既定の 7 日が settings/context に載る"""
+def test_rds_backup_retention_defaults_to_35():
+    """AWS 既定の 1 日ではなく pocket 既定の 35 日 (PITR のネイティブ上限) が
+    settings/context に載る"""
     settings = Settings.model_validate(_rds_settings_data())
     assert settings.rds is not None
-    assert settings.rds.backup.retention_days == 7
+    assert settings.rds.backup.retention_days == 35
     context = Context.from_settings(settings)
     assert context.rds is not None
-    assert context.rds.backup_retention_days == 7
+    assert context.rds.backup_retention_days == 35
 
 
 def test_rds_backup_retention_override():

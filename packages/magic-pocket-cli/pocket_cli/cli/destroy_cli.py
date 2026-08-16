@@ -9,6 +9,7 @@ from pocket_cli.resources.aws.state import (
     create_state_store,
 )
 from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
@@ -88,6 +89,11 @@ def _warn_command_provisioned(label: str, hint: str):
 
 def _collect_aws_database_targets(context: Context) -> list[str]:
     targets: list[str] = []
+    if context.backup:
+        for plan_name in Backup(context.backup).existing_plan_names():
+            targets.append(
+                "AWS Backup plan: %s (recovery point と vault は残ります)" % plan_name
+            )
     if context.dsql:
         dsql = Dsql(context.dsql)
         if dsql.status != "NOEXIST":
@@ -223,6 +229,40 @@ def _destroy_awscontainer(context: Context, with_secrets: bool):
         echo.success("Pocket managed secrets were deleted.")
 
 
+def _destroy_backup(context: Context, yes: bool):
+    """backup plan / selection を削除し、recovery point の扱いを案内する。
+
+    plan は [backup] 宣言の有無に関わらず削除する (宣言を外した後の destroy でも
+    残さない)。selection が削除済み cluster の ARN を指したまま残ると以後の
+    backup job が失敗し続けるため、cluster 削除より先に消す。
+
+    recovery point (バックアップデータ) は既定では消さない。deletable = true の
+    宣言下で、対話の [y/N] に明示的に yes と答えた場合のみ削除する (--yes での
+    一括承認では削除しない。データ削除だけは暗黙に通さない)。cluster 削除後は
+    ARN で引けなくなるため、この確認も cluster 削除より先に行う。
+    """
+    if not context.backup:
+        return
+    backup = Backup(context.backup, dsql_context=context.dsql, rds_context=context.rds)
+    backup.delete()
+    points = backup.list_recovery_points()
+    if not points:  # None (権限なし) or 空
+        return
+    if context.backup.declared and context.backup.deletable and not yes:
+        echo.warning(
+            "バックアップデータ (recovery point) が %d 件あります。" % len(points)
+        )
+        if click.confirm("recovery point も削除しますか？", default=False):
+            backup.delete_recovery_points(points)
+            return
+    echo.warning(
+        "バックアップデータ (recovery point %d 件) は削除されず残ります"
+        " (保持期限まで課金対象)。削除するには [backup] deletable = true を"
+        " 宣言して `pocket backup cleanup` を実行するか、AWS Backup の"
+        " コンソールから削除してください。" % len(points)
+    )
+
+
 def _destroy_dsql(context: Context):
     """DSQL クラスターを削除"""
     if not context.dsql:
@@ -352,13 +392,21 @@ def _destroy_cloudfront_and_acm(context: Context):
                 echo.success("CloudFront ACM '%s' was destroyed." % name)
 
 
-def _destroy_resources(context: Context, with_secrets: bool, with_state_bucket: bool):
+def _destroy_resources(
+    context: Context,
+    with_secrets: bool,
+    with_state_bucket: bool,
+    yes: bool = False,
+):
     """リソースをデプロイの逆順で削除"""
     # 1. CloudFront + ACM
     _destroy_cloudfront_and_acm(context)
 
     # 2. AwsContainer (CFNスタック + ECR + secrets)
     _destroy_awscontainer(context, with_secrets)
+
+    # 2.4. backup plan（DSQL / RDS の cluster 削除より先）
+    _destroy_backup(context, yes)
 
     # 2.5. DSQL
     _destroy_dsql(context)
@@ -434,5 +482,5 @@ def destroy(stage: str, without_secrets: bool, with_state_bucket: bool, yes: boo
     if not yes:
         click.confirm("stage '%s' の全リソースを削除しますか？" % stage, abort=True)
 
-    _destroy_resources(context, with_secrets, with_state_bucket)
+    _destroy_resources(context, with_secrets, with_state_bucket, yes=yes)
     echo.success("stage '%s' の全リソースを削除しました。" % stage)

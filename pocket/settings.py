@@ -505,31 +505,28 @@ class Upstash(BaseSettings):
         return _reject_skip_check_existing(data, resource="upstash")
 
 
-class DsqlBackup(BaseModel):
-    """DSQL の定期バックアップ (AWS Backup の backup plan) 設定。
+class BackupRule(BaseModel):
+    """backup plan の 1 つの rule (GFS の 1 階層)。
 
-    宣言すると deploy が vault / サービスロール / plan / selection を冪等に
-    provision する。DSQL は組み込みの自動バックアップを持たないため、これが
-    唯一の定期バックアップ手段になる。
-
-    保存先は AWS Backup の vault (AWS 管理ストレージ)。顧客の S3 バケットを
-    保存先に指定することはできないが、vault のライフサイクルが
-    「warm → cold storage (Glacier 相当) → 削除」を表現するので、S3 の
-    Standard → Glacier → 有効期限と同じ保持ポリシーを組める。
+    rds 用 (cold storage フィールドを持たない)。Aurora の snapshot は
+    AWS Backup の cold storage 非対応のため、書けないことをスキーマで保証する
+    (書くと extra="forbid" で即エラー)。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     # scheduler の schedule entry と同じ表記 (cron(...) は pocket が付ける)。
-    # 既定は毎日 3:00
-    cron: str = "0 3 * * ? *"
-    # cron を解釈するタイムゾーン。AWS 既定に合わせて UTC。日本時間で回すなら
-    # timezone = "Asia/Tokyo"
-    timezone: str = "UTC"
-    # cold storage (Glacier 相当) へ移動するまでの日数。0 で移動しない
-    cold_storage_after_days: Annotated[int, Field(ge=0)] = 35
+    # 既定は階層ごとに定める (subclass で上書き)
+    cron: str
     # recovery point を削除するまでの日数
-    delete_after_days: Annotated[int, Field(ge=1)] = 365
+    delete_after_days: Annotated[int, Field(ge=1)]
+
+
+class DsqlBackupRule(BackupRule):
+    """dsql 用の rule。cold storage (Glacier 相当) への移動を指定できる。"""
+
+    # cold storage へ移動するまでの日数。0 で移動しない
+    cold_storage_after_days: Annotated[int, Field(ge=0)] = 0
 
     @model_validator(mode="after")
     def check_lifecycle(self):
@@ -548,24 +545,125 @@ class DsqlBackup(BaseModel):
         return self
 
 
+# GFS (Grandfather-Father-Son) 階層の既定。daily は短期の細かい復元点、
+# weekly / monthly は古くなるほど間隔を空けて長期保持する (歯抜けの間引き)。
+# 時刻をずらしているのは同時刻の backup job 集中を避けるため。
+# 長期階層 (weekly / monthly) の dsql は 90 日で cold storage へ移して
+# ストレージコストを下げる (Aurora は cold storage 非対応のため warm のまま)
+
+
+class DsqlDailyRule(DsqlBackupRule):
+    cron: str = "0 3 * * ? *"  # 毎日 3:00
+    delete_after_days: Annotated[int, Field(ge=1)] = 35
+    cold_storage_after_days: Annotated[int, Field(ge=0)] = 0
+
+
+class DsqlWeeklyRule(DsqlBackupRule):
+    cron: str = "0 4 ? * 1 *"  # 毎週日曜 4:00
+    delete_after_days: Annotated[int, Field(ge=1)] = 365
+    cold_storage_after_days: Annotated[int, Field(ge=0)] = 90
+
+
+class DsqlMonthlyRule(DsqlBackupRule):
+    cron: str = "0 5 1 * ? *"  # 毎月 1 日 5:00
+    delete_after_days: Annotated[int, Field(ge=1)] = 1095
+    cold_storage_after_days: Annotated[int, Field(ge=0)] = 90
+
+
+class RdsWeeklyRule(BackupRule):
+    cron: str = "0 4 ? * 1 *"  # 毎週日曜 4:00
+    delete_after_days: Annotated[int, Field(ge=1)] = 365
+
+
+class RdsMonthlyRule(BackupRule):
+    cron: str = "0 5 1 * ? *"  # 毎月 1 日 5:00
+    delete_after_days: Annotated[int, Field(ge=1)] = 1095
+
+
+class DsqlBackupPlan(BaseModel):
+    """[backup.dsql] — dsql クラスタの GFS 定期バックアップ。
+
+    DSQL は組み込みの自動バックアップを持たないため daily 階層から持つ
+    (rds と違い PITR が無い)。宣言だけで既定の 3 階層が有効になる。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    daily: DsqlDailyRule = DsqlDailyRule()
+    weekly: DsqlWeeklyRule = DsqlWeeklyRule()
+    monthly: DsqlMonthlyRule = DsqlMonthlyRule()
+
+
+class RdsBackupPlan(BaseModel):
+    """[backup.rds] — managed rds クラスタの GFS 定期バックアップ。
+
+    daily 階層は持たない (直近 35 日は PITR = [rds.backup].retention_days が
+    秒単位で担うため。daily キーを書くと extra="forbid" で即エラー)。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    weekly: RdsWeeklyRule = RdsWeeklyRule()
+    monthly: RdsMonthlyRule = RdsMonthlyRule()
+
+
+class Backup(BaseModel):
+    """DB 層の定期バックアップ (AWS Backup の backup plan) 設定。
+
+    [backup.dsql] / [backup.rds] をエンジン別に宣言する (opt-in。未宣言なら
+    AWS Backup は使わない)。エンジンごとに rule 構成が違う (rds は daily を
+    PITR が担う / cold storage 不可) ため、plan もエンジン別に provision する。
+    宣言したエンジンの資源が stage に無い場合はエラー (silent skip しない)。
+
+    neon / tidb / upstash などの外部サービス DB は AWS Backup の対象外
+    (各サービス側のバックアップ機能に依存する)。[backup.neon] などは
+    スキーマに存在しないため即エラーになる。
+
+    保存先は AWS Backup の vault (AWS 管理ストレージ)。顧客の S3 バケットを
+    保存先に指定することはできないが、vault のライフサイクルが
+    「warm → cold storage (Glacier 相当) → 削除」を表現するので、S3 の
+    Standard → Glacier → 有効期限と同じ保持ポリシーを組める。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # true にすると pocket からバックアップ「データ」(recovery point) を削除
+    # できるようになる (`pocket backup cleanup` と destroy 時の確認プロンプト)。
+    # 既定の false では pocket はデータを一切削除しない (設定 = plan の削除のみ)
+    deletable: bool = False
+    # cron を解釈するタイムゾーン (全 rule 共通)。AWS 既定に合わせて UTC。
+    # 日本時間で回すなら timezone = "Asia/Tokyo"
+    timezone: str = "UTC"
+    dsql: DsqlBackupPlan | None = None
+    rds: RdsBackupPlan | None = None
+
+    @model_validator(mode="after")
+    def check_has_target(self):
+        if self.dsql is None and self.rds is None:
+            raise ValueError(
+                "[backup] には [backup.dsql] / [backup.rds] の少なくとも"
+                " 一方の宣言が必要です。"
+            )
+        return self
+
+
 class Dsql(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     deletion_protection: bool = False
-    # 未宣言なら定期バックアップを作らない (deploy が無防備である旨を警告する)
-    backup: DsqlBackup | None = None
 
 
 class RdsBackup(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Aurora の自動バックアップ (PITR) 保持日数。AWS 既定は 1 日だが、pocket は
-    # 7 日を既定にする。1 日だと「PITR があるからいつでも戻せる」という理解と
-    # 実態 (24 時間しか遡れない) が乖離するため。cluster のネイティブ属性で
-    # 追加リソース・追加権限は不要、Aurora のバックアップストレージは
-    # cluster 容量までは無課金なので通常は増分コストも生じない。
-    # 35 日を超える長期保持は AWS Backup の backup plan 側の責務。
-    retention_days: Annotated[int, Field(ge=1, le=35)] = 7
+    # ネイティブ上限の 35 日を既定にする。1 日だと「PITR があるからいつでも
+    # 戻せる」という理解と実態 (24 時間しか遡れない) が乖離するため。cluster の
+    # ネイティブ属性で追加リソース・追加権限は不要、Aurora のバックアップ
+    # ストレージは cluster 容量までは無課金なので、変更 (update/delete) の
+    # 少ないワークロードでは保持を伸ばしても通常は増分コストが生じない。
+    # 35 日を超える長期保持は [backup] (AWS Backup の backup plan) 側の責務。
+    retention_days: Annotated[int, Field(ge=1, le=35)] = 35
 
 
 class Rds(BaseModel):
@@ -1139,6 +1237,8 @@ class Settings(BaseModel):
     upstash: Upstash | None = None
     dsql: Dsql | None = None
     rds: Rds | None = None
+    # DB 層の定期バックアップ (opt-in。宣言時のみ AWS Backup を provision する)
+    backup: Backup | None = None
     ses: Ses | None = None
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
@@ -1301,6 +1401,28 @@ class Settings(BaseModel):
                 f"lambda route (the origin to protect). S3-only distributions are "
                 f"already protected by OAC."
             )
+
+    @model_validator(mode="after")
+    def check_backup_targets(self):
+        """[backup.<engine>] が指す資源の存在を検証する (fail-loud)。
+
+        バックアップ設定は「書いたのに守られていない」が最悪の事故なので、
+        対象資源が無い宣言は warning ではなくエラーで止める。
+        """
+        if self.backup is None:
+            return self
+        if self.backup.dsql is not None and self.dsql is None:
+            raise ValueError("[backup.dsql] には [dsql] の宣言が必要です。")
+        if self.backup.rds is not None:
+            if self.rds is None:
+                raise ValueError("[backup.rds] には [rds] の宣言が必要です。")
+            if not self.rds.managed:
+                raise ValueError(
+                    "[backup.rds] は managed = true の [rds] でのみ使用できます"
+                    " (既存クラスタ参照 (managed = false) のバックアップは"
+                    " 参照元スタックの責務)。"
+                )
+        return self
 
     @model_validator(mode="after")
     def check_rds_vpc(self):

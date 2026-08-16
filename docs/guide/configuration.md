@@ -41,7 +41,7 @@
     deletion_protection = true
     ```
 
-    逆に「全ステージで安全側にすべき」設定は、ステージで分けずにデフォルト自体をそう定めています（例: `[rds.backup]` の `retention_days` は AWS 既定の 1 日ではなく 7 日）。
+    逆に「全ステージで安全側にすべき」設定は、ステージで分けずにデフォルト自体をそう定めています（例: `[rds.backup]` の `retention_days` は AWS 既定の 1 日ではなく 35 日）。
 
 ---
 
@@ -459,7 +459,6 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `deletion_protection` | bool | `false` | 削除保護の有効化 |
-| `backup` | table \| None | None | 定期バックアップ設定（後述）。未宣言なら作成しない |
 
 !!! tip "prod だけ削除保護を有効にする"
     `deletion_protection` のデフォルトは全ステージ共通です（pocket はステージ名で挙動を変えません。[基本構造](#_1)を参照）。本番だけ有効にする場合はステージ上書きで明示してください。
@@ -475,50 +474,13 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 Lambda 環境変数として `POCKET_DSQL_ENDPOINT` と `POCKET_DSQL_REGION` が自動設定されます。
 `set_envs()` の呼び出し時に、IAM 認証トークンが `POCKET_DSQL_TOKEN` に設定されます。
 
-### 定期バックアップ（`[dsql.backup]`）
+### 定期バックアップ
 
-DSQL に組み込みの自動バックアップ（PITR や日次スナップショット）はありません。何も設定しなければ、誤削除・論理破壊からの復元手段はゼロです（宣言が無い stage では deploy が毎回警告します）。`[dsql.backup]` を宣言すると、deploy が AWS Backup の vault・サービスロール・backup plan・selection を冪等に provision します。
+DSQL に組み込みの自動バックアップ（PITR や日次スナップショット）はありません。**何も宣言しなければ、誤削除・論理破壊からの復元手段はゼロです**（宣言が無い stage では deploy が毎回警告します）。定期バックアップはトップレベルの [`[backup.dsql]`](#backup) で宣言してください（1 行書くだけで daily / weekly / monthly の GFS 階層保持が有効になります）。
 
-```toml
-[dsql.backup]
-cron = "0 3 * * ? *"          # 毎日 3:00
-timezone = "Asia/Tokyo"        # 日本時間で回す場合
-cold_storage_after_days = 35   # 35 日はすぐ取り出せる、その後 cold storage へ
-delete_after_days = 365        # 365 日で削除
-```
+単発のバックアップは `pocket resource dsql backup` で取得できます（[CLI リファレンス](cli.md) 参照）。**`--retention-days` を省略した単発バックアップは、`[backup.dsql]` の最長階層（monthly）の `delete_after_days` を継承します**（宣言が無い stage では 1095 日）。定期と単発で長期保持ポリシーが一致します。
 
-| フィールド | 型 | デフォルト | 説明 |
-|-----------|------|----------|------|
-| `cron` | str | `"0 3 * * ? *"` | 実行スケジュール。`[scheduler]` と同じ表記（`cron(...)` は pocket が付けます） |
-| `timezone` | str | `"UTC"` | `cron` を解釈するタイムゾーン（AWS 既定に合わせて UTC） |
-| `cold_storage_after_days` | int | `35` | cold storage（Glacier 相当）へ移動するまでの日数。`0` で移動しない |
-| `delete_after_days` | int | `365` | recovery point を削除するまでの日数 |
-
-!!! info "保存先は backup vault（S3 バケットではありません）"
-    AWS Backup の保存先は AWS 管理の **backup vault**（pocket 管理の `pocket-backup`）で、任意の S3 バケットを保存先に指定することはできません。ただし vault のライフサイクルが「即時取り出し可能な warm → cold storage → 削除」を表現するため、S3 の Standard → Glacier → 有効期限と同じ保持ポリシーを組めます。
-
-!!! warning "cold storage の最低保持期間"
-    AWS Backup の cold storage は最低 90 日課金されます。このため `delete_after_days` は `cold_storage_after_days + 90` 以上である必要があり、違反する設定は pocket.toml の検証で弾かれます（例: `cold_storage_after_days = 35` なら `delete_after_days` は 125 以上）。
-
-!!! tip "短いサイクルで検証したい stage（sandbox 等）"
-    上の 90 日制約は cold storage へ移動する設定にのみ効きます。`cold_storage_after_days = 0`（移動しない）にすれば `delete_after_days` を自由に短くできるので、検証用 stage は数日で失効させられます。
-
-    ```toml
-    [sandbox.dsql.backup]
-    cron = "0 3 * * ? *"
-    timezone = "Asia/Tokyo"
-    cold_storage_after_days = 0    # cold storage へ移動しない
-    delete_after_days = 7          # 7 日で失効
-    ```
-
-    ステージ上書き（`[sandbox.dsql.backup]`）で宣言すれば、他 stage に plan を作らずに検証できます。
-
-!!! info "destroy とバックアップデータ"
-    `pocket destroy` はバックアップ**設定**（backup plan / selection）を削除しますが、バックアップ**データ**（vault と recovery point）は削除しません。クラスターを消した後こそ復元が必要になりうるためで、deploy role にもデータ削除権限（`DeleteBackupVault` / `DeleteRecoveryPoint`）は付与していません。不要になったデータは AWS Backup のコンソール等から明示的に削除してください。
-
-    復元は AWS Backup が常に**新規クラスター**を作成する形で行われます（元のクラスターは変更されません）。
-
-単発のバックアップは `pocket resource dsql backup` で取得できます（[CLI リファレンス](cli.md) 参照）。**`--retention-days` を省略した単発バックアップは、この `delete_after_days` を継承します**（宣言が無い stage では 1095 日）。宣言している stage では定期と単発で保持ポリシーが一致します。
+復元は AWS Backup が常に**新規クラスター**を作成する形で行われます（元のクラスターは変更されません）。`pocket resource dsql restore` を参照してください。
 
 !!! info "endpoint の publish（deploy の外から endpoint を引く）"
     DSQL の cluster identifier は AWS 自動生成のため、endpoint
@@ -599,22 +561,22 @@ dockerfile_path = "pocket.Dockerfile"
 | `min_capacity` | float | `0.5` | Serverless v2 最小キャパシティ（ACU）。`managed = true` のみ |
 | `max_capacity` | float | `2.0` | Serverless v2 最大キャパシティ（ACU）。`managed = true` のみ |
 | `snapshot_identifier` | str \| None | None | 初回作成時に復元する snapshot の ID / ARN。`managed = true` のみ |
-| `backup.retention_days` | int | `7` | 自動バックアップ（PITR）の保持日数（1〜35）。`managed = true` のみ |
+| `backup.retention_days` | int | `35` | 自動バックアップ（PITR）の保持日数（1〜35）。`managed = true` のみ |
 | `database` | str \| None | None | DB 名の上書き。未指定なら `{stage}_{project}`（他リソース名と同じ順序）。`managed = true` のみ |
 | `secret_arn` | str \| None | None | 既存 RDS の Secrets Manager ARN。`managed = false` 時必須 |
 | `security_group_id` | str \| None | None | 既存 RDS の SG ID。`managed = false` 時必須 |
 
 !!! info "自動バックアップ（PITR）の保持期間"
-    Aurora の自動バックアップは常時有効で、保持期間内の任意の時点に復元（PITR）できます。pocket は保持日数を **7 日** で作成します（AWS 既定は 1 日）。1 日だと「PITR があるからいつでも戻せる」という理解と実態（24 時間しか遡れない）が乖離するためです。
+    Aurora の自動バックアップは常時有効で、保持期間内の任意の時点に復元（PITR）できます。pocket は保持日数を **35 日**（ネイティブ上限）で作成します（AWS 既定は 1 日）。1 日だと「PITR があるからいつでも戻せる」という理解と実態（24 時間しか遡れない）が乖離するためです。
 
     ```toml
     [rds.backup]
-    retention_days = 14
+    retention_days = 14   # 短くしたい場合
     ```
 
-    保持日数はクラスターのネイティブ属性なので、追加リソースも追加権限も不要です。Aurora のバックアップストレージはクラスター容量までは無課金のため、通常は増分コストも生じません。既存クラスターの値が設定と異なる場合は、次の deploy で `ModifyDBCluster`（`ApplyImmediately`）により収束します。
+    保持日数はクラスターのネイティブ属性なので、追加リソースも追加権限も不要です。Aurora のバックアップストレージはクラスター容量までは無課金のため、変更（update / delete）の少ないワークロードでは保持を伸ばしても通常は増分コストが生じません。既存クラスターの値が設定と異なる場合は、次の deploy で `ModifyDBCluster`（`ApplyImmediately`）により収束します。
 
-    35 日を超える長期保持（週次・1 年など）は PITR では実現できず、AWS Backup の backup plan が別途必要です。
+    35 日を超える長期保持（週次・月次）は PITR では実現できず、トップレベル [`[backup.rds]`](#backup)（AWS Backup の backup plan）を宣言して担わせます。PITR のローリングウィンドウと週次・月次スナップショットは独立した仕組みで、「PITR 期間が切れたら自動でスナップショットに移る」わけではなく並走します。PITR 自体は `[backup.rds]` の宣言と無関係に常に有効です（このため `[backup.rds]` に daily 階層はありません）。
 
 !!! info "DATABASE_URL の設定"
     `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
@@ -735,6 +697,86 @@ security_group_id = "sg-0123456789abcdef0"
     - `managed = false` では `min_capacity`, `max_capacity`, `snapshot_identifier` は使用できません
     - `secret_arn` と `security_group_id` は `managed = false` でのみ使用可能です（`managed = true` で指定するとエラー）
     - VPC 設定 (`[vpc]`) は不要です（Lambda と RDS が同一 VPC にいる前提で、SG ingress のみで接続します）
+
+---
+
+## backup
+
+DB 層の定期バックアップ（AWS Backup の backup plan）です。pocket が管理する AWS ネイティブ DB をエンジン別に `[backup.dsql]` / `[backup.rds]` で宣言します（opt-in。未宣言なら AWS Backup は使いません）。宣言だけで **GFS（Grandfather-Father-Son）階層保持**が既定で有効になります: 短期は細かく、古くなるほど間引いて長期保持する定石構成です。
+
+```toml
+[backup.dsql]         # この 1 行で dsql の GFS 既定（daily / weekly / monthly）
+[backup.rds]          # この 1 行で rds の GFS 既定（weekly / monthly。daily は PITR が担当）
+```
+
+既定の階層は以下です:
+
+| 階層 | dsql | rds (managed) | 既定スケジュール |
+|------|------|---------------|----------------|
+| 直近の細かい復元点 | `daily`（35 日保持） | **PITR**（[`[rds.backup]`](#rds)、35 日・秒単位） | daily: 毎日 3:00 |
+| weekly | 365 日保持、90 日で cold storage へ | 365 日保持 | 毎週日曜 4:00 |
+| monthly | 1095 日（3 年）保持、90 日で cold storage へ | 1095 日（3 年）保持 | 毎月 1 日 5:00 |
+
+各階層は上書きできます（フィールドは `cron` / `delete_after_days`、dsql のみ `cold_storage_after_days`）:
+
+```toml
+[backup]
+deletable = false     # true で pocket からのバックアップデータ削除を許可
+timezone = "UTC"      # 全階層の cron を解釈するタイムゾーン
+
+[backup.dsql]
+[backup.dsql.monthly]
+delete_after_days = 1825   # monthly だけ 5 年に伸ばす
+
+[backup.rds]
+[backup.rds.weekly]
+cron = "0 4 ? * 7 *"       # 土曜に変更
+```
+
+deploy が AWS Backup の vault（`pocket-backup`）・サービスロール・エンジン別の backup plan / selection（`{stage}-{project}-{namespace}-backup-dsql` / `-rds`）を冪等に provision します。plan をエンジン別に分けるのは、AWS Backup の rule が selection 全体に一律適用されるためです（rds に daily を作らない・cold storage を使わない、をエンジン単位でしか表現できません）。
+
+!!! warning "backup 関連の宣言は厳密に検証されます"
+    「書いたのに守られていない」を防ぐため、以下はすべて警告ではなく**エラー停止**します:
+
+    - `[backup]` だけ書いてエンジン宣言（`[backup.dsql]` / `[backup.rds]`）が無い
+    - `[backup.neon]` など対象外エンジンの宣言（外部サービス DB は AWS Backup の対象外。各サービス側のバックアップ機能に依存し、長期保持が必要なら論理ダンプを S3 へ書き出す運用を別途検討してください）
+    - `[backup.dsql]` を宣言したのに `[dsql]` が無い（`[backup.rds]` と `[rds]` も同様。`managed = false` の rds も不可）
+    - `[backup.rds]` への `cold_storage_after_days`（Aurora の snapshot は AWS Backup の cold storage 非対応）
+    - `[backup.rds.daily]`（直近 35 日は PITR の責務）
+
+!!! info "PITR とスナップショットの関係（rds）"
+    PITR はローリングウィンドウ（直近 35 日を秒単位で復元）、この plan は離散スナップショット（週次・月次を長期保持）で、両者は独立に並走します。「PITR 期間が切れたら自動でスナップショットに移る」わけではありません。PITR は `[backup.rds]` の宣言と無関係に常に有効です。なお Aurora の PITR ストレージはクラスター容量まで無課金ですが、**AWS Backup のスナップショットには無料枠が無く** GB 単価で課金されます。
+
+!!! info "保存先は backup vault（S3 バケットではありません）"
+    AWS Backup の保存先は AWS 管理の **backup vault**（pocket 管理の `pocket-backup`）で、任意の S3 バケットを保存先に指定することはできません。ただし vault のライフサイクルが「即時取り出し可能な warm → cold storage → 削除」を表現するため、S3 の Standard → Glacier → 有効期限と同じ保持ポリシーを組めます。バックアップの中身をユーザー側で圧縮することはできません（スナップショットはストレージ層で増分保存され、コスト圧縮手段は実質 cold storage 移行です）。
+
+!!! warning "cold storage の最低保持期間"
+    AWS Backup の cold storage は最低 90 日課金されます。このため `cold_storage_after_days` を使う階層では `delete_after_days` が `cold_storage_after_days + 90` 以上である必要があり、違反する設定は pocket.toml の検証で弾かれます（例: `cold_storage_after_days = 35` なら `delete_after_days` は 125 以上）。
+
+!!! tip "短いサイクルで検証したい stage（sandbox 等）"
+    上の 90 日制約は cold storage へ移動する階層にのみ効きます。`cold_storage_after_days = 0`（移動しない）にすれば `delete_after_days` を自由に短くできます。
+
+    ```toml
+    [sandbox.backup.dsql.daily]
+    delete_after_days = 7          # 7 日で失効
+    [sandbox.backup.dsql.weekly]
+    cold_storage_after_days = 0
+    delete_after_days = 14
+    [sandbox.backup.dsql.monthly]
+    cold_storage_after_days = 0
+    delete_after_days = 31
+    ```
+
+!!! warning "destroy とバックアップデータ"
+    `pocket destroy` はバックアップ**設定**（backup plan / selection）を削除しますが、バックアップ**データ**（vault と recovery point）は既定では削除しません。クラスターを消した後こそ復元が必要になりうるためです。データが残る場合は destroy が件数を表示して警告します（保持期限までは課金対象です）。
+
+    データも消したい場合は `[backup]` に `deletable = true` を宣言します。destroy 実行中の確認プロンプト（`[y/N]`、既定 No）で yes と答えた場合のみ削除されます。`--yes` フラグによる一括承認ではデータ削除は行いません（データ削除だけは暗黙に通しません）。destroy とは別に、`pocket backup cleanup` でデータだけを削除することもできます（[CLI リファレンス](cli.md) 参照）。
+
+!!! info "宣言を外した場合"
+    `[backup.dsql]` 等を後から外しても、deploy は既存の plan（スケジュール）に触りません（snapshot は取られ続けます）。スケジュールを止めるには destroy を実行するか、AWS Backup コンソールから plan を削除してください。
+
+!!! info "権限が足りない場合"
+    deploy role に `backup:*`（[権限リファレンス](../permissions/aws.md) 参照）が無い場合、deploy は失敗せず警告を出して定期バックアップの provisioning をスキップします。警告が出たら権限を付与してください。
 
 ---
 

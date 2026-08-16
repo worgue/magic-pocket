@@ -253,6 +253,35 @@ def test_dsql_adds_dsql():
     assert "dsql:*" not in compute_actions(_build_settings())
 
 
+def test_backup_actions_gating():
+    """AWS Backup 系 Action (backup:*) の付与条件。
+
+    dsql はオンデマンド backup / restore CLI が [backup] 宣言の有無に関わらず
+    使えるため常に付与。rds は [backup.rds] を宣言した時のみ (opt-in。PITR は
+    rds:* のクラスタ属性で AWS Backup を使わない)。
+    """
+    # dsql: [backup] 未宣言でも付く
+    assert "backup:*" in compute_actions(_build_settings(dsql={}))
+    # rds: [backup.rds] 宣言時のみ
+    rds_data = {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}}
+    rds_kwargs: dict = {
+        "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        "awscontainer": {
+            "dockerfile_path": "Dockerfile",
+            "handlers": {},
+            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        },
+    }
+    assert "backup:*" not in compute_actions(
+        _build_settings(rds=rds_data, **rds_kwargs)
+    )
+    assert "backup:*" in compute_actions(
+        _build_settings(rds=rds_data, backup={"rds": {}}, **rds_kwargs)
+    )
+    # 対象 DB 無しでは付かない
+    assert "backup:*" not in compute_actions(_build_settings())
+
+
 def test_scheduler_adds_scheduler():
     settings = _build_settings(
         awscontainer={
@@ -375,6 +404,7 @@ def test_action_groups_public_keys_stable():
         "ses",
         "codebuild",
         "dsql",
+        "backup",
         "scheduler",
         "tag",
     }
