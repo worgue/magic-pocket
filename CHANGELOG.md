@@ -4,6 +4,49 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.28.0](https://github.com/worgue/magic-pocket/releases/tag/0.28.0) - 2026-08-16
+
+### Added
+- トップレベル `[backup]` を追加しました。DB 層の定期バックアップ (AWS Backup
+  の backup plan) をエンジン別に `[backup.dsql]` / `[backup.rds]` で宣言します
+  (opt-in。未宣言なら AWS Backup を使いません)。1 行の宣言で **GFS 階層保持**が
+  既定で有効になります: dsql は daily 35 日 / weekly 365 日 / monthly 1095 日
+  (長期階層は 90 日で cold storage へ)、rds は weekly / monthly のみ (直近は
+  PITR が秒単位で担うため daily 階層を持ちません)。plan はエンジン別
+  (`{prefix}backup-dsql` / `-rds`) に provision します (AWS Backup の rule は
+  selection 全体に一律適用のため、エンジン差は plan 分割でしか表現できません)。
+  deploy role に backup 権限が無い場合は deploy を失敗させず警告してスキップ
+  します
+- `pocket backup cleanup` を追加しました。stage のバックアップデータ
+  (recovery point) を削除する CLI で、誤操作ガードとして `[backup]` の
+  `deletable = true` 宣言が必要です。destroy でも同宣言下でのみ `[y/N]`
+  確認 (既定 No) を経てデータを削除できます (`--yes` の一括承認では削除
+  しない)。データが残る destroy では件数を警告表示します
+
+### Changed
+- **破壊的変更**: `[dsql.backup]` を廃止し、トップレベル `[backup.dsql]` に
+  移行しました (旧宣言は pydantic の Extra inputs エラーになります。旧名
+  `{prefix}dsql-backup` の plan が残っていれば AWS Backup コンソールで削除して
+  ください)。backup 関連の宣言は厳密に検証します: `[backup]` 単体・
+  `[backup.neon]` 等の対象外エンジン・対象資源 (`[dsql]` / managed `[rds]`) の
+  無い宣言・`[backup.rds]` への `cold_storage_after_days` (Aurora は cold
+  storage 非対応)・`[backup.rds.daily]` は、すべてエラー停止します
+- `[rds.backup]` の `retention_days` (PITR 保持日数) の既定を 7 日から
+  **35 日 (ネイティブ上限)** に引き上げました。クラスタ属性のため追加リソースは
+  無く、Aurora のバックアップストレージはクラスタ容量まで無課金のため、変更の
+  少ないワークロードでは通常コスト増もありません。既存クラスタは次回 deploy の
+  `ModifyDBCluster` (`ApplyImmediately`) で収束します。PITR は `[backup.rds]`
+  の宣言と無関係に常に有効です
+- `pocket resource dsql backup` の保持日数の継承元が `[backup.dsql]` の
+  最長階層 (monthly) の `delete_after_days` になりました (既定同士なら従来と
+  同じ 1095 日)
+- IAM Action を簡素化し、feature group `backup` (`backup:*` +
+  `backup-storage:MountCapsule`) を新設しました (`dsql` group から分離)。
+  `[dsql]` 使用時に加え、`[backup.rds]` 宣言時にも必要になります。`backup:*`
+  にはデータ削除も含まれますが、pocket が削除するのは `deletable = true` +
+  明示確認の経路のみです。権限レベルで禁止したい場合の Deny 例を
+  docs/permissions/aws.md に記載しました
+
 ## [0.27.0](https://github.com/worgue/magic-pocket/releases/tag/0.27.0) - 2026-08-13
 
 ### Changed
