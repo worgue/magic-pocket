@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.28.2](https://github.com/worgue/magic-pocket/releases/tag/0.28.2) - 2026-08-17
 
 ### Fixed
 - `upload_dir` route の 8MB 超のファイルが、内容不変でも毎 deploy
