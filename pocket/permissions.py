@@ -117,9 +117,19 @@ _DSQL_ACTIONS: list[str] = ["dsql:*"]
 # 必須付随権限 (Resource は * 固定)。サービスロールの ensure と受け渡しは
 # core の iam 系 (CreateRole/AttachRolePolicy/PassRole 等) でカバー
 # https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html
+# kms 系は CreateBackupVault が既定の AWS managed key (aws/backup) を vault に
+# 紐付ける際、呼び出し元に要求する権限 (欠けると backup:* +
+# backup-storage:MountCapsule を満たしていても AccessDenied。KN1054 で実測確認)。
+# boto3 の kms client を pocket が直接使うわけではないため、sync テストの
+# AST 検知には掛からず、この宣言が唯一のソース
 _BACKUP_ACTIONS: list[str] = [
     "backup:*",
     "backup-storage:MountCapsule",
+    "kms:CreateGrant",
+    "kms:Decrypt",
+    "kms:DescribeKey",
+    "kms:GenerateDataKey",
+    "kms:RetireGrant",
 ]
 
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)

@@ -164,8 +164,8 @@ class Backup:
                 " provisioning をスキップしました: %s" % e
             )
             echo.warning(
-                "  deploy role に backup:* を付与してください"
-                " (`pocket permissions list` 参照)。"
+                "  deploy role に backup グループの権限 (backup:* と kms 系)"
+                " を付与してください (`pocket permissions list` 参照)。"
             )
 
     def _cleanup_legacy_plans(self) -> None:

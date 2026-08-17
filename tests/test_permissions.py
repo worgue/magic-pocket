@@ -262,6 +262,17 @@ def test_backup_actions_gating():
     """
     # dsql: [backup] 未宣言でも付く
     assert "backup:*" in compute_actions(_build_settings(dsql={}))
+    # kms 系は backup group に同梱 (CreateBackupVault が既定 aws/backup 鍵の
+    # 紐付けで呼び出し元に要求する。KN1054)
+    kms_actions = {
+        "kms:CreateGrant",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:RetireGrant",
+    }
+    assert kms_actions <= set(compute_actions(_build_settings(dsql={})))
+    assert not kms_actions & set(compute_actions(_build_settings()))
     # rds: [backup.rds] 宣言時のみ
     rds_data = {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}}
     rds_kwargs: dict = {

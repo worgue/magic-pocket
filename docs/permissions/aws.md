@@ -97,6 +97,7 @@ dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言
 |------|------|
 | `backup:*` | 定期バックアップ（`[backup.dsql]` / `[backup.rds]` の plan / selection の provision と destroy）、オンデマンドバックアップ（`pocket resource dsql backup` / `backup-status`）、復元（`pocket resource dsql restore` / `restore-status`）、バックアップデータの削除（`pocket backup cleanup`。`[backup]` の `deletable = true` 宣言 + 明示確認の経路のみ） |
 | `backup-storage:MountCapsule` | [`CreateBackupVault` の必須付随権限](https://docs.aws.amazon.com/aws-backup/latest/devguide/create-a-vault.html)（Resource は `*` 固定）。無いと vault（pocket 管理の `pocket-backup`）の初回作成が AccessDenied になります。サービスロールの ensure・受け渡しはコア権限の iam 系でカバー |
+| `kms:CreateGrant`, `kms:Decrypt`, `kms:DescribeKey`, `kms:GenerateDataKey`, `kms:RetireGrant` | `CreateBackupVault` が既定の AWS managed key（`aws/backup`）を vault に紐付ける際に呼び出し元へ要求する KMS 権限。無いと `backup:*` + `backup-storage:MountCapsule` を満たしていても vault の初回作成が AccessDenied になります（AWS のエラーは "Creating a backup vault requires backup-storage and KMS permissions"） |
 
 !!! note "バックアップデータの削除を権限で禁止したい場合"
     `backup:*` にはバックアップ**データ**の削除（`DeleteRecoveryPoint` / `DeleteBackupVault`）も含まれます。pocket 自体は `[backup]` の `deletable = true` 宣言と利用者の明示確認を経ない限りデータを削除しませんが、組織のポリシーとして権限レベルで禁止したい場合は、deploy role 側で明示 Deny を足してください。
@@ -204,6 +205,11 @@ dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言
         "dsql:*",
         "backup:*",
         "backup-storage:MountCapsule",
+        "kms:CreateGrant",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:RetireGrant",
         "scheduler:*",
         "tag:TagResources",
         "tag:UntagResources"

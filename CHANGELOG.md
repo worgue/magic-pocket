@@ -4,6 +4,18 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- `pocket permissions list` の backup グループに KMS 権限が漏れており、
+  リスト準拠の deploy role では vault の初回作成 (`CreateBackupVault`) が
+  必ず AccessDenied になる問題を修正しました。`CreateBackupVault` は既定の
+  AWS managed key (`aws/backup`) を vault に紐付ける際、呼び出し元に KMS
+  権限を要求します。backup グループに `kms:CreateGrant` / `kms:Decrypt` /
+  `kms:DescribeKey` / `kms:GenerateDataKey` / `kms:RetireGrant` を追加し、
+  権限不足時の警告文言も backup グループ全体 (`backup:*` と kms 系) を
+  案内するよう改めました
+
 ## [0.28.1](https://github.com/worgue/magic-pocket/releases/tag/0.28.1) - 2026-08-16
 
 ### Fixed
