@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 import boto3
+from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
@@ -21,6 +22,14 @@ from pocket_cli.resources.aws.s3_utils import delete_bucket_with_contents
 if TYPE_CHECKING:
     from pocket.context import CloudFrontContext, RouteContext
     from pocket_cli.mediator import Mediator
+
+# upload_dir の差分 skip (_is_unchanged) は ETag が素の MD5 であることに依存する。
+# boto3 既定の multipart 閾値 (8MB) を超えると ETag が `<md5-of-part-md5s>-<N>`
+# 形式になり、そのファイルは内容不変でも毎 deploy「変更あり」= 再アップロード +
+# route 全体の invalidation になってしまう。単一 PUT の上限 (5GB) に対して
+# 十分安全な 128MB まで multipart を使わない。これを超えるファイルは従来どおり
+# 常に再アップロードされる (_is_unchanged の docstring 参照)
+_UPLOAD_TRANSFER_CONFIG = TransferConfig(multipart_threshold=128 * 1024 * 1024)
 
 
 class OriginAccessControl(BaseModel):
@@ -334,6 +343,7 @@ class CloudFront:
                 self.context.bucket_name,
                 s3_key,
                 ExtraArgs=extra_args,
+                Config=_UPLOAD_TRANSFER_CONFIG,
             )
             uploaded += 1
             echo.log("アップロード: s3://%s/%s" % (self.context.bucket_name, s3_key))
@@ -561,6 +571,13 @@ def _is_unchanged(file: Path, etag: str | None) -> bool:
     オブジェクトの ETag は `<md5 of part md5s>-<part 数>` で、パートサイズが
     分からないとローカルから再現できない。SSE-KMS 等でも ETag は MD5 に
     ならない。これらは「不明」= 変更ありとして扱い、常に再アップロードする。
+
+    このため upload 側は multipart 閾値を 128MB に引き上げている
+    (_UPLOAD_TRANSFER_CONFIG)。boto3 既定の 8MB のままでは、8MB 超のファイルが
+    1 個あるだけで毎 deploy 再アップロード + route 全体の invalidation が走る。
+    過去に multipart で上がった既存オブジェクトも、閾値以下なら次の deploy で
+    単一 PUT により上げ直され、以後は skip が効くようになる (自己回復)。
+    128MB 超のファイルだけは引き続き毎回再アップロードになる。
 
     サイズ比較での代替はしない。同じサイズで内容が違うファイルを「変更なし」と
     誤判定すると、そのファイルは以後どの deploy でも更新されなくなる。

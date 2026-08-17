@@ -102,6 +102,24 @@ def test_multipart_etag_never_skips(upload_dir: Path):
     assert uploaded == {"twemoji/a.svg"}
 
 
+def test_upload_raises_multipart_threshold(upload_dir: Path):
+    """upload_file は multipart 閾値 128MB の TransferConfig 付きで呼ばれる
+
+    boto3 既定 (8MB) のままだと 8MB 超のファイルの ETag が multipart 形式に
+    なり、内容不変でも毎 deploy 再アップロード + route 全体の invalidation が
+    走る (差分 skip が恒久的に効かない)。閾値以下を単一 PUT に保つことで
+    ETag が素の MD5 になり _is_unchanged が機能する (回帰テスト)。
+    """
+    cf = _make_cf([_route(upload_dir)])
+    with mock.patch.object(cf, "_list_objects", return_value={}):
+        cf._upload_route(cf.context.routes[0])
+
+    assert cf.s3_client.upload_file.call_count == 2
+    for call in cf.s3_client.upload_file.call_args_list:
+        config = call.kwargs["Config"]
+        assert config.multipart_threshold == 128 * 1024 * 1024
+
+
 def test_stale_objects_are_deleted_and_count_as_change(upload_dir: Path):
     """ローカルに無い key は削除され、削除だけでも変更ありとして扱う"""
     cf = _make_cf([_route(upload_dir)])

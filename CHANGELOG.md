@@ -7,6 +7,14 @@
 ## [Unreleased]
 
 ### Fixed
+- `upload_dir` route の 8MB 超のファイルが、内容不変でも毎 deploy
+  再アップロードされ、route の `path_pattern` 全体の invalidation が毎回走る
+  問題を修正しました。boto3 既定の multipart 閾値 (8MB) を超えると S3 の
+  ETag が multipart 形式になり、差分 skip (素の MD5 比較) が恒久的に効かなく
+  なるためです。アップロード時の multipart 閾値を 128MB に引き上げ、閾値以下は
+  単一 PUT (= ETag が素の MD5) を保つようにしました。過去に multipart で
+  上がった既存オブジェクトも、次の deploy で一度上げ直された後は skip が
+  効くようになります (128MB 超のファイルは引き続き毎回再アップロードされます)
 - `pocket permissions list` の backup グループに KMS 権限が漏れており、
   リスト準拠の deploy role では vault の初回作成 (`CreateBackupVault`) が
   必ず AccessDenied になる問題を修正しました。`CreateBackupVault` は既定の
