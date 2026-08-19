@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.29.0](https://github.com/worgue/magic-pocket/releases/tag/0.29.0) - 2026-08-19
 
 ### Changed
 - **破壊的変更**: `[awscontainer]` (単数) を廃止し、`[container.<name>]` の
@@ -66,7 +66,7 @@
   から外すリリースでは、CHANGELOG に「移行を含む版で一度 deploy (または
   `pocket migrate`) を挟ぶ必要がある」旨を明記します
 
-### 移行手順 (0.28.x → this version)
+### 移行手順 (0.28.x → 0.29.0)
 1. `pocket.toml` の `[awscontainer]` 系セクションを `[container.<name>]` へ
    リネームします (stage override は `[<stage>.container.<name>]`)。
    cloudfront routes / scheduler の `handler` をドット記法へ変更します
