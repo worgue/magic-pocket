@@ -5,19 +5,19 @@ stages = ["dev", "prod"]
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 permissions_boundary = "arn:aws:iam::123456789012:policy/test-boundary"
 
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 300
 
-[awscontainer.handlers.worker]
+[container.main.handlers.worker]
 command = "pocket.lambda_handlers.worker_handler"
 timeout = 60
 
-[awscontainer.handlers.sqsworker]
+[container.main.handlers.sqsworker]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 60
 sqs = {}
@@ -25,18 +25,18 @@ sqs = {}
 [scheduler.schedules.cleanup]
 scheduler = "pocket.sqs_scheduler"
 rate = "15 minutes"
-handler = "sqsworker"
+handler = "main.sqsworker"
 message = { command = "clearsessions", args = [], kwargs = {} }
 
 [scheduler.schedules.rotate_logs]
 rate = "1 hour"
-handler = "worker"
+handler = "main.worker"
 input = { task = "rotate_logs" }
 
 [scheduler.schedules.daily_digest]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 18 * * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_daily_digest --verbose"
 
 [prod.scheduler.schedules.rotate_logs]
@@ -45,5 +45,5 @@ rate = "10 minutes"
 [prod.scheduler.schedules.month_end]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 0 L * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_monthly_invoice"

@@ -10,7 +10,7 @@
 |----------|------|------|
 | **CloudFormation** | `cloudformation:*` | インフラの作成・更新・削除 |
 | **ECR** | `ecr:*` | コンテナイメージの管理・プッシュ |
-| **Lambda** | `lambda:*` | 関数の作成・更新・実行。`pocket resource awscontainer reload-env` の side-channel env 更新 (`UpdateFunctionConfiguration`) も含む |
+| **Lambda** | `lambda:*` | 関数の作成・更新・実行。`pocket resource container reload-env` の side-channel env 更新 (`UpdateFunctionConfiguration`) も含む |
 | **API Gateway V2** | `apigateway:*` | HTTP エンドポイントの管理 |
 | **S3** | `s3:*` | ステートバケット・静的ファイル |
 | **IAM** | `iam:CreateRole`, `iam:DeleteRole`, `iam:GetRole`, `iam:PutRolePolicy`, `iam:DeleteRolePolicy`, `iam:AttachRolePolicy`, `iam:DetachRolePolicy`, `iam:PassRole`, `iam:TagRole`, `iam:UntagRole`, `iam:ListRoleTags`, `iam:ListRolePolicies` | Lambda 実行ロールの管理（CFn が LambdaRole に Tag を付与するため Tag 系 Action も必要。`ListRolePolicies` は CodeBuild ロール削除時の inline policy 列挙） |
@@ -42,7 +42,7 @@
 |------|------|
 | `wafv2:*` | us-east-1 の WebACL / IPSet の管理。`pocket deploy` で CFn 経由作成、`pocket waf ip ...` CLI で IPSet の中身を side-channel 更新 |
 
-### VPC（`[awscontainer.vpc]` 使用時）
+### VPC（`[container.main.vpc]` 使用時）
 
 | 権限 | 用途 |
 |------|------|
@@ -56,7 +56,7 @@
 | `ec2:*SecurityGroup*` | DB 用セキュリティグループの管理 |
 | `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameter` | static master password の SSM パラメータ管理（`secrets.store` の設定とは独立に必要） |
 
-### EFS（`[awscontainer.vpc.efs]` 使用時）
+### EFS（`[container.main.vpc.efs]` 使用時）
 
 | 権限 | 用途 |
 |------|------|
@@ -118,7 +118,7 @@ dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言
 |------|------|
 | `scheduler:*` | CFn によるスケジュール（`AWS::Scheduler::Schedule`）の作成・更新・削除 |
 
-### Resource Groups Tagging（外部 VPC 参照 = `awscontainer.vpc.manage = false` 時）
+### Resource Groups Tagging（外部 VPC 参照 = `container.<name>.vpc.manage = false` 時）
 
 | 権限 | 用途 |
 |------|------|
@@ -301,7 +301,7 @@ fail した場合は、次の順で対応してください:
 組織のセキュリティポリシーで IAM ロールに Permissions Boundary が必要な場合、`pocket.toml` で設定できます。
 
 ```toml
-[awscontainer]
+[container.main]
 permissions_boundary = "arn:aws:iam::123456789012:policy/MyBoundaryPolicy"
 ```
 

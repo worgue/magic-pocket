@@ -16,10 +16,11 @@ from pocket.settings import (
 def test_scheduler_dev_loads_global_schedules(use_toml):
     use_toml("tests/data/toml/scheduler.toml")
     context = Context.from_toml(stage="dev")
-    assert context.scheduler is not None
-    keys = [e.key for e in context.scheduler.schedules]
+    assert context.scheduler
+    scheduler = context.scheduler["main"]
+    keys = [e.key for e in scheduler.schedules]
     assert sorted(keys) == ["cleanup", "daily_digest", "rotate_logs"]
-    by_key = {e.key: e for e in context.scheduler.schedules}
+    by_key = {e.key: e for e in scheduler.schedules}
     rotate = by_key["rotate_logs"]
     assert rotate.schedule_expression == "rate(1 hour)"
     assert rotate.scheduler == "pocket.lambda_scheduler"
@@ -47,8 +48,8 @@ def test_scheduler_prod_deep_merges_overrides(use_toml):
     """prod では rotate_logs の rate が上書きされ、month_end が追加される"""
     use_toml("tests/data/toml/scheduler.toml")
     context = Context.from_toml(stage="prod")
-    assert context.scheduler is not None
-    by_key = {e.key: e for e in context.scheduler.schedules}
+    assert context.scheduler
+    by_key = {e.key: e for e in context.scheduler["main"].schedules}
     assert sorted(by_key) == ["cleanup", "daily_digest", "month_end", "rotate_logs"]
     assert by_key["rotate_logs"].schedule_expression == "rate(10 minutes)"
     # daily_digest はグローバル定義のままマージされる
@@ -62,13 +63,14 @@ def test_scheduler_prod_deep_merges_overrides(use_toml):
 def test_scheduler_invoked_function_arns(use_toml):
     use_toml("tests/data/toml/scheduler.toml")
     context = Context.from_toml(stage="dev")
-    assert context.scheduler is not None
-    arns = context.scheduler.invoked_function_arns
+    assert context.scheduler
+    scheduler = context.scheduler["main"]
+    arns = scheduler.invoked_function_arns
     assert any("management" in arn for arn in arns)
     assert any("worker" in arn for arn in arns)
     # sqs_scheduler の handler は Lambda を直接 invoke しないので含まれない
     assert not any("sqsworker" in arn for arn in arns)
-    assert context.scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
+    assert scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
 
 
 def test_lambda_schedule_entry_requires_cron_or_rate():
@@ -110,7 +112,7 @@ def test_scheduler_unknown_handler_rejected(use_toml):
     """schedule entry が存在しない handler を参照するとエラー"""
     use_toml("tests/data/toml/scheduler.toml")
     # 直接 Settings を組んで負例を作る
-    with pytest.raises(ValueError, match="not found in awscontainer.handlers"):
+    with pytest.raises(ValueError, match="handler 'no_such_handler' がありません"):
         Settings.model_validate(
             {
                 "stage": "dev",
@@ -120,17 +122,19 @@ def test_scheduler_unknown_handler_rejected(use_toml):
                     "stages": ["dev"],
                 },
                 "s3": {},
-                "awscontainer": {
-                    "dockerfile_path": "tests/sampleprj/Dockerfile",
-                    "handlers": {
-                        "worker": {
-                            "command": "pocket.lambda_handlers.worker_handler",
+                "container": {
+                    "main": {
+                        "dockerfile_path": "tests/sampleprj/Dockerfile",
+                        "handlers": {
+                            "worker": {
+                                "command": "pocket.lambda_handlers.worker_handler",
+                            },
                         },
-                    },
+                    }
                 },
                 "scheduler": {
                     "schedules": {
-                        "ghost": {"rate": "1 hour", "handler": "no_such_handler"},
+                        "ghost": {"rate": "1 hour", "handler": "main.no_such_handler"},
                     }
                 },
             }
@@ -149,20 +153,22 @@ def test_django_management_requires_management_handler():
                     "stages": ["dev"],
                 },
                 "s3": {},
-                "awscontainer": {
-                    "dockerfile_path": "tests/sampleprj/Dockerfile",
-                    "handlers": {
-                        "worker": {
-                            "command": "pocket.lambda_handlers.worker_handler",
+                "container": {
+                    "main": {
+                        "dockerfile_path": "tests/sampleprj/Dockerfile",
+                        "handlers": {
+                            "worker": {
+                                "command": "pocket.lambda_handlers.worker_handler",
+                            },
                         },
-                    },
+                    }
                 },
                 "scheduler": {
                     "schedules": {
                         "nightly": {
                             "scheduler": "pocket.django.management_lambda_scheduler",
                             "cron": "0 18 * * ? *",
-                            "handler": "worker",
+                            "handler": "main.worker",
                             "manage": "send_daily_digest",
                         },
                     }
@@ -181,10 +187,10 @@ def test_scheduler_cfn_template_renders(use_toml, monkeypatch):
     context = Context.from_toml(stage="prod")
     from pocket_cli.resources.aws.cloudformation import ContainerStack
 
-    assert context.awscontainer
+    assert context.container["main"]
     stack = ContainerStack(
-        context.awscontainer,
-        scheduler_context=context.scheduler,
+        context.container["main"],
+        scheduler_context=context.scheduler["main"],
     )
     yaml = stack.yaml
     # 共有 IAM Role
@@ -227,20 +233,22 @@ def test_sqs_scheduler_requires_handler_with_sqs():
                     "stages": ["dev"],
                 },
                 "s3": {},
-                "awscontainer": {
-                    "dockerfile_path": "tests/sampleprj/Dockerfile",
-                    "handlers": {
-                        "worker": {
-                            "command": "pocket.lambda_handlers.worker_handler",
+                "container": {
+                    "main": {
+                        "dockerfile_path": "tests/sampleprj/Dockerfile",
+                        "handlers": {
+                            "worker": {
+                                "command": "pocket.lambda_handlers.worker_handler",
+                            },
                         },
-                    },
+                    }
                 },
                 "scheduler": {
                     "schedules": {
                         "cleanup": {
                             "scheduler": "pocket.sqs_scheduler",
                             "rate": "15 minutes",
-                            "handler": "worker",
+                            "handler": "main.worker",
                             "message": {"command": "clearsessions"},
                         },
                     }
@@ -263,21 +271,21 @@ def test_sqs_only_scheduler_omits_lambda_invoke_policy(use_toml, tmp_path):
         "\n[scheduler.schedules.cleanup]\n"
         'scheduler = "pocket.sqs_scheduler"\n'
         'rate = "15 minutes"\n'
-        'handler = "sqsworker"\n'
+        'handler = "main.sqsworker"\n'
         'message = { command = "clearsessions", args = [], kwargs = {} }\n'
     )
     dst.write_text(text)
     use_toml(str(dst))
     context = Context.from_toml(stage="dev")
-    assert context.scheduler is not None
-    assert context.scheduler.invoked_function_arns == []
-    assert context.scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
+    assert context.scheduler
+    assert context.scheduler["main"].invoked_function_arns == []
+    assert context.scheduler["main"].sqs_queue_logical_names == ["SqsworkerSqsQueue"]
     from pocket_cli.resources.aws.cloudformation import ContainerStack
 
-    assert context.awscontainer
+    assert context.container["main"]
     stack = ContainerStack(
-        context.awscontainer,
-        scheduler_context=context.scheduler,
+        context.container["main"],
+        scheduler_context=context.scheduler["main"],
     )
     yaml = stack.yaml
     assert "lambda:InvokeFunction" not in yaml
@@ -296,9 +304,9 @@ def test_scheduler_cfn_template_absent_when_no_scheduler(use_toml):
     context = Context.from_toml(stage="dev")
     from pocket_cli.resources.aws.cloudformation import ContainerStack
 
-    assert context.awscontainer
-    assert context.scheduler is None
-    stack = ContainerStack(context.awscontainer, scheduler_context=None)
+    assert context.container["main"]
+    assert context.scheduler == {}
+    stack = ContainerStack(context.container["main"], scheduler_context=None)
     yaml = stack.yaml
     assert "SchedulerExecutionRole" not in yaml
     assert "AWS::Scheduler::Schedule" not in yaml

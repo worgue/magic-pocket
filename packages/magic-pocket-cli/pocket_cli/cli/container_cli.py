@@ -7,56 +7,73 @@ import click
 from botocore.exceptions import ClientError
 
 from pocket.context import Context
-from pocket.runtime import get_secrets
+from pocket.runtime import get_secrets, resolve_container_name
 from pocket.utils import echo
 from pocket_cli.cli.destroy_cli import (
-    _collect_awscontainer_targets,
-    _destroy_awscontainer,
+    _collect_container_targets,
+    _destroy_containers,
 )
-from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.mediator import Mediator
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 
 @click.group()
-def awscontainer():
+def container():
     pass
 
 
-def get_awscontainer_resource(stage):
+def get_container_resource(stage, container_name: str | None = None):
+    """--container 指定 (単一 container なら省略可) の Container resource を返す。"""
     context = Context.from_toml(stage=stage)
-    return AwsContainer(
-        context=require_configured(
-            context.awscontainer, "awscontainer is not configured for this stage"
-        )
-    )
+    if not context.container:
+        raise click.ClickException("container is not configured for this stage")
+    try:
+        name = resolve_container_name(context, container_name)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    return Container(context.container[name])
 
 
-@awscontainer.command()
+_container_option = click.option(
+    "--container",
+    "container_name",
+    default=None,
+    help="対象 container 名 (1 つだけなら省略可)",
+)
+
+
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def yaml(stage):
-    ac = get_awscontainer_resource(stage)
-    print(ac.stack.yaml)
+@_container_option
+def yaml(stage, container_name):
+    c = get_container_resource(stage, container_name)
+    print(c.stack.yaml)
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def yaml_diff(stage):
-    ac = get_awscontainer_resource(stage)
-    print(ac.stack.yaml_diff.to_json(indent=2))
+@_container_option
+def yaml_diff(stage, container_name):
+    c = get_container_resource(stage, container_name)
+    print(c.stack.yaml_diff.to_json(indent=2))
 
 
-@awscontainer.group()
+@container.group()
 def secrets():
     pass
+
+
+def _project_secrets_context(stage):
+    """project 共有 store の union SecretsContext を返す (secrets 系コマンド用)。"""
+    context = Context.from_toml(stage=stage)
+    return context, context.secrets
 
 
 @secrets.command("list")
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--show-values", is_flag=True, default=False)
 def list_secrets(stage, show_values):
-    ac = get_awscontainer_resource(stage)
-    sc = ac.context.secrets
+    _context, sc = _project_secrets_context(stage)
     if not sc:
         echo.warning("secrets is not configured for this stage")
         return
@@ -89,20 +106,15 @@ def list_secrets(stage, show_values):
 @secrets.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def create_pocket_managed(stage):
-    ac = get_awscontainer_resource(stage)
-    sc = ac.context.secrets
+    context, sc = _project_secrets_context(stage)
     if not sc:
         echo.warning("secrets is not configured for this stage")
         return
-    mediator = Mediator(Context.from_toml(stage=stage))
+    mediator = Mediator(context)
     mediator.create_pocket_managed_secrets()
 
 
-def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
-    sc = awscontainer.context.secrets
-    if not sc:
-        echo.warning("secrets is not configured")
-        return
+def _confirm_delete_pocket_managed_secrets(sc):
     existing_secret_keys = [
         key for key in sc.managed.keys() if key in sc.pocket_store.secrets
     ]
@@ -120,41 +132,44 @@ def _confirm_delete_pocket_managed_secrets(awscontainer: AwsContainer):
 @secrets.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def delete_pocket_managed(stage):
-    ac = get_awscontainer_resource(stage)
-    _confirm_delete_pocket_managed_secrets(ac)
-    if ac.context.secrets:
-        ac.context.secrets.pocket_store.delete_secrets()
+    _context, sc = _project_secrets_context(stage)
+    if not sc:
+        echo.warning("secrets is not configured")
+        return
+    _confirm_delete_pocket_managed_secrets(sc)
+    sc.pocket_store.delete_secrets()
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def create(stage):
-    ac = get_awscontainer_resource(stage)
-    if not ac.status == "NOEXIST":
+@_container_option
+def create(stage, container_name):
+    c = get_container_resource(stage, container_name)
+    if not c.status == "NOEXIST":
         echo.warning("AWS lambda container is already created.")
     else:
         mediator = Mediator(Context.from_toml(stage=stage))
-        ac.create(mediator)
+        c.create(mediator)
         echo.success("Created: lambda")
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--with-secrets", is_flag=True, default=False)
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
 def destroy(stage, with_secrets, yes):
-    """AwsContainer 関連リソースを削除する。
+    """Container 関連リソース (全 container) を削除する。
 
     トップレベル `pocket destroy` と同じ実装を使う (共有 ECR の削除ガード /
     stack 削除完了待ち / CodeBuild / log group 掃除を含む)。
     """
     context = Context.from_toml(stage=stage)
-    if not context.awscontainer:
-        echo.warning("awscontainer is not configured for this stage")
+    if not context.container:
+        echo.warning("container is not configured for this stage")
         return
-    targets = _collect_awscontainer_targets(context, with_secrets)
+    targets = _collect_container_targets(context, with_secrets)
     if not targets:
         echo.warning("削除対象のリソースが見つかりません。")
         return
@@ -164,49 +179,47 @@ def destroy(stage, with_secrets, yes):
     echo.danger("この操作は取り消せません！")
     if not yes:
         click.confirm(
-            "stage '%s' の AwsContainer リソースを削除しますか？" % stage, abort=True
+            "stage '%s' の Container リソースを削除しますか？" % stage, abort=True
         )
-    _destroy_awscontainer(context, with_secrets)
+    _destroy_containers(context, with_secrets)
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def update(stage):
-    ac = get_awscontainer_resource(stage)
-    if ac.status == "NOEXIST":
+@_container_option
+def update(stage, container_name):
+    c = get_container_resource(stage, container_name)
+    if c.status == "NOEXIST":
         echo.warning("AWS lambda has not created yet.")
         return
-    if ac.status == "FAILED":
+    if c.status == "FAILED":
         echo.danger("AWS lambda has failed. Please check console.")
         return
-    if ac.status == "PROGRESS":
+    if c.status == "PROGRESS":
         echo.warning("AWS lambda is updating. Please wait.")
         return
     mediator = Mediator(Context.from_toml(stage=stage))
-    ac.update(mediator)
+    c.update(mediator)
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def status(stage):
-    ac = get_awscontainer_resource(stage)
-    if ac.status == "COMPLETED":
+@_container_option
+def status(stage, container_name):
+    c = get_container_resource(stage, container_name)
+    if c.status == "COMPLETED":
         echo.success("Container is working!!!")
-    elif ac.status == "NOEXIST":
+    elif c.status == "NOEXIST":
         echo.warning("Container has not created yet.")
-    elif ac.status == "FAILED":
+    elif c.status == "FAILED":
         echo.danger("Container has failed. Please check console.")
     else:
-        echo.warning("Container stack status: %s" % ac.stack.status)
+        echo.warning("Container stack status: %s" % c.stack.status)
 
 
-def _resolve_lambda_target_handlers(
-    context: Context, handler_name: str | None
-) -> list[str]:
+def _resolve_lambda_target_handlers(c_ctx, handler_name: str | None) -> list[str]:
     """reload-env / status-env の対象 handler を解決する。"""
-    if context.awscontainer is None:
-        raise RuntimeError("awscontainer is not configured")
-    handlers = context.awscontainer.handlers
+    handlers = c_ctx.handlers
     if handler_name:
         if handler_name not in handlers:
             raise click.ClickException(
@@ -215,15 +228,6 @@ def _resolve_lambda_target_handlers(
             )
         return [handler_name]
     return list(handlers.keys())
-
-
-def _function_name(context: Context, handler_key: str) -> str:
-    if context.awscontainer is None:
-        raise RuntimeError("awscontainer is not configured")
-    # deploy 側 (LambdaHandlerContext.function_name = resource_prefix + key) と同じ
-    # 正準名を参照する。slug から再構成すると prefix_template / namespace
-    # (既定 `pocket`) を取りこぼすため、handler context の値をそのまま使う。
-    return context.awscontainer.handlers[handler_key].function_name
 
 
 def _fetch_lambda_env(client, function_name: str) -> dict[str, str]:
@@ -240,12 +244,13 @@ def _fetch_lambda_env(client, function_name: str) -> dict[str, str]:
     return dict(config.get("Environment", {}).get("Variables", {}))
 
 
-@awscontainer.command("reload-env")
+@container.command("reload-env")
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@_container_option
 @click.option(
     "--handler", default=None, help="特定 handler のみ対象 (省略時は全 handler)"
 )
-def reload_env(stage, handler):
+def reload_env(stage, container_name, handler):
     """SSM/Secrets Manager の最新値で Lambda env を即時更新する (CFn を介さない)。
 
     deploy 時の CFn snapshot を base に、secrets (managed + user) の最新値を
@@ -257,19 +262,24 @@ def reload_env(stage, handler):
     実体は CLI で直接更新、次 deploy で自己治癒)。
     """
     context = Context.from_toml(stage=stage)
-    if not context.awscontainer:
-        raise click.ClickException("[awscontainer] が設定されていません")
+    if not context.container:
+        raise click.ClickException("[container.<name>] が設定されていません")
+    try:
+        c_name = resolve_container_name(context, container_name)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    c_ctx = context.container[c_name]
 
-    fresh_secrets = get_secrets(stage)
+    fresh_secrets = get_secrets(stage, container=c_name)
     if not fresh_secrets:
         echo.warning("secrets が宣言されていません。何もしません。")
         return
 
-    lambda_client = boto3.client("lambda", region_name=context.awscontainer.region)
-    targets = _resolve_lambda_target_handlers(context, handler)
+    lambda_client = boto3.client("lambda", region_name=c_ctx.region)
+    targets = _resolve_lambda_target_handlers(c_ctx, handler)
 
     for h_name in targets:
-        function_name = _function_name(context, h_name)
+        function_name = c_ctx.handlers[h_name].function_name
         current = _fetch_lambda_env(lambda_client, function_name)
         new_env = {**current, **fresh_secrets}
         if new_env == current:
@@ -288,24 +298,30 @@ def reload_env(stage, handler):
             echo.log("  - %s" % k)
 
 
-@awscontainer.command("status-env")
+@container.command("status-env")
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@_container_option
 @click.option(
     "--handler", default=None, help="特定 handler のみ対象 (省略時は全 handler)"
 )
-def status_env(stage, handler):
+def status_env(stage, container_name, handler):
     """Lambda の現在 env と SSM/SM 上の宣言値の drift を表示する。"""
     context = Context.from_toml(stage=stage)
-    if not context.awscontainer:
-        raise click.ClickException("[awscontainer] が設定されていません")
+    if not context.container:
+        raise click.ClickException("[container.<name>] が設定されていません")
+    try:
+        c_name = resolve_container_name(context, container_name)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    c_ctx = context.container[c_name]
 
-    fresh_secrets = get_secrets(stage)
-    lambda_client = boto3.client("lambda", region_name=context.awscontainer.region)
-    targets = _resolve_lambda_target_handlers(context, handler)
+    fresh_secrets = get_secrets(stage, container=c_name)
+    lambda_client = boto3.client("lambda", region_name=c_ctx.region)
+    targets = _resolve_lambda_target_handlers(c_ctx, handler)
 
     any_drift = False
     for h_name in targets:
-        function_name = _function_name(context, h_name)
+        function_name = c_ctx.handlers[h_name].function_name
         current = _fetch_lambda_env(lambda_client, function_name)
         drift = [k for k in fresh_secrets if current.get(k) != fresh_secrets[k]]
         echo.info(
@@ -321,20 +337,20 @@ def status_env(stage, handler):
             any_drift = True
     if any_drift:
         echo.warning(
-            "drift があります。"
-            "`pocket resource awscontainer reload-env` で同期できます。"
+            "drift があります。`pocket resource container reload-env` で同期できます。"
         )
     else:
         echo.success("drift なし。Lambda env と secrets は同期されています。")
 
 
-@awscontainer.command()
+@container.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@_container_option
 @click.option("--openpath")
-def url(stage, openpath):
-    ac = get_awscontainer_resource(stage)
-    if ac.status == "COMPLETED":
-        if endpoint := ac.endpoints.get("wsgi"):
+def url(stage, container_name, openpath):
+    c = get_container_resource(stage, container_name)
+    if c.status == "COMPLETED":
+        if endpoint := c.endpoints.get("wsgi"):
             echo.success(f"wsgi url: {endpoint}")
             if openpath:
                 webbrowser.open(endpoint + "/" + openpath)

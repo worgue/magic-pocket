@@ -6,7 +6,7 @@ VPC + RDS 構成で、deploy_init 時に VPC がまだ作成されていなく�
 
 import pytest
 from moto import mock_aws
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.vpc import Vpc
 
@@ -18,12 +18,12 @@ def test_awscontainer_deploy_init_does_not_hang_without_vpc(use_toml, monkeypatc
     """VPC が未作成でも AwsContainer.deploy_init() がハングしないことを確認"""
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
 
     # deploy_init の副作用をスキップ
     monkeypatch.setattr(
-        "pocket_cli.resources.awscontainer.generate_runtime_config",
+        "pocket_cli.resources.container.generate_runtime_config",
         lambda _: None,
     )
     monkeypatch.setattr(
@@ -31,7 +31,7 @@ def test_awscontainer_deploy_init_does_not_hang_without_vpc(use_toml, monkeypatc
         lambda self: None,
     )
 
-    ac = AwsContainer(context.awscontainer)
+    ac = Container(context.container["main"])
     # VPC スタックが存在しない状態で deploy_init を呼ぶ
     # 以前のコードでは vpc_stack.wait_status("COMPLETED") でハングしていた
     ac.deploy_init()  # ハングせずに完了すること
@@ -57,10 +57,10 @@ def test_vpc_create_then_rds_create_succeeds(use_toml):
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
     assert context.rds is not None
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
 
-    vpc = Vpc(context.awscontainer.vpc)
+    vpc = Vpc(context.container["main"].vpc)
 
     # VPC スタックを作成（moto では即座に CREATE_COMPLETE になる）
     vpc.create()
@@ -76,10 +76,10 @@ def test_wait_status_noexist_raises_when_expecting_completed(use_toml):
     タイムアウトではなく早期にエラーになることを確認"""
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
 
-    vpc = Vpc(context.awscontainer.vpc)
+    vpc = Vpc(context.container["main"].vpc)
 
     # VPC スタックが存在しない状態で wait_status("COMPLETED") を呼ぶ
     with pytest.raises(RuntimeError, match="見つかりません"):
@@ -95,9 +95,9 @@ def test_wait_status_raises_on_rollback_transition(use_toml, monkeypatch):
     """
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
-    stack = Vpc(context.awscontainer.vpc).stack
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
+    stack = Vpc(context.container["main"].vpc).stack
 
     state = {"step": 0}
     sequence = ["UPDATE_IN_PROGRESS", "UPDATE_ROLLBACK_IN_PROGRESS"]
@@ -120,9 +120,9 @@ def test_wait_status_accepts_stack_already_rolled_back_at_rest(use_toml, monkeyp
     安定状態 (COMPLETED) として成功すること"""
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
-    stack = Vpc(context.awscontainer.vpc).stack
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
+    stack = Vpc(context.container["main"].vpc).stack
 
     monkeypatch.setattr(
         type(stack),
@@ -144,9 +144,9 @@ def test_stack_description_none_only_for_not_exist(use_toml, monkeypatch):
 
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
-    stack = Vpc(context.awscontainer.vpc).stack
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
+    stack = Vpc(context.container["main"].vpc).stack
 
     def _raise(error_code, message):
         def _call(**kwargs):

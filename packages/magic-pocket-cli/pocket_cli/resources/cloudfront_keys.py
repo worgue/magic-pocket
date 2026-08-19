@@ -66,11 +66,11 @@ class CloudFrontKeys(StackBackedResource):
     def _prepare_signing_key(self, mediator: Mediator):
         if not self.context.signing_key:
             return
-        ac = mediator.context.awscontainer
-        if ac is None or ac.secrets is None:
-            echo.warning("awscontainer.secrets is not configured.")
+        sc = mediator.context.secrets
+        if sc is None:
+            echo.warning("container secrets is not configured.")
             return
-        secrets = ac.secrets.pocket_store.secrets
+        secrets = sc.pocket_store.secrets
         signing_key_name = self.context.signing_key
         if signing_key_name not in secrets:
             echo.warning(

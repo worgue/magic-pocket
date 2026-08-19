@@ -118,7 +118,7 @@ class DjangoCacheContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, cache: settings.DjangoCache, *, root=None
+        cls, cache: settings.DjangoCache, *, root=None, container=None
     ) -> DjangoCacheContext:
         location = None
         if cache.store == "locmem":
@@ -126,19 +126,14 @@ class DjangoCacheContext(BaseModel):
         elif cache.store == "redis":
             pass
         elif cache.store == "efs":
-            if not (
-                root
-                and root.awscontainer
-                and root.awscontainer.vpc
-                and root.awscontainer.vpc.efs
-            ):
-                raise RuntimeError("efs cache requires awscontainer.vpc.efs")
+            if not (root and container and container.vpc and container.vpc.efs):
+                raise RuntimeError("efs cache requires container.vpc.efs")
             format_vars = {
                 "namespace": root.namespace,
                 "stage": root.stage,
                 "project": root.project_name,
             }
-            mnt = Path(root.awscontainer.vpc.efs.local_mount_path)
+            mnt = Path(container.vpc.efs.local_mount_path)
             location = str(mnt / cache.location_subdir).format(**format_vars)
         return cls(
             store=cache.store,
@@ -154,7 +149,9 @@ class DjangoContext(BaseModel):
     project_dir: str | None = None
 
     @classmethod
-    def from_settings(cls, django: settings.Django, *, root=None) -> DjangoContext:
+    def from_settings(
+        cls, django: settings.Django, *, root=None, container=None
+    ) -> DjangoContext:
         cloudfront_distributions = None
         if root and root.cloudfront:
             cloudfront_distributions = root.cloudfront
@@ -167,7 +164,9 @@ class DjangoContext(BaseModel):
 
         caches = {}
         for key, cache in (django.caches or {}).items():
-            caches[key] = DjangoCacheContext.from_settings(cache, root=root)
+            caches[key] = DjangoCacheContext.from_settings(
+                cache, root=root, container=container
+            )
 
         return cls(
             storages=storages,

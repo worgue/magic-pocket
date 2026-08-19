@@ -116,16 +116,16 @@ stages = ["dev", "prod"]
 [neon]
 project_name = "dev-myproject"
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "myapp-lambda"
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 LOCO_SECRET_KEY = { type = "password", options = { length = 50 } }
 DATABASE_URL = { type = "neon_database_url" }
 ```
@@ -151,7 +151,7 @@ zone_suffixes = ["a", "c"]  # managed VPC では RDS に 2AZ 以上必須
 
 [rds]
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 DATABASE_URL = { type = "rds_database_url" }
 ```
 
@@ -178,7 +178,7 @@ WORKDIR /app
 CMD ["myapp-lambda"]
 ```
 
-`command` は Docker の CMD をオーバーライドするため、Dockerfile では `CMD` のみを使用し `ENTRYPOINT` は設定しないことを推奨します。詳細は「[設定ファイル - awscontainer.handlers](configuration.md#awscontainerhandlers)」を参照してください。
+`command` は Docker の CMD をオーバーライドするため、Dockerfile では `CMD` のみを使用し `ENTRYPOINT` は設定しないことを推奨します。詳細は「[設定ファイル - container.main.handlers](configuration.md#containerhandlers)」を参照してください。
 
 ---
 

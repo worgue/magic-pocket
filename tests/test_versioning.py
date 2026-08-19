@@ -80,8 +80,8 @@ def test_deploy_hash_context(use_toml):
     assert static_route.is_deploy_hash
     assert not static_route.is_content_hash
     # DEPLOY_HASH が awscontainer envs に注入される
-    assert context.awscontainer
-    assert context.awscontainer.envs.get("DEPLOY_HASH") == "abc1234"
+    assert context.container["main"]
+    assert context.container["main"].envs.get("DEPLOY_HASH") == "abc1234"
 
 
 @mock_aws

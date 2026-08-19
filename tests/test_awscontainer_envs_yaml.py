@@ -24,13 +24,13 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[dev.awscontainer.envs]
+[dev.container.main.envs]
 {envs_body}
 """
     )
@@ -51,8 +51,8 @@ def test_envs_with_double_quotes_render_yaml_safe(use_toml, tmp_path):
     toml_path = _write_envs_toml(tmp_path, "BLOCKLIST_KVS_ARNS = '%s'" % json_value)
     use_toml(str(toml_path))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    variables = _lambda_env_vars(ContainerStack(context.awscontainer).yaml)
+    assert context.container["main"]
+    variables = _lambda_env_vars(ContainerStack(context.container["main"]).yaml)
     assert variables["BLOCKLIST_KVS_ARNS"] == json_value
 
 
@@ -62,8 +62,8 @@ def test_envs_plain_value_unchanged(use_toml, tmp_path):
     toml_path = _write_envs_toml(tmp_path, 'DJANGO_ENV_PATH = "project/env/env.dev"')
     use_toml(str(toml_path))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    variables = _lambda_env_vars(ContainerStack(context.awscontainer).yaml)
+    assert context.container["main"]
+    variables = _lambda_env_vars(ContainerStack(context.container["main"]).yaml)
     assert variables["DJANGO_ENV_PATH"] == "project/env/env.dev"
     assert variables["POCKET_STAGE"] == "dev"
 
@@ -74,6 +74,6 @@ def test_envs_backslash_and_newline_render_yaml_safe(use_toml, tmp_path):
     toml_path = _write_envs_toml(tmp_path, r"""TRICKY = 'line1\nwith "quote" \\ end'""")
     use_toml(str(toml_path))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    variables = _lambda_env_vars(ContainerStack(context.awscontainer).yaml)
+    assert context.container["main"]
+    variables = _lambda_env_vars(ContainerStack(context.container["main"]).yaml)
     assert variables["TRICKY"] == 'line1\\nwith "quote" \\\\ end'

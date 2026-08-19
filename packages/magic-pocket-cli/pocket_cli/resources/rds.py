@@ -517,7 +517,7 @@ class Rds:
     def _store_static_credentials(self, password: str) -> None:
         """static パスワードと接続情報を pocket 所有の store に保存する。
 
-        保存先は awscontainer.secrets.store のトグル (sm / ssm) に従う。
+        保存先は container secrets.store のトグル (sm / ssm) に従う。
         MasterUserSecret (ManageMasterUserPassword) と同じ username/password 形に
         host/port/dbname も加えるため、Lambda 側は環境変数フォールバック無しでも
         DATABASE_URL を組み立てられる。ローテーション用 Lambda は付けない。

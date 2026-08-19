@@ -37,7 +37,7 @@ def base_settings():
 @pytest.fixture
 def aws_settings():
     management_name = "pocket.django.lambda_handlers.management_command_handler"
-    return settings.AwsContainer.model_validate(
+    return settings.Container.model_validate(
         {
             "dockerfile_path": "Dockerfile",
             "handlers": {

@@ -56,16 +56,16 @@ def test_nested_settings_reject_unknown_key():
 
     extra 既定 (ignore) だと typo が黙って捨てられ、設定したつもりの値が
     効かないまま deploy される。実際 tests/data/toml が旧スキーマ
-    ([awscontainer.secretsmanager.pocket_secrets]) のまま放置され、宣言した
+    ([container.main.secretsmanager.pocket_secrets]) のまま放置され、宣言した
     secret が丸ごと無視されていたのを取りこぼしていた。
     """
-    from pocket.settings import AwsContainer, Rds, Secrets, Sqs
+    from pocket.settings import Container, Rds, Secrets, Sqs
 
     for model, data in (
         (Secrets, {"managed": {}, "pocket_secrets": {}}),  # 旧スキーマ
         (Rds, {"managed": True, "min_capacty": 1.0}),  # typo
         (Sqs, {"batch_sise": 5}),  # typo
-        (AwsContainer, {"dockerfile_path": "Dockerfile", "secretsmanager": {}}),
+        (Container, {"dockerfile_path": "Dockerfile", "secretsmanager": {}}),
     ):
         with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
             model.model_validate(data)
@@ -141,12 +141,12 @@ def test_context(use_toml):
     hosted_zone_id = res["HostedZone"]["Id"][len("/hostedzone/") :]
     context = Context.from_toml(stage="dev")
     assert context.project_name == "testprj"
-    assert context.awscontainer
-    handlers = context.awscontainer.handlers
+    assert context.container["main"]
+    handlers = context.container["main"].handlers
     assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
     assert handlers["sqsmanagement"].sqs
-    assert handlers["sqsmanagement"].sqs.name == "dev-testprj-pocket-sqsmanagement"
+    assert handlers["sqsmanagement"].sqs.name == "dev-testprj-pocket-main-sqsmanagement"
     # CloudFront は S3 バケットを共有
     assert context.cloudfront
     assert "main" in context.cloudfront
@@ -159,9 +159,9 @@ def test_context(use_toml):
 def test_signing_key_imports(use_toml):
     use_toml("tests/data/toml/cloudfront_signing_key.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
+    assert context.container["main"]
     # signing_key_imports に CF_MEDIA_KEY_ID → Export名 のマッピングがある
-    imports = context.awscontainer.signing_key_imports
+    imports = context.container["main"].signing_key_imports
     assert "CF_MEDIA_KEY_ID" in imports
     assert imports["CF_MEDIA_KEY_ID"] == "dev-testprj-media-public-key-id"
 
@@ -173,12 +173,12 @@ def test_lambda_route_context(use_toml):
     assert context.cloudfront
     cf = context.cloudfront["main"]
     # api_origins が正しく構築されること
-    assert "wsgi" in cf.api_origins
-    assert cf.api_origins["wsgi"] == "dev-testprj-wsgi-api-domain"
+    assert "main.wsgi" in cf.api_origins
+    assert cf.api_origins["main.wsgi"] == "dev-testprj-main-wsgi-api-domain"
     # extra_lambda_routes が正しく取得できること
     assert len(cf.extra_lambda_routes) == 1
     assert cf.extra_lambda_routes[0].is_lambda
-    assert cf.extra_lambda_routes[0].handler == "wsgi"
+    assert cf.extra_lambda_routes[0].handler == "main.wsgi"
     assert cf.extra_lambda_routes[0].path_pattern == "/api/*"
     # extra_s3_routes に lambda route が含まれないこと
     assert all(not r.is_lambda for r in cf.extra_s3_routes)
@@ -193,10 +193,10 @@ def test_lambda_default_route_context(use_toml):
     cf = context.cloudfront["main"]
     # default_route が lambda route になること
     assert cf.default_route.is_lambda
-    assert cf.default_route.handler == "wsgi"
+    assert cf.default_route.handler == "main.wsgi"
     assert cf.default_route.is_default
     # api_origins には default route 由来のエントリも入る
-    assert "wsgi" in cf.api_origins
+    assert "main.wsgi" in cf.api_origins
     # extra_lambda_routes は default route を除外する（CacheBehaviors への重複防止）
     assert cf.extra_lambda_routes == []
     # has_lambda_route は default route を含めて True
@@ -219,10 +219,10 @@ def test_legacy_api_type_rejected():
 def test_lambda_route_handler_export(use_toml):
     use_toml("tests/data/toml/cloudfront_api_route.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    handler = context.awscontainer.handlers["wsgi"]
+    assert context.container["main"]
+    handler = context.container["main"].handlers["wsgi"]
     # LambdaHandlerContext.export_api_domain が設定されること
-    assert handler.export_api_domain == "dev-testprj-wsgi-api-domain"
+    assert handler.export_api_domain == "dev-testprj-main-wsgi-api-domain"
 
 
 @mock_aws
@@ -243,7 +243,7 @@ def test_cloudfront_yaml_works_without_awscontainer_deployed(use_toml):
     yaml = CloudFrontStack(cf).yaml
     # API origin は Fn::ImportValue で参照されている (literal domain ではない)
     assert "Fn::ImportValue" in yaml
-    assert "dev-testprj-wsgi-api-domain" in yaml
+    assert "dev-testprj-main-wsgi-api-domain" in yaml
     # boto3.list_exports は呼ばれていない (= AWS account 不要で render 成功)
     # ImportValue 名が literal で template に出ること、で間接的に確認
 
@@ -256,8 +256,8 @@ def test_yaml(use_toml):
     )
     hosted_zone_id = res["HostedZone"]["Id"][len("/hostedzone/") :]
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    handlers = context.awscontainer.handlers
+    assert context.container["main"]
+    handlers = context.container["main"].handlers
     assert handlers["wsgi"].apigateway
     assert handlers["wsgi"].apigateway.hosted_zone_id == hosted_zone_id
 

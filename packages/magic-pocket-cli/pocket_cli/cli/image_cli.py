@@ -8,9 +8,7 @@
 
 import click
 
-from pocket.context import Context
-from pocket_cli.cli.resource_helper import require_configured
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.cli.container_cli import _container_option, get_container_resource
 
 
 @click.group()
@@ -18,42 +16,35 @@ def image():
     pass
 
 
-def _get_awscontainer(stage: str) -> AwsContainer:
-    context = Context.from_toml(stage=stage)
-    return AwsContainer(
-        require_configured(
-            context.awscontainer, "awscontainer is not configured for this stage"
-        )
-    )
-
-
 @image.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def repo(stage):
+@_container_option
+def repo(stage, container_name):
     """ECR repository 名を stdout に出力する (ecr_name 上書きを含め toml 準拠)。"""
-    ac = _get_awscontainer(stage)
-    click.echo(ac.context.ecr_name)
+    c = get_container_resource(stage, container_name)
+    click.echo(c.context.ecr_name)
 
 
 @image.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-def uri(stage):
+@_container_option
+def uri(stage, container_name):
     """deploy 済み実イメージの URI ({repo_uri}@{digest}) を stdout に出力する。
 
     `:{stage}` タグが現在指している image を digest で固定した URI を返すため、
     以後の deploy でタグが動いても参照が壊れない。
     """
-    ac = _get_awscontainer(stage)
-    ecr = ac.ecr
+    c = get_container_resource(stage, container_name)
+    ecr = c.ecr
     if not ecr.uri:
         raise click.ClickException(
             "ECR repository '%s' が見つかりません。先に `pocket deploy` を"
-            "実行してください。" % ac.context.ecr_name
+            "実行してください。" % c.context.ecr_name
         )
     digest = ecr.image_detail.image_digest
     if not digest:
         raise click.ClickException(
             "tag ':%s' のイメージが '%s' に見つかりません。deploy 済みか確認して"
-            "ください。" % (stage, ac.context.ecr_name)
+            "ください。" % (stage, c.context.ecr_name)
         )
     click.echo("%s@%s" % (ecr.uri, digest))

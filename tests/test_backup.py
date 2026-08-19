@@ -206,10 +206,12 @@ def test_context_builds_plan_per_engine():
     """
     rds_kwargs: dict = {
         "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {},
-            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "handlers": {},
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            }
         },
     }
     context = Context.from_settings(

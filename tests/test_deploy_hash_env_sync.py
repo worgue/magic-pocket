@@ -13,7 +13,7 @@ import os
 from unittest import mock
 
 from moto import mock_aws
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 from pocket.context import Context
 
@@ -43,7 +43,7 @@ def _build_container(use_toml, lambda_client, deploy_hash="53e8c22"):
         with mock.patch.dict(os.environ, {"DEPLOY_HASH": deploy_hash}):
             use_toml("tests/data/toml/cloudfront_deploy_hash.toml")
             context = Context.from_toml(stage="dev")
-    assert context.awscontainer
+    assert context.container["main"]
     original_boto3_client = __import__("boto3").client
 
     def _fake_boto3_client(service, **kwargs):
@@ -52,7 +52,7 @@ def _build_container(use_toml, lambda_client, deploy_hash="53e8c22"):
         return original_boto3_client(service, **kwargs)
 
     with mock.patch("boto3.client", _fake_boto3_client):
-        ac = AwsContainer(context=context.awscontainer)
+        ac = Container(context=context.container["main"])
         yield_ac = ac
     return yield_ac, _fake_boto3_client
 
@@ -94,7 +94,7 @@ def test_post_deploy_noop_without_deploy_hash(use_toml, monkeypatch):
     with mock_aws():
         use_toml("tests/data/toml/default.toml")
         context = Context.from_toml(stage="dev")
-    assert context.awscontainer
+    assert context.container["main"]
     original_boto3_client = __import__("boto3").client
 
     def _fake_boto3_client(service, **kwargs):
@@ -103,7 +103,7 @@ def test_post_deploy_noop_without_deploy_hash(use_toml, monkeypatch):
         return original_boto3_client(service, **kwargs)
 
     with mock.patch("boto3.client", _fake_boto3_client):
-        ac = AwsContainer(context=context.awscontainer)
+        ac = Container(context=context.container["main"])
         ac.ensure_post_deploy_state()
 
     assert client._updates == []

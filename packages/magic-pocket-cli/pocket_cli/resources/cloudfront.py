@@ -137,11 +137,10 @@ class CloudFront:
             return
         if not mediator:
             return
-        ac = mediator.context.awscontainer
-        if not ac or not ac.secrets:
+        sc = mediator.context.secrets
+        if sc is None:
             return
-        pocket_store = ac.secrets.pocket_store
-        secrets = pocket_store.secrets
+        secrets = sc.pocket_store.secrets
         if self.context.token_secret in secrets:
             value = secrets[self.context.token_secret]
             if isinstance(value, str):
@@ -169,10 +168,10 @@ class CloudFront:
             return
         if not mediator:
             return
-        ac = mediator.context.awscontainer
-        if not ac or not ac.secrets:
+        sc = mediator.context.secrets
+        if sc is None:
             return
-        secrets = ac.secrets.pocket_store.secrets
+        secrets = sc.pocket_store.secrets
         value = secrets.get(self.context.basic_auth)
         if not isinstance(value, str) or ":" not in value:
             echo.warning(
@@ -188,8 +187,8 @@ class CloudFront:
 
         値は CFn テンプレートの OriginCustomHeaders に焼き込まれる
         (token_secret の post-deploy KVS とは異なり、distribution config の一部
-        なので create/update 時点で必要)。managed secret なので AwsContainer
-        deploy 時に既に生成済み (get_resources は AwsContainer → CloudFront 順)。
+        なので create/update 時点で必要)。managed secret なので Container
+        deploy 時に既に生成済み (get_resources は Container → CloudFront 順)。
         """
         from pocket.context import ORIGIN_VERIFY_SECRET_KEY
 
@@ -197,10 +196,10 @@ class CloudFront:
             return
         if not mediator:
             return
-        ac = mediator.context.awscontainer
-        if not ac or not ac.secrets:
+        sc = mediator.context.secrets
+        if sc is None:
             return
-        secrets = ac.secrets.pocket_store.secrets
+        secrets = sc.pocket_store.secrets
         value = secrets.get(ORIGIN_VERIFY_SECRET_KEY)
         if isinstance(value, str):
             self._origin_verify_secret_value = value

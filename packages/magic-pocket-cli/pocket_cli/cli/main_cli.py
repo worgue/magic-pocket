@@ -3,11 +3,11 @@ import click
 from pocket import __version__
 from pocket_cli import django_cli
 from pocket_cli.cli import (
-    awscontainer_cli,
     backup_cli,
     cloudfront_cli,
     cloudfront_keys_cli,
     cloudfront_waf_cli,
+    container_cli,
     deploy_cli,
     destroy_cli,
     dsql_cli,
@@ -90,7 +90,7 @@ def resource():
 
 
 resource.add_command(vpc_cli.vpc)
-resource.add_command(awscontainer_cli.awscontainer)
+resource.add_command(container_cli.container)
 resource.add_command(neon_cli.neon)
 resource.add_command(tidb_cli.tidb)
 resource.add_command(upstash_cli.upstash)

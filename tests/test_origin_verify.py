@@ -55,7 +55,7 @@ def test_enable_origin_verify_defaults_false():
 
 def _settings_dict(*, enable: bool, lambda_route: bool) -> dict:
     if lambda_route:
-        route = {"type": "lambda", "handler": "wsgi", "is_default": True}
+        route = {"type": "lambda", "handler": "main.wsgi", "is_default": True}
     else:
         route = {"is_default": True, "is_spa": True, "origin_path": "/main"}
     return {
@@ -66,14 +66,16 @@ def _settings_dict(*, enable: bool, lambda_route: bool) -> dict:
             "stages": ["dev"],
         },
         "s3": {},
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {
-                "wsgi": {
-                    "command": "pocket.django.lambda_handlers.wsgi_handler",
-                    "apigateway": {},
-                }
-            },
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "handlers": {
+                    "wsgi": {
+                        "command": "pocket.django.lambda_handlers.wsgi_handler",
+                        "apigateway": {},
+                    }
+                },
+            }
         },
         "cloudfront": {"web": {"enable_origin_verify": enable, "routes": [route]}},
     }
@@ -100,9 +102,9 @@ def test_enable_origin_verify_accepts_lambda_route():
 def test_context_injects_managed_secret_when_enabled():
     s = settings.Settings.model_validate(_settings_dict(enable=True, lambda_route=True))
     context = Context.from_settings(s)
-    assert context.awscontainer is not None
-    assert context.awscontainer.secrets is not None
-    managed = context.awscontainer.secrets.managed
+    assert context.container["main"] is not None
+    assert context.container["main"].secrets is not None
+    managed = context.container["main"].secrets.managed
     assert ORIGIN_VERIFY_SECRET_KEY in managed
     assert managed[ORIGIN_VERIFY_SECRET_KEY].type == "origin_verify_secret"
     assert context.cloudfront["web"].enable_origin_verify is True
@@ -113,9 +115,9 @@ def test_context_no_managed_secret_when_disabled():
         _settings_dict(enable=False, lambda_route=True)
     )
     context = Context.from_settings(s)
-    assert context.awscontainer is not None
+    assert context.container["main"] is not None
     # secrets を宣言していないので origin verify 無効なら secrets context も作られない
-    assert context.awscontainer.secrets is None
+    assert context.container["main"].secrets is None
     assert context.cloudfront["web"].enable_origin_verify is False
 
 
@@ -149,7 +151,7 @@ def _cf_lambda_context(*, enable_origin_verify: bool = True) -> CloudFrontContex
         bucket_name="dev-testprj-bucket",
         resource_prefix="dev-testprj-",
         routes=[RouteContext(type="lambda", handler="wsgi", is_default=True)],
-        api_origins={"wsgi": "dev-testprj-wsgi-api-domain"},
+        api_origins={"main.wsgi": "dev-testprj-main-wsgi-api-domain"},
         enable_origin_verify=enable_origin_verify,
     )
 
@@ -310,8 +312,7 @@ def test_prepare_deploy_loads_secret_for_consistent_hash():
         "Store", (), {"secrets": {ORIGIN_VERIFY_SECRET_KEY: "deadbeefsecret"}}
     )()
     secrets_ctx = type("Sc", (), {"pocket_store": store})()
-    ac = type("Ac", (), {"secrets": secrets_ctx})()
-    m_context = type("Mc", (), {"awscontainer": ac})()
+    m_context = type("Mc", (), {"secrets": secrets_ctx})()
     mediator: Any = type("M", (), {"context": m_context})()
 
     with mock.patch("boto3.client"):

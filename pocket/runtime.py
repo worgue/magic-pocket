@@ -13,12 +13,39 @@ from .settings import ManagedSecretSpec
 from .utils import echo, get_stage
 
 if TYPE_CHECKING:
-    from .context import AwsContainerContext
+    from .context import ContainerContext
 
 
 @cache
 def get_context(stage: str) -> Context:
     return Context.from_toml(stage=stage)
+
+
+def resolve_container_name(context: Context, container: str | None = None) -> str:
+    """操作対象の container 名を解決する。
+
+    優先順: 明示引数 > POCKET_CONTAINER 環境変数 (CFn が各 function に注入) >
+    container が 1 つだけならそれ。複数 container で特定できない場合はエラー
+    (silent に誤った container を選ばない)。
+    """
+    name = container or os.environ.get("POCKET_CONTAINER")
+    if name:
+        if name not in context.container:
+            raise RuntimeError(
+                "container '%s' は設定にありません。定義済み: %s"
+                % (name, ", ".join(sorted(context.container)))
+            )
+        return name
+    if len(context.container) == 1:
+        return next(iter(context.container))
+    raise RuntimeError(
+        "複数の container が定義されています (%s)。POCKET_CONTAINER 環境変数か"
+        " --container で対象を指定してください。" % ", ".join(sorted(context.container))
+    )
+
+
+def get_own_container(context: Context, container: str | None = None):
+    return context.container[resolve_container_name(context, container)]
 
 
 def _pocket_secret_to_envs(
@@ -46,24 +73,31 @@ def _pocket_secret_to_envs(
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
-def get_secrets(stage: str | None = None) -> dict:
+def get_secrets(stage: str | None = None, *, container: str | None = None) -> dict:
     stage = stage or get_stage()
     if stage == "__none__":
         return {}
     context = get_context(stage=stage)
-    if (ac := context.awscontainer) is None:
+    if not context.container:
         return {}
-    if (sc := ac.secrets) is None:
+    own = get_own_container(context, container)
+    if (sc := own.secrets) is None:
         return {}
+    # store は project 共有のため、他 container が宣言したキーも store に載る。
+    # orphan 警告は project union (context.secrets) を基準に判定し、自 container
+    # の env には自宣言 (+ 自動注入) のキーだけを載せる
+    union_managed = context.secrets.managed if context.secrets else {}
     secrets = {}
     # managed: pocket_store経由で自動ディスパッチ (SM/SSM)
     for key, value in sc.pocket_store.secrets.items():
-        if key not in sc.managed:
+        if key not in union_managed:
             # 文言はストア種別 (SM/SSM) 非依存にする
             echo.warning(
                 "store 上のキー '%s' が managed 定義にありません。"
                 " pocket deploy で同期してください。" % key
             )
+            continue
+        if key not in sc.managed:
             continue
         envs = _pocket_secret_to_envs(key, value, sc.managed[key])
         secrets.update(envs)
@@ -161,16 +195,16 @@ get_secrets_from_secretsmanager = get_secrets
 set_envs_from_secretsmanager = set_envs_from_secrets
 
 
-def _get_host(ac_context: AwsContainerContext, key: str) -> str | None:
+def _get_host(c_context: ContainerContext, key: str) -> str | None:
     """CFN stack output と context data から host を取得"""
-    handler = ac_context.handlers[key]
+    handler = c_context.handlers[key]
     if handler.apigateway is None:
         return None
     if handler.apigateway.domain:
         return handler.apigateway.domain
     apiendpoint_key = key.capitalize() + "ApiEndpoint"
-    stack_name = f"{ac_context.slug}-container"
-    cfn = boto3.client("cloudformation", region_name=ac_context.region)
+    stack_name = f"{c_context.slug}-container-{c_context.name}"
+    cfn = boto3.client("cloudformation", region_name=c_context.region)
     try:
         res = cfn.describe_stacks(StackName=stack_name)
         outputs = res["Stacks"][0].get("Outputs", [])
@@ -182,22 +216,22 @@ def _get_host(ac_context: AwsContainerContext, key: str) -> str | None:
     return None
 
 
-def _get_hosts(ac_context: AwsContainerContext) -> dict[str, str | None]:
+def _get_hosts(c_context: ContainerContext) -> dict[str, str | None]:
     """全 handler の hosts を取得"""
     data: dict[str, str | None] = {}
-    for key, handler in ac_context.handlers.items():
+    for key, handler in c_context.handlers.items():
         if handler.apigateway is not None:
-            data[key] = _get_host(ac_context, key)
+            data[key] = _get_host(c_context, key)
     return data
 
 
-def _get_queueurls(ac_context: AwsContainerContext) -> dict[str, str | None]:
+def _get_queueurls(c_context: ContainerContext) -> dict[str, str | None]:
     """SQS get_queue_url で queue URL を取得"""
     data: dict[str, str | None] = {}
     # client は 1 つ作って使い回す (except 節での再生成はたまたま同一クラスに
     # 解決されているだけで壊れやすい)
     sqs = boto3.client("sqs")
-    for key, handler in ac_context.handlers.items():
+    for key, handler in c_context.handlers.items():
         if handler.sqs:
             try:
                 res = sqs.get_queue_url(QueueName=handler.sqs.name)
@@ -227,6 +261,35 @@ def _get_cloudfront_domains(context: Context) -> dict[str, str]:
     return domains
 
 
+def _set_container_resource_envs(
+    c_name: str, c_ctx: ContainerContext, *, is_own: bool
+) -> list[str]:
+    """container 1 つ分の host / queue URL env を設定し、host 一覧を返す。
+
+    自 container の handler は従来どおり非修飾名 (POCKET_<HANDLER>_HOST 等) でも
+    参照できる。他 container は POCKET_<CONTAINER>_<HANDLER>_HOST の修飾名のみ。
+    """
+    hosts = []
+    for lambda_key, host in _get_hosts(c_ctx).items():
+        if not host:
+            continue
+        hosts.append(host)
+        qualified = "%s_%s" % (c_name.upper(), lambda_key.upper())
+        os.environ["POCKET_%s_HOST" % qualified] = host
+        os.environ["POCKET_%s_ENDPOINT" % qualified] = "https://%s" % host
+        if is_own:
+            os.environ["POCKET_%s_HOST" % lambda_key.upper()] = host
+            os.environ["POCKET_%s_ENDPOINT" % lambda_key.upper()] = "https://%s" % host
+    for lambda_key, queueurl in _get_queueurls(c_ctx).items():
+        if not queueurl:
+            continue
+        qualified = "%s_%s" % (c_name.upper(), lambda_key.upper())
+        os.environ["POCKET_%s_QUEUEURL" % qualified] = queueurl
+        if is_own:
+            os.environ["POCKET_%s_QUEUEURL" % lambda_key.upper()] = queueurl
+    return hosts
+
+
 def set_envs_from_aws_resources(
     stage: str | None = None,
 ):
@@ -240,22 +303,15 @@ def set_envs_from_aws_resources(
         os.environ["POCKET_ENVS_AWS_RESOURCES_LOADED"] = "true"
         return {}
     context = get_context(stage=stage)
-    if context.awscontainer:
-        hosts_map = _get_hosts(context.awscontainer)
+    if context.container:
+        own_name = resolve_container_name(context)
         hosts = []
-        for lambda_key, host in hosts_map.items():
-            if host:
-                hosts.append(host)
-                os.environ["POCKET_%s_HOST" % lambda_key.upper()] = host
-                os.environ["POCKET_%s_ENDPOINT" % lambda_key.upper()] = (
-                    "https://%s" % host
-                )
+        for c_name in sorted(context.container):
+            hosts += _set_container_resource_envs(
+                c_name, context.container[c_name], is_own=c_name == own_name
+            )
         # カンマ区切り。django/runtime.py が ALLOWED_HOSTS へカンマ結合で append する
         os.environ["POCKET_HOSTS"] = ",".join(hosts)
-        queueurls_map = _get_queueurls(context.awscontainer)
-        for lambda_key, queueurl in queueurls_map.items():
-            if queueurl:
-                os.environ["POCKET_%s_QUEUEURL" % lambda_key.upper()] = queueurl
     else:
         os.environ["POCKET_HOSTS"] = ""
     # CloudFront distribution ドメインを環境変数に設定

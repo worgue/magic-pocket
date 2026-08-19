@@ -1,6 +1,6 @@
 //! SQS worker / enqueue ヘルパ
 //!
-//! pocket の `[awscontainer.handlers.<key>] sqs = {}` は queue + DLQ +
+//! pocket の `[container.<name>.handlers.<key>] sqs = {}` は queue + DLQ +
 //! EventSourceMapping を生成し、runtime は `POCKET_<KEY>_QUEUEURL` を注入する
 //! (resources.rs)。本モジュールはその上の「輸送層」を提供する:
 //!
@@ -93,7 +93,7 @@ where
     response
 }
 
-/// handler key (pocket.toml の `[awscontainer.handlers.<key>]` の key) から、
+/// handler key (pocket.toml の `[container.<name>.handlers.<key>]` の key) から、
 /// runtime が注入した `POCKET_<KEY>_QUEUEURL` を読む。
 ///
 /// 未注入 (deploy 前 / sqs 未設定 / `set_envs` 未実行) はエラー。

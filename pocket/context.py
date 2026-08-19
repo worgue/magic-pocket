@@ -83,6 +83,7 @@ class SqsContext(BaseModel):
         sqs: settings.Sqs,
         *,
         resource_prefix: str,
+        container: str,
         key: str,
         timeout: int,
     ) -> SqsContext:
@@ -93,7 +94,7 @@ class SqsContext(BaseModel):
             dead_letter_max_receive_count=sqs.dead_letter_max_receive_count,
             dead_letter_message_retention_period=sqs.dead_letter_message_retention_period,
             report_batch_item_failures=sqs.report_batch_item_failures,
-            name=f"{resource_prefix}{key}",
+            name=f"{resource_prefix}{container}-{key}",
             visibility_timeout=timeout * 6,
         )
 
@@ -124,6 +125,7 @@ class LambdaHandlerContext(BaseModel):
         handler: settings.LambdaHandler,
         *,
         key: str,
+        container: str,
         root: settings.Settings,
         resource_prefix: str,
     ) -> LambdaHandlerContext:
@@ -135,10 +137,11 @@ class LambdaHandlerContext(BaseModel):
             sqs_ctx = SqsContext.from_settings(
                 handler.sqs,
                 resource_prefix=resource_prefix,
+                container=container,
                 key=key,
                 timeout=handler.timeout,
             )
-        function_name = f"{resource_prefix}{key}"
+        function_name = f"{resource_prefix}{container}-{key}"
         return cls(
             command=handler.command,
             timeout=handler.timeout,
@@ -329,10 +332,8 @@ class SesContext(BaseModel):
         )
 
 
-def _build_secrets_context(
-    ac: settings.AwsContainer, root: settings.Settings
-) -> SecretsContext | None:
-    """awscontainer の SecretsContext を組み立てる。
+def _injected_managed_specs(root: settings.Settings) -> dict[str, ManagedSecretSpec]:
+    """自動注入する managed secret spec (origin verify / waf allow header)。
 
     enable_origin_verify の検証用 secret と waf.allow_rules の header secret は
     managed secret として自動注入する。これにより生成 (mediator) / 保存 (SM/SSM) /
@@ -340,9 +341,11 @@ def _build_secrets_context(
     magic-pocket の内部詳細に閉じ、waf 側は利用者宣言のキー名を使う
     (既存 secret との衝突は settings 側で検証済み)。
     """
-    needs_origin_verify = any(
-        cf.enable_origin_verify for cf in root.cloudfront.values()
-    )
+    injected: dict[str, ManagedSecretSpec] = {}
+    if any(cf.enable_origin_verify for cf in root.cloudfront.values()):
+        injected[ORIGIN_VERIFY_SECRET_KEY] = ManagedSecretSpec(
+            type="origin_verify_secret"
+        )
     waf_allow_keys = sorted(
         {
             rule.header
@@ -352,16 +355,25 @@ def _build_secrets_context(
             if rule.header
         }
     )
-    if not (ac.secrets or needs_origin_verify or waf_allow_keys):
-        return None
-    secrets_settings = ac.secrets or settings.Secrets()
-    injected: dict[str, ManagedSecretSpec] = {}
-    if needs_origin_verify:
-        injected[ORIGIN_VERIFY_SECRET_KEY] = ManagedSecretSpec(
-            type="origin_verify_secret"
-        )
     for key in waf_allow_keys:
         injected[key] = ManagedSecretSpec(type="waf_allow_secret")
+    return injected
+
+
+def _container_secrets_context(
+    c: settings.Container, root: settings.Settings
+) -> SecretsContext | None:
+    """container 1 つ分の SecretsContext (自宣言 + 自動注入)。
+
+    物理 store は project 共有 (pocket_key は container 名を含まない) だが、
+    「この container の env に注入されるキー / IAM で許可される参照」は
+    per-container で決まる。自動注入 secret は全 container の env に載せる
+    (origin verify は lambda route を持つどの container でも検証に使うため)。
+    """
+    injected = _injected_managed_specs(root)
+    if not (c.secrets or injected):
+        return None
+    secrets_settings = c.secrets or root.project_secrets_base()
     if injected:
         secrets_settings = secrets_settings.model_copy(
             update={"managed": {**secrets_settings.managed, **injected}}
@@ -369,12 +381,49 @@ def _build_secrets_context(
     return SecretsContext.from_settings(secrets_settings, root)
 
 
-class AwsContainerIamContext(BaseModel):
+def _project_secrets_context(root: settings.Settings) -> SecretsContext | None:
+    """project 全体 (全 container 宣言の union + 自動注入) の SecretsContext。
+
+    物理 store は project 共有のため、生成 (mediator) / orphan cleanup / 参照系
+    CLI はこの union を正とする。個々の container の env / IAM は
+    ContainerContext.secrets (per-container view) が担う。
+    """
+    injected = _injected_managed_specs(root)
+    declared = [c.secrets for c in root.container.values() if c.secrets]
+    if not (declared or injected):
+        return None
+    managed: dict[str, ManagedSecretSpec] = {}
+    user: dict[str, settings.UserSecretSpec] = {}
+    extra_resources: list[str] = []
+    require_list_secrets = False
+    for s in declared:
+        # 同名 key の spec 一致は settings 側で検証済み (先勝ちで問題ない)
+        for key, spec in s.managed.items():
+            managed.setdefault(key, spec)
+        for key, spec in s.user.items():
+            user.setdefault(key, spec)
+        for arn in s.extra_resources:
+            if arn not in extra_resources:
+                extra_resources.append(arn)
+        require_list_secrets = require_list_secrets or s.require_list_secrets
+    secrets_settings = root.project_secrets_base().model_copy(
+        update={
+            "managed": {**managed, **injected},
+            "user": user,
+            "extra_resources": extra_resources,
+            "require_list_secrets": require_list_secrets,
+        }
+    )
+    return SecretsContext.from_settings(secrets_settings, root)
+
+
+class ContainerIamContext(BaseModel):
     managed_policy_arns: list[str] = []
     inline_policies: dict[str, dict] = {}
 
 
-class AwsContainerContext(BaseModel):
+class ContainerContext(BaseModel):
+    name: str
     vpc: VpcContext | None = None
     secrets: SecretsContext | None = None
     dockerfile_path: str
@@ -401,7 +450,7 @@ class AwsContainerContext(BaseModel):
     use_sqs: bool = False
     use_efs: bool = False
     permissions_boundary: str | None = None
-    iam: AwsContainerIamContext = AwsContainerIamContext()
+    iam: ContainerIamContext = ContainerIamContext()
     efs_local_mount_path: str = ""
     build: BuildContext = BuildContext()
 
@@ -418,22 +467,26 @@ class AwsContainerContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, ac: settings.AwsContainer, root: settings.Settings
-    ) -> AwsContainerContext:
+        cls, name: str, c: settings.Container, root: settings.Settings
+    ) -> ContainerContext:
         resource_prefix = root.resource_prefix
 
         vpc_ctx = None
-        if ac.vpc:
-            vpc_ctx = VpcContext.from_settings(ac.vpc, root.general)
+        if c.vpc:
+            vpc_ctx = VpcContext.from_settings(c.vpc, root.general)
 
-        secrets_ctx = _build_secrets_context(ac, root)
+        secrets_ctx = _container_secrets_context(c, root)
 
         handlers = {}
         use_route53 = False
         use_sqs = False
-        for key, handler in ac.handlers.items():
+        for key, handler in c.handlers.items():
             handlers[key] = LambdaHandlerContext.from_settings(
-                handler, key=key, root=root, resource_prefix=resource_prefix
+                handler,
+                key=key,
+                container=name,
+                root=root,
+                resource_prefix=resource_prefix,
             )
             if handler.apigateway:
                 use_route53 = True
@@ -442,20 +495,21 @@ class AwsContainerContext(BaseModel):
 
         use_efs = False
         efs_local_mount_path = ""
-        if ac.vpc and ac.vpc.efs:
+        if c.vpc and c.vpc.efs:
             use_efs = True
-            efs_local_mount_path = ac.vpc.efs.local_mount_path
+            efs_local_mount_path = c.vpc.efs.local_mount_path
 
         django_ctx = None
-        if ac.django:
-            django_ctx = DjangoContext.from_settings(ac.django, root=root)
+        if c.django:
+            django_ctx = DjangoContext.from_settings(c.django, root=root, container=c)
 
         return cls(
+            name=name,
             vpc=vpc_ctx,
             secrets=secrets_ctx,
-            dockerfile_path=ac.dockerfile_path,
-            envs=ac.envs,
-            platform=ac.platform,
+            dockerfile_path=c.dockerfile_path,
+            envs=c.envs,
+            platform=c.platform,
             django=django_ctx,
             region=root.region,
             slug=root.slug,
@@ -463,8 +517,8 @@ class AwsContainerContext(BaseModel):
             namespace=root.namespace,
             resource_prefix=resource_prefix,
             handlers=handlers,
-            ecr_name=ac.ecr_name or resource_prefix + "lambda",
-            ecr_name_overridden=ac.ecr_name is not None,
+            ecr_name=c.ecr_name or f"{resource_prefix}{name}-lambda",
+            ecr_name_overridden=c.ecr_name is not None,
             use_s3=root.s3 is not None,
             use_ses=root.ses is not None,
             use_route53=use_route53,
@@ -472,14 +526,14 @@ class AwsContainerContext(BaseModel):
             use_efs=use_efs,
             permissions_boundary=(
                 os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN")
-                or ac.permissions_boundary
+                or c.permissions_boundary
             ),
-            iam=AwsContainerIamContext(
-                managed_policy_arns=ac.iam.managed_policy_arns,
-                inline_policies=ac.iam.inline_policies,
+            iam=ContainerIamContext(
+                managed_policy_arns=c.iam.managed_policy_arns,
+                inline_policies=c.iam.inline_policies,
             ),
             efs_local_mount_path=efs_local_mount_path,
-            build=BuildContext.from_settings(ac.build),
+            build=BuildContext.from_settings(c.build),
         )
 
 
@@ -568,10 +622,19 @@ class UpstashContext(BaseModel):
 
 
 def _permissions_boundary(root: settings.Settings) -> str | None:
-    """IAM ロール作成時に付与する boundary (dsql / backup のサービスロール共通)。"""
-    return os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN") or (
-        root.awscontainer.permissions_boundary if root.awscontainer else None
-    )
+    """IAM ロール作成時に付与する boundary (dsql / backup のサービスロール共通)。
+
+    複数 container が boundary を宣言している場合は名前順で最初の宣言を使う
+    (boundary は account 側の制約で、実運用では全 container 同値になる)。
+    """
+    env = os.environ.get("POCKET_PERMISSIONS_BOUNDARY_ARN")
+    if env:
+        return env
+    for name in sorted(root.container):
+        boundary = root.container[name].permissions_boundary
+        if boundary:
+            return boundary
+    return None
 
 
 class BackupRuleContext(BaseModel):
@@ -708,10 +771,9 @@ class DsqlContext(BaseModel):
     def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
         resource_prefix = root.resource_prefix
         # publish 先は stored user secret 機構 (pocket_key / store) に相乗りする。
-        # secrets 未設定でも publish はする (その場合は既定の sm / 既定 key format)
-        secrets = root.awscontainer.secrets if root.awscontainer else None
-        if secrets is None:
-            secrets = settings.Secrets()
+        # secrets 未設定でも publish はする (その場合は既定の sm / 既定 key format)。
+        # store 設定は project 共有 (全 container で一致検証済み)
+        secrets = root.project_secrets_base()
         pocket_key = secrets.pocket_key_format.format(**root.format_vars)
         return cls(
             region=root.region,
@@ -751,7 +813,7 @@ class RdsContext(BaseModel):
     # password_strategy = "static" 用: pocket が生成・保存する認証情報の名前
     # (secret_store=sm なら Secrets Manager の secret 名、ssm なら SSM パラメータ名)
     credentials_secret_name: str = ""
-    # static 認証情報の保存先。awscontainer.secrets.store のトグルに従う。
+    # static 認証情報の保存先。container secrets.store のトグルに従う。
     # aws-managed では常に RDS マネージド secret (sm) なので参照されない。
     secret_store: StoreType = "sm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
     # managed = false 用
@@ -777,11 +839,9 @@ class RdsContext(BaseModel):
         database_name = rds.database or f"{root.stage}_{root.project_name}".replace(
             "-", "_"
         )
-        # static パスワードの保存先は awscontainer.secrets.store に合わせる
-        # (未設定時は "sm")。
-        secret_store: StoreType = "sm"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
-        if root.awscontainer and root.awscontainer.secrets:
-            secret_store = root.awscontainer.secrets.store
+        # static パスワードの保存先は container secrets.store に合わせる
+        # (未設定時は "sm"。store は project 共有で全 container 一致検証済み)。
+        secret_store: StoreType = root.project_secrets_base().store  # noqa: S105 戦略名/保存先種別であって secret 値ではない
         return cls(
             vpc=vpc_ctx,
             min_capacity=rds.min_capacity,
@@ -850,6 +910,7 @@ class ScheduleEntryContext(BaseModel):
         entry: settings.ScheduleEntry,
         *,
         resource_prefix: str,
+        local_handler: str,
     ) -> ScheduleEntryContext:
         import json
 
@@ -862,7 +923,9 @@ class ScheduleEntryContext(BaseModel):
         return cls(
             key=key,
             scheduler=entry.scheduler,
-            handler=entry.handler,
+            # container stack template 内の論理参照に使うため、dotted 参照ではなく
+            # container ローカルの handler key を保持する
+            handler=local_handler,
             schedule_expression=entry.schedule_expression,
             name=f"{resource_prefix}{_kebab(key)}",
             yaml_key=_camel(key),
@@ -871,6 +934,8 @@ class ScheduleEntryContext(BaseModel):
 
 
 class SchedulerContext(BaseModel):
+    """container 1 つ分の scheduler (entry は handler の属する container に配置)。"""
+
     schedules: list[ScheduleEntryContext] = []
     role_name: str
     invoked_function_arns: list[str] = []
@@ -889,31 +954,38 @@ class SchedulerContext(BaseModel):
         scheduler: settings.Scheduler,
         *,
         root: settings.Settings,
-        awscontainer_ctx: AwsContainerContext,
+        container_name: str,
+        container_ctx: ContainerContext,
     ) -> SchedulerContext:
-        resource_prefix = awscontainer_ctx.resource_prefix
+        resource_prefix = container_ctx.resource_prefix
+        # この container の handler を指す entry だけを対象にする
+        entries: list[tuple[str, settings.ScheduleEntry, str]] = []
+        for key, entry in scheduler.schedules.items():
+            c_name, h_key = settings.parse_handler_ref(entry.handler)
+            if c_name == container_name:
+                entries.append((key, entry, h_key))
         schedules = [
             ScheduleEntryContext.from_settings(
-                key, entry, resource_prefix=resource_prefix
+                key, entry, resource_prefix=resource_prefix, local_handler=h_key
             )
-            for key, entry in scheduler.schedules.items()
+            for key, entry, h_key in entries
         ]
         # Lambda invoke 対象は Lambda を直接 invoke する entry の handler のみ。
         # sqs_scheduler entry は queue へ SendMessage するだけなので含めない
         invoked_handlers = {
-            entry.handler
-            for entry in scheduler.schedules.values()
+            h_key
+            for _key, entry, h_key in entries
             if not isinstance(entry, settings.SqsScheduleEntry)
         }
         invoked_function_arns = sorted(
             f"arn:aws:lambda:{root.region}:${{AWS::AccountId}}:function:"
-            + awscontainer_ctx.handlers[h].function_name
+            + container_ctx.handlers[h].function_name
             for h in invoked_handlers
-            if h in awscontainer_ctx.handlers
+            if h in container_ctx.handlers
         )
         sqs_handlers = {
-            entry.handler
-            for entry in scheduler.schedules.values()
+            h_key
+            for _key, entry, h_key in entries
             if isinstance(entry, settings.SqsScheduleEntry)
         }
         sqs_queue_logical_names = sorted(
@@ -921,7 +993,7 @@ class SchedulerContext(BaseModel):
         )
         return cls(
             schedules=schedules,
-            role_name=f"{resource_prefix}scheduler",
+            role_name=f"{resource_prefix}{container_name}-scheduler",
             invoked_function_arns=invoked_function_arns,
             sqs_queue_logical_names=sqs_queue_logical_names,
         )
@@ -1386,7 +1458,10 @@ def _build_service_contexts(s: settings.Settings) -> dict:
 
 class Context(BaseModel):
     general: GeneralContext | None = None
-    awscontainer: AwsContainerContext | None = None
+    container: dict[str, ContainerContext] = {}
+    # project 共有 store の union view (生成 / cleanup / 参照系 CLI の正)。
+    # container ごとの env / IAM は container[<name>].secrets が担う
+    secrets: SecretsContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
     upstash: UpstashContext | None = None
@@ -1396,31 +1471,36 @@ class Context(BaseModel):
     ses: SesContext | None = None
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
-    scheduler: SchedulerContext | None = None
+    # container 名 → その container stack に配置する scheduler
+    scheduler: dict[str, SchedulerContext] = {}
     project_name: str
     stage: str
 
     @staticmethod
     def _build_api_origins(
         slug: str,
-        awscontainer_ctx: AwsContainerContext,
+        containers: dict[str, ContainerContext],
         cloudfront_ctx: dict[str, CloudFrontContext],
     ) -> None:
-        """API route の handler → CFn Export名 のマッピングを構築する"""
+        """API route の handler 参照 → CFn Export名 のマッピングを構築する。
+
+        route.handler は "<container>.<handler>" のドット記法。Export 名は
+        {slug}-{container}-{handler}-api-domain。
+        """
         for cf_name, cf_ctx in cloudfront_ctx.items():
             api_origins: dict[str, str] = {}
             for route in cf_ctx.routes:
                 if not (route.is_lambda and route.handler):
                     continue
-                export_name = f"{slug}-{route.handler}-api-domain"
+                c_name, h_key = settings.parse_handler_ref(route.handler)
+                export_name = f"{slug}-{c_name}-{h_key}-api-domain"
                 api_origins[route.handler] = export_name
-                if route.handler in awscontainer_ctx.handlers:
-                    handler_ctx = awscontainer_ctx.handlers[route.handler]
+                container_ctx = containers.get(c_name)
+                if container_ctx and h_key in container_ctx.handlers:
+                    handler_ctx = container_ctx.handlers[h_key]
                     if not handler_ctx.export_api_domain:
-                        awscontainer_ctx.handlers[route.handler] = (
-                            handler_ctx.model_copy(
-                                update={"export_api_domain": export_name}
-                            )
+                        container_ctx.handlers[h_key] = handler_ctx.model_copy(
+                            update={"export_api_domain": export_name}
                         )
             if api_origins:
                 cloudfront_ctx[cf_name] = cf_ctx.model_copy(
@@ -1431,72 +1511,92 @@ class Context(BaseModel):
     def _apply_cloudfront_cross_refs(
         cls,
         s: settings.Settings,
-        awscontainer_ctx: AwsContainerContext,
+        containers: dict[str, ContainerContext],
         cloudfront_ctx: dict[str, CloudFrontContext],
-    ) -> AwsContainerContext:
-        """CloudFront ↔ AwsContainer のクロススタック参照を構築する"""
-        cls._build_api_origins(s.slug, awscontainer_ctx, cloudfront_ctx)
+    ) -> dict[str, ContainerContext]:
+        """CloudFront ↔ Container のクロススタック参照を構築する"""
+        cls._build_api_origins(s.slug, containers, cloudfront_ctx)
 
-        # signing_key_imports: CloudFrontKeys の Export を Lambda 環境変数に
-        if s.awscontainer and s.awscontainer.secrets:
-            signing_key_imports: dict[str, str] = {}
-            managed = s.awscontainer.secrets.managed
-            for _cf_name, cf_ctx in cloudfront_ctx.items():
-                if cf_ctx.signing_key and cf_ctx.signing_key in managed:
-                    spec = managed[cf_ctx.signing_key]
-                    id_suffix = spec.options.get("id_environ_suffix", "_ID")
-                    env_var_name = cf_ctx.signing_key + str(id_suffix)
-                    export_name = f"{cf_ctx.slug}-public-key-id"
-                    signing_key_imports[env_var_name] = export_name
-            if signing_key_imports:
-                awscontainer_ctx = awscontainer_ctx.model_copy(
-                    update={"signing_key_imports": signing_key_imports}
+        # signing_key_imports: CloudFrontKeys の Export を、その signing key
+        # secret を宣言している container の Lambda 環境変数に注入する
+        signing_imports: list[tuple[str, str, str]] = []  # (secret_key, env, export)
+        for _cf_name, cf_ctx in cloudfront_ctx.items():
+            if not cf_ctx.signing_key:
+                continue
+            spec = s.find_managed_secret(cf_ctx.signing_key)
+            if spec is None:
+                continue
+            id_suffix = spec.options.get("id_environ_suffix", "_ID")
+            signing_imports.append(
+                (
+                    cf_ctx.signing_key,
+                    cf_ctx.signing_key + str(id_suffix),
+                    f"{cf_ctx.slug}-public-key-id",
                 )
+            )
+        if signing_imports:
+            for name, c in s.container.items():
+                declared = set(c.secrets.managed) if c.secrets else set()
+                imports = {
+                    env: exp
+                    for secret_key, env, exp in signing_imports
+                    if secret_key in declared
+                }
+                if imports:
+                    containers[name] = containers[name].model_copy(
+                        update={"signing_key_imports": imports}
+                    )
 
-        # deploy_hash route があれば DEPLOY_HASH を envs に追加
+        # deploy_hash route があれば DEPLOY_HASH を全 container の envs に追加
         deploy_hashes = [
             cf_ctx.deploy_hash
             for cf_ctx in cloudfront_ctx.values()
             if cf_ctx.deploy_hash
         ]
         if deploy_hashes:
-            envs = dict(awscontainer_ctx.envs)
-            envs.setdefault("DEPLOY_HASH", deploy_hashes[0])
-            awscontainer_ctx = awscontainer_ctx.model_copy(update={"envs": envs})
+            for name, container_ctx in containers.items():
+                envs = dict(container_ctx.envs)
+                envs.setdefault("DEPLOY_HASH", deploy_hashes[0])
+                containers[name] = containers[name].model_copy(update={"envs": envs})
 
-        return awscontainer_ctx
+        return containers
 
     @classmethod
     def from_settings(cls, s: settings.Settings) -> Context:
         general_ctx = GeneralContext.from_general_settings(s.general)
         svc = _build_service_contexts(s)
 
-        awscontainer_ctx = None
-        if s.awscontainer:
-            awscontainer_ctx = AwsContainerContext.from_settings(s.awscontainer, s)
+        containers: dict[str, ContainerContext] = {}
+        for name, c in s.container.items():
+            containers[name] = ContainerContext.from_settings(name, c, s)
 
         cloudfront_ctx: dict[str, CloudFrontContext] = {}
         for name, cf in s.cloudfront.items():
             cloudfront_ctx[name] = CloudFrontContext.from_settings(cf, s, name=name)
 
-        if awscontainer_ctx:
-            awscontainer_ctx = cls._apply_cloudfront_cross_refs(
-                s, awscontainer_ctx, cloudfront_ctx
-            )
+        if containers:
+            containers = cls._apply_cloudfront_cross_refs(s, containers, cloudfront_ctx)
 
-        scheduler_ctx = None
+        scheduler_ctx: dict[str, SchedulerContext] = {}
         if s.scheduler and s.scheduler.schedules:
-            if not awscontainer_ctx:
+            if not containers:
                 raise RuntimeError(
-                    "scheduler requires awscontainer (validated in settings)"
+                    "scheduler requires container (validated in settings)"
                 )
-            scheduler_ctx = SchedulerContext.from_settings(
-                s.scheduler, root=s, awscontainer_ctx=awscontainer_ctx
-            )
+            for name, container_ctx in containers.items():
+                sc = SchedulerContext.from_settings(
+                    s.scheduler,
+                    root=s,
+                    container_name=name,
+                    container_ctx=container_ctx,
+                )
+                if sc.has_schedules:
+                    scheduler_ctx[name] = sc
 
         return cls(
             general=general_ctx,
-            awscontainer=awscontainer_ctx,
+            container=containers,
+            secrets=_project_secrets_context(s),
             cloudfront=cloudfront_ctx,
             scheduler=scheduler_ctx,
             project_name=s.project_name,
@@ -1510,8 +1610,10 @@ class Context(BaseModel):
 
     @model_validator(mode="after")
     def check_django(self):
-        if self.awscontainer and self.awscontainer.django:
-            for key, storage in self.awscontainer.django.storages.items():
+        for container_ctx in self.container.values():
+            if not container_ctx.django:
+                continue
+            for key, storage in container_ctx.django.storages.items():
                 if storage.store == "s3" and not self.s3:
                     raise ValueError("s3 is required for s3 storage")
                 if storage.distribution and storage.distribution not in self.cloudfront:
@@ -1519,9 +1621,9 @@ class Context(BaseModel):
                         f"storage '{key}': distribution '{storage.distribution}' "
                         f"not found in cloudfront"
                     )
-            for _, cache in self.awscontainer.django.caches.items():
+            for _, cache in container_ctx.django.caches.items():
                 if cache.store == "efs" and not (
-                    self.awscontainer.vpc and self.awscontainer.vpc.efs
+                    container_ctx.vpc and container_ctx.vpc.efs
                 ):
                     raise ValueError("vpc is required for efs cache")
         return self

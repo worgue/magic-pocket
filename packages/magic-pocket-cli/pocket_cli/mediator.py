@@ -34,9 +34,7 @@ class Mediator:
     def create_pocket_managed_secrets(
         self, exists: ErrorLevel = "warning", failed: ErrorLevel = "raise"
     ):
-        if self.context.awscontainer is None:
-            return
-        if (sc := self.context.awscontainer.secrets) is None:
+        if (sc := self.context.secrets) is None:
             return
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
@@ -49,7 +47,8 @@ class Mediator:
                     echo.warning(
                         "computed DB/KVS URL (managed type=%s) は deprecated です。"
                         "deploy が管理 API を叩いて URL を算出する方式から、"
-                        "[<db>] provisioning + [awscontainer.secrets.user] の type + "
+                        "[<db>] provisioning + [container.<name>.secrets.user] の "
+                        "type + "
                         "`pocket <db> store-url` (stored) への移行を推奨します。"
                         % managed_secret.type
                     )
@@ -62,7 +61,7 @@ class Mediator:
             else:
                 msg = (
                     "%s is already created. To rotate, run `pocket resource "
-                    "awscontainer secrets delete-pocket-managed` and then "
+                    "container secrets delete-pocket-managed` and then "
                     "`create-pocket-managed`." % key
                 )
                 self._conditional_error(exists, msg)
@@ -73,26 +72,31 @@ class Mediator:
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
         self._cleanup_orphaned_secrets()
-        if self.context.awscontainer and self.context.awscontainer.secrets:
-            sc = self.context.awscontainer.secrets
+        if self.context.secrets:
+            sc = self.context.secrets
             # type 付き user secret (stored mode) の deploy 前存在チェック
             sc.user_store.verify_provisioned()
-            # hasattr は getter を実行してしまう (allowed_sm_resources は
-            # pocket_store.arn = SM API 呼び出しまで走る) ため、キャッシュの
-            # 有無を __dict__ で確認してから del する
-            for cached in (
-                "pocket_store",
-                "allowed_sm_resources",
-                "allowed_ssm_resources",
-            ):
-                if cached in sc.__dict__:
-                    delattr(sc, cached)
+            # secret 生成後にキャッシュを無効化する。union (self.context.secrets)
+            # だけでなく、テンプレート描画に使う per-container の SecretsContext
+            # も別インスタンスなので忘れず無効化する
+            targets = [sc] + [
+                c.secrets for c in self.context.container.values() if c.secrets
+            ]
+            for target in targets:
+                # hasattr は getter を実行してしまう (allowed_sm_resources は
+                # pocket_store.arn = SM API 呼び出しまで走る) ため、キャッシュの
+                # 有無を __dict__ で確認してから del する
+                for cached in (
+                    "pocket_store",
+                    "allowed_sm_resources",
+                    "allowed_ssm_resources",
+                ):
+                    if cached in target.__dict__:
+                        delattr(target, cached)
 
     def _cleanup_orphaned_secrets(self):
         """SSM/SM にあるが managed 定義にないシークレットを削除する"""
-        if self.context.awscontainer is None:
-            return
-        if (sc := self.context.awscontainer.secrets) is None:
+        if (sc := self.context.secrets) is None:
             return
         stored_keys = set(sc.pocket_store.secrets.keys())
         managed_keys = set(sc.managed.keys())

@@ -4,6 +4,67 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- **破壊的変更**: `[awscontainer]` (単数) を廃止し、`[container.<name>]` の
+  dict 形式に一般化しました。1 プロジェクトで複数 container (異 runtime の
+  並行稼働 / strangler 移行) を宣言できます。`<name>` は英小文字始まりの
+  英小文字 + 数字 (最大 32 文字、hyphen 不可) です
+- **破壊的変更**: cloudfront routes / scheduler の `handler` 参照を
+  `"<container>.<handler>"` のドット記法に変更しました (container が 1 つ
+  でも必須)
+- **破壊的変更**: 物理リソース名に container slot を挿入しました。
+  既存 stage は次回 deploy で計算リソースが**新名称で作り直され**ます
+  (データと secrets は保全されます。下記の移行手順を参照):
+    - Lambda 関数: `{prefix}{handler}` → `{prefix}{name}-{handler}`
+    - ECR repo: `{prefix}lambda` → `{prefix}{name}-lambda`
+    - container stack: `{slug}-container` → `{slug}-container-{name}`
+    - API domain Export: `{slug}-{handler}-api-domain` →
+      `{slug}-{name}-{handler}-api-domain`
+    - SQS queue: `{prefix}{handler}` → `{prefix}{name}-{handler}`
+    - Lambda 実行ロール: `lambda-{slug}-{namespace}` →
+      `lambda-{slug}-{name}-{namespace}`
+    - scheduler ロール: `{prefix}scheduler` → `{prefix}{name}-scheduler`
+- **secrets の物理 store は project 共有のまま**です (pocket_key に container
+  名は入りません)。既存 secret (Django の `SECRET_KEY`、stored user secret、
+  dsql endpoint publish 先) はパス不変のため**移行作業は不要**です。宣言は
+  per-container で、`store` / `pocket_key_format` は全 container で一致が
+  必要、同名 key は spec 一致なら値を共有します
+- 各 Lambda に `POCKET_CONTAINER=<name>` を注入し、runtime (Python / Rust)
+  が自分の `[container.<name>]` を自動選択するようにしました
+- runtime env: 自 container の handler は従来どおり `POCKET_<HANDLER>_HOST`
+  等で参照できます。他 container の handler は
+  `POCKET_<CONTAINER>_<HANDLER>_HOST` / `_ENDPOINT` / `_QUEUEURL` の修飾名で
+  参照します
+- CLI: `pocket resource awscontainer ...` を `pocket resource container ...`
+  にリネームし、container 単位のコマンド (`yaml` / `url` / `reload-env` /
+  `status-env` / `image repo` / `image uri` 等) に `--container <name>` を
+  追加しました (container が 1 つだけなら省略可)。`pocket django build` /
+  `promote` は全 container を build / retag します
+- `pocket.naming.ecr_repo_name()` に `container` キーワード引数が必須に
+  なりました (外部ツール向け公開 API の破壊的変更)
+- deploy 完了後に旧形式の container stack (`{slug}-container`) と旧 ECR repo
+  (`{prefix}lambda`) を検出し、確認プロンプト付きで自動削除するようにしました
+  (`-y` で自動承認)。旧 stack の scheduler / SQS event source が動き続ける
+  事故を防ぐためです
+
+### 移行手順 (0.28.x → this version)
+1. `pocket.toml` の `[awscontainer]` 系セクションを `[container.<name>]` へ
+   リネームします (stage override は `[<stage>.container.<name>]`)。
+   cloudfront routes / scheduler の `handler` をドット記法へ変更します
+2. `pocket deploy --stage <stage>` (Django なら `pocket django deploy`) を
+   実行します。新名称の container stack が作成され、CloudFront が新 origin へ
+   切り替わった後、旧 stack / 旧 ECR repo の削除確認が表示されます
+3. 注意点:
+    - SQS 付き handler は queue が作り直されるため、**queue が空の
+      タイミング**で deploy してください (in-flight / DLQ のメッセージは
+      引き継がれません)
+    - 運用スクリプトや docs が旧 Lambda 関数名 / log group 名を参照している
+      場合は追随が必要です
+    - `ecr_name` 明示指定 (build once の stage 間共有) は名前が変わらない
+      ため再ビルド不要です
+
 ## [0.28.2](https://github.com/worgue/magic-pocket/releases/tag/0.28.2) - 2026-08-17
 
 ### Fixed

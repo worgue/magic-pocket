@@ -2,12 +2,14 @@ use std::collections::HashMap;
 
 use tracing::{info, warn};
 
-use crate::config::PocketConfig;
+use crate::config::{HandlerConfig, PocketConfig};
 use crate::error::{PocketError, Result};
 
 /// AWS リソース情報を取得して環境変数にセットする
 ///
-/// Python の runtime.py:set_envs_from_aws_resources() に相当
+/// Python の runtime.py:set_envs_from_aws_resources() に相当。
+/// 自 container の handler は非修飾名 (POCKET_<HANDLER>_HOST 等) と修飾名の両方、
+/// 他 container は POCKET_<CONTAINER>_<HANDLER>_* の修飾名のみ注入する。
 pub async fn set_envs_from_resources(config: &PocketConfig) -> Result<()> {
     // SAFETY: Lambda はシングルスレッドで起動時に1回のみ呼ばれる
     unsafe {
@@ -15,46 +17,60 @@ pub async fn set_envs_from_resources(config: &PocketConfig) -> Result<()> {
         std::env::set_var("POCKET_REGION", &config.region);
     }
 
-    if config.handlers.is_empty() {
-        unsafe {
-            std::env::set_var("POCKET_HOSTS", "");
-        }
-    } else {
-        let hosts_map = get_hosts(config).await?;
-        let mut hosts = Vec::new();
+    let mut all_hosts = Vec::new();
+    let mut container_names: Vec<&String> = config.containers.keys().collect();
+    container_names.sort();
+    for c_name in container_names {
+        let handlers = &config.containers[c_name];
+        let is_own = *c_name == config.container_name;
+        let hosts_map = get_hosts(config, c_name, handlers).await?;
 
         for (lambda_key, host) in &hosts_map {
             if let Some(host) = host {
-                hosts.push(host.clone());
-                let upper_key = lambda_key.to_uppercase();
+                all_hosts.push(host.clone());
+                let qualified = format!("{}_{}", c_name.to_uppercase(), lambda_key.to_uppercase());
                 unsafe {
-                    std::env::set_var(format!("POCKET_{}_HOST", upper_key), host);
+                    std::env::set_var(format!("POCKET_{}_HOST", qualified), host);
                     std::env::set_var(
-                        format!("POCKET_{}_ENDPOINT", upper_key),
+                        format!("POCKET_{}_ENDPOINT", qualified),
                         format!("https://{}", host),
                     );
+                    if is_own {
+                        let upper_key = lambda_key.to_uppercase();
+                        std::env::set_var(format!("POCKET_{}_HOST", upper_key), host);
+                        std::env::set_var(
+                            format!("POCKET_{}_ENDPOINT", upper_key),
+                            format!("https://{}", host),
+                        );
+                    }
                 }
             }
         }
 
-        unsafe {
-            // カンマ区切り (Python 版 runtime.py と同じ形式)
-            std::env::set_var("POCKET_HOSTS", hosts.join(","));
-        }
-
-        let queueurls_map = get_queueurls(config).await?;
+        let queueurls_map = get_queueurls(config, handlers).await?;
         for (lambda_key, queueurl) in &queueurls_map {
             if let Some(url) = queueurl {
-                let upper_key = lambda_key.to_uppercase();
+                let qualified = format!("{}_{}", c_name.to_uppercase(), lambda_key.to_uppercase());
                 unsafe {
-                    std::env::set_var(format!("POCKET_{}_QUEUEURL", upper_key), url);
+                    std::env::set_var(format!("POCKET_{}_QUEUEURL", qualified), url);
+                    if is_own {
+                        std::env::set_var(
+                            format!("POCKET_{}_QUEUEURL", lambda_key.to_uppercase()),
+                            url,
+                        );
+                    }
                 }
             }
         }
     }
 
+    unsafe {
+        // カンマ区切り (Python 版 runtime.py と同じ形式)
+        std::env::set_var("POCKET_HOSTS", all_hosts.join(","));
+    }
+
     // handler の有無に関わらず実行する (Python の set_envs_from_aws_resources は
-    // awscontainer が無くても cloudfront domain を注入する)
+    // container が無くても cloudfront domain を注入する)
     set_cloudfront_domains(config).await;
 
     Ok(())
@@ -94,15 +110,18 @@ async fn set_cloudfront_domains(config: &PocketConfig) {
     }
 }
 
-/// CFn stack output と handler config から全 handler の host を取得する
+/// CFn stack output と handler config から container 1 つ分の handler host を取得する
 ///
 /// Python の runtime.py:_get_hosts() + _get_host() に相当
-async fn get_hosts(config: &PocketConfig) -> Result<HashMap<String, Option<String>>> {
+async fn get_hosts(
+    config: &PocketConfig,
+    container_name: &str,
+    handlers: &HashMap<String, HandlerConfig>,
+) -> Result<HashMap<String, Option<String>>> {
     let mut result = HashMap::new();
 
     // apigateway を持つ handler を収集
-    let handlers_with_apigw: Vec<_> = config
-        .handlers
+    let handlers_with_apigw: Vec<_> = handlers
         .iter()
         .filter(|(_, h)| h.apigateway.is_some())
         .collect();
@@ -125,7 +144,7 @@ async fn get_hosts(config: &PocketConfig) -> Result<HashMap<String, Option<Strin
     }
 
     if need_cfn {
-        let stack_name = format!("{}-container", config.slug);
+        let stack_name = format!("{}-container-{}", config.slug, container_name);
         let outputs = get_cfn_outputs(&config.region, &stack_name).await;
 
         for (key, handler) in &handlers_with_apigw {
@@ -154,14 +173,13 @@ async fn get_hosts(config: &PocketConfig) -> Result<HashMap<String, Option<Strin
 /// SQS get_queue_url で queue URL を取得する
 ///
 /// Python の runtime.py:_get_queueurls() に相当
-async fn get_queueurls(config: &PocketConfig) -> Result<HashMap<String, Option<String>>> {
+async fn get_queueurls(
+    config: &PocketConfig,
+    handlers: &HashMap<String, HandlerConfig>,
+) -> Result<HashMap<String, Option<String>>> {
     let mut result = HashMap::new();
 
-    let handlers_with_sqs: Vec<_> = config
-        .handlers
-        .iter()
-        .filter(|(_, h)| h.sqs.is_some())
-        .collect();
+    let handlers_with_sqs: Vec<_> = handlers.iter().filter(|(_, h)| h.sqs.is_some()).collect();
 
     if handlers_with_sqs.is_empty() {
         return Ok(result);
@@ -186,10 +204,10 @@ async fn get_queueurls(config: &PocketConfig) -> Result<HashMap<String, Option<S
                 }
                 // QueueDoesNotExist のみ欠落として許容し、AccessDenied 等の
                 // 権限ミスは即顕在化させる (Python runtime と同挙動)
-                Err(e) if e
-                    .as_service_error()
-                    .map(|se| se.is_queue_does_not_exist())
-                    .unwrap_or(false) =>
+                Err(e)
+                    if e.as_service_error()
+                        .map(|se| se.is_queue_does_not_exist())
+                        .unwrap_or(false) =>
                 {
                     warn!("Queue does not exist: {}", sqs.name);
                     result.insert(key.to_string(), None);
@@ -209,10 +227,7 @@ async fn get_queueurls(config: &PocketConfig) -> Result<HashMap<String, Option<S
 }
 
 /// CFn stack の Outputs を HashMap<OutputKey, OutputValue> として取得する
-async fn get_cfn_outputs(
-    region: &str,
-    stack_name: &str,
-) -> Result<HashMap<String, String>> {
+async fn get_cfn_outputs(region: &str, stack_name: &str) -> Result<HashMap<String, String>> {
     let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
         .region(aws_config::Region::new(region.to_string()))
         .load()

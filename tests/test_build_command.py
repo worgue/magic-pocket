@@ -9,7 +9,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 from pocket.context import Context, get_commit_hash
 
@@ -88,21 +88,21 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 """
     )
     use_toml(str(toml_path))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    ac = AwsContainer(context.awscontainer)
+    assert context.container["main"]
+    ac = Container(context.container["main"])
 
     calls = {}
     monkeypatch.setattr(
-        "pocket_cli.resources.awscontainer.generate_runtime_config",
+        "pocket_cli.resources.container.generate_runtime_config",
         lambda path: calls.__setitem__("runtime_config", path),
     )
     monkeypatch.setattr(

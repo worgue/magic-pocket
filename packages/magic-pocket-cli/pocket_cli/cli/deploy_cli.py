@@ -1,6 +1,7 @@
 import inspect
 import webbrowser
 
+import boto3
 import click
 
 from pocket.context import Context, deploy_hash_report
@@ -9,12 +10,12 @@ from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.state import StateStore, create_state_store
-from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
+from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
@@ -25,10 +26,12 @@ from pocket_cli.resources.vpc import Vpc
 
 
 def _append_infra_resources(resources, context: Context, state_bucket: str):
-    """VPC / RDS / CloudFrontKeys / AwsContainer をまとめて追加"""
-    if context.awscontainer and context.awscontainer.vpc:
-        if context.awscontainer.vpc.manage:
-            resources.append(Vpc(context.awscontainer.vpc))
+    """VPC / RDS / CloudFrontKeys / Container をまとめて追加"""
+    managed_vpc_names: set[str] = set()
+    for c_ctx in context.container.values():
+        if c_ctx.vpc and c_ctx.vpc.manage and c_ctx.vpc.name not in managed_vpc_names:
+            managed_vpc_names.add(c_ctx.vpc.name)
+            resources.append(Vpc(c_ctx.vpc))
     if context.dsql:
         resources.append(Dsql(context.dsql))
     if context.rds:
@@ -42,14 +45,14 @@ def _append_infra_resources(resources, context: Context, state_bucket: str):
     for _name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
             resources.append(CloudFrontKeys(cf_ctx))
-    if context.awscontainer:
+    for c_name in sorted(context.container):
         resources.append(
-            AwsContainer(
-                context.awscontainer,
+            Container(
+                context.container[c_name],
                 state_bucket=state_bucket,
                 rds_context=context.rds,
                 dsql_context=context.dsql,
-                scheduler_context=context.scheduler,
+                scheduler_context=context.scheduler.get(c_name),
             )
         )
 
@@ -174,25 +177,87 @@ def deploy_resources(context: Context, *, state_bucket: str = ""):
             hook()
 
 
-def build_image(context: Context, *, tag: str) -> str:
-    """awscontainer image を指定 tag で build & push する (deploy はしない)。
+def build_image(context: Context, *, tag: str) -> list[str]:
+    """全 container image を指定 tag で build & push する (deploy はしない)。
 
     build once 用。codebuild backend は source upload に state bucket を要するため、
-    deploy と同様に先に state bucket を確保してから build する。戻り値は ecr_name:tag。
+    deploy と同様に先に state bucket を確保してから build する。
+    戻り値は ecr_name:tag のリスト (container 名順)。
     """
-    if context.awscontainer is None:
-        raise click.ClickException("awscontainer がこの stage に設定されていません。")
+    if not context.container:
+        raise click.ClickException("container がこの stage に設定されていません。")
     state_store = _create_state_store(context)
     state_store.ensure_bucket()
-    ac = AwsContainer(context.awscontainer, state_bucket=state_store.bucket_name)
-    ac.build(tag)
-    return f"{context.awscontainer.ecr_name}:{tag}"
+    targets = []
+    for c_name in sorted(context.container):
+        c_ctx = context.container[c_name]
+        echo.log("Building container '%s'..." % c_name)
+        Container(c_ctx, state_bucket=state_store.bucket_name).build(tag)
+        targets.append(f"{c_ctx.ecr_name}:{tag}")
+    return targets
+
+
+def cleanup_legacy_container_resources(context: Context):
+    """0.29.0 以前の単数 [awscontainer] 由来の旧リソースを検出して削除する。
+
+    旧 container stack ({slug}-container) は scheduler / SQS event source を
+    持ったまま残ると旧コードの cron / queue 消費が動き続けるため、放置は
+    実害がある。新 stack + cloudfront 切替が完了した deploy の後 (= 旧 stack が
+    参照フリーになった後) に、確認プロンプト付きで削除する (-y で自動承認)。
+    旧 ECR repo ({prefix}lambda) も、どの container も ecr_name で参照して
+    いなければ削除する。冪等 (無ければ何もしない)。
+    """
+    if not context.container or not context.general:
+        return
+    slug = f"{context.stage}-{context.project_name}"
+    region = context.general.region
+    legacy_stack_name = f"{slug}-container"
+    cfn = boto3.client("cloudformation", region_name=region)
+    try:
+        cfn.describe_stacks(StackName=legacy_stack_name)
+        stack_exists = True
+    except cfn.exceptions.ClientError:
+        stack_exists = False
+    if stack_exists:
+        echo.warning(
+            "旧形式の container stack '%s' が残っています (0.29.0 の "
+            "multi-container 化で stack 名が {slug}-container-{name} に"
+            "変わりました)。旧 stack の scheduler / SQS が動き続けるため、"
+            "削除を推奨します。" % legacy_stack_name
+        )
+        if interaction.confirm(
+            "旧 stack '%s' を削除しますか？" % legacy_stack_name, default=True
+        ):
+            cfn.delete_stack(StackName=legacy_stack_name)
+            echo.log("旧 stack の削除を開始しました (完了待ちはしません)。")
+    resource_prefix = context.general.prefix_template.format(
+        stage=context.stage,
+        project=context.project_name,
+        namespace=context.general.namespace,
+    )
+    legacy_repo = f"{resource_prefix}lambda"
+    if any(c.ecr_name == legacy_repo for c in context.container.values()):
+        return
+    ecr = boto3.client("ecr", region_name=region)
+    try:
+        ecr.describe_repositories(repositoryNames=[legacy_repo])
+    except ecr.exceptions.RepositoryNotFoundException:
+        return
+    echo.warning(
+        "旧形式の ECR repository '%s' が残っています (新しい repo 名は "
+        "{prefix}{container}-lambda)。" % legacy_repo
+    )
+    if interaction.confirm(
+        "旧 ECR repository '%s' を削除しますか？" % legacy_repo, default=True
+    ):
+        ecr.delete_repository(repositoryName=legacy_repo, force=True)
+        echo.success("旧 ECR repository を削除しました。")
 
 
 def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     """deploy / promote 共通のパイプライン本体。
 
-    promote 時は context.awscontainer.promote_commit_hash が設定済みで、
+    promote 時は各 container の promote_commit_hash が設定済みで、
     deploy_init 内の image build が retag に置き換わる以外は deploy と同一。
     """
     # DEPLOY_HASH の解決結果を deploy 時に 1 回可視化する (env 伝播漏れで
@@ -206,6 +271,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     state_bucket = state_store.bucket_name
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
+    cleanup_legacy_container_resources(context)
     upload_managed_assets(context)
     if not skip_frontend:
         deploy_frontend(context)
@@ -254,9 +320,10 @@ def promote(stage: str, commit_hash, openpath, skip_frontend, yes):
     interaction.set_assume_yes(yes)
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
-    if context.awscontainer is None:
-        raise click.ClickException("awscontainer がこの stage に設定されていません。")
-    context.awscontainer.promote_commit_hash = commit_hash
+    if not context.container:
+        raise click.ClickException("container がこの stage に設定されていません。")
+    for c_ctx in context.container.values():
+        c_ctx.promote_commit_hash = commit_hash
     _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
 
 
@@ -276,10 +343,11 @@ def _get_deploy_url(context: Context) -> str | None:
             if domain:
                 return f"https://{domain}"
 
-    # フォールバック: API Gateway
-    if context.awscontainer:
-        ac = AwsContainer(context.awscontainer)
-        endpoint = ac.endpoints.get("wsgi")
-        if endpoint:
-            return endpoint
+    # フォールバック: API Gateway (container 名順で最初に見つかった endpoint)
+    for c_name in sorted(context.container):
+        endpoints = Container(context.container[c_name]).endpoints
+        if "wsgi" in endpoints:
+            return endpoints["wsgi"]
+        if endpoints:
+            return next(iter(endpoints.values()))
     return None

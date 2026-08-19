@@ -12,11 +12,11 @@
 [tidb]              # TiDB Serverless設定（全ステージ共通）
 [rds]               # RDS Aurora設定（全ステージ共通）
 [ses]               # SES設定（全ステージ共通）
-[awscontainer]      # Lambda設定（全ステージ共通）
+[container.main]      # Lambda設定（全ステージ共通）
 [cloudfront]        # CloudFront設定（全ステージ共通）
 [scheduler]         # EventBridge Scheduler 設定（全ステージ共通）
 
-[dev.awscontainer]  # dev ステージ固有のLambda設定
+[dev.container.main]  # dev ステージ固有のLambda設定
 [prod.s3]            # prod ステージ固有のS3設定
 ```
 
@@ -82,7 +82,7 @@ stages = ["dev", "prod"]
 
 ### general.django_fallback
 
-ローカル環境で使うDjango設定を記述します。設定項目は [`awscontainer.django`](#awscontainerdjango) と同じです。
+ローカル環境で使うDjango設定を記述します。設定項目は [`container.main.django`](#containerdjango) と同じです。
 
 ```toml
 [general.django_fallback.storages]
@@ -94,7 +94,7 @@ staticfiles = { store = "filesystem", static = true }
 
 ## vpc
 
-VPC設定をトップレベルで定義します。`[vpc]` を定義すると、`awscontainer` と `rds` は自動的に VPC 内に配置されます。
+VPC設定をトップレベルで定義します。`[vpc]` を定義すると、`container` と `rds` は自動的に VPC 内に配置されます。
 
 VPC名は `{ref}-{namespace}` 形式（例: `main-pocket`）になります。
 
@@ -151,9 +151,9 @@ manage = false       # zone_suffixes 不要（自動取得）
     - `manage=false` では `zone_suffixes` は不要です（VPC スタックから自動取得）。
     - consumer がいる VPC は削除できません。
 
-### use_vpc（awscontainer / rds）
+### use_vpc（container / rds）
 
-`awscontainer` や `rds` セクションで `use_vpc` を指定すると、VPC の利用を明示的に制御できます。
+`container` や `rds` セクションで `use_vpc` を指定すると、VPC の利用を明示的に制御できます。
 
 | 値 | 動作 |
 |---|------|
@@ -166,7 +166,7 @@ manage = false       # zone_suffixes 不要（自動取得）
 ref = "main"
 zone_suffixes = ["a"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 use_vpc = false  # VPC を使わない
 ```
@@ -341,7 +341,7 @@ project_name = "prod-myproject"
 
     `provisioning = "command"` にすると、**deploy は Neon に一切触れません**（API call ゼロ /
     credential 不要）。provisioning は `pocket resource neon store-url` コマンドに分離し、deploy は
-    事前に保存された `DATABASE_URL`（[stored mode](#awscontainersecretsuser) の user secret）
+    事前に保存された `DATABASE_URL`（[stored mode](#containersecretsuser) の user secret）
     を読むだけになります。
 
     ```toml
@@ -349,7 +349,7 @@ project_name = "prod-myproject"
     project_name = "dev-myproject"
     provisioning = "command"
 
-    [dev.awscontainer.secrets.user]
+    [dev.container.main.secrets.user]
     # store-url の保存先。pocket が正準名を導出する（stored mode）。
     DATABASE_URL = { type = "neon_database_url" }
     ```
@@ -368,7 +368,7 @@ project_name = "prod-myproject"
     実行しても同じ値を書きます。
 
 !!! info "computed mode（非推奨）"
-    従来の computed mode（`[awscontainer.secrets.managed]` に
+    従来の computed mode（`[container.main.secrets.managed]` に
     `DATABASE_URL = { type = "neon_database_url" }` を置き、deploy 時に URL を算出して
     pocket_store に保存）は **deprecated** です。deploy 時に warning を出します。
     `provisioning` + stored user secret（上記）へ移行してください。
@@ -417,10 +417,10 @@ Upstash Redis（サーバーレス Redis）の設定です。VPC 不要で Lambd
 ```toml
 [upstash]
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 REDIS_URL = { type = "upstash_redis_url" }
 
-[awscontainer.django.caches]
+[container.main.django.caches]
 default = { store = "redis" }
 ```
 
@@ -431,7 +431,7 @@ default = { store = "redis" }
 
 !!! info "provisioning = command で credential なしデプロイ"
     `[upstash] provisioning = "command"` にすると deploy は Upstash に触れません。`REDIS_URL` を
-    `[awscontainer.secrets.user]` に `{ type = "upstash_redis_url" }`（stored mode）で宣言し、
+    `[container.main.secrets.user]` に `{ type = "upstash_redis_url" }`（stored mode）で宣言し、
     deploy 前に `pocket resource upstash store-url --stage <stage>` で database を ensure して
     接続 URL を保存します。Upstash の URL は database の password 読み出しで**冪等**なため、
     `store-url` は何度実行しても同じ値を書きます。
@@ -503,7 +503,7 @@ DSQL に組み込みの自動バックアップ（PITR や日次スナップシ�
     # -> "/dev-myprj-pocket-user/dsql_endpoint"
     ```
 
-    `store` は対象プロジェクトの `[awscontainer.secrets].store`（未設定なら既定の
+    `store` は対象プロジェクトの `[container.main.secrets].store`（未設定なら既定の
     `"sm"`）に合わせてください。
 
 !!! warning "互換性に関する注意"
@@ -551,7 +551,7 @@ zone_suffixes = ["a", "c"]  # managed VPC では RDS に 2AZ 以上必須
 
 [rds]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 ```
 
@@ -579,7 +579,7 @@ dockerfile_path = "pocket.Dockerfile"
     35 日を超える長期保持（週次・月次）は PITR では実現できず、トップレベル [`[backup.rds]`](#backup)（AWS Backup の backup plan）を宣言して担わせます。PITR のローリングウィンドウと週次・月次スナップショットは独立した仕組みで、「PITR 期間が切れたら自動でスナップショットに移る」わけではなく並走します。PITR 自体は `[backup.rds]` の宣言と無関係に常に有効です（このため `[backup.rds]` に daily 階層はありません）。
 
 !!! info "DATABASE_URL の設定"
-    `[awscontainer.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
+    `[container.main.secrets.managed]` に `DATABASE_URL = { type = "rds_database_url" }` または `{ type = "auto_database_url" }` を定義してください。
     Lambda の cold start 時に `POCKET_RDS_SECRET_ARN` から DATABASE_URL が動的に構築されます。
 
 !!! info "master password 自動ローテーションへの追従"
@@ -590,7 +590,7 @@ dockerfile_path = "pocket.Dockerfile"
 !!! warning "制約事項"
     - managed VPC（`manage=true`）では `zone_suffixes` が 2 つ以上必要です（DB Subnet Group に最低 2AZ 必要）。
     - 外部 VPC（`manage=false`）ではサブネット数は自動検出されます。
-    - `awscontainer` も同じ VPC に配置されている必要があります。
+    - `container` も同じ VPC に配置されている必要があります。
     - CloudFormation ではなく boto3 で直接管理されます（データ保持リソースのため）。
 
 ??? example "カスタムキャパシティの例"
@@ -691,7 +691,7 @@ security_group_id = "sg-0123456789abcdef0"
 | `security_group_id` | str | `managed=false` 時必須 | RDS のセキュリティグループ ID。Lambda SG → この SG への ingress が追加される |
 
 !!! info "DATABASE_URL の構築"
-    `managed = false` でも `managed = true` と同じく、Lambda 起動時に `POCKET_RDS_SECRET_ARN` から `DATABASE_URL` が動的に構築されます。`[awscontainer.secrets.managed]` に `DATABASE_URL` を定義する必要はありません（pocket が自動で注入します）。
+    `managed = false` でも `managed = true` と同じく、Lambda 起動時に `POCKET_RDS_SECRET_ARN` から `DATABASE_URL` が動的に構築されます。`[container.main.secrets.managed]` に `DATABASE_URL` を定義する必要はありません（pocket が自動で注入します）。
 
 !!! warning "制約"
     - `managed = false` では `min_capacity`, `max_capacity`, `snapshot_identifier` は使用できません
@@ -805,35 +805,85 @@ from_email = "noreply@example.com"
 
 ---
 
-## awscontainer
+## container
 
-AWS Lambda コンテナの設定です。
+AWS Lambda コンテナの設定です。`[container.<name>]` の dict 形式で、**1 プロジェクトに
+複数の container を宣言できます**（0.29.0 で旧 `[awscontainer]`（単数）から
+リネーム・一般化。移行手順は CHANGELOG 0.29.0 を参照）。
 
 ```toml
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 ```
+
+`<name>` は英小文字始まりの英小文字 + 数字（最大 32 文字、hyphen 不可）です。
+Lambda 関数名 (`{prefix}{name}-{handler}`) や ECR リポジトリ名
+(`{prefix}{name}-lambda`)、container stack 名 (`{slug}-container-{name}`) の
+slot として使われます。
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `dockerfile_path` | str | **必須** | Dockerfileのパス |
 | `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム（`"linux/amd64"` / `"linux/arm64"`）。Lambda の `Architectures` もこの値から導出される |
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
-| `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpcawscontainer--rds) 参照） |
-| `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-lambda` |
+| `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpccontainer--rds) 参照） |
+| `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-{name}-lambda` |
 | `build` | str \| dict | `"codebuild"` | コンテナイメージのビルドバックエンド（下記参照） |
 | `permissions_boundary` | str \| None | None | Lambda 実行ロール / CodeBuild ロールに適用する IAM Permissions Boundary の ARN（[IAM 権限](../permissions/aws.md) 参照） |
+
+### 複数 container（strangler 移行 / 異 runtime 並行稼働）
+
+同一 CloudFront distribution の path 単位で別 runtime の Lambda origin を足す
+（例: Django を残したまま `/v2/*` だけ Rust 実装に切り替える）には、container を
+複数宣言し、cloudfront routes の `handler` を `"<container>.<handler>"` の
+ドット記法で参照します。
+
+```toml
+[container.mydjango]
+dockerfile_path = "Dockerfile"
+[container.mydjango.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[container.v2]
+dockerfile_path = "v2/Dockerfile"
+[container.v2.handlers.wsgi]
+command = "admin-v2"          # Rust バイナリ名
+apigateway = {}
+
+[cloudfront.web]
+routes = [
+    { path_pattern = "/v2/*", type = "lambda", handler = "v2.wsgi" },
+    { type = "lambda", handler = "mydjango.wsgi", is_default = true },
+]
+```
+
+- handler 参照（cloudfront routes / scheduler）は container が 1 つでも常に
+  ドット記法です
+- 各 Lambda には `POCKET_CONTAINER=<name>` が注入され、runtime は自分の
+  `[container.<name>]` を自動選択します
+- CLI の container 単位コマンド（`pocket resource container ...` /
+  `pocket resource image ...`）は `--container <name>` で対象を指定します
+  （container が 1 つだけなら省略可）
+- 自 container の handler は従来どおり `POCKET_<HANDLER>_HOST` 等で参照でき、
+  他 container の handler は `POCKET_<CONTAINER>_<HANDLER>_HOST` /
+  `_ENDPOINT` / `_QUEUEURL` の修飾名で参照します
+- secrets の**宣言**は per-container ですが、**物理 store は project 共有**です
+  （pocket_key に container 名は入りません）。`store` / `pocket_key_format` は
+  全 container で一致が必要で、同名 key を複数 container で宣言する場合は
+  spec が一致していれば値を共有します（strangler 移行で Django の
+  `SECRET_KEY` を新旧 container が共有できます）
 
 ### build（ビルドバックエンド）
 
 コンテナイメージのビルド方法を指定します。文字列で backend のみ指定するショートハンドと、テーブルでの詳細指定の両方が使えます。
 
 ```toml
-[awscontainer]
+[container.main]
 build = "docker"   # ショートハンド
 
 # または詳細指定
-[awscontainer.build]
+[container.main.build]
 backend = "codebuild"
 compute_type = "BUILD_GENERAL1_MEDIUM"
 ```
@@ -861,7 +911,7 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
 
     ```toml
     # プロジェクトルートの pocket.toml
-    [awscontainer]
+    [container.main]
     dockerfile_path = "backend/pocket.Dockerfile"
     ```
 
@@ -921,7 +971,7 @@ Lambda 上では `pocket.runtime.toml` が `pocket.toml` より優先して読�
 
     | パス | 内容 |
     |------|------|
-    | `pocket.runtime.toml` | `pocket.toml` の runtime 用 sanitized 版。`awscontainer.django.project_dir` が設定されていれば `{project_dir}/pocket.runtime.toml` に出力 |
+    | `pocket.runtime.toml` | `pocket.toml` の runtime 用 sanitized 版。`container.main.django.project_dir` が設定されていれば `{project_dir}/pocket.runtime.toml` に出力 |
     | `pocket_cache/` | `pocket django deploystatic` の中間ビルド成果物 (`static_build/<stage>/`)。S3 アップロード後は不要 |
 
     `.gitignore` の例:
@@ -942,15 +992,15 @@ Lambda 上では `pocket.runtime.toml` が `pocket.toml` より優先して読�
     `zone_suffixes` で定義したゾーンごとに1つのNAT Gateway（Elastic IP）が作成されるため、Lambdaの送信元IPはゾーンごとに固定されます。
     例えば `zone_suffixes = ["a"]` なら固定IP 1つ、`zone_suffixes = ["a", "c"]` なら固定IP 2つです。
 
-### awscontainer.handlers
+### container.handlers
 
 Lambda関数の設定を記述します。キー名がハンドラー名になります。
 
 ```toml
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 ```
@@ -961,15 +1011,15 @@ timeout = 600
 | `timeout` | int | `30` | タイムアウト（秒） |
 | `memory_size` | int | `512` | メモリサイズ（MB） |
 | `reserved_concurrency` | int \| None | None | 予約済み同時実行数 |
-| `envs` | dict[str, str] | `{}` | handler 単位の環境変数。[awscontainer].envs とマージされ handler 側が優先 |
+| `envs` | dict[str, str] | `{}` | handler 単位の環境変数。[container.main].envs とマージされ handler 側が優先 |
 
 `envs` を使うと、同一イメージ・同一バイナリを環境変数でモード切替して複数の Lambda に並べられます（Rust バイナリなど、Django の management ハンドラーのようなモジュールパス切替が使えない場合に有用です）:
 
 ```toml
-[awscontainer.handlers.web]
+[container.main.handlers.web]
 command = "myapp-lambda"
 
-[awscontainer.handlers.admin]
+[container.main.handlers.admin]
 command = "myapp-lambda"
 timeout = 600
 envs = { MYAPP_MODE = "admin" }
@@ -994,11 +1044,11 @@ API Gatewayの設定です。
 
 ```toml
 # API Gatewayを有効にする（URLは自動生成）
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
 # 独自ドメインを利用する場合
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = { domain = "example.com" }
 ```
 
@@ -1024,7 +1074,7 @@ apigateway = { domain = "example.com" }
 SQSキューの設定です。マネジメントコマンドの非同期実行に使えます。
 
 ```toml
-[awscontainer.handlers.sqsmanagement]
+[container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 sqs = {}
@@ -1039,12 +1089,12 @@ sqs = {}
 | `dead_letter_message_retention_period` | int | `1209600` | DLQメッセージ保持期間（秒） |
 | `report_batch_item_failures` | bool | `true` | バッチアイテム失敗をレポート |
 
-### awscontainer.secrets
+### container.secrets
 
 シークレット管理の設定です。保存先として Secrets Manager (`sm`) と SSM Parameter Store (`ssm`) を選択できます。
 
 ```toml
-[awscontainer.secrets]
+[container.main.secrets]
 store = "sm"  # "sm" (Secrets Manager) or "ssm" (SSM Parameter Store)
 pocket_key_format = "{stage}-{project}-{namespace}"
 ```
@@ -1060,7 +1110,7 @@ pocket_key_format = "{stage}-{project}-{namespace}"
 magic-pocketが自動生成・管理するシークレットを定義します。
 
 ```toml
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "auto_database_url" }
@@ -1072,7 +1122,7 @@ DATABASE_URL = { type = "auto_database_url" }
     ステージごとに DB を切り替える場合に便利です。オプションはありません。
 
     ```toml
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     DATABASE_URL = { type = "auto_database_url" }
 
     [dev.neon]
@@ -1109,7 +1159,7 @@ DATABASE_URL = { type = "auto_database_url" }
     | `pub_base64_environ_suffix` | str | 公開鍵の環境変数名suffix |
 
     ```toml
-    [awscontainer.secrets.managed.JWT_RSA]
+    [container.main.secrets.managed.JWT_RSA]
     type = "rsa_pem_base64"
     options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64" }
     ```
@@ -1127,7 +1177,7 @@ DATABASE_URL = { type = "auto_database_url" }
     | `id_environ_suffix` | str | CloudFront PublicKey ID の環境変数名suffix |
 
     ```toml
-    [awscontainer.secrets.managed.CF_MEDIA_KEY]
+    [container.main.secrets.managed.CF_MEDIA_KEY]
     type = "cloudfront_signing_key"
     options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64", id_environ_suffix = "_ID" }
     ```
@@ -1139,7 +1189,7 @@ DATABASE_URL = { type = "auto_database_url" }
     オプションはありません。
 
     ```toml
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     SPA_TOKEN_SECRET = { type = "spa_token_secret" }
     ```
     → 環境変数 `SPA_TOKEN_SECRET` が secrets 経由で登録されます。Django 側で `pocket.django.spa_auth` を使ってトークン生成・検証が可能です。
@@ -1150,12 +1200,12 @@ DATABASE_URL = { type = "auto_database_url" }
     `username` は必須、`password` は省略時に英数字ランダム（`length`、既定 16 文字）で生成されます。
 
     ```toml
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview" } }
     # password を固定したい場合 (値が pocket.toml = git に入る点に注意):
     # BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview", password = "shared-pass" } }
     ```
-    → 生成値は `pocket resource awscontainer secrets list --show-values` で確認できます。
+    → 生成値は `pocket resource container secrets list --show-values` で確認できます。
 
 #### secrets.user
 
@@ -1163,7 +1213,7 @@ DATABASE_URL = { type = "auto_database_url" }
 指定すると、GetSecretValue / GetParameter 権限が自動付与されます。
 
 ```toml
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-secret" }
 ```
 
@@ -1180,7 +1230,7 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 SSM パスや SM シークレットを分けたい場合に便利です。
 
 ```toml
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 # prod stage の Lambda は /svc/prod-token を、dev stage は /svc/dev-token を読む
 SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
 ```
@@ -1209,7 +1259,7 @@ deploy を分離したい」「deploy を外部 API に依存させたくない�
 project_name = "dev-myproject"
 provisioning = "command"   # deploy は Neon に触れない
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 # 事前に provision した接続 URL を参照するだけ（pocket は deploy 時に API を叩かない）
 DATABASE_URL = { type = "neon_database_url" }
 ```
@@ -1244,32 +1294,32 @@ secret の正準名へ保存）。`[<db>] provisioning = "command"` と組み合
 追加のシークレットARN（正規表現可）に対してGetSecretValue / GetParameter 権限を付与します。
 
 ```toml
-[awscontainer.secrets]
+[container.main.secrets]
 extra_resources = ["arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:my-prefix-*"]
 ```
 
-#### secrets の即時反映 (`pocket resource awscontainer reload-env`)
+#### secrets の即時反映 (`pocket resource container reload-env`)
 
 SSM / Secrets Manager 側でシークレット値を更新しても、**warm container は
 旧値を抱えたまま再利用される**ため、新値の反映は次の cold start を待つ
 形になります (典型的には 5〜15 分のラグ)。feature flag の即時切替、secret
 rotation 後の即時反映、hotfix で env 1 つだけ変えたい等のユースケースで
-このラグが許容できない場合は、`pocket resource awscontainer reload-env` を使います。
+このラグが許容できない場合は、`pocket resource container reload-env` を使います。
 
 ```bash
 # 全 handler の env を SSM/SM の最新値で再構築 + 即時反映
-pocket resource awscontainer reload-env --stage=prod
+pocket resource container reload-env --stage=prod
 
 # 特定 handler のみ
-pocket resource awscontainer reload-env --stage=prod --handler=wsgi
+pocket resource container reload-env --stage=prod --handler=wsgi
 
 # 現状確認 (Lambda 側の env と SSM/SM の宣言値が drift してないか)
-pocket resource awscontainer status-env --stage=prod
+pocket resource container status-env --stage=prod
 ```
 
 仕組み:
 
-1. pocket.toml の `[awscontainer.secrets.managed/user]` から「現在の宣言上の
+1. pocket.toml の `[container.main.secrets.managed/user]` から「現在の宣言上の
    secret キー一式」を構築
 2. SSM / Secrets Manager から最新値を boto3 で取得
 3. Lambda の現在 `Environment.Variables` に secrets を merge して
@@ -1285,25 +1335,25 @@ template が SSM の最新値を読み直して再注入するため)。
 `status-env` は drift 検出専用 (副作用なし)。Lambda 側の env と SSM/SM
 側の宣言値を比較し、差分のあるキーだけ表示します。
 
-!!! note "secrets 以外の env (POCKET_STAGE / awscontainer.envs / RDS pointers 等)"
+!!! note "secrets 以外の env (POCKET_STAGE / container.envs / RDS pointers 等)"
     `reload-env` は **secrets のキーだけ更新** し、その他の env は Lambda の
     現状値を保持します。POCKET_STAGE 等の静的 env を変更したい場合は通常の
     `pocket deploy` を使ってください。
 
-### awscontainer.iam
+### container.iam
 
 Lambda execution role に追加で IAM 権限を注入します。`use_s3` / `use_route53` / `secrets.allowed_*_resources` 等の built-in な仕組みでカバーできない権限を、ユーザーが宣言的に与えるための逃げ道です。
 
 ```toml
-[awscontainer.iam]
+[container.main.iam]
 managed_policy_arns = [
     "arn:aws:iam::aws:policy/AdministratorAccess",
 ]
 
-[awscontainer.iam.inline_policies.cross-account-assume]
+[container.main.iam.inline_policies.cross-account-assume]
 Version = "2012-10-17"
 
-[[awscontainer.iam.inline_policies.cross-account-assume.Statement]]
+[[container.main.iam.inline_policies.cross-account-assume.Statement]]
 Effect = "Allow"
 Action = "sts:AssumeRole"
 Resource = "arn:aws:iam::*:role/provisioner-role"
@@ -1314,13 +1364,13 @@ Resource = "arn:aws:iam::*:role/provisioner-role"
 | `managed_policy_arns` | list[str] | `[]` | LambdaRole の ManagedPolicyArns に追加する AWS managed policy ARN の list |
 | `inline_policies` | dict[str, dict] | `{}` | LambdaRole の Policies に追加する inline policy。key は PolicyName の suffix (`resource_prefix` が前置される)、value は PolicyDocument の dict |
 
-inline_policies の value は標準的な IAM PolicyDocument の形式 (`Version` / `Statement` を含む dict) です。TOML の制約から `Statement` を複数行で書く場合は `[[awscontainer.iam.inline_policies.<name>.Statement]]` 形式の table array を使います。
+inline_policies の value は標準的な IAM PolicyDocument の形式 (`Version` / `Statement` を含む dict) です。TOML の制約から `Statement` を複数行で書く場合は `[[container.main.iam.inline_policies.<name>.Statement]]` 形式の table array を使います。
 
 !!! warning "宣言的な仕組みでカバーできない場合の最終手段"
-    まずは `use_s3` / `use_route53` / `use_ses` / `use_sqs` 等の service flag や `[awscontainer.secrets]` の `allowed_sm_resources` / `allowed_ssm_resources` で対応できないかを検討してください。
-    `awscontainer.iam` は admin tool 等で広い権限が必要なケース、もしくは magic-pocket が built-in でサポートしていない AWS サービスへの権限が必要な場合の逃げ道です。
+    まずは `use_s3` / `use_route53` / `use_ses` / `use_sqs` 等の service flag や `[container.main.secrets]` の `allowed_sm_resources` / `allowed_ssm_resources` で対応できないかを検討してください。
+    `container.<name>.iam` は admin tool 等で広い権限が必要なケース、もしくは magic-pocket が built-in でサポートしていない AWS サービスへの権限が必要な場合の逃げ道です。
 
-### awscontainer.django
+### container.django
 
 Lambda環境で利用するDjango設定を記述します。
 
@@ -1329,7 +1379,7 @@ Lambda環境で利用するDjango設定を記述します。
 Djangoの `STORAGES` に設定する内容です。
 
 ```toml
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
@@ -1365,7 +1415,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     `location` は `origin_path` からの相対パスになります。
 
     ```toml
-    [awscontainer.django.storages]
+    [container.main.django.storages]
     default = { store = "s3", location = "", distribution = "media" }
     staticfiles = { store = "s3", location = "static", static = true, manifest = true, distribution = "main" }
     ```
@@ -1383,7 +1433,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     使います。
 
     ```toml
-    [awscontainer.django.storages]
+    [container.main.django.storages]
     staticfiles = { store = "s3", location = "static", static = true, publish = "command" }
     ```
 
@@ -1403,7 +1453,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     無視できます）。非 link 時は従来どおりクリアしません。
 
     ```toml
-    [awscontainer.django.storages]
+    [container.main.django.storages]
     staticfiles = { store = "s3", location = "static", static = true, link = true }
     ```
 
@@ -1412,7 +1462,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 Djangoの `CACHES` に設定する内容です。
 
 ```toml
-[awscontainer.django.caches]
+[container.main.django.caches]
 default = { store = "locmem" }
 ```
 
@@ -1429,11 +1479,11 @@ default = { store = "locmem" }
 環境毎にDjangoの任意のsettingsを設定できます。
 
 ```toml
-[dev.awscontainer.django.settings]
+[dev.container.main.django.settings]
 DEFAULT_FROM_EMAIL = '"Dev" <test@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://dev.example.com"]
 
-[prod.awscontainer.django.settings]
+[prod.container.main.django.settings]
 DEFAULT_FROM_EMAIL = '"Production" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```
@@ -1487,7 +1537,7 @@ routes = [
 一般公開前の sandbox / stg サイト全体を Basic 認証で隠せます。distribution 単位の設定で、S3 / SPA / lambda を含む**全 behavior** に適用されます。
 
 ```toml
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 BASIC_AUTH = { type = "basic_auth_credential", options = { username = "preview" } }
 
 [sandbox.cloudfront.web]
@@ -1506,8 +1556,8 @@ basic_auth = "BASIC_AUTH"   # managed secret のキー名を参照 (token_secret
     また cross-origin の API クライアントは preflight で弾かれます。
     「開発中のサイトを隠す」用途に限定してください。
 
-!!! note "awscontainer.secrets が必要"
-    credential の置き場所として managed secrets を使うため、`[awscontainer.secrets]`
+!!! note "container.main.secrets が必要"
+    credential の置き場所として managed secrets を使うため、`[container.main.secrets]`
     の宣言が必要です（静的サイトのみの構成でも同様）。
 
 ### managed_assets
@@ -1685,7 +1735,7 @@ header = "SMOKE_ALLOW_SECRET"
 - `header` の secret は **toml に値を書かず**、pocket が自動生成して
   SSM に保存します (`enable_origin_verify` の `POCKET_ORIGIN_VERIFY_SECRET` と
   同じ managed secret 経路)。ヘッダ名は `x-pocket-waf-allow` 固定です
-- `header` を使う場合は `[awscontainer]` が必要です (secret の保存先のため)
+- `header` を使う場合は `[container.main]` が必要です (secret の保存先のため)
 - allow_rules は **WAF を弱める宣言**なので、deploy のたびに一覧が表示されます。
   `pocket settings --stage=<stage>` の出力でも確認できます
 
@@ -1727,7 +1777,7 @@ CloudFront 配下の origin (lambda / API Gateway、将来は Fargate/ALB) で�
 ```toml
 [cloudfront.web]
 routes = [
-    { type = "lambda", handler = "wsgi", is_default = true },
+    { type = "lambda", handler = "main.wsgi", is_default = true },
 ]
 enable_origin_verify = true
 ```
@@ -1856,7 +1906,7 @@ routes = [
     - `origin_path` は `/` で始まり `/` で終わらない必要があります。バケット直下を配信する `origin_path = "/"` はサポートしません（後述の warning を参照）。
     - 旧 `type = "api"` は廃止されました。`type = "lambda"` を使ってください（起動時に分かりやすいエラーが出ます）。
     - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
-    - `handler` は `awscontainer.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
+    - `handler` は `container.main.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` と `upload_dir` は同時に設定できません（ビルド責任の宣言はどちらか一方）。
     - 旧 `build_dir` と旧文字列形式の `build = "..."` は廃止されました。`build = { dir = "...", cmd = "..." }` または `upload_dir = "..."` を使ってください（起動時に移行手順つきのエラーが出ます）。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
@@ -1940,14 +1990,14 @@ SPA を持たず、Django テンプレートで完結するプロジェクトを
 `is_default = true` の `type = "lambda"` ルートを 1 つだけ定義します。
 
 ```toml
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 apigateway = {}
 
 [prod.cloudfront.web]
 domain = "www.example.com"
 routes = [
-    { is_default = true, type = "lambda", handler = "wsgi" },
+    { is_default = true, type = "lambda", handler = "main.wsgi" },
 ]
 ```
 
@@ -1983,31 +2033,31 @@ routes = [
 
     [s3]
 
-    [awscontainer]
+    [container.main]
     dockerfile_path = "pocket.Dockerfile"
 
-    [awscontainer.handlers.wsgi]
+    [container.main.handlers.wsgi]
     command = "pocket.django.lambda_handlers.wsgi_handler"
     apigateway = {}
 
-    [awscontainer.handlers.management]
+    [container.main.handlers.management]
     command = "pocket.django.lambda_handlers.management_command_handler"
     timeout = 600
 
-    [awscontainer.django.storages]
+    [container.main.django.storages]
     default = { store = "filesystem" }
     staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
 
-    [awscontainer.secrets]
+    [container.main.secrets]
     store = "ssm"
 
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }
 
     [sandbox.cloudfront.web]
     domain = "sandbox.myproject.example.com"
     routes = [
-        { type = "lambda", handler = "wsgi", is_default = true },
+        { type = "lambda", handler = "main.wsgi", is_default = true },
         { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash" },
     ]
     ```
@@ -2064,7 +2114,7 @@ Browser → CloudFront (example.com)
 ```
 
 ```toml
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 apigateway = {}
 
@@ -2072,7 +2122,7 @@ apigateway = {}
 domain = "example.com"
 routes = [
     { is_default = true, is_spa = true },
-    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
 ]
 ```
 
@@ -2112,7 +2162,7 @@ SPA に HMAC-SHA256 トークンによるログイン必須機能を追加でき
 ```
 
 ```toml
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 SPA_TOKEN_SECRET = { type = "spa_token_secret" }
 
@@ -2120,7 +2170,7 @@ SPA_TOKEN_SECRET = { type = "spa_token_secret" }
 token_secret = "SPA_TOKEN_SECRET"
 routes = [
     { is_default = true, is_spa = true, require_token = true, origin_path = "/app" },
-    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
 ]
 ```
 
@@ -2144,13 +2194,13 @@ EventBridge Scheduler (`AWS::Scheduler::Schedule`) で Lambda handler を定期�
 ```toml
 [scheduler.schedules.rotate_logs]
 rate = "1 hour"
-handler = "worker"
+handler = "main.worker"
 input = { task = "rotate_logs" }
 
 [scheduler.schedules.daily_digest]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 18 * * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_daily_digest --verbose"
 ```
 
@@ -2163,7 +2213,7 @@ manage = "send_daily_digest --verbose"
 | `scheduler` | `"pocket.lambda_scheduler"` \| `"pocket.django.management_lambda_scheduler"` \| `"pocket.sqs_scheduler"` | `pocket.lambda_scheduler` | スケジューラ実装。default は汎用 Lambda |
 | `cron` | str \| None | None | EventBridge cron 式（`cron(...)` のラッパー部分は不要、中身だけ書く） |
 | `rate` | str \| None | None | EventBridge rate 式（`rate(...)` のラッパー部分は不要） |
-| `handler` | str | **必須** | `awscontainer.handlers.{key}` の key を指定 |
+| `handler` | str | **必須** | `container.main.handlers.{key}` の key を指定 |
 
 `cron` と `rate` は **どちらか一方を必ず指定**します（両方や両方無しはエラー）。
 
@@ -2174,7 +2224,7 @@ manage = "send_daily_digest --verbose"
 ```toml
 [scheduler.schedules.rotate_logs]
 rate = "1 hour"
-handler = "worker"
+handler = "main.worker"
 input = { task = "rotate_logs", target = "primary" }
 ```
 
@@ -2192,7 +2242,7 @@ Django management command を呼び出すショートカット。`manage` に sh
 [scheduler.schedules.daily_digest]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 18 * * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_daily_digest some_param --verbose --batch-size 100"
 ```
 
@@ -2209,7 +2259,7 @@ manage = "send_daily_digest some_param --verbose --batch-size 100"
 Lambda を直接 invoke せず、**handler の SQS queue へ `SendMessage`** します（EventBridge Scheduler の universal target。`message` が JSON 化されて MessageBody になります）。定期実行を queue に載せることで、リトライは SQS の visibility timeout / redrive に一元化され、**失敗系の監視は queue の DLQ 1 箇所だけ**になります。worker handler は SQS event だけを受ければよく、「EventBridge 直接 invoke と SQS event の両受け」を実装する必要がありません。
 
 ```toml
-[awscontainer.handlers.sqsmanagement]
+[container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 60
 sqs = {}
@@ -2217,7 +2267,7 @@ sqs = {}
 [scheduler.schedules.cleanup]
 scheduler = "pocket.sqs_scheduler"
 rate = "15 minutes"
-handler = "sqsmanagement"
+handler = "main.sqsmanagement"
 message = { command = "clearsessions", args = [], kwargs = {} }
 ```
 
@@ -2237,13 +2287,13 @@ dict 形式は **deep merge** が効くため、entry 単位で stage オーバ�
 # 全 stage 共通
 [scheduler.schedules.rotate_logs]
 rate = "1 hour"
-handler = "worker"
+handler = "main.worker"
 input = { task = "rotate_logs" }
 
 [scheduler.schedules.daily_digest]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 18 * * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_daily_digest"
 
 # sandbox では rotate_logs の頻度だけ落とす
@@ -2254,7 +2304,7 @@ rate = "1 day"
 [prod.scheduler.schedules.month_end_invoice]
 scheduler = "pocket.django.management_lambda_scheduler"
 cron = "0 0 L * ? *"
-handler = "management"
+handler = "main.management"
 manage = "send_monthly_invoice"
 ```
 

@@ -107,26 +107,26 @@ stages = ["dev", "prod"] # (2)!
 [neon] # (4)!
 project_name = "dev-your-project-name"
 
-[awscontainer] # (5)!
+[container.main] # (5)!
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi] # (6)!
+[container.main.handlers.wsgi] # (6)!
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management] # (7)!
+[container.main.handlers.management] # (7)!
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
-[dev.awscontainer.handlers.wsgi] # (8)!
+[dev.container.main.handlers.wsgi] # (8)!
 apigateway = {}
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secrets.managed] # (9)!
+[container.main.secrets.managed] # (9)!
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 
-[awscontainer.django.storages] # (10)!
+[container.main.django.storages] # (10)!
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
@@ -204,7 +204,7 @@ uv run pocket django manage createsuperuser --username=admin --email=admin@examp
 自動生成されたシークレット（superuserのパスワード等）は以下で確認できます。
 
 ```bash
-uv run pocket resource awscontainer secrets list --stage=dev --show-values
+uv run pocket resource container secrets list --stage=dev --show-values
 ```
 
 ### prod環境

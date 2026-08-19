@@ -67,7 +67,7 @@ _META_METHODS = {"get_paginator", "get_waiter", "can_paginate", "close"}
 # deploy ロールに不要な (service, method) の明示除外。
 # 追加する場合は「なぜ不要か (runtime 専用 / 解析の誤帰属)」を必ずコメントで書くこと。
 _EXCLUDED_CALLS: set[tuple[str, str]] = {
-    # 解析の誤帰属: awscontainer_cli.list_secrets (:62,:66) が同一関数内の
+    # 解析の誤帰属: container_cli.list_secrets が同一関数内の
     # 同名ローカル変数 `client` を分岐で sm / ssm 両方に束縛するため、
     # get_secret_value が ssm 側にも帰属する。実際は secretsmanager 側の
     # 呼び出しで secretsmanager:* によりカバー済み。

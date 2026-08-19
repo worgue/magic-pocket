@@ -1,4 +1,4 @@
-"""[awscontainer].ecr_name の上書きテスト。
+"""[container.main].ecr_name の上書きテスト。
 
 省略時は resource_prefix + "lambda" を導出し、指定時はその値で上書きされることを
 確認する。同一 AWS アカウント内で複数 stage が同じ ECR repo を共有し、build once +
@@ -20,11 +20,11 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 {awscontainer_body}
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 """
     )
@@ -36,20 +36,20 @@ def test_ecr_name_defaults_to_resource_prefix(use_toml, tmp_path):
     """ecr_name 未指定なら resource_prefix + "lambda" が導出される。"""
     use_toml(str(_write_toml(tmp_path, "")))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
+    assert context.container["main"]
     # prefix_template デフォルト "{stage}-{project}-{namespace}-" + "lambda"
-    assert context.awscontainer.ecr_name == "dev-testprj-pocket-lambda"
-    assert context.awscontainer.ecr_name_overridden is False
+    assert context.container["main"].ecr_name == "dev-testprj-pocket-main-lambda"
+    assert context.container["main"].ecr_name_overridden is False
 
 
 @mock_aws
 def test_ecr_name_override(use_toml, tmp_path):
-    """[awscontainer].ecr_name 指定時はその値で上書きされる。"""
+    """[container.main].ecr_name 指定時はその値で上書きされる。"""
     use_toml(str(_write_toml(tmp_path, 'ecr_name = "shared-repo"')))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    assert context.awscontainer.ecr_name == "shared-repo"
-    assert context.awscontainer.ecr_name_overridden is True
+    assert context.container["main"]
+    assert context.container["main"].ecr_name == "shared-repo"
+    assert context.container["main"].ecr_name_overridden is True
 
 
 def _setup_destroy(context, monkeypatch):
@@ -68,15 +68,15 @@ def _setup_destroy(context, monkeypatch):
 def test_destroy_deletes_default_ecr(use_toml, tmp_path, monkeypatch):
     """ecr_name 未指定 (導出名) なら destroy で ECR repo が削除される (従来挙動)。"""
     import boto3
-    from pocket_cli.cli.destroy_cli import _destroy_awscontainer
+    from pocket_cli.cli.destroy_cli import _destroy_containers
 
     use_toml(str(_write_toml(tmp_path, "")))
     context = Context.from_toml(stage="dev")
     client = boto3.client("ecr", region_name="ap-southeast-1")
-    client.create_repository(repositoryName="dev-testprj-pocket-lambda")
+    client.create_repository(repositoryName="dev-testprj-pocket-main-lambda")
     _setup_destroy(context, monkeypatch)
 
-    _destroy_awscontainer(context, with_secrets=False)
+    _destroy_containers(context, with_secrets=False)
     assert client.describe_repositories()["repositories"] == []
 
 
@@ -84,7 +84,7 @@ def test_destroy_deletes_default_ecr(use_toml, tmp_path, monkeypatch):
 def test_destroy_skips_overridden_ecr(use_toml, tmp_path, monkeypatch):
     """ecr_name 明示指定時は他 stage と共有の可能性があるため destroy で削除しない。"""
     import boto3
-    from pocket_cli.cli.destroy_cli import _destroy_awscontainer
+    from pocket_cli.cli.destroy_cli import _destroy_containers
 
     use_toml(str(_write_toml(tmp_path, 'ecr_name = "shared-repo"')))
     context = Context.from_toml(stage="dev")
@@ -92,7 +92,7 @@ def test_destroy_skips_overridden_ecr(use_toml, tmp_path, monkeypatch):
     client.create_repository(repositoryName="shared-repo")
     _setup_destroy(context, monkeypatch)
 
-    _destroy_awscontainer(context, with_secrets=False)
+    _destroy_containers(context, with_secrets=False)
     names = [
         r["repositoryName"] for r in client.describe_repositories()["repositories"]
     ]

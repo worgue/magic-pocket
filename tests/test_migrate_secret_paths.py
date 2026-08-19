@@ -100,7 +100,7 @@ def _patch_secret_paths_flow(monkeypatch, *, plan_status: str):
     """_run_secret_paths を AWS 無しで走らせるための最小 stub 群を仕込む。"""
     spec = SimpleNamespace(type="neon_database_url", store="ssm")
     sc = SimpleNamespace(user={"DATABASE_URL": spec})
-    context = SimpleNamespace(awscontainer=SimpleNamespace(secrets=sc))
+    context = SimpleNamespace(secrets=sc)
     monkeypatch.setattr(
         migrate_cli.Context, "from_toml", classmethod(lambda cls, *, stage: context)
     )

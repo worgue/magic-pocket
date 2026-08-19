@@ -11,7 +11,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 from pocket.context import Context, is_working_tree_dirty
 
@@ -95,10 +95,10 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 """
     )
@@ -114,13 +114,13 @@ def test_deploy_init_promotes_without_build(use_toml, tmp_path, monkeypatch):
     焼き込み済みのため)。
     """
     context = _make_context(use_toml, tmp_path)
-    assert context.awscontainer
-    context.awscontainer.promote_commit_hash = "abc123"
-    ac = AwsContainer(context.awscontainer)
+    assert context.container["main"]
+    context.container["main"].promote_commit_hash = "abc123"
+    ac = Container(context.container["main"])
 
     calls = {}
     monkeypatch.setattr(
-        "pocket_cli.resources.awscontainer.generate_runtime_config",
+        "pocket_cli.resources.container.generate_runtime_config",
         lambda path: calls.__setitem__("runtime_config", True),
     )
     monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))
@@ -138,12 +138,12 @@ def test_deploy_init_promotes_without_build(use_toml, tmp_path, monkeypatch):
 def test_deploy_init_default_builds(use_toml, tmp_path, monkeypatch):
     """promote_commit_hash 未設定 (通常 deploy) は従来どおり runtime config + sync。"""
     context = _make_context(use_toml, tmp_path)
-    assert context.awscontainer
-    ac = AwsContainer(context.awscontainer)
+    assert context.container["main"]
+    ac = Container(context.container["main"])
 
     calls = {}
     monkeypatch.setattr(
-        "pocket_cli.resources.awscontainer.generate_runtime_config",
+        "pocket_cli.resources.container.generate_runtime_config",
         lambda path: calls.__setitem__("runtime_config", True),
     )
     monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))

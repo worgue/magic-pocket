@@ -26,16 +26,16 @@ from pocket.django.utils import (
 
 def test_manage_cli(base_settings, aws_settings):
     s = base_settings
-    with pytest.raises(Exception, match="awscontainer is not configured .*"):
+    with pytest.raises(Exception, match="container is not configured .*"):
         _get_management_command_handler(Context.from_settings(s))
-    s.awscontainer = aws_settings
+    s.container["main"] = aws_settings
     handler = _get_management_command_handler(Context.from_settings(s))
     assert handler
-    m = s.awscontainer.handlers.pop("management")
+    m = s.container["main"].handlers.pop("management")
     with pytest.raises(Exception, match="Add management command handler for this .*"):
         _get_management_command_handler(Context.from_settings(s))
-    s.awscontainer.handlers["m1"] = m
-    s.awscontainer.handlers["m2"] = m
+    s.container["main"].handlers["m1"] = m
+    s.container["main"].handlers["m2"] = m
     with pytest.raises(Exception, match="Only one management command handler is .*"):
         settings.Settings.model_validate(s.model_dump())
 
@@ -43,8 +43,8 @@ def test_manage_cli(base_settings, aws_settings):
 def test_storages(use_toml):
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer and context.awscontainer.django
-    assert context.awscontainer.django.storages == {
+    assert context.container["main"] and context.container["main"].django
+    assert context.container["main"].django.storages == {
         "default": DjangoStorageContext(
             store="s3",
             location="media",
@@ -107,14 +107,14 @@ def test_cache(use_toml):
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
     assert (
-        context.awscontainer
-        and context.awscontainer.django
-        and context.awscontainer.django.caches["default"]
-        and context.awscontainer.vpc
-        and context.awscontainer.vpc.efs
+        context.container["main"]
+        and context.container["main"].django
+        and context.container["main"].django.caches["default"]
+        and context.container["main"].vpc
+        and context.container["main"].vpc.efs
     )
-    assert context.awscontainer.vpc.efs.local_mount_path == "/mnt/efs"
-    assert context.awscontainer.django.caches["default"].model_dump() == {
+    assert context.container["main"].vpc.efs.local_mount_path == "/mnt/efs"
+    assert context.container["main"].django.caches["default"].model_dump() == {
         "store": "efs",
         "location_subdir": "{stage}",
         "location": "/mnt/efs/dev",
@@ -136,8 +136,8 @@ def test_ses_context(use_toml):
         region="ap-northeast-1",
         configuration_set=None,
     )
-    assert context.awscontainer
-    assert context.awscontainer.use_ses is True
+    assert context.container["main"]
+    assert context.container["main"].use_ses is True
 
 
 def test_ses_context_custom_region(use_toml):
@@ -180,16 +180,16 @@ def test_ses_email_backend_not_configured(use_toml):
 def test_staticfiles_publish_default_is_deploy(use_toml):
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer and context.awscontainer.django
-    assert context.awscontainer.django.storages["staticfiles"].publish == "deploy"
+    assert context.container["main"] and context.container["main"].django
+    assert context.container["main"].django.storages["staticfiles"].publish == "deploy"
     assert _staticfiles_publish_mode(context) == "deploy"
 
 
 def test_staticfiles_publish_command(use_toml):
     use_toml("tests/data/toml/staticfiles_publish_command.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer and context.awscontainer.django
-    assert context.awscontainer.django.storages["staticfiles"].publish == "command"
+    assert context.container["main"] and context.container["main"].django
+    assert context.container["main"].django.storages["staticfiles"].publish == "command"
     assert _staticfiles_publish_mode(context) == "command"
 
 
@@ -218,8 +218,8 @@ def test_staticfiles_link_declared(use_toml):
     """staticfiles 宣言の link は context に伝播し、未宣言の既定は False"""
     use_toml("tests/data/toml/staticfiles_link.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer and context.awscontainer.django
-    assert context.awscontainer.django.storages["staticfiles"].link is True
+    assert context.container["main"] and context.container["main"].django
+    assert context.container["main"].django.storages["staticfiles"].link is True
     assert _staticfiles_link(context) is True
 
     use_toml("tests/data/toml/default.toml")
@@ -273,8 +273,8 @@ def test_ses_not_configured_use_ses_false(use_toml):
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
     assert context.ses is None
-    assert context.awscontainer
-    assert context.awscontainer.use_ses is False
+    assert context.container["main"]
+    assert context.container["main"].use_ses is False
 
 
 def test_tidb_ca_bundle_path_prefers_al2023(monkeypatch):

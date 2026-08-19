@@ -8,11 +8,11 @@ from pocket_cli.resources.aws.state import (
     context_resource_prefix,
     create_state_store,
 )
-from pocket_cli.resources.awscontainer import AwsContainer
 from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
@@ -24,50 +24,73 @@ from pocket_cli.resources.vpc import Vpc
 
 def _create_codebuild_builder(context: Context) -> CodeBuildBuilder | None:
     """CodeBuildBuilder インスタンスを作成（リソース確認用）"""
-    if not context.awscontainer or not context.general:
+    if not context.container or not context.general:
         return None
     resource_prefix = context_resource_prefix(context)
+    permissions_boundary = None
+    for c_name in sorted(context.container):
+        if context.container[c_name].permissions_boundary:
+            permissions_boundary = context.container[c_name].permissions_boundary
+            break
     return CodeBuildBuilder(
         region=context.general.region,
         resource_prefix=resource_prefix,
         state_bucket=f"{resource_prefix}state",
-        permissions_boundary=context.awscontainer.permissions_boundary,
+        permissions_boundary=permissions_boundary,
     )
+
+
+def _container_vpc_contexts(context: Context) -> list:
+    """container が参照する VPC context の一覧 (name で重複排除)。"""
+    result = []
+    seen: set[str] = set()
+    for c_name in sorted(context.container):
+        vpc_ctx = context.container[c_name].vpc
+        if vpc_ctx and vpc_ctx.name not in seen:
+            seen.add(vpc_ctx.name)
+            result.append(vpc_ctx)
+    return result
 
 
 def _collect_vpc_targets(context: Context) -> list[str]:
     """VPC 関連の削除対象を収集"""
-    if not context.awscontainer or not context.awscontainer.vpc:
-        return []
-    if not context.awscontainer.vpc.manage:
-        return ["VPC (外部 VPC consumer タグ削除)"]
-    vpc = Vpc(context.awscontainer.vpc)
-    vpc_parts = []
-    if vpc.stack.status != "NOEXIST":
-        vpc_parts.append("CFNスタック")
-        if vpc.stack.consumers:
-            vpc_parts.append("consumers: %s" % ", ".join(vpc.stack.consumers))
-    if vpc.efs and vpc.efs.exists():
-        vpc_parts.append("EFS")
-    if vpc_parts:
-        return ["VPC (%s)" % " + ".join(vpc_parts)]
-    return []
-
-
-def _collect_awscontainer_targets(context: Context, with_secrets: bool):
-    """AwsContainer 関連の削除対象を収集"""
     targets: list[str] = []
-    if not context.awscontainer:
+    for vpc_ctx in _container_vpc_contexts(context):
+        if not vpc_ctx.manage:
+            targets.append("VPC (外部 VPC consumer タグ削除)")
+            continue
+        vpc = Vpc(vpc_ctx)
+        vpc_parts = []
+        if vpc.stack.status != "NOEXIST":
+            vpc_parts.append("CFNスタック")
+            if vpc.stack.consumers:
+                vpc_parts.append("consumers: %s" % ", ".join(vpc.stack.consumers))
+        if vpc.efs and vpc.efs.exists():
+            vpc_parts.append("EFS")
+        if vpc_parts:
+            targets.append("VPC (%s)" % " + ".join(vpc_parts))
+    return targets
+
+
+def _collect_container_targets(context: Context, with_secrets: bool):
+    """Container 関連の削除対象を収集"""
+    targets: list[str] = []
+    if not context.container:
         return targets
 
-    ac = AwsContainer(context.awscontainer)
-    parts = ["CFNスタック"]
-    if ac.ecr.exists():
-        if context.awscontainer.ecr_name_overridden:
-            parts.append("ECR は ecr_name 明示指定のため削除対象外")
-        else:
-            parts.append("ECR")
-    if with_secrets and context.awscontainer.secrets:
+    for c_name in sorted(context.container):
+        c_ctx = context.container[c_name]
+        c = Container(c_ctx)
+        parts = ["CFNスタック"]
+        if c.ecr.exists():
+            if c_ctx.ecr_name_overridden:
+                parts.append("ECR は ecr_name 明示指定のため削除対象外")
+            else:
+                parts.append("ECR")
+        targets.append("Container '%s' (%s)" % (c_name, " + ".join(parts)))
+
+    parts = []
+    if with_secrets and context.secrets:
         parts.append("secrets")
 
     # CodeBuildリソースの存在チェック（設定に関わらず）
@@ -75,7 +98,8 @@ def _collect_awscontainer_targets(context: Context, with_secrets: bool):
     if cb and (cb.project_exists() or cb.role_exists()):
         parts.append("CodeBuild")
 
-    targets.append("AwsContainer (%s)" % " + ".join(parts))
+    if parts:
+        targets.append("Container 共有リソース (%s)" % " + ".join(parts))
 
     return targets
 
@@ -151,7 +175,7 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
         if cf_ctx.domain:
             targets.append("CloudFront ACM '%s' (us-east-1 証明書)" % name)
 
-    targets.extend(_collect_awscontainer_targets(context, with_secrets))
+    targets.extend(_collect_container_targets(context, with_secrets))
     targets.extend(_collect_database_targets(context))
     targets.extend(_collect_vpc_targets(context))
 
@@ -181,51 +205,54 @@ def _destroy_codebuild(context: Context) -> None:
 
 def _destroy_log_groups(context: Context):
     """Lambda が自動作成したロググループを削除"""
-    if not context.awscontainer:
+    if not context.container:
         return
-    logs_client = boto3.client("logs", region_name=context.awscontainer.region)
-    for handler_ctx in context.awscontainer.handlers.values():
-        log_group_name = handler_ctx.log_group_name
-        try:
-            logs_client.delete_log_group(logGroupName=log_group_name)
-            echo.log("Deleted log group: %s" % log_group_name)
-        except logs_client.exceptions.ResourceNotFoundException:
-            pass
+    for c_ctx in context.container.values():
+        logs_client = boto3.client("logs", region_name=c_ctx.region)
+        for handler_ctx in c_ctx.handlers.values():
+            log_group_name = handler_ctx.log_group_name
+            try:
+                logs_client.delete_log_group(logGroupName=log_group_name)
+                echo.log("Deleted log group: %s" % log_group_name)
+            except logs_client.exceptions.ResourceNotFoundException:
+                pass
 
 
-def _destroy_awscontainer(context: Context, with_secrets: bool):
-    """AwsContainer 関連リソースを削除"""
-    if not context.awscontainer:
+def _destroy_containers(context: Context, with_secrets: bool):
+    """Container 関連リソースを削除"""
+    if not context.container:
         return
 
-    ac = AwsContainer(context.awscontainer)
-    if ac.stack.status != "NOEXIST":
-        echo.log("Destroying AwsContainer stack...")
-        ac.stack.delete()
-        # Lambda が VPC 内にある場合、ENI 解放を含む削除完了を待たないと
-        # 後続の VPC 削除が subnet 使用中で DELETE_FAILED になる
-        ac.stack.wait_status("NOEXIST", timeout=1800, interval=10)
-        echo.success("AwsContainer stack was destroyed.")
+    for c_name in sorted(context.container):
+        c_ctx = context.container[c_name]
+        c = Container(c_ctx)
+        if c.stack.status != "NOEXIST":
+            echo.log("Destroying container '%s' stack..." % c_name)
+            c.stack.delete()
+            # Lambda が VPC 内にある場合、ENI 解放を含む削除完了を待たないと
+            # 後続の VPC 削除が subnet 使用中で DELETE_FAILED になる
+            c.stack.wait_status("NOEXIST", timeout=1800, interval=10)
+            echo.success("Container '%s' stack was destroyed." % c_name)
 
-    if ac.ecr.exists():
-        if context.awscontainer.ecr_name_overridden:
-            echo.warning(
-                "ECR repository '%s' は ecr_name で明示指定されているため削除"
-                "しません (他 stage と共有の可能性があります)。"
-                "不要な場合は手動で削除してください。" % context.awscontainer.ecr_name
-            )
-        else:
-            echo.log("Destroying ECR repository...")
-            ac.ecr.delete()
-            echo.success("ECR repository was deleted.")
+        if c.ecr.exists():
+            if c_ctx.ecr_name_overridden:
+                echo.warning(
+                    "ECR repository '%s' は ecr_name で明示指定されているため削除"
+                    "しません (他 stage と共有の可能性があります)。"
+                    "不要な場合は手動で削除してください。" % c_ctx.ecr_name
+                )
+            else:
+                echo.log("Destroying ECR repository...")
+                c.ecr.delete()
+                echo.success("ECR repository was deleted.")
 
     _destroy_codebuild(context)
 
     _destroy_log_groups(context)
 
-    if with_secrets and context.awscontainer.secrets:
+    if with_secrets and context.secrets:
         echo.log("Destroying pocket managed secrets...")
-        context.awscontainer.secrets.pocket_store.delete_secrets()
+        context.secrets.pocket_store.delete_secrets()
         echo.success("Pocket managed secrets were deleted.")
 
 
@@ -288,32 +315,30 @@ def _destroy_rds(context: Context):
 
 def _destroy_vpc(context: Context):
     """VPC 関連リソースを削除"""
-    if not context.awscontainer or not context.awscontainer.vpc:
-        return
-    vpc_ctx = context.awscontainer.vpc
-    if not vpc_ctx.manage:
-        # 外部 VPC: consumer タグのみ削除
-        from pocket_cli.resources.aws.cloudformation import VpcStack
+    for vpc_ctx in _container_vpc_contexts(context):
+        if not vpc_ctx.manage:
+            # 外部 VPC: consumer タグのみ削除
+            from pocket_cli.resources.aws.cloudformation import VpcStack
 
-        vpc_stack = VpcStack(vpc_ctx)
-        if vpc_stack.status != "NOEXIST":
-            slug = context.stage + "-" + context.project_name
-            vpc_stack.remove_consumer_tag(slug)
-            echo.log("外部 VPC の consumer タグを削除しました。")
-        return
-    # managed VPC: consumer チェック後に削除
-    vpc = Vpc(vpc_ctx)
-    if vpc.stack.consumers:
-        echo.danger("VPC に consumer がいるため削除できません:")
-        for c in vpc.stack.consumers:
-            echo.info("  - %s" % c)
-        return
-    has_stack = vpc.stack.status != "NOEXIST"
-    has_efs = vpc.efs and vpc.efs.exists()
-    if has_stack or has_efs:
-        echo.log("Destroying VPC...")
-        vpc.delete()
-        echo.success("VPC was destroyed.")
+            vpc_stack = VpcStack(vpc_ctx)
+            if vpc_stack.status != "NOEXIST":
+                slug = context.stage + "-" + context.project_name
+                vpc_stack.remove_consumer_tag(slug)
+                echo.log("外部 VPC の consumer タグを削除しました。")
+            continue
+        # managed VPC: consumer チェック後に削除
+        vpc = Vpc(vpc_ctx)
+        if vpc.stack.consumers:
+            echo.danger("VPC に consumer がいるため削除できません:")
+            for c in vpc.stack.consumers:
+                echo.info("  - %s" % c)
+            continue
+        has_stack = vpc.stack.status != "NOEXIST"
+        has_efs = vpc.efs and vpc.efs.exists()
+        if has_stack or has_efs:
+            echo.log("Destroying VPC...")
+            vpc.delete()
+            echo.success("VPC was destroyed.")
 
 
 def _destroy_tidb(context: Context):
@@ -402,8 +427,8 @@ def _destroy_resources(
     # 1. CloudFront + ACM
     _destroy_cloudfront_and_acm(context)
 
-    # 2. AwsContainer (CFNスタック + ECR + secrets)
-    _destroy_awscontainer(context, with_secrets)
+    # 2. Container (CFNスタック + ECR + secrets)
+    _destroy_containers(context, with_secrets)
 
     # 2.4. backup plan（DSQL / RDS の cluster 削除より先）
     _destroy_backup(context, yes)
@@ -411,14 +436,14 @@ def _destroy_resources(
     # 2.5. DSQL
     _destroy_dsql(context)
 
-    # 2.6. RDS（AwsContainer の後、VPC の前）
+    # 2.6. RDS（Container の後、VPC の前）
     _destroy_rds(context)
 
     # 3. VPC（RDS の後。RDS が VPC の subnet / SG を使用しているため、
     #    先に VPC を消すと DELETE_FAILED になる）
     _destroy_vpc(context)
 
-    # 3.5. CloudFrontKeys（AwsContainer の後、S3 の前）
+    # 3.5. CloudFrontKeys（Container の後、S3 の前）
     for name, cf_ctx in context.cloudfront.items():
         if cf_ctx.signing_key:
             cfk = CloudFrontKeys(cf_ctx)

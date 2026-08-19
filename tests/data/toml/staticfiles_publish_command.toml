@@ -5,15 +5,15 @@ stages = ["dev"]
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true, publish = "command" }
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600

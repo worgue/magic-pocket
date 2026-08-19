@@ -22,13 +22,36 @@ def _get_django_context_for_storages(
     return general_context, context
 
 
+def resolve_django_container(context: Context):
+    """django 設定を持つ container を解決する (無ければ None)。
+
+    優先順: POCKET_CONTAINER 環境変数 (Lambda では CFn が注入) > django 設定を
+    持つ container が 1 つだけならそれ。複数候補で特定できない場合はエラー
+    (silent に誤った container の storages を返さない)。
+    """
+    candidates = {name: c for name, c in context.container.items() if c.django}
+    env_name = os.environ.get("POCKET_CONTAINER")
+    if env_name and env_name in context.container:
+        own = context.container[env_name]
+        return own if own.django else None
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return next(iter(candidates.values()))
+    raise RuntimeError(
+        "django 設定を持つ container が複数あります (%s)。POCKET_CONTAINER"
+        " 環境変数か --container で対象を指定してください。"
+        % ", ".join(sorted(candidates))
+    )
+
+
 def resolve_django_context(
     general_context: GeneralContext,
     context: Context | None,
     *,
     require: str | None = None,
 ):
-    """stage の awscontainer.django か、無ければ general の django_fallback を返す。
+    """stage の container.<name>.django か、無ければ general の django_fallback を返す。
 
     require に "storages" / "caches" を渡すと、その属性を持つ場合のみ stage 側を
     採用する。この解決は storages / caches / settings で共通
@@ -37,11 +60,8 @@ def resolve_django_context(
     fallback = general_context.django_fallback
     if not fallback:
         raise RuntimeError("Never happen because of context validation.")
-    django = (
-        context.awscontainer.django
-        if context and context.awscontainer and context.awscontainer.django
-        else None
-    )
+    container = resolve_django_container(context) if context else None
+    django = container.django if container else None
     if django is None:
         return fallback
     if require and not getattr(django, require):

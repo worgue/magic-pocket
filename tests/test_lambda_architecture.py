@@ -14,7 +14,7 @@ from pocket_cli.resources.aws.cloudformation import ContainerStack
 from pydantic import ValidationError
 
 from pocket.context import Context
-from pocket.settings import AwsContainer
+from pocket.settings import Container
 
 
 def _write_platform_toml(tmp_path, platform_line: str = ""):
@@ -26,11 +26,11 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 {platform_line}
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 """
     )
@@ -47,8 +47,8 @@ def test_default_platform_is_x86_64(use_toml, tmp_path):
     """platform 省略 (linux/amd64) 時は x86_64 を明示する"""
     use_toml(str(_write_platform_toml(tmp_path)))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    props = _lambda_properties(ContainerStack(context.awscontainer).yaml)
+    assert context.container["main"]
+    props = _lambda_properties(ContainerStack(context.container["main"]).yaml)
     assert props["Architectures"] == ["x86_64"]
 
 
@@ -57,8 +57,8 @@ def test_arm64_platform_sets_arm64_architecture(use_toml, tmp_path):
     """platform = "linux/arm64" なら Lambda も arm64 で作成される"""
     use_toml(str(_write_platform_toml(tmp_path, 'platform = "linux/arm64"')))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    props = _lambda_properties(ContainerStack(context.awscontainer).yaml)
+    assert context.container["main"]
+    props = _lambda_properties(ContainerStack(context.container["main"]).yaml)
     assert props["Architectures"] == ["arm64"]
 
 
@@ -69,7 +69,7 @@ def test_unknown_platform_fails_loud():
     起動時エラーまで発覚しない。
     """
     with pytest.raises(ValidationError, match="platform"):
-        AwsContainer.model_validate(
+        Container.model_validate(
             {
                 "dockerfile_path": "Dockerfile",
                 "platform": "linux/aarch64",

@@ -107,7 +107,7 @@ def test_destroy_resources_deletes_vpc_after_rds(use_toml, monkeypatch):
     )
     monkeypatch.setattr(
         destroy_cli,
-        "_destroy_awscontainer",
+        "_destroy_containers",
         lambda c, with_secrets: calls.append("awscontainer"),
     )
     monkeypatch.setattr(

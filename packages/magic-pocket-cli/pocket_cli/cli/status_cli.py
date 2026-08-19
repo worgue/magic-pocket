@@ -4,7 +4,7 @@ from pocket.context import Context
 from pocket.resources.aws.secretsmanager import PocketSecretIsNotReady
 from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 
 def show_status_message(resource):
@@ -23,7 +23,7 @@ def show_status_message(resource):
 def show_info_message(resource):
     if hasattr(resource, "description"):
         echo.info(resource.description)
-    if isinstance(resource, AwsContainer) and resource.context.secrets:
+    if isinstance(resource, Container) and resource.context.secrets:
         if resource.context.secrets.managed:
             try:
                 _ = resource.context.secrets.pocket_store.arn
@@ -34,7 +34,7 @@ def show_info_message(resource):
                 )
                 echo.warning("Just use it for reference.")
                 echo.info("You can create pocket managed secrets by running the below.")
-                echo.info("pocket resource awscontainer secrets create-pocket-managed")
+                echo.info("pocket resource container secrets create-pocket-managed")
 
         try:
             _ = resource.context.secrets.allowed_sm_resources

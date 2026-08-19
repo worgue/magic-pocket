@@ -20,10 +20,10 @@ def test_external_vpc_context(use_toml):
     """manage=false の外部 VPC コンテキストが正しく生成される"""
     use_toml("tests/data/toml/rds_external_vpc.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
-    assert context.awscontainer.vpc.manage is False
-    assert context.awscontainer.vpc.name == "main-pocket"
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
+    assert context.container["main"].vpc.manage is False
+    assert context.container["main"].vpc.name == "main-pocket"
 
 
 def test_managed_vpc_requires_zone_suffixes():
@@ -80,8 +80,8 @@ def test_use_vpc_auto(use_toml):
     """use_vpc 未指定（auto）: [vpc] があれば自動的に VPC 内に配置"""
     use_toml("tests/data/toml/rds.toml")
     settings = Settings.from_toml(stage="dev")
-    assert settings.awscontainer is not None
-    assert settings.awscontainer.vpc is not None
+    assert settings.container["main"] is not None
+    assert settings.container["main"].vpc is not None
     assert settings.rds is not None
     assert settings.rds.vpc is not None
 
@@ -96,13 +96,15 @@ def test_use_vpc_false():
             "stages": ["dev"],
         },
         "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "use_vpc": False,
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "use_vpc": False,
+            }
         },
     }
     Settings.resolve_vpc(data)
-    assert "vpc" not in data["awscontainer"]
+    assert "vpc" not in data["container"]["main"]
 
 
 def test_use_vpc_true_without_vpc_section():
@@ -114,9 +116,11 @@ def test_use_vpc_true_without_vpc_section():
             "project_name": "testprj",
             "stages": ["dev"],
         },
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "use_vpc": True,
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "use_vpc": True,
+            }
         },
     }
     with pytest.raises(ValueError, match="use_vpc=true"):
@@ -135,9 +139,11 @@ def test_external_vpc_rds_no_zone_suffixes_check():
             },
             "vpc": {"ref": "main", "manage": False},
             "rds": {"vpc": {"ref": "main", "manage": False}},
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "manage": False},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "manage": False},
+                }
             },
         }
     )

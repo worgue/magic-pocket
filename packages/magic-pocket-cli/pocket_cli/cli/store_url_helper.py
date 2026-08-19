@@ -24,11 +24,11 @@ def run_store_url(
     ensure + URL 算出。
     """
     context = Context.from_toml(stage=stage)
-    sc = context.awscontainer.secrets if context.awscontainer else None
+    sc = context.secrets
     if sc is None:
         raise click.ClickException(
-            "awscontainer.secrets が設定されていません。"
-            "[awscontainer.secrets.user] に DATABASE_URL を宣言してください。"
+            "container の secrets が設定されていません。"
+            "[container.<name>.secrets.user] に DATABASE_URL を宣言してください。"
         )
 
     if key is not None:
@@ -46,7 +46,7 @@ def run_store_url(
         if not candidates:
             raise click.ClickException(
                 "type=%s の stored user secret が宣言されていません。"
-                "[awscontainer.secrets.user] に "
+                "[container.<name>.secrets.user] に "
                 '`DATABASE_URL = { type = "%s" }` を追加してください。'
                 % (secret_type, secret_type)
             )

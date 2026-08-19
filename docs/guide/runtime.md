@@ -41,9 +41,11 @@ CloudFormation が Lambda 関数の環境変数として自動設定するため
 | `POCKET_PROJECT_NAME` | プロジェクト名 |
 | `POCKET_REGION` | AWS リージョン |
 | `POCKET_HOSTS` | API Gateway ホスト一覧（カンマ区切り。Django では `ALLOWED_HOSTS` に追加される） |
-| `POCKET_{HANDLER}_HOST` | 各ハンドラーのホスト |
-| `POCKET_{HANDLER}_ENDPOINT` | 各ハンドラーの URL |
-| `POCKET_{HANDLER}_QUEUEURL` | SQS キュー URL |
+| `POCKET_CONTAINER` | 自 container 名（`[container.<name>]` の name。CloudFormation が注入） |
+| `POCKET_{HANDLER}_HOST` | 自 container の各ハンドラーのホスト |
+| `POCKET_{HANDLER}_ENDPOINT` | 自 container の各ハンドラーの URL |
+| `POCKET_{HANDLER}_QUEUEURL` | 自 container の SQS キュー URL |
+| `POCKET_{CONTAINER}_{HANDLER}_HOST` / `_ENDPOINT` / `_QUEUEURL` | 全 container の各ハンドラー（他 container の参照用の修飾名） |
 | `POCKET_CLOUDFRONT_{NAME}_DOMAIN` | CloudFront ディストリビューションのドメイン名 |
 | `POCKET_DSQL_ENDPOINT` | DSQL クラスターのエンドポイント |
 | `POCKET_DSQL_REGION` | DSQL クラスターのリージョン |

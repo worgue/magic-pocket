@@ -1,7 +1,7 @@
 """ECR repo 名 / image タグの正準導出 (pocket.naming) と image CLI のテスト。
 
 外部ツールが import して依存する契約なので導出結果を固定し、deploy 側
-(AwsContainerContext.ecr_name) との一致を回帰テストで保証する。
+(ContainerContext.ecr_name) との一致を回帰テストで保証する。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, PropertyMock, patch
 from click.testing import CliRunner
 from moto import mock_aws
 from pocket_cli.cli.image_cli import image
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 import pocket
 from pocket.context import Context
@@ -20,7 +20,8 @@ from pocket.naming import ecr_image_tag, ecr_repo_name
 
 def test_ecr_repo_name_default():
     assert (
-        ecr_repo_name(project="myprj", stage="sandbox") == "sandbox-myprj-pocket-lambda"
+        ecr_repo_name(project="myprj", stage="sandbox", container="main")
+        == "sandbox-myprj-pocket-main-lambda"
     )
 
 
@@ -29,17 +30,20 @@ def test_ecr_repo_name_custom_namespace_and_template():
         ecr_repo_name(
             project="myprj",
             stage="dev",
+            container="main",
             namespace="ns",
             prefix_template="{project}-{stage}-{namespace}-",
         )
-        == "myprj-dev-ns-lambda"
+        == "myprj-dev-ns-main-lambda"
     )
 
 
 def test_ecr_repo_name_explicit_override_wins():
-    """[awscontainer].ecr_name 明示上書きの構成では渡された値がそのまま返る"""
+    """[container.main].ecr_name 明示上書きの構成では渡された値がそのまま返る"""
     assert (
-        ecr_repo_name(project="myprj", stage="dev", ecr_name="shared-repo")
+        ecr_repo_name(
+            project="myprj", stage="dev", container="main", ecr_name="shared-repo"
+        )
         == "shared-repo"
     )
 
@@ -62,11 +66,11 @@ region = "ap-southeast-1"
 project_name = "testprj"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 {extra}
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 """
     )
@@ -78,9 +82,9 @@ def test_naming_matches_context_derivation(use_toml, tmp_path):
     """naming の導出が deploy 側 (context.ecr_name) と一致すること (drift 回帰)"""
     use_toml(str(_write_toml(tmp_path)))
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer
-    assert context.awscontainer.ecr_name == ecr_repo_name(
-        project="testprj", stage="dev"
+    assert context.container["main"]
+    assert context.container["main"].ecr_name == ecr_repo_name(
+        project="testprj", stage="dev", container="main"
     )
 
 
@@ -99,11 +103,12 @@ def test_image_uri_outputs_digest_pinned_uri(use_toml, tmp_path):
     use_toml(str(_write_toml(tmp_path)))
     fake_ecr = MagicMock()
     fake_ecr.uri = (
-        "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/dev-testprj-pocket-lambda"
+        "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com"
+        "/dev-testprj-pocket-main-lambda"
     )
     fake_ecr.image_detail.image_digest = "sha256:" + "a" * 64
     with patch.object(
-        AwsContainer, "ecr", new_callable=PropertyMock, return_value=fake_ecr
+        Container, "ecr", new_callable=PropertyMock, return_value=fake_ecr
     ):
         result = CliRunner().invoke(image, ["uri", "--stage", "dev"])
     assert result.exit_code == 0, result.output
@@ -116,11 +121,12 @@ def test_image_uri_fails_loud_when_image_missing(use_toml, tmp_path):
     use_toml(str(_write_toml(tmp_path)))
     fake_ecr = MagicMock()
     fake_ecr.uri = (
-        "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com/dev-testprj-pocket-lambda"
+        "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com"
+        "/dev-testprj-pocket-main-lambda"
     )
     fake_ecr.image_detail.image_digest = None
     with patch.object(
-        AwsContainer, "ecr", new_callable=PropertyMock, return_value=fake_ecr
+        Container, "ecr", new_callable=PropertyMock, return_value=fake_ecr
     ):
         result = CliRunner().invoke(image, ["uri", "--stage", "dev"])
     assert result.exit_code != 0

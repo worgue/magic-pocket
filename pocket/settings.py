@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from typing import Annotated, Literal
 
@@ -69,11 +70,34 @@ def _reject_skip_check_existing(data, *, resource: str):
         raise ValueError(
             "[%s] skip_check_existing は廃止されました。"
             '`provisioning = "command"` に置き換え、接続 URL を '
-            "[awscontainer.secrets.user] の type で宣言したうえで deploy 前に "
+            "[container.<name>.secrets.user] の type で宣言したうえで deploy 前に "
             "`pocket resource %s store-url --stage <stage>` を実行してください。"
             % (resource, resource)
         )
     return data
+
+
+# container 名の制約。リソース物理名 ({prefix}{name}-{handler} 等) の slot に
+# 一様に挿入され、handler 参照のドット記法 "<container>.<handler>" の左辺にも
+# なるため、英小文字 + 数字のみに制限する (hyphen を許すと物理名から container /
+# handler 境界を一意に分解できない)。
+_CONTAINER_NAME_RE = "^[a-z][a-z0-9]{0,31}$"
+
+
+def parse_handler_ref(ref: str) -> tuple[str, str]:
+    """handler 参照 "<container>.<handler>" を (container, handler) に分解する。
+
+    cloudfront routes / scheduler の handler 指定は常にドット記法。旧形式
+    (container 名なし) は移行案内付きでエラーにする。
+    """
+    if "." not in ref:
+        raise ValueError(
+            "handler 参照 '%s' には container 名が必要です。"
+            ' "<container>.<handler>" のドット記法で指定してください'
+            ' (例: handler = "mydjango.wsgi")。' % ref
+        )
+    container, handler = ref.split(".", 1)
+    return container, handler
 
 
 class BuildConfig(BaseModel):
@@ -255,7 +279,7 @@ class Secrets(BaseModel):
         return self
 
 
-class AwsContainerIam(BaseModel):
+class ContainerIam(BaseModel):
     """Lambda execution role に追加注入する IAM 設定。
 
     built-in な service flag (`use_s3` 等) や `secrets.allowed_*_resources` で
@@ -275,7 +299,15 @@ class AwsContainerIam(BaseModel):
     """
 
 
-class AwsContainer(BaseModel):
+class Container(BaseModel):
+    """[container.<name>] — 1 つのコンテナイメージとその Lambda handler 群。
+
+    project は複数 container を持てる (異 runtime の並行稼働 / strangler 移行)。
+    secrets の「宣言」は per-container だが、物理 store は project 共有
+    (pocket_key に container 名は入らない)。store / pocket_key_format は全
+    container で一致が必要 (Settings 側で検証)。
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     vpc: Vpc | None = None
@@ -289,9 +321,9 @@ class AwsContainer(BaseModel):
     platform: Literal["linux/amd64", "linux/arm64"] = "linux/amd64"
     django: Django | None = None
     permissions_boundary: str | None = None
-    iam: AwsContainerIam = AwsContainerIam()
+    iam: ContainerIam = ContainerIam()
     build: BuildConfig = BuildConfig()
-    # ECR repository 名の上書き。省略時は resource_prefix + "lambda" を使う。
+    # ECR repository 名の上書き。省略時は resource_prefix + "{name}-lambda" を使う。
     # 同一 AWS アカウント内で複数 stage が同じ repo を共有したい場合に指定する
     # (build once + commit-hash 昇格で再ビルドなし deploy を成立させるため)。
     ecr_name: str | None = None
@@ -314,7 +346,7 @@ class LambdaHandler(BaseModel):
     reserved_concurrency: int | None = None
     apigateway: ApiGateway | None = None
     sqs: Sqs | None = None
-    # handler 単位の env 追加/上書き ([awscontainer].envs とマージし handler 側が
+    # handler 単位の env 追加/上書き ([container.<name>].envs とマージし handler 側が
     # 優先)。同一イメージを env でモード切替して複数 Lambda に並べる用途
     # (モジュールパス切替が使えない Rust 単一バイナリ等) に使う。
     envs: dict[str, str] = {}
@@ -1231,7 +1263,7 @@ class Settings(BaseModel):
     general: GeneralSettings
     stage: TagStr
     vpc: Vpc | None = None
-    awscontainer: AwsContainer | None = None
+    container: dict[str, Container] = {}
     neon: Neon | None = None
     tidb: TiDb | None = None
     upstash: Upstash | None = None
@@ -1280,9 +1312,129 @@ class Settings(BaseModel):
         """リソース名の共通 prefix。e.g) dev-myprj-pocket-
 
         prefix_template を format_vars で展開したもの。context.py の
-        AwsContainer / Dsql / Rds / CloudFront が同一計算を重複させていた。
+        Container / Dsql / Rds / CloudFront が同一計算を重複させていた。
         """
         return self.prefix_template.format(**self.format_vars)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_legacy_awscontainer(cls, data):
+        """旧 [awscontainer] (単数) を明示エラーにする (0.29.0 の破壊的リネーム)。"""
+        if isinstance(data, dict) and "awscontainer" in data:
+            raise ValueError(
+                "[awscontainer] は廃止されました。[container.<name>] の dict 形式に"
+                "移行してください (container は複数宣言できます)。\n"
+                "  例) [awscontainer] → [container.mydjango]\n"
+                "      [awscontainer.handlers.wsgi] → "
+                "[container.mydjango.handlers.wsgi]\n"
+                "      [sandbox.awscontainer] → [sandbox.container.mydjango]\n"
+                "  あわせて cloudfront routes / scheduler の handler 参照を "
+                '"<container>.<handler>" のドット記法に変更してください '
+                '(例: handler = "mydjango.wsgi")。移行手順は CHANGELOG 0.29.0 を'
+                "参照。"
+            )
+        return data
+
+    @model_validator(mode="after")
+    def check_container_names(self):
+        for name in self.container:
+            if not re.match(_CONTAINER_NAME_RE, name):
+                raise ValueError(
+                    "container 名 '%s' が不正です。英小文字始まりの英小文字+数字"
+                    " (最大 32 文字、hyphen 不可) にしてください。物理リソース名の"
+                    " slot とドット記法の一意分解に使うための制約です。" % name
+                )
+        return self
+
+    @model_validator(mode="after")
+    def check_container_secrets_consistency(self):
+        """secrets の store / pocket_key_format が全 container で一致すること。
+
+        物理 store は project 共有 (pocket_key に container 名は入らない) のため、
+        container ごとに違う store / key format を宣言すると保存先が分裂する。
+        また同名の secret key を複数 container が宣言する場合、spec が一致して
+        いなければ生成が曖昧になるためエラーにする (一致していれば値を共有する)。
+        """
+        stores: dict[str, str] = {}
+        formats: dict[str, str] = {}
+        managed_owners: dict[str, tuple[str, ManagedSecretSpec]] = {}
+        user_owners: dict[str, tuple[str, UserSecretSpec]] = {}
+        for name, c in self.container.items():
+            if not c.secrets:
+                continue
+            stores[name] = c.secrets.store
+            formats[name] = c.secrets.pocket_key_format
+            for key, spec in c.secrets.managed.items():
+                if key in managed_owners and managed_owners[key][1] != spec:
+                    raise ValueError(
+                        "managed secret '%s' が container '%s' と '%s' で異なる"
+                        " spec で宣言されています。store は project 共有のため、"
+                        "同名 key は同一 spec (値を共有) にするか、別の key 名を"
+                        "使ってください。" % (key, managed_owners[key][0], name)
+                    )
+                managed_owners.setdefault(key, (name, spec))
+            for key, spec in c.secrets.user.items():
+                if key in user_owners and user_owners[key][1] != spec:
+                    raise ValueError(
+                        "user secret '%s' が container '%s' と '%s' で異なる"
+                        " spec で宣言されています。同名 key は同一 spec にするか、"
+                        "別の key 名を使ってください。"
+                        % (key, user_owners[key][0], name)
+                    )
+                user_owners.setdefault(key, (name, spec))
+        if len(set(stores.values())) > 1:
+            raise ValueError(
+                "secrets.store は全 container で一致が必要です: %s"
+                % ", ".join("%s=%s" % kv for kv in sorted(stores.items()))
+            )
+        if len(set(formats.values())) > 1:
+            raise ValueError(
+                "secrets.pocket_key_format は全 container で一致が必要です: %s"
+                % ", ".join("%s=%s" % kv for kv in sorted(formats.items()))
+            )
+        return self
+
+    def project_secrets_base(self) -> Secrets:
+        """project 共有の secrets store 設定 (store / pocket_key_format) を返す。
+
+        managed / user は含まない (store 設定のみ)。secrets を宣言する container が
+        無ければ既定値。一致は check_container_secrets_consistency で検証済みなので
+        最初に見つかった宣言を使ってよい。
+        """
+        for c in self.container.values():
+            if c.secrets:
+                return Secrets(
+                    store=c.secrets.store,
+                    pocket_key_format=c.secrets.pocket_key_format,
+                )
+        return Secrets()
+
+    def find_managed_secret(self, key: str) -> ManagedSecretSpec | None:
+        """全 container の secrets.managed から key の spec を探す。"""
+        for c in self.container.values():
+            if c.secrets and key in c.secrets.managed:
+                return c.secrets.managed[key]
+        return None
+
+    def resolve_handler(self, ref: str) -> tuple[str, str, LambdaHandler]:
+        """ドット記法の handler 参照を解決する。
+
+        戻り値は (container 名, handler key, LambdaHandler)。存在しない参照は
+        ValueError (呼び出し側 validator がメッセージに文脈を足す)。
+        """
+        container_name, handler_key = parse_handler_ref(ref)
+        if container_name not in self.container:
+            raise ValueError(
+                "handler '%s': container '%s' が [container.<name>] に"
+                "ありません。" % (ref, container_name)
+            )
+        handlers = self.container[container_name].handlers
+        if handler_key not in handlers:
+            raise ValueError(
+                "handler '%s': container '%s' に handler '%s' がありません。"
+                % (ref, container_name, handler_key)
+            )
+        return container_name, handler_key, handlers[handler_key]
 
     @computed_field
     @property
@@ -1293,34 +1445,24 @@ class Settings(BaseModel):
     def _check_cloudfront_token_secret(self, name: str, cf: CloudFront):
         if not cf.token_secret:
             return
-        if not self.awscontainer:
+        if not self.container:
             raise ValueError(
-                f"cloudfront.{name}: awscontainer is required when token_secret is set"
+                f"cloudfront.{name}: container is required when token_secret is set"
             )
-        if not self.awscontainer.secrets:
-            raise ValueError(
-                f"cloudfront.{name}: awscontainer.secrets is required "
-                f"when token_secret is set"
-            )
-        if cf.token_secret not in self.awscontainer.secrets.managed:
+        if self.find_managed_secret(cf.token_secret) is None:
             raise ValueError(
                 f"cloudfront.{name}: token_secret '{cf.token_secret}' "
-                f"not found in awscontainer.secrets.managed"
+                f"not found in container secrets.managed"
             )
 
     def _check_cloudfront_basic_auth(self, name: str, cf: CloudFront):
         if not cf.basic_auth:
             return
-        if not self.awscontainer or not self.awscontainer.secrets:
-            raise ValueError(
-                f"cloudfront.{name}: awscontainer.secrets is required "
-                f"when basic_auth is set"
-            )
-        spec = self.awscontainer.secrets.managed.get(cf.basic_auth)
+        spec = self.find_managed_secret(cf.basic_auth)
         if spec is None:
             raise ValueError(
                 f"cloudfront.{name}: basic_auth '{cf.basic_auth}' "
-                f"not found in awscontainer.secrets.managed"
+                f"not found in container secrets.managed"
             )
         # 値は "user:pass" 形式である必要がある。他 type (password 等) を参照すると
         # 形式不一致で認証が silent に壊れるため type を固定する
@@ -1343,17 +1485,15 @@ class Settings(BaseModel):
                         f"cloudfront.{name}: handler is required "
                         f"when route has type='lambda'"
                     )
-                if not self.awscontainer:
+                if not self.container:
                     raise ValueError(
-                        f"cloudfront.{name}: awscontainer is required "
+                        f"cloudfront.{name}: container is required "
                         f"when route has type='lambda'"
                     )
-                if route.handler not in self.awscontainer.handlers:
-                    raise ValueError(
-                        f"cloudfront.{name}: handler '{route.handler}' "
-                        f"not found in awscontainer.handlers"
-                    )
-                handler = self.awscontainer.handlers[route.handler]
+                try:
+                    _, _, handler = self.resolve_handler(route.handler)
+                except ValueError as e:
+                    raise ValueError(f"cloudfront.{name}: {e}") from e
                 if not handler.apigateway:
                     raise ValueError(
                         f"cloudfront.{name}: handler '{route.handler}' "
@@ -1371,24 +1511,24 @@ class Settings(BaseModel):
         if not headers:
             return
         # header 付き allow rule の secret は managed secret 経路 (pocket_store)
-        # で生成・保存されるため awscontainer が前提になる
-        if not self.awscontainer:
+        # で生成・保存されるため container が前提になる
+        if not self.container:
             raise ValueError(
-                f"cloudfront.{name}: awscontainer is required when "
+                f"cloudfront.{name}: container is required when "
                 f"waf.allow_rules has header"
             )
-        if self.awscontainer.secrets:
-            declared = set(self.awscontainer.secrets.managed) | set(
-                self.awscontainer.secrets.user
-            )
-            for header in sorted(headers):
-                if header in declared:
-                    raise ValueError(
-                        f"cloudfront.{name}: waf.allow_rules header '{header}' は "
-                        f"awscontainer.secrets に既に宣言されています。"
-                        f"secret は pocket が自動生成するため、別のキー名を"
-                        f"使ってください。"
-                    )
+        declared: set[str] = set()
+        for c in self.container.values():
+            if c.secrets:
+                declared |= set(c.secrets.managed) | set(c.secrets.user)
+        for header in sorted(headers):
+            if header in declared:
+                raise ValueError(
+                    f"cloudfront.{name}: waf.allow_rules header '{header}' は "
+                    f"container の secrets に既に宣言されています。"
+                    f"secret は pocket が自動生成するため、別のキー名を"
+                    f"使ってください。"
+                )
 
     def _check_cloudfront_origin_verify(self, name: str, cf: CloudFront):
         if not cf.enable_origin_verify:
@@ -1435,29 +1575,27 @@ class Settings(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def check_rds_requires_awscontainer_vpc(self):
+    def check_rds_requires_container_vpc(self):
         if self.rds and self.rds.vpc:
-            if not self.awscontainer or not self.awscontainer.vpc:
-                raise ValueError("rds requires awscontainer with VPC")
+            if not any(c.vpc for c in self.container.values()):
+                raise ValueError("rds requires container with VPC")
         return self
 
     @model_validator(mode="after")
     def check_scheduler_handlers(self):
         if not self.scheduler or not self.scheduler.schedules:
             return self
-        if not self.awscontainer:
-            raise ValueError("scheduler is configured but awscontainer is missing")
+        if not self.container:
+            raise ValueError("scheduler is configured but container is missing")
         management_handler_command = (
             "pocket.django.lambda_handlers.management_command_handler"
         )
         for key, entry in self.scheduler.schedules.items():
-            if entry.handler not in self.awscontainer.handlers:
-                raise ValueError(
-                    f"scheduler.schedules.{key}: handler '{entry.handler}' "
-                    f"not found in awscontainer.handlers"
-                )
+            try:
+                _, _, handler = self.resolve_handler(entry.handler)
+            except ValueError as e:
+                raise ValueError(f"scheduler.schedules.{key}: {e}") from e
             if isinstance(entry, DjangoManagementScheduleEntry):
-                handler = self.awscontainer.handlers[entry.handler]
                 if handler.command != management_handler_command:
                     raise ValueError(
                         f"scheduler.schedules.{key}: scheduler="
@@ -1467,7 +1605,6 @@ class Settings(BaseModel):
                         f"got '{handler.command}'"
                     )
             if isinstance(entry, SqsScheduleEntry):
-                handler = self.awscontainer.handlers[entry.handler]
                 if handler.sqs is None:
                     raise ValueError(
                         f"scheduler.schedules.{key}: scheduler="
@@ -1515,22 +1652,29 @@ class Settings(BaseModel):
 
     @classmethod
     def resolve_vpc(cls, data: dict):
-        """use_vpc に基づいて awscontainer.vpc と rds.vpc を解決"""
+        """use_vpc に基づいて container.<name>.vpc と rds.vpc を解決"""
         vpc_data = data.get("vpc")
 
-        for section in ("awscontainer", "rds"):
-            if section not in data:
-                continue
-            use_vpc = data[section].pop("use_vpc", None)
+        sections: list[tuple[str, dict]] = []
+        containers = data.get("container")
+        if isinstance(containers, dict):
+            for name, c in containers.items():
+                if isinstance(c, dict):
+                    sections.append((f"container.{name}", c))
+        if isinstance(data.get("rds"), dict):
+            sections.append(("rds", data["rds"]))
+
+        for label, section in sections:
+            use_vpc = section.pop("use_vpc", None)
             if use_vpc is None:  # auto
                 if vpc_data:
-                    data[section]["vpc"] = vpc_data
+                    section["vpc"] = vpc_data
             elif use_vpc is True:
                 if not vpc_data:
                     raise ValueError(
-                        f"{section}.use_vpc=true ですが [vpc] が定義されていません"
+                        f"{label}.use_vpc=true ですが [vpc] が定義されていません"
                     )
-                data[section]["vpc"] = vpc_data
+                section["vpc"] = vpc_data
             # use_vpc = False: VPC を使わない
 
     @classmethod
@@ -1564,6 +1708,9 @@ class Settings(BaseModel):
         # stage は from_toml が注入するフィールドで、pocket.toml のキーではない
         valid_keys = [key for key in cls.model_fields if key != "stage"]
         valid_keys += data["general"]["stages"]
+        # 旧 [awscontainer] はここで弾かず、reject_legacy_awscontainer の
+        # 移行案内付きエラーに任せる
+        valid_keys.append("awscontainer")
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"

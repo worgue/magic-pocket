@@ -14,8 +14,8 @@ from pocket.resources.base import ResourceStatus
 
 if TYPE_CHECKING:
     from pocket.context import (
-        AwsContainerContext,
         CloudFrontContext,
+        ContainerContext,
         DsqlContext,
         RdsContext,
         SchedulerContext,
@@ -51,7 +51,7 @@ class Stack:
     def stack_tags(self) -> list[dict]:
         return []
 
-    def __init__(self, context: AwsContainerContext | VpcContext | CloudFrontContext):
+    def __init__(self, context: ContainerContext | VpcContext | CloudFrontContext):
         self.context = context
         self.client = self.get_client()
 
@@ -694,12 +694,12 @@ class CloudFrontStack(Stack):
 
 
 class ContainerStack(Stack):
-    context: AwsContainerContext
-    template_filename = "awscontainer"
+    context: ContainerContext
+    template_filename = "container"
 
     def __init__(
         self,
-        context: AwsContainerContext,
+        context: ContainerContext,
         *,
         rds_context: RdsContext | None = None,
         dsql_context: DsqlContext | None = None,
@@ -770,7 +770,7 @@ class ContainerStack(Stack):
 
     @property
     def name(self):
-        return f"{self.context.slug}-container"
+        return f"{self.context.slug}-container-{self.context.name}"
 
     @property
     def capabilities(self):

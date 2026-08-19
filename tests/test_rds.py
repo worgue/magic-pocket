@@ -51,9 +51,11 @@ def test_rds_requires_2_azs_when_managed():
                 },
                 "vpc": {"ref": "main", "zone_suffixes": ["a"]},
                 "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a"]}},
-                "awscontainer": {
-                    "dockerfile_path": "Dockerfile",
-                    "vpc": {"ref": "main", "zone_suffixes": ["a"]},
+                "container": {
+                    "main": {
+                        "dockerfile_path": "Dockerfile",
+                        "vpc": {"ref": "main", "zone_suffixes": ["a"]},
+                    }
                 },
             }
         )
@@ -61,7 +63,7 @@ def test_rds_requires_2_azs_when_managed():
 
 def test_rds_requires_awscontainer_vpc():
     """RDS には awscontainer + vpc が必須"""
-    with pytest.raises(ValueError, match="rds requires awscontainer with VPC"):
+    with pytest.raises(ValueError, match="rds requires container with VPC"):
         Settings.model_validate(
             {
                 "stage": "dev",
@@ -98,9 +100,11 @@ def test_rds_snapshot_identifier_field():
                 "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
                 "snapshot_identifier": "myapp-prod-20260410",
             },
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                }
             },
         }
     )
@@ -123,9 +127,11 @@ def test_rds_snapshot_identifier_default_none():
             },
             "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
             "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}},
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                }
             },
         }
     )
@@ -148,9 +154,11 @@ def test_rds_database_override():
                 "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
                 "database": "testprj_dev",
             },
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                }
             },
         }
     )
@@ -179,8 +187,10 @@ def test_rds_database_override_rejected_when_unmanaged():
                     "security_group_id": "sg-0123456789abcdef0",
                     "database": "somedb",
                 },
-                "awscontainer": {
-                    "dockerfile_path": "Dockerfile",
+                "container": {
+                    "main": {
+                        "dockerfile_path": "Dockerfile",
+                    }
                 },
             }
         )
@@ -201,8 +211,10 @@ def test_rds_unmanaged_mode():
                 "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:my-db",
                 "security_group_id": "sg-0123456789abcdef0",
             },
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                }
             },
         }
     )
@@ -233,7 +245,7 @@ def test_rds_unmanaged_requires_managed_false():
                     "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123:secret:x",
                     "security_group_id": "sg-xxx",
                 },
-                "awscontainer": {"dockerfile_path": "Dockerfile"},
+                "container": {"main": {"dockerfile_path": "Dockerfile"}},
             }
         )
 
@@ -255,7 +267,7 @@ def test_rds_unmanaged_rejects_managed_fields():
                     "security_group_id": "sg-xxx",
                     "min_capacity": 1.0,
                 },
-                "awscontainer": {"dockerfile_path": "Dockerfile"},
+                "container": {"main": {"dockerfile_path": "Dockerfile"}},
             }
         )
 
@@ -275,7 +287,7 @@ def test_rds_unmanaged_requires_secret_arn():
                     "managed": False,
                     "security_group_id": "sg-xxx",
                 },
-                "awscontainer": {"dockerfile_path": "Dockerfile"},
+                "container": {"main": {"dockerfile_path": "Dockerfile"}},
             }
         )
 
@@ -296,9 +308,11 @@ def test_rds_custom_capacity():
                 "min_capacity": 1.0,
                 "max_capacity": 4.0,
             },
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                }
             },
         }
     )
@@ -589,10 +603,12 @@ def test_rds_static_secret_store_follows_toggle():
                 "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
                 "password_strategy": "static",
             },
-            "awscontainer": {
-                "dockerfile_path": "Dockerfile",
-                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
-                "secrets": {"store": "ssm"},
+            "container": {
+                "main": {
+                    "dockerfile_path": "Dockerfile",
+                    "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+                    "secrets": {"store": "ssm"},
+                }
             },
         }
     )
@@ -835,9 +851,11 @@ def _rds_settings_data(rds_extra: dict | None = None) -> dict:
         },
         "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
         "rds": {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}},
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            }
         },
     }
     if rds_extra:

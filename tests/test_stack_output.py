@@ -11,10 +11,10 @@ def test_output_by_output_key(use_toml):
     """OutputKey でスタック output を取得できる"""
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
 
-    vpc = Vpc(context.awscontainer.vpc)
+    vpc = Vpc(context.container["main"].vpc)
     vpc.create()
     vpc.stack.clear_status()
 
@@ -29,10 +29,10 @@ def test_output_by_export_name(use_toml):
     """ExportName でスタック output を取得できる"""
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
-    assert context.awscontainer.vpc is not None
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
 
-    vpc = Vpc(context.awscontainer.vpc)
+    vpc = Vpc(context.container["main"].vpc)
     vpc.create()
     vpc.stack.clear_status()
 

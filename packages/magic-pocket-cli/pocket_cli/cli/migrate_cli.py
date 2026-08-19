@@ -275,7 +275,7 @@ def _warn_runtime_bump_required(stage: str) -> None:
 def _run_secret_paths(stage: str, *, yes: bool, dry_run: bool) -> None:
     """stored user secret を旧キー基準→新 type 基準パスへ移設する (冪等)。"""
     context = Context.from_toml(stage=stage)
-    sc = context.awscontainer.secrets if context.awscontainer else None
+    sc = context.secrets
     type_specs = (
         [(k, s) for k, s in sc.user.items() if s.type is not None] if sc else []
     )

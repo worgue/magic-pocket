@@ -15,25 +15,25 @@ efs = {}
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
-[awscontainer.django.settings]
+[container.main.django.settings]
 TEST_NESTED = { "first" = { "second" = { "third" = { "NAME" = "key" } } } }
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 
-[awscontainer.django.caches]
+[container.main.django.caches]
 default = { store = "efs" }
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
-[awscontainer.handlers.sqsmanagement]
+[container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 60
 sqs = {}
@@ -43,26 +43,26 @@ routes = [
     { is_default = true, is_spa = true, origin_path = "/main" },
 ]
 
-[dev.awscontainer.envs]
+[dev.container.main.envs]
 DJANGO_ENV_PATH = "project/env/env.dev"
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = { domain = "api.project.com" }
 
 [dev.neon]
 project_name = "dev-testprj"
 
-# [prod.awscontainer.secrets]
+# [prod.container.main.secrets]
 # pocket_key_format = "{stage}-{project}-{namespace}"
-# [awscontainer.secrets]
+# [container.main.secrets]
 # pocket_key_format = "{project}-{namespace}"
-# [awscontainer.secrets.managed]
+# [container.main.secrets.managed]
 # SECRET_KEY = { type = "password", options = { length = 50 } }
 # DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 # DATABASE_URL = { type = "neon_database_url" }
 
-[prod.awscontainer.envs]
+[prod.container.main.envs]
 DJANGO_ENV_PATH = "project/env/env.prod"
 
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = { domain = "api.project.com" }

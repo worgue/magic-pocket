@@ -22,13 +22,13 @@ stages = ["dev", "prod"]
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 
 # --- dev: Neon、VPCなし ---
@@ -36,10 +36,10 @@ SECRET_KEY = { type = "password", options = { length = 50 } }
 [dev.neon]
 project_name = "dev-myproject"
 
-[dev.awscontainer.secrets.managed]
+[dev.container.main.secrets.managed]
 DATABASE_URL = { type = "neon_database_url" }
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
 # --- prod: RDS + VPC + CloudFront ---
@@ -50,14 +50,14 @@ zone_suffixes = ["a", "c"]
 
 [prod.rds]
 
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = {}
 
 [prod.cloudfront.web]
 domain = "example.com"
 routes = [
     { is_default = true, is_spa = true },
-    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
 ]
 ```
 

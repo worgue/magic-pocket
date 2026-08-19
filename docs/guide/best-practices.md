@@ -35,24 +35,24 @@ staticfiles = { store = "filesystem", static = true }
 [neon]
 project_name = "dev-myproject"
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 apigateway = {}
 
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 CF_MEDIA_KEY = { type = "cloudfront_signing_key", options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64", id_environ_suffix = "_ID" } }
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3", distribution = "usercontent" }
 staticfiles = { store = "s3", distribution = "web", route = "static", static = true, manifest = true }
 
@@ -61,7 +61,7 @@ staticfiles = { store = "s3", distribution = "web", route = "static", static = t
 routes = [
     { is_default = true, is_spa = true, build = { dir = "frontend/dist", cmd = "just frontend-build" }, origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
-    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
 ]
 
 # メディア（署名付きURL）
@@ -73,13 +73,13 @@ routes = [
 
 # --- ステージ固有設定 ---
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
 [prod.neon]
 project_name = "prod-myproject"
 
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = {}
 
 [prod.cloudfront.web]
@@ -143,7 +143,7 @@ domain = "media.example.com"
     [tidb]
     project = "1234567890123456789"
 
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }
     DATABASE_URL = { type = "tidb_database_url" }
     ```
@@ -160,10 +160,10 @@ domain = "media.example.com"
 
     [rds]
 
-    [awscontainer]
+    [container.main]
     dockerfile_path = "pocket.Dockerfile"
 
-    [awscontainer.secrets.managed]
+    [container.main.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }
     # DATABASE_URL は不要。[rds] があれば自動提供
     ```
@@ -174,7 +174,7 @@ SPA にログイン必須機能を追加する場合、`require_token` を設定
 CloudFront Function が Cookie 内の HMAC-SHA256 トークンを検証し、未認証ユーザーをログインページにリダイレクトします。
 
 ```toml
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DATABASE_URL = { type = "neon_database_url" }
 SPA_TOKEN_SECRET = { type = "spa_token_secret" }
@@ -184,7 +184,7 @@ token_secret = "SPA_TOKEN_SECRET"
 routes = [
     { is_default = true, is_spa = true, require_token = true, build = { dir = "frontend/dist", cmd = "just frontend-build" }, origin_path = "/web/app" },
     { path_pattern = "/static/*", ref = "static", versioning = "content_hash", origin_path = "/web" },
-    { path_pattern = "/api/*", type = "lambda", handler = "wsgi" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
 ]
 ```
 

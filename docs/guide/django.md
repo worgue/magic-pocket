@@ -19,7 +19,7 @@ CACHES = get_caches()
 
 | 環境 | 参照する設定 |
 |------|------------|
-| Lambda（`POCKET_STAGE` あり） | `awscontainer.django.storages` / `awscontainer.django.caches` |
+| Lambda（`POCKET_STAGE` あり） | `container.main.django.storages` / `container.main.django.caches` |
 | ローカル（`POCKET_STAGE` なし） | `general.django_fallback.storages` / `general.django_fallback.caches` |
 
 ??? info "値が未設定の場合のデフォルト"
@@ -126,12 +126,12 @@ CORS_ALLOWED_ORIGINS = [
 ]
 
 # dev
-[dev.awscontainer.django.settings]
+[dev.container.main.django.settings]
 DEFAULT_FROM_EMAIL = '"Dev" <test@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://dev.example.com"]
 
 # prod
-[prod.awscontainer.django.settings]
+[prod.container.main.django.settings]
 DEFAULT_FROM_EMAIL = '"Production" <noreply@example.com>'
 CORS_ALLOWED_ORIGINS = ["https://www.example.com"]
 ```
@@ -144,7 +144,7 @@ from pocket.django.runtime import get_django_settings
 vars().update(get_django_settings())
 ```
 
-この関数も `POCKET_STAGE` で切り替わります。ローカルでは `general.django_fallback.settings`、Lambda上では対応するステージの `awscontainer.django.settings` が返されます。
+この関数も `POCKET_STAGE` で切り替わります。ローカルでは `general.django_fallback.settings`、Lambda上では対応するステージの `container.main.django.settings` が返されます。
 
 ---
 
@@ -185,12 +185,12 @@ pocket_call_command("my_command", force_sqs=True)
 ```toml
 [cloudfront.web]
 routes = [
-    { type = "lambda", handler = "wsgi", is_default = true },
+    { type = "lambda", handler = "main.wsgi", is_default = true },
     # 公開ダウンロード用 route (signed なし)
     { path_pattern = "/downloads/*", ref = "downloads" },  # origin_path 省略 → downloads/
 ]
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3" }
 downloads = { store = "s3", distribution = "web", route = "downloads" }
 ```

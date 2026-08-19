@@ -9,7 +9,7 @@ from __future__ import annotations
 from unittest import mock
 
 from click.testing import CliRunner
-from pocket_cli.cli.awscontainer_cli import awscontainer
+from pocket_cli.cli.container_cli import container
 
 
 def _fake_lambda_client(current_env: dict[str, str]):
@@ -33,7 +33,8 @@ def _invoke(monkeypatch, command, *, secrets, lambda_client, use_toml):
     """共通 setup: get_secrets と boto3.client('lambda') を差し替えて CLI を実行。"""
     use_toml("tests/data/toml/default.toml")
     monkeypatch.setattr(
-        "pocket_cli.cli.awscontainer_cli.get_secrets", lambda stage: secrets
+        "pocket_cli.cli.container_cli.get_secrets",
+        lambda stage, container=None: secrets,
     )
     original_boto3_client = __import__("boto3").client
 
@@ -44,7 +45,7 @@ def _invoke(monkeypatch, command, *, secrets, lambda_client, use_toml):
 
     monkeypatch.setattr("boto3.client", _fake_boto3_client)
     runner = CliRunner()
-    return runner.invoke(awscontainer, command)
+    return runner.invoke(container, command)
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +97,7 @@ def test_reload_env_handler_filter(use_toml, monkeypatch):
     # FunctionName は deploy 側と同じ正準名 resource_prefix + key
     # (= {stage}-{project}-{namespace}-{handler})。namespace (既定 `pocket`) を
     # 取りこぼさないことを検証する (旧実装は {slug}-{handler} で `-pocket-` が欠落)。
-    assert client._updates[0]["FunctionName"] == "dev-testprj-pocket-wsgi"
+    assert client._updates[0]["FunctionName"] == "dev-testprj-pocket-main-wsgi"
 
 
 def test_reload_env_handler_filter_invalid(use_toml, monkeypatch):

@@ -5,14 +5,14 @@ stages = ["dev"]
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 apigateway = {}
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 # route = "media" は origin_path 省略 → 単一 prefix (media/)
 default = { store = "s3", distribution = "web", route = "media" }
 # route = "static" は origin_path 指定 → 従来どおり (static/static/)

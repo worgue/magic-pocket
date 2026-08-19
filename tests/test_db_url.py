@@ -20,11 +20,8 @@ from pocket.context import SecretsContext
 
 
 def _ctx_stub(secrets_context) -> Any:
-    class _Aws:
-        secrets = secrets_context
-
     class _Ctx:
-        awscontainer = _Aws()
+        secrets = secrets_context
 
     return _Ctx()
 

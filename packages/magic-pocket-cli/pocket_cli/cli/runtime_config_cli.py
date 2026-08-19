@@ -15,16 +15,16 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-# awscontainer から除外するキー（ビルド時のみ必要）
-_AWSCONTAINER_REMOVE_KEYS = {
+# container.<name> から除外するキー（ビルド時のみ必要）
+_CONTAINER_REMOVE_KEYS = {
     "platform",
     "build",
     "permissions_boundary",
     "use_vpc",
 }
 
-# awscontainer でダミー値に置き換えるキー（必須フィールドだが runtime では不要）
-_AWSCONTAINER_DUMMY_VALUES = {
+# container.<name> でダミー値に置き換えるキー（必須フィールドだが runtime では不要）
+_CONTAINER_DUMMY_VALUES = {
     "dockerfile_path": "__runtime__",
 }
 
@@ -45,7 +45,7 @@ _ROUTE_REMOVE_KEYS = {
     "login_path",
 }
 
-# awscontainer.django から除外するキー
+# container.<name>.django から除外するキー
 _DJANGO_REMOVE_KEYS = {
     "project_dir",
 }
@@ -68,15 +68,18 @@ def _clean_cloudfront(cf: dict) -> None:
 
 
 def _clean_section(section: dict) -> None:
-    """awscontainer / cloudfront セクションをクリーンアップする"""
-    if "awscontainer" in section:
-        ac = section["awscontainer"]
-        _remove_keys(ac, _AWSCONTAINER_REMOVE_KEYS)
-        for key, value in _AWSCONTAINER_DUMMY_VALUES.items():
-            if key in ac:
-                ac[key] = value
-        if "django" in ac:
-            _remove_keys(ac["django"], _DJANGO_REMOVE_KEYS)
+    """container / cloudfront セクションをクリーンアップする"""
+    containers = section.get("container")
+    if isinstance(containers, dict):
+        for c in containers.values():
+            if not isinstance(c, dict):
+                continue
+            _remove_keys(c, _CONTAINER_REMOVE_KEYS)
+            for key, value in _CONTAINER_DUMMY_VALUES.items():
+                if key in c:
+                    c[key] = value
+            if "django" in c:
+                _remove_keys(c["django"], _DJANGO_REMOVE_KEYS)
     if "cloudfront" in section:
         for cf in section["cloudfront"].values():
             _clean_cloudfront(cf)

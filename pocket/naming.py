@@ -45,7 +45,7 @@ DEFAULT_POCKET_KEY_FORMAT = "{stage}-{project}-{namespace}"
 #: [general].prefix_template の既定値 (general_settings.GeneralSettings と一致させる)。
 DEFAULT_PREFIX_TEMPLATE = "{stage}-{project}-{namespace}-"
 
-#: ECR repository 名の suffix (repo 名 = resource_prefix + この値)。
+#: ECR repository 名の suffix (repo 名 = prefix + container 名 + "-" + この値)。
 ECR_REPO_SUFFIX = "lambda"
 
 
@@ -74,8 +74,9 @@ def pocket_key(
 ) -> str:
     """pocket_key を組み立てる (既定 ``{stage}-{project}-{namespace}``)。
 
-    pocket.toml の ``[awscontainer.secrets].pocket_key_format`` を変えている場合のみ
-    ``pocket_key_format`` を渡す。既定運用ならデフォルトのままでよい。
+    pocket.toml の ``[container.<name>.secrets].pocket_key_format`` を変えている
+    場合のみ ``pocket_key_format`` を渡す。既定運用ならデフォルトのままでよい。
+    pocket_key は container 名を含まない (secrets の物理 store は project 共有)。
     """
     return pocket_key_format.format(stage=stage, project=project, namespace=namespace)
 
@@ -112,23 +113,26 @@ def ecr_repo_name(
     *,
     project: str,
     stage: str,
+    container: str,
     namespace: str = DEFAULT_NAMESPACE,
     prefix_template: str = DEFAULT_PREFIX_TEMPLATE,
     ecr_name: str | None = None,
 ) -> str:
     """pocket が build / deploy に使う ECR repository 名を導出する。
 
-    既定は ``{stage}-{project}-{namespace}-lambda``
-    (例: ``sandbox-myprj-pocket-lambda``)。外部ツール (pocket と併走する deploy 系)
-    が pocket のビルドしたイメージを参照する際、内部命名の再実装による drift を
-    防ぐための SoT。
+    既定は ``{stage}-{project}-{namespace}-{container}-lambda``
+    (例: ``sandbox-myprj-pocket-mydjango-lambda``)。外部ツール (pocket と併走する
+    deploy 系) が pocket のビルドしたイメージを参照する際、内部命名の再実装による
+    drift を防ぐための SoT。0.29.0 の multi-container 化で ``container``
+    (``[container.<name>]`` の name) が必須引数になった。
 
-    例) ``project="myprj"``, ``stage="sandbox"`` → ``"sandbox-myprj-pocket-lambda"``
+    例) ``project="myprj"``, ``stage="sandbox"``, ``container="mydjango"``
+        → ``"sandbox-myprj-pocket-mydjango-lambda"``
 
     注意: この関数は pocket.toml を読まない純関数のため、toml で規約を上書きして
     いる構成ではその値を引数で渡すこと。渡さないと実際の repo 名と食い違う:
 
-    - ``[awscontainer].ecr_name`` を明示している場合は ``ecr_name=`` に渡す
+    - ``[container.<name>].ecr_name`` を明示している場合は ``ecr_name=`` に渡す
       (そのまま返る)
     - ``[general].prefix_template`` を変えている場合は ``prefix_template=`` に渡す
 
@@ -138,7 +142,7 @@ def ecr_repo_name(
     if ecr_name:
         return ecr_name
     prefix = prefix_template.format(stage=stage, project=project, namespace=namespace)
-    return prefix + ECR_REPO_SUFFIX
+    return f"{prefix}{container}-{ECR_REPO_SUFFIX}"
 
 
 def ecr_image_tag(stage: str) -> str:

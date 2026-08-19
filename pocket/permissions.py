@@ -44,7 +44,7 @@ _CORE_ACTIONS: list[str] = [
     "sts:GetCallerIdentity",
 ]
 
-# secrets.store == "sm" (デフォルト) または awscontainer.secrets 未設定時
+# secrets.store == "sm" (デフォルト) または container secrets 未設定時
 _SM_ACTIONS: list[str] = ["secretsmanager:*"]
 
 # secrets.store == "ssm" 時
@@ -77,7 +77,7 @@ _CLOUDFRONT_ACTIONS: list[str] = [
 # Deploy 時の CFn 経由作成 + `pocket waf ip ...` CLI の update_ip_set を許可
 _WAF_ACTIONS: list[str] = ["wafv2:*"]
 
-# awscontainer.vpc が設定されている時
+# いずれかの container に vpc が設定されている時
 _VPC_ACTIONS: list[str] = ["ec2:*"]
 
 # [rds] が設定されている時。
@@ -91,7 +91,7 @@ _RDS_ACTIONS: list[str] = [
     "ssm:DeleteParameter",
 ]
 
-# awscontainer.vpc.efs が設定されている時
+# いずれかの container に vpc.efs が設定されている時
 _EFS_ACTIONS: list[str] = ["elasticfilesystem:*"]
 
 # いずれかのハンドラに sqs 設定がある時
@@ -100,7 +100,7 @@ _SQS_ACTIONS: list[str] = ["sqs:*"]
 # [ses] が設定されている時
 _SES_ACTIONS: list[str] = ["ses:SendEmail", "ses:SendRawEmail"]
 
-# awscontainer.build.backend == "codebuild" (デフォルト) 時
+# いずれかの container が build.backend == "codebuild" (デフォルト) 時
 _CODEBUILD_ACTIONS: list[str] = ["codebuild:*"]
 
 # [dsql] が設定されている時 (deploy が cluster create/describe を直接呼ぶ)
@@ -135,7 +135,7 @@ _BACKUP_ACTIONS: list[str] = [
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
 _SCHEDULER_ACTIONS: list[str] = ["scheduler:*"]
 
-# awscontainer.vpc が外部 VPC 参照 (manage = false) の時。
+# いずれかの container の vpc が外部 VPC 参照 (manage = false) の時。
 # deploy_init / destroy が VPC スタックへ consumer タグを付け外しする
 # (resourcegroupstaggingapi。IAM service prefix は "tag")
 _TAG_ACTIONS: list[str] = ["tag:TagResources", "tag:UntagResources"]
@@ -143,12 +143,13 @@ _TAG_ACTIONS: list[str] = ["tag:TagResources", "tag:UntagResources"]
 
 def _effective_secret_stores(settings: Settings) -> set[str]:
     """secrets の実効 store 集合 (グローバル既定 + user secret の per-spec override)"""
-    ac = settings.awscontainer
-    if not (ac and ac.secrets):
-        return set()
-    stores = {ac.secrets.store}
-    for spec in ac.secrets.user.values():
-        stores.add(spec.store or ac.secrets.store)
+    stores: set[str] = set()
+    for c in settings.container.values():
+        if not c.secrets:
+            continue
+        stores.add(c.secrets.store)
+        for spec in c.secrets.user.values():
+            stores.add(spec.store or c.secrets.store)
     return stores
 
 
@@ -165,12 +166,15 @@ def _uses_sm(settings: Settings) -> bool:
 
 
 def _has_sqs_handler(settings: Settings) -> bool:
-    ac = settings.awscontainer
-    return bool(ac and any(h.sqs is not None for h in ac.handlers.values()))
+    return any(
+        h.sqs is not None
+        for c in settings.container.values()
+        for h in c.handlers.values()
+    )
 
 
 def _has_vpc(settings: Settings) -> bool:
-    return bool(settings.awscontainer and settings.awscontainer.vpc)
+    return any(c.vpc for c in settings.container.values())
 
 
 def _has_waf(settings: Settings) -> bool:
@@ -178,13 +182,11 @@ def _has_waf(settings: Settings) -> bool:
 
 
 def _has_efs(settings: Settings) -> bool:
-    ac = settings.awscontainer
-    return bool(ac and ac.vpc and ac.vpc.efs)
+    return any(c.vpc and c.vpc.efs for c in settings.container.values())
 
 
 def _uses_codebuild(settings: Settings) -> bool:
-    ac = settings.awscontainer
-    return bool(ac and ac.build.backend == "codebuild")
+    return any(c.build.backend == "codebuild" for c in settings.container.values())
 
 
 def _has_scheduler(settings: Settings) -> bool:
@@ -192,8 +194,7 @@ def _has_scheduler(settings: Settings) -> bool:
 
 
 def _uses_external_vpc(settings: Settings) -> bool:
-    ac = settings.awscontainer
-    return bool(ac and ac.vpc and not ac.vpc.manage)
+    return any(c.vpc and not c.vpc.manage for c in settings.container.values())
 
 
 def _uses_backup(settings: Settings) -> bool:

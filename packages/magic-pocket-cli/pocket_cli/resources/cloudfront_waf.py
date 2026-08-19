@@ -81,7 +81,7 @@ class CloudFrontWaf(StackBackedResource):
     def _ensure_allow_secrets(self, mediator: Mediator | None):
         """allow secret を生成してから読み込む (create/update 用)。
 
-        deploy 順は WAF → AwsContainer のため、初回はまだ secret が無い。
+        deploy 順は WAF → Container のため、初回はまだ secret が無い。
         CloudFrontKeys と同じく mediator 経由で先に生成する。
         """
         waf = self.context.waf
@@ -109,12 +109,12 @@ class CloudFrontWaf(StackBackedResource):
         waf = self.context.waf
         if not waf or not waf.header_secret_keys:
             return
-        ac = mediator.context.awscontainer
-        if ac is None or ac.secrets is None:
+        sc = mediator.context.secrets
+        if sc is None:
             # settings 検証済みのため通常到達しない
-            echo.warning("awscontainer.secrets is not configured.")
+            echo.warning("container secrets is not configured.")
             return
-        secrets = ac.secrets.pocket_store.secrets
+        secrets = sc.pocket_store.secrets
         values = {}
         for key in waf.header_secret_keys:
             value = secrets.get(key)

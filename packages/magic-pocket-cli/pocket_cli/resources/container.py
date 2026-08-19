@@ -18,7 +18,7 @@ from pocket_cli.resources.vpc import Vpc
 
 if TYPE_CHECKING:
     from pocket.context import (
-        AwsContainerContext,
+        ContainerContext,
         DsqlContext,
         RdsContext,
         SchedulerContext,
@@ -33,16 +33,16 @@ class NoApiEndpointError(Exception):
     pass
 
 
-class AwsContainer:
+class Container:
     """This is abstructed resource to run container in aws.
     This class depends on aws resources.
     """
 
-    context: AwsContainerContext
+    context: ContainerContext
 
     def __init__(
         self,
-        context: context.AwsContainerContext,
+        context: context.ContainerContext,
         *,
         state_bucket: str = "",
         rds_context: RdsContext | None = None,
@@ -172,7 +172,8 @@ class AwsContainer:
             w("Probably, you need to request dns A record to WsgiRegionalDomainName")
 
     def state_info(self):
-        return {"ecr": {"repository_name": self.context.ecr_name}}
+        # 複数 container が deep merge で共存できるよう container 名で nest する
+        return {"ecr": {self.context.name: {"repository_name": self.context.ecr_name}}}
 
     def _runtime_toml_path(self) -> Path:
         """pocket.runtime.toml の出力先を返す。
@@ -214,7 +215,7 @@ class AwsContainer:
         self._wait_vpc_if_needed()
         print("Creating secrets ...")
         mediator.ensure_pocket_managed_secrets()
-        print("Creating cloudformation stack for awscontainer ...")
+        print("Creating cloudformation stack for container ...")
         self.show_acm_manual_request()
         self.stack.create()
         self.stack.wait_status("COMPLETED", timeout=600, interval=10)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from click.testing import CliRunner
-from pocket_cli.cli import awscontainer_cli, destroy_cli
+from pocket_cli.cli import container_cli, destroy_cli
 from pocket_cli.cli.cloudfront_cli import cloudfront
 from pocket_cli.cli.neon_cli import neon
 from pocket_cli.cli.tidb_cli import tidb
@@ -18,26 +18,24 @@ def test_awscontainer_destroy_uses_shared_teardown(monkeypatch, use_toml):
     use_toml("tests/data/toml/rds.toml")
     calls: list[str] = []
     monkeypatch.setattr(
-        awscontainer_cli,
-        "_collect_awscontainer_targets",
+        container_cli,
+        "_collect_container_targets",
         lambda c, w: ["AwsContainer (CFNスタック)"],
     )
     monkeypatch.setattr(
-        awscontainer_cli,
-        "_destroy_awscontainer",
+        container_cli,
+        "_destroy_containers",
         lambda c, w: calls.append("destroy"),
     )
     runner = CliRunner()
     # 確認拒否 → 削除されない
     result = runner.invoke(
-        awscontainer_cli.awscontainer, ["destroy", "--stage", "dev"], input="n\n"
+        container_cli.container, ["destroy", "--stage", "dev"], input="n\n"
     )
     assert result.exit_code != 0
     assert calls == []
     # -y → 削除される
-    result = runner.invoke(
-        awscontainer_cli.awscontainer, ["destroy", "--stage", "dev", "-y"]
-    )
+    result = runner.invoke(container_cli.container, ["destroy", "--stage", "dev", "-y"])
     assert result.exit_code == 0, result.output
     assert calls == ["destroy"]
 
@@ -48,7 +46,7 @@ def test_top_level_destroy_skips_overridden_ecr(use_toml, monkeypatch):
 
     use_toml("tests/data/toml/rds.toml")
     context = Context.from_toml(stage="dev")
-    assert context.awscontainer is not None
+    assert context.container["main"] is not None
 
     deleted = {"ecr": False}
 
@@ -66,12 +64,12 @@ def test_top_level_destroy_skips_overridden_ecr(use_toml, monkeypatch):
         stack = _FakeStack()
         ecr = _FakeEcr()
 
-    monkeypatch.setattr(destroy_cli, "AwsContainer", lambda ctx: _FakeAc())
+    monkeypatch.setattr(destroy_cli, "Container", lambda ctx: _FakeAc())
     monkeypatch.setattr(destroy_cli, "_destroy_codebuild", lambda c: None)
     monkeypatch.setattr(destroy_cli, "_destroy_log_groups", lambda c: None)
-    ac_ctx = context.awscontainer.model_copy(update={"ecr_name_overridden": True})
-    guarded = context.model_copy(update={"awscontainer": ac_ctx})
-    destroy_cli._destroy_awscontainer(guarded, with_secrets=False)
+    ac_ctx = context.container["main"].model_copy(update={"ecr_name_overridden": True})
+    guarded = context.model_copy(update={"container": {"main": ac_ctx}})
+    destroy_cli._destroy_containers(guarded, with_secrets=False)
     assert deleted["ecr"] is False
 
 
@@ -172,7 +170,7 @@ def test_destroy_resources_does_not_touch_command_provisioned(use_toml, monkeypa
     monkeypatch.setattr(destroy_cli, "Neon", _boom)
     monkeypatch.setattr(destroy_cli, "Upstash", _boom)
     monkeypatch.setattr(destroy_cli, "_destroy_cloudfront_and_acm", lambda c: None)
-    monkeypatch.setattr(destroy_cli, "_destroy_awscontainer", lambda c, w: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_containers", lambda c, w: None)
     monkeypatch.setattr(destroy_cli, "_destroy_dsql", lambda c: None)
     monkeypatch.setattr(destroy_cli, "_destroy_rds", lambda c: None)
     monkeypatch.setattr(destroy_cli, "_destroy_vpc", lambda c: None)

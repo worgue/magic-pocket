@@ -13,8 +13,8 @@ zone_suffixes = ["a", "c"]
 
 [rds]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"

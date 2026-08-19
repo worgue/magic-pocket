@@ -21,9 +21,9 @@ enum GetSecretError {
 impl GetSecretError {
     fn into_pocket_error(self) -> PocketError {
         match self {
-            GetSecretError::NotFound => PocketError::SecretsManager(
-                "secret not found (ResourceNotFoundException)".into(),
-            ),
+            GetSecretError::NotFound => {
+                PocketError::SecretsManager("secret not found (ResourceNotFoundException)".into())
+            }
             GetSecretError::ScheduledForDeletion => PocketError::SecretsManager(
                 "secret is scheduled for deletion (InvalidRequestException)".into(),
             ),
@@ -98,21 +98,15 @@ async fn try_get_secret_string(
         .await
         .map_err(|e| match e.as_service_error() {
             Some(se) if se.is_resource_not_found_exception() => GetSecretError::NotFound,
-            Some(se) if se.is_invalid_request_exception() => {
-                GetSecretError::ScheduledForDeletion
-            }
+            Some(se) if se.is_invalid_request_exception() => GetSecretError::ScheduledForDeletion,
             _ => GetSecretError::Other(PocketError::SecretsManager(
                 DisplayErrorContext(&e).to_string(),
             )),
         })?;
 
-    resp.secret_string()
-        .map(|s| s.to_string())
-        .ok_or_else(|| {
-            GetSecretError::Other(PocketError::SecretsManager(
-                "SecretString is empty".into(),
-            ))
-        })
+    resp.secret_string().map(|s| s.to_string()).ok_or_else(|| {
+        GetSecretError::Other(PocketError::SecretsManager("SecretString is empty".into()))
+    })
 }
 
 async fn restore_secret(client: &Client, secret_id: &str) -> Result<()> {

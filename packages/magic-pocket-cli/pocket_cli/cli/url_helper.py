@@ -74,7 +74,7 @@ def _read_stored_url(context: Context, secret_type: str) -> str | None:
     type 基準の正準パスを直接構築して読む — つまり「その backend の stored URL」を
     consumer 宣言の有無と無関係に引ける。両方無ければ None (→ live fallback)。
     """
-    sc = context.awscontainer.secrets if context.awscontainer else None
+    sc = context.secrets
     if sc is None:
         return None
     specs = [spec for spec in sc.user.values() if spec.type == secret_type]

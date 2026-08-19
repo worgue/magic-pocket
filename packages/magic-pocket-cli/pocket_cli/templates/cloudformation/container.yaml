@@ -124,11 +124,11 @@ Resources:
                   - "cloudformation:DescribeStacks"
                 Resource:
                   - Fn::Sub: "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/{{ slug }}-*"
-        # {% for name, doc in iam.inline_policies.items() %}
-        - PolicyName: "{{ resource_prefix }}{{ name }}"
+        # {% for policy_name, doc in iam.inline_policies.items() %}
+        - PolicyName: "{{ resource_prefix }}{{ policy_name }}"
           PolicyDocument: {{ doc | tojson }}
         # {% endfor %}
-      RoleName: "lambda-{{ slug }}-{{ namespace }}"
+      RoleName: "lambda-{{ slug }}-{{ name }}-{{ namespace }}"
       # {% if permissions_boundary %}
       PermissionsBoundary: "{{ permissions_boundary }}"
       # {% endif %}
@@ -137,15 +137,15 @@ Resources:
   LambdaSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: "{{ resource_prefix }}lambda"
-      GroupName: "{{ resource_prefix }}lambda"
+      GroupDescription: "{{ resource_prefix }}{{ name }}-lambda"
+      GroupName: "{{ resource_prefix }}{{ name }}-lambda"
       SecurityGroupEgress:
         - CidrIp: 0.0.0.0/0
           Description: Allow all outbound traffic by default
           IpProtocol: "-1"
       Tags:
         - Key: Name
-          Value: "{{ resource_prefix }}lambda"
+          Value: "{{ resource_prefix }}{{ name }}-lambda"
       VpcId:
         Fn::ImportValue: "{{ export.vpc_id }}"
   # {% endif %}
@@ -174,6 +174,8 @@ Resources:
       Environment:
         Variables:
           "POCKET_STAGE": "{{ stage }}"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "{{ name }}"
           # {# tojson で YAML セーフに埋め込む (値内の二重引用符等で ParserError にしない)。
           #    container 共通 envs に handler.envs をマージし handler 側を優先する。
           #    重複キーを 2 回出さないよう共通側は handler.envs にあるキーをスキップ #}
@@ -228,13 +230,13 @@ Resources:
   "{{ handler.key|capitalize }}ApigatewayCloudWatchLogsGroup":
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "{{ slug }}-{{ handler.key }}-apigateway"
+      LogGroupName: "{{ slug }}-{{ name }}-{{ handler.key }}-apigateway"
       RetentionInDays: 365
 
   "{{ handler.key|capitalize }}Api":
     Type: AWS::ApiGatewayV2::Api
     Properties:
-      Name: "{{ slug }}-{{ handler.key }}"
+      Name: "{{ slug }}-{{ name }}-{{ handler.key }}"
       ProtocolType: HTTP
       Target:
         Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
@@ -331,7 +333,7 @@ Resources:
       # {% endif %}
       Tags:
         - Key: Name
-          Value: "{{ slug }}-{{ handler.key }}-cert"
+          Value: "{{ slug }}-{{ name }}-{{ handler.key }}-cert"
       ValidationMethod: DNS
 
   ##### Warning #####

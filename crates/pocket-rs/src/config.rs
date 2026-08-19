@@ -15,8 +15,16 @@ pub struct PocketConfig {
     pub stage: String,
     pub slug: String,
     pub resource_prefix: String,
+    /// 自 container 名 (`[container.<name>]` の name)。POCKET_CONTAINER env
+    /// (CFn が注入) か、container が 1 つだけならそれ。
+    pub container_name: String,
+    /// 自 container の secrets 宣言 (物理 store は project 共有)
     pub secrets: Option<SecretsConfig>,
+    /// 自 container の handlers
     pub handlers: HashMap<String, HandlerConfig>,
+    /// 全 container の handlers (container 名 → handlers)。
+    /// 他 container の queue / host を POCKET_<CONTAINER>_<HANDLER>_* に注入する
+    pub containers: HashMap<String, HashMap<String, HandlerConfig>>,
     /// `[cloudfront.<name>]` の name 一覧 (sorted)。
     /// distribution ドメインを POCKET_CLOUDFRONT_<NAME>_DOMAIN に注入するのに使う。
     pub cloudfront_names: Vec<String>,
@@ -90,7 +98,7 @@ fn default_prefix_template() -> String {
 }
 
 #[derive(Debug, Deserialize)]
-struct AwsContainerToml {
+struct ContainerToml {
     secrets: Option<SecretsToml>,
     #[serde(default)]
     handlers: HashMap<String, HandlerToml>,
@@ -183,9 +191,18 @@ fn require_project_name(project_name: Option<String>) -> Result<String> {
 }
 
 /// pocket.toml をパースして PocketConfig を返す
+///
+/// 自 container は POCKET_CONTAINER env (CFn が各 function に注入) で選択する。
+/// env が無い場合は container が 1 つだけならそれを使う。
 pub fn load_config(stage: &str) -> Result<PocketConfig> {
     let toml_path = find_toml_path()?;
     load_config_from_path(&toml_path, stage)
+}
+
+fn env_container_name() -> Option<String> {
+    std::env::var("POCKET_CONTAINER")
+        .ok()
+        .filter(|s| !s.is_empty())
 }
 
 /// pocket.toml から general セクションのみ読み取る（stage 不要のケース用）
@@ -198,7 +215,10 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         let general_val = data
             .get("general")
             .ok_or_else(|| PocketError::Config("missing [general] section".into()))?;
-        general_val.clone().try_into().map_err(PocketError::TomlParse)?
+        general_val
+            .clone()
+            .try_into()
+            .map_err(PocketError::TomlParse)?
     };
 
     let project_name = require_project_name(general.project_name)?;
@@ -211,8 +231,10 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         stage: String::new(),
         slug: String::new(),
         resource_prefix: String::new(),
+        container_name: String::new(),
         secrets: None,
         handlers: HashMap::new(),
+        containers: HashMap::new(),
         cloudfront_names: Vec::new(),
     })
 }
@@ -220,11 +242,18 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
 /// 指定パスの pocket.toml をパースして PocketConfig を返す
 pub fn load_config_from_path(path: &Path, stage: &str) -> Result<PocketConfig> {
     let content = std::fs::read_to_string(path).map_err(PocketError::Io)?;
-    load_config_from_str(&content, stage)
+    load_config_from_str(&content, stage, env_container_name().as_deref())
 }
 
 /// TOML 文字列から PocketConfig を構築する
-pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> {
+///
+/// `container` は自 container 名。None の場合、container が 1 つだけならそれを
+/// 選択し、複数なら Config エラー (silent に誤った container を選ばない)。
+pub fn load_config_from_str(
+    content: &str,
+    stage: &str,
+    container: Option<&str>,
+) -> Result<PocketConfig> {
     let mut data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
 
     // [general] 欠如を先に検出する (stages 取得の失敗を StageNotFound と
@@ -266,7 +295,10 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
         let general_val = data
             .get("general")
             .ok_or_else(|| PocketError::Config("missing [general] section".into()))?;
-        general_val.clone().try_into().map_err(PocketError::TomlParse)?
+        general_val
+            .clone()
+            .try_into()
+            .map_err(PocketError::TomlParse)?
     };
 
     let project_name = require_project_name(general.project_name)?;
@@ -280,11 +312,90 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
     let resource_prefix = format_vars(&general.prefix_template);
     let slug = format!("{}-{}", stage, project_name);
 
-    // awscontainer セクション
-    let (secrets_config, handlers_config) = if let Some(ac_val) = data.get("awscontainer") {
-        let ac: AwsContainerToml = ac_val.clone().try_into().map_err(PocketError::TomlParse)?;
+    // 旧 [awscontainer] (0.29.0 で廃止) は移行案内付きで明示エラー
+    if data.get("awscontainer").is_some() {
+        return Err(PocketError::Config(
+            "[awscontainer] は廃止されました。[container.<name>] の dict 形式に \
+             移行してください (CHANGELOG 0.29.0 参照)。"
+                .into(),
+        ));
+    }
 
-        let secrets_config = match ac.secrets {
+    // [container.<name>] セクション群をパースする
+    let container_tables: Vec<(String, ContainerToml)> = match data.get("container") {
+        Some(v) => {
+            let table = v.as_table().ok_or_else(|| {
+                PocketError::Config("[container] must be a table of containers".into())
+            })?;
+            let mut parsed = Vec::new();
+            for (name, c_val) in table {
+                let c: ContainerToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
+                parsed.push((name.clone(), c));
+            }
+            parsed
+        }
+        None => Vec::new(),
+    };
+
+    // 自 container の選択 (POCKET_CONTAINER env > 単一 container)
+    let container_name = match container {
+        Some(name) => {
+            if !container_tables.iter().any(|(n, _)| n == name) {
+                return Err(PocketError::Config(format!(
+                    "container `{name}` は設定にありません"
+                )));
+            }
+            name.to_string()
+        }
+        None => match container_tables.len() {
+            0 => String::new(),
+            1 => container_tables[0].0.clone(),
+            _ => {
+                return Err(PocketError::Config(
+                    "複数の container が定義されています。POCKET_CONTAINER \
+                     環境変数で自 container を指定してください。"
+                        .into(),
+                ));
+            }
+        },
+    };
+
+    let build_handlers =
+        |c_name: &str, handlers: HashMap<String, HandlerToml>| -> HashMap<String, HandlerConfig> {
+            handlers
+                .into_iter()
+                .map(|(key, h)| {
+                    let apigateway = h
+                        .apigateway
+                        .map(|ag| ApiGatewayConfig { domain: ag.domain });
+                    let sqs = if h.sqs.is_some() {
+                        // Python 側 SqsContext.from_settings と同じ導出:
+                        // {prefix}{container}-{handler}
+                        let queue_name = format!("{resource_prefix}{c_name}-{key}");
+                        Some(SqsConfig { name: queue_name })
+                    } else {
+                        None
+                    };
+                    (key, HandlerConfig { apigateway, sqs })
+                })
+                .collect()
+        };
+
+    let mut containers_config: HashMap<String, HashMap<String, HandlerConfig>> = HashMap::new();
+    let mut own_secrets_toml: Option<SecretsToml> = None;
+    for (name, c) in container_tables {
+        if name == container_name {
+            own_secrets_toml = c.secrets;
+        }
+        containers_config.insert(name.clone(), build_handlers(&name, c.handlers));
+    }
+    let handlers_config = containers_config
+        .get(&container_name)
+        .cloned()
+        .unwrap_or_default();
+
+    let secrets_config = {
+        let secrets_config = match own_secrets_toml {
             Some(sc) => {
                 let pocket_key = format_vars(&sc.pocket_key_format);
                 let store = parse_store_type(&sc.store);
@@ -357,27 +468,7 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
             }
             None => None,
         };
-
-        let handlers_config: HashMap<String, HandlerConfig> = ac
-            .handlers
-            .into_iter()
-            .map(|(key, h)| {
-                let apigateway = h.apigateway.map(|ag| ApiGatewayConfig {
-                    domain: ag.domain,
-                });
-                let sqs = if h.sqs.is_some() {
-                    let queue_name = format!("{}{}", resource_prefix, key);
-                    Some(SqsConfig { name: queue_name })
-                } else {
-                    None
-                };
-                (key, HandlerConfig { apigateway, sqs })
-            })
-            .collect();
-
-        (secrets_config, handlers_config)
-    } else {
-        (None, HashMap::new())
+        secrets_config
     };
 
     // [cloudfront.<name>] の name 一覧。値は CFn stack output から引くので
@@ -397,8 +488,10 @@ pub fn load_config_from_str(content: &str, stage: &str) -> Result<PocketConfig> 
         stage: stage.to_string(),
         slug,
         resource_prefix,
+        container_name,
         secrets: secrets_config,
         handlers: handlers_config,
+        containers: containers_config,
         cloudfront_names,
     })
 }
@@ -453,27 +546,27 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev", "prod"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets]
+[container.main.secrets]
 store = "ssm"
 pocket_key_format = "{stage}-{project}-{namespace}"
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = "50" } }
 DATABASE_URL = { type = "neon_database_url" }
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 EXTERNAL_API_KEY = { name = "my-external-key", store = "sm" }
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "handler.wsgi"
 
-[awscontainer.handlers.wsgi.apigateway]
+[container.main.handlers.wsgi.apigateway]
 domain = "api.example.com"
 
-[awscontainer.handlers.worker]
+[container.main.handlers.worker]
 command = "handler.worker"
 timeout = 600
 sqs = {}
@@ -485,35 +578,63 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev", "prod"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "handler.wsgi"
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
-[prod.awscontainer.handlers.wsgi.apigateway]
+[prod.container.main.handlers.wsgi.apigateway]
 domain = "api.example.com"
+"#;
+
+    const MULTI_CONTAINER_TOML: &str = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.mydjango]
+dockerfile_path = "Dockerfile"
+
+[container.mydjango.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[container.v2]
+dockerfile_path = "v2/Dockerfile"
+
+[container.v2.handlers.wsgi]
+command = "admin-v2"
+apigateway = {}
+
+[container.v2.handlers.worker]
+command = "admin-v2"
+sqs = {}
 "#;
 
     #[test]
     fn test_load_basic_config() {
-        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         assert_eq!(config.region, "ap-northeast-1");
         assert_eq!(config.project_name, "myapp");
         assert_eq!(config.namespace, "pocket");
         assert_eq!(config.stage, "dev");
         assert_eq!(config.slug, "dev-myapp");
         assert_eq!(config.resource_prefix, "dev-myapp-pocket-");
+        // container が 1 つだけなら省略時にそれが選択される
+        assert_eq!(config.container_name, "main");
     }
 
     #[test]
     fn test_secrets_config() {
-        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         let secrets = config.secrets.unwrap();
         assert_eq!(secrets.store, StoreType::Ssm);
+        // pocket_key は project 共有 (container 名を含まない)
         assert_eq!(secrets.pocket_key, "dev-myapp-pocket");
         assert_eq!(secrets.managed.len(), 2);
         assert!(secrets.managed.contains_key("SECRET_KEY"));
@@ -526,7 +647,7 @@ domain = "api.example.com"
 
     #[test]
     fn test_handlers_config() {
-        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         assert_eq!(config.handlers.len(), 2);
 
         let wsgi = &config.handlers["wsgi"];
@@ -540,7 +661,52 @@ domain = "api.example.com"
         let worker = &config.handlers["worker"];
         assert!(worker.apigateway.is_none());
         assert!(worker.sqs.is_some());
-        assert_eq!(worker.sqs.as_ref().unwrap().name, "dev-myapp-pocket-worker");
+        // queue 名は {prefix}{container}-{handler}
+        assert_eq!(
+            worker.sqs.as_ref().unwrap().name,
+            "dev-myapp-pocket-main-worker"
+        );
+    }
+
+    #[test]
+    fn test_legacy_awscontainer_rejected() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[awscontainer]
+dockerfile_path = "Dockerfile"
+"#;
+        let err = load_config_from_str(toml, "dev", None).unwrap_err();
+        assert!(err.to_string().contains("[awscontainer]"), "got {err}");
+        assert!(err.to_string().contains("[container.<name>]"), "got {err}");
+    }
+
+    #[test]
+    fn test_multi_container_requires_selection() {
+        let err = load_config_from_str(MULTI_CONTAINER_TOML, "dev", None).unwrap_err();
+        assert!(err.to_string().contains("POCKET_CONTAINER"), "got {err}");
+    }
+
+    #[test]
+    fn test_multi_container_selects_by_name() {
+        let config = load_config_from_str(MULTI_CONTAINER_TOML, "dev", Some("v2")).unwrap();
+        assert_eq!(config.container_name, "v2");
+        assert_eq!(config.handlers.len(), 2);
+        assert_eq!(
+            config.handlers["worker"].sqs.as_ref().unwrap().name,
+            "dev-myapp-pocket-v2-worker"
+        );
+        // 他 container の handlers も containers から引ける
+        assert!(config.containers["mydjango"].contains_key("wsgi"));
+    }
+
+    #[test]
+    fn test_unknown_container_selection_errors() {
+        let err = load_config_from_str(MULTI_CONTAINER_TOML, "dev", Some("nope")).unwrap_err();
+        assert!(err.to_string().contains("nope"), "got {err}");
     }
 
     #[test]
@@ -558,7 +724,7 @@ domain = "example.com"
 
 [cloudfront.admin]
 "#;
-        let config = load_config_from_str(toml, "dev").unwrap();
+        let config = load_config_from_str(toml, "dev", None).unwrap();
         // env 注入を決定的にするため sorted
         assert_eq!(config.cloudfront_names, vec!["admin", "web"]);
         // stack 名の導出が Python の CloudFrontContext.slug ({stage}-{project}-{name})
@@ -568,25 +734,25 @@ domain = "example.com"
 
     #[test]
     fn test_cloudfront_names_empty_when_absent() {
-        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         assert!(config.cloudfront_names.is_empty());
     }
 
     #[test]
     fn test_stage_not_found() {
-        let err = load_config_from_str(MINIMAL_TOML, "staging").unwrap_err();
+        let err = load_config_from_str(MINIMAL_TOML, "staging", None).unwrap_err();
         assert!(matches!(err, PocketError::StageNotFound(_)));
     }
 
     #[test]
     fn test_stage_merge() {
-        let config = load_config_from_str(STAGE_OVERRIDE_TOML, "dev").unwrap();
+        let config = load_config_from_str(STAGE_OVERRIDE_TOML, "dev", None).unwrap();
         let wsgi = &config.handlers["wsgi"];
         // dev ステージは apigateway = {} なので domain なし
         assert!(wsgi.apigateway.is_some());
         assert!(wsgi.apigateway.as_ref().unwrap().domain.is_none());
 
-        let config = load_config_from_str(STAGE_OVERRIDE_TOML, "prod").unwrap();
+        let config = load_config_from_str(STAGE_OVERRIDE_TOML, "prod", None).unwrap();
         let wsgi = &config.handlers["wsgi"];
         assert!(wsgi.apigateway.is_some());
         assert_eq!(
@@ -597,7 +763,7 @@ domain = "example.com"
 
     #[test]
     fn test_pocket_key_calculation() {
-        let config = load_config_from_str(MINIMAL_TOML, "prod").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "prod", None).unwrap();
         let secrets = config.secrets.unwrap();
         assert_eq!(secrets.pocket_key, "prod-myapp-pocket");
     }
@@ -610,10 +776,12 @@ region = "us-east-1"
 project_name = "test"
 stages = ["dev"]
 "#;
-        let config = load_config_from_str(toml, "dev").unwrap();
+        let config = load_config_from_str(toml, "dev", None).unwrap();
         assert_eq!(config.namespace, "pocket");
         assert_eq!(config.prefix_template, "{stage}-{project}-{namespace}-");
         assert_eq!(config.resource_prefix, "dev-test-pocket-");
+        assert_eq!(config.container_name, "");
+        assert!(config.containers.is_empty());
     }
 
     // 標準構成: provisioning = "command" + type 基準 user secret (name 省略)。
@@ -628,19 +796,19 @@ stages = ["sandbox"]
 [neon]
 provisioning = "command"
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets]
+[container.main.secrets]
 store = "ssm"
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 "#;
 
     #[test]
     fn test_type_based_user_secret_derives_canonical_path() {
-        let config = load_config_from_str(TYPE_USER_SECRET_TOML, "sandbox").unwrap();
+        let config = load_config_from_str(TYPE_USER_SECRET_TOML, "sandbox", None).unwrap();
         let secrets = config.secrets.unwrap();
         assert_eq!(secrets.pocket_key, "sandbox-myapp-pocket");
         let db = &secrets.user["DATABASE_URL"];
@@ -659,13 +827,13 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 "#;
-        let config = load_config_from_str(toml, "dev").unwrap();
+        let config = load_config_from_str(toml, "dev", None).unwrap();
         let db = &config.secrets.unwrap().user["DATABASE_URL"];
         assert_eq!(db.name, "dev-myapp-pocket-user/neon_database_url");
     }
@@ -679,16 +847,16 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets]
+[container.main.secrets]
 store = "sm"
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url", store = "ssm" }
 "#;
-        let config = load_config_from_str(toml, "dev").unwrap();
+        let config = load_config_from_str(toml, "dev", None).unwrap();
         let db = &config.secrets.unwrap().user["DATABASE_URL"];
         assert_eq!(db.store, Some(StoreType::Ssm));
         assert_eq!(db.name, "/dev-myapp-pocket-user/neon_database_url");
@@ -696,7 +864,7 @@ DATABASE_URL = { type = "neon_database_url", store = "ssm" }
 
     #[test]
     fn test_name_based_user_secret_still_works() {
-        let config = load_config_from_str(MINIMAL_TOML, "dev").unwrap();
+        let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         let ext = &config.secrets.unwrap().user["EXTERNAL_API_KEY"];
         assert_eq!(ext.name, "my-external-key");
         assert_eq!(ext.store, Some(StoreType::Sm));
@@ -710,13 +878,13 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { store = "ssm" }
 "#;
-        let err = load_config_from_str(toml, "dev").unwrap_err();
+        let err = load_config_from_str(toml, "dev", None).unwrap_err();
         assert!(matches!(err, PocketError::Config(_)));
     }
 
@@ -730,13 +898,13 @@ region = "ap-northeast-1"
 project_name = "myapp"
 stages = ["dev"]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "Dockerfile"
 
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { name = "my-secret", type = "neon_database_url" }
 "#;
-        let err = load_config_from_str(toml, "dev").unwrap_err();
+        let err = load_config_from_str(toml, "dev", None).unwrap_err();
         assert!(err.to_string().contains("mutually"), "got {err}");
     }
 
@@ -749,14 +917,14 @@ DATABASE_URL = { name = "my-secret", type = "neon_database_url" }
 region = "ap-northeast-1"
 stages = ["dev"]
 "#;
-        let err = load_config_from_str(toml, "dev").unwrap_err();
+        let err = load_config_from_str(toml, "dev", None).unwrap_err();
         assert!(err.to_string().contains("project_name"));
     }
 
     #[test]
     fn test_missing_general_section_reports_config_error() {
         // 以前は stages 取得失敗が StageNotFound と誤報告されていた
-        let err = load_config_from_str("[dev]\n", "dev").unwrap_err();
+        let err = load_config_from_str("[dev]\n", "dev", None).unwrap_err();
         assert!(err.to_string().contains("missing [general] section"));
     }
 

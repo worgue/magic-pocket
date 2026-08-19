@@ -12,11 +12,11 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from pocket.context import Context
 from pocket.django import django_installed
-from pocket.django.utils import get_storages
+from pocket.django.utils import get_storages, resolve_django_container
 from pocket.utils import echo
 from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
-from pocket_cli.resources.awscontainer import AwsContainer
+from pocket_cli.resources.container import Container
 
 
 @click.group()
@@ -192,36 +192,53 @@ def build(stage: str, allow_dirty: bool):
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     context = Context.from_toml(stage=stage)
-    target = build_image(context, tag=tag)
-    echo.success("built and pushed: %s" % target)
+    targets = build_image(context, tag=tag)
+    for target in targets:
+        echo.success("built and pushed: %s" % target)
 
 
 def _staticfiles_publish_mode(context: Context) -> str:
-    if context.awscontainer and context.awscontainer.django:
-        storage = context.awscontainer.django.storages.get("staticfiles")
+    c = resolve_django_container(context)
+    if c and c.django:
+        storage = c.django.storages.get("staticfiles")
         if storage:
             return storage.publish
     return "deploy"
 
 
 def _staticfiles_link(context: Context) -> bool:
-    if context.awscontainer and context.awscontainer.django:
-        storage = context.awscontainer.django.storages.get("staticfiles")
+    c = resolve_django_container(context)
+    if c and c.django:
+        storage = c.django.storages.get("staticfiles")
         if storage:
             return storage.link
     return False
 
 
 def _get_management_command_handler(context: Context):
-    if not context.awscontainer:
-        raise Exception("awscontainer is not configured for this stage")
-    ac = AwsContainer(context.awscontainer)
+    if not context.container:
+        raise Exception("container is not configured for this stage")
     target_command = "pocket.django.lambda_handlers.management_command_handler"
-    for key, handler_context in context.awscontainer.handlers.items():
-        if handler_context.command == target_command:
-            return ac.handlers[key]
-    print("management command handler not found")
-    raise Exception("Add management command handler for this stage")
+    matches = []
+    for c_name in sorted(context.container):
+        c_ctx = context.container[c_name]
+        for key, handler_context in c_ctx.handlers.items():
+            if handler_context.command == target_command:
+                matches.append((c_name, c_ctx, key))
+    if not matches:
+        print("management command handler not found")
+        raise Exception("Add management command handler for this stage")
+    env_name = os.environ.get("POCKET_CONTAINER")
+    if len(matches) > 1 and env_name:
+        matches = [m for m in matches if m[0] == env_name] or matches
+    if len(matches) > 1:
+        raise Exception(
+            "management command handler が複数の container にあります (%s)。"
+            "POCKET_CONTAINER 環境変数で対象を指定してください。"
+            % ", ".join("%s.%s" % (m[0], m[2]) for m in matches)
+        )
+    _c_name, c_ctx, key = matches[0]
+    return Container(c_ctx).handlers[key]
 
 
 class DeploystaticConfigError(Exception):
@@ -313,10 +330,11 @@ def _build_python_command(args: list[str]) -> list[str]:
 
 
 def _get_project_dir(stage: str) -> str | None:
-    """pocket.toml の awscontainer.django.project_dir を取得する"""
+    """pocket.toml の container.<name>.django.project_dir を取得する"""
     context = Context.from_toml(stage=stage)
-    if context.awscontainer and context.awscontainer.django:
-        return context.awscontainer.django.project_dir
+    c = resolve_django_container(context)
+    if c and c.django:
+        return c.django.project_dir
     return None
 
 

@@ -1,6 +1,6 @@
 import pytest
 
-from pocket.context import AwsContainerContext, Context, SecretsContext
+from pocket.context import ContainerContext, Context, SecretsContext
 from pocket.general_context import GeneralContext
 
 
@@ -167,11 +167,11 @@ def test_get_resources_excludes_upstash_when_provisioning_command(use_toml, tmp_
 
 def _build_awscontainer_context(
     base_settings, *, permissions_boundary: str | None = None
-) -> AwsContainerContext:
-    """permissions_boundary 検証用の最小 AwsContainerContext を構築する。"""
+) -> ContainerContext:
+    """permissions_boundary 検証用の最小 ContainerContext を構築する。"""
     from pocket import settings
 
-    awscontainer = settings.AwsContainer.model_validate(
+    awscontainer = settings.Container.model_validate(
         {
             "dockerfile_path": "Dockerfile",
             "handlers": {
@@ -184,8 +184,8 @@ def _build_awscontainer_context(
             ),
         }
     )
-    base_settings.awscontainer = awscontainer
-    return AwsContainerContext.from_settings(awscontainer, base_settings)
+    base_settings.container["main"] = awscontainer
+    return ContainerContext.from_settings("main", awscontainer, base_settings)
 
 
 def test_awscontainer_permissions_boundary_from_toml(base_settings, monkeypatch):
@@ -253,12 +253,12 @@ def test_dsql_context_endpoint_secret_name_defaults(base_settings):
 
 
 def test_dsql_context_endpoint_secret_name_follows_secrets_store(base_settings):
-    """[awscontainer.secrets] store = "ssm" なら SSM パス (先頭 /) で導出。"""
+    """[container.main.secrets] store = "ssm" なら SSM パス (先頭 /) で導出。"""
     from pocket import settings
     from pocket.context import DsqlContext
 
     base_settings.dsql = settings.Dsql()
-    base_settings.awscontainer = settings.AwsContainer(
+    base_settings.container["main"] = settings.Container(
         dockerfile_path="Dockerfile", secrets=settings.Secrets(store="ssm")
     )
     ctx = DsqlContext.from_settings(base_settings.dsql, base_settings)

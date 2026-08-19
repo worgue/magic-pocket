@@ -65,7 +65,7 @@ def test_mediator_cleanup_deletes_only_orphan_keys():
 
     fake_store = _FakeStore()
     fake_sc = SimpleNamespace(pocket_store=fake_store, managed={"KEEP": object()})
-    ctx: Any = SimpleNamespace(awscontainer=SimpleNamespace(secrets=fake_sc))
+    ctx: Any = SimpleNamespace(secrets=fake_sc, container={})
     mediator = Mediator(ctx)
 
     mediator._cleanup_orphaned_secrets()
@@ -82,5 +82,5 @@ def test_mediator_cleanup_noop_without_orphans():
             raise AssertionError("orphan が無ければ削除 API を呼ばないこと")
 
     fake_sc = SimpleNamespace(pocket_store=_FakeStore(), managed={"KEEP": object()})
-    ctx: Any = SimpleNamespace(awscontainer=SimpleNamespace(secrets=fake_sc))
+    ctx: Any = SimpleNamespace(secrets=fake_sc, container={})
     Mediator(ctx)._cleanup_orphaned_secrets()

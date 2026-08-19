@@ -39,12 +39,14 @@ def _settings_dict(cf_extra: dict, secrets_managed: dict | None):
         },
     }
     if secrets_managed is not None:
-        data["awscontainer"] = {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {
-                "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"}
-            },
-            "secrets": {"managed": secrets_managed},
+        data["container"] = {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "handlers": {
+                    "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"}
+                },
+                "secrets": {"managed": secrets_managed},
+            }
         }
     return data
 
@@ -53,12 +55,12 @@ _BA_SPEC = {"type": "basic_auth_credential", "options": {"username": "u"}}
 
 
 def test_basic_auth_requires_awscontainer_secrets():
-    with pytest.raises(ValueError, match="awscontainer.secrets is required"):
+    with pytest.raises(ValueError, match="not found in container secrets.managed"):
         Settings.model_validate(_settings_dict({"basic_auth": "BA"}, None))
 
 
 def test_basic_auth_key_must_exist_in_managed():
-    with pytest.raises(ValueError, match="not found in awscontainer.secrets.managed"):
+    with pytest.raises(ValueError, match="not found in container secrets.managed"):
         Settings.model_validate(
             _settings_dict({"basic_auth": "MISSING"}, {"BA": _BA_SPEC})
         )
@@ -308,7 +310,7 @@ def _cloudfront_resource(basic_auth="BA"):
 
 def _mediator_with_secrets(secrets: dict):
     mediator = MagicMock()
-    mediator.context.awscontainer.secrets.pocket_store.secrets = secrets
+    mediator.context.secrets.pocket_store.secrets = secrets
     return mediator
 
 

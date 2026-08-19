@@ -6,11 +6,11 @@ stages = ["dev"]
 [upstash]
 budget = 10
 
-[awscontainer]
+[container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 REDIS_URL = { type = "upstash_redis_url" }

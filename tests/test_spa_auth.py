@@ -90,14 +90,16 @@ def test_token_secret_needs_managed_secret():
                     "stages": ["dev"],
                 },
                 "s3": {},
-                "awscontainer": {
-                    "dockerfile_path": "Dockerfile",
-                    "handlers": {
-                        "wsgi": {
-                            "command": "pocket.django.lambda_handlers.wsgi_handler"
-                        }
-                    },
-                    "secrets": {"managed": {}},
+                "container": {
+                    "main": {
+                        "dockerfile_path": "Dockerfile",
+                        "handlers": {
+                            "wsgi": {
+                                "command": "pocket.django.lambda_handlers.wsgi_handler"
+                            }
+                        },
+                        "secrets": {"managed": {}},
+                    }
                 },
                 "cloudfront": {
                     "main": {

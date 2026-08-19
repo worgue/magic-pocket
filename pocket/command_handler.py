@@ -49,7 +49,7 @@ class BaseCommandHandler(ABC):
     したい場合は sink hook (:meth:`on_start` / :meth:`on_output` / :meth:`on_finish` /
     :meth:`on_crash`) を override する (既定は no-op)。
 
-    ``pocket.toml`` の ``[awscontainer.handlers.<key>]`` の ``command`` が、この
+    ``pocket.toml`` の ``[container.<name>.handlers.<key>]`` の ``command`` が、この
     クラスのインスタンス (呼び出し可能) を dotted-path で指すように配線する。
     """
 
@@ -67,7 +67,7 @@ class BaseCommandHandler(ABC):
 
         この返り値を SQS が解釈するのは event source mapping に
         ``FunctionResponseTypes: ReportBatchItemFailures`` が付いているとき、つまり
-        ``pocket.toml`` の ``[awscontainer.handlers.<key>.sqs]``
+        ``pocket.toml`` の ``[container.<name>.handlers.<key>.sqs]``
         ``report_batch_item_failures`` が true (既定) のとき。false のときは SQS 側が
         返り値を無視するだけで、返して害は無い。
         """

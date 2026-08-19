@@ -144,7 +144,7 @@ pocket destroy --stage=dev
 11. ステートバケット（`--with-state-bucket` 指定時のみ）
 
 !!! note "ECR リポジトリの扱い"
-    [`[awscontainer].ecr_name`](configuration.md#awscontainer) を明示指定している場合、
+    [`[container.main].ecr_name`](configuration.md#container) を明示指定している場合、
     ECR リポジトリは他ステージと共有されている可能性があるため削除されません（警告を表示してスキップ）。
 
 !!! note "バックアップデータの扱い"
@@ -277,7 +277,7 @@ pocket django promote --stage=stg --commit-hash=<full-sha>
   イメージに焼き込まれ、ステージは Lambda の `POCKET_STAGE` 環境変数で実行時に解決
   されます。`build --stage=dev` の `--stage` は ECR リポジトリ等の対象を決めるだけで、
   生成されるイメージ自体はどのステージでも動きます。
-- **ステージ間で ECR リポジトリを共有するには** [`[awscontainer].ecr_name`](configuration.md#awscontainer)
+- **ステージ間で ECR リポジトリを共有するには** [`[container.main].ecr_name`](configuration.md#container)
   を設定します。デフォルトでは ECR リポジトリ名にステージ名が含まれるため、
   ステージごとに別リポジトリになり昇格が成立しません。同一 AWS アカウント内の
   ステージで同じ `ecr_name` を指定すると、昇格がタグの付け替えだけで完結します。
@@ -378,7 +378,7 @@ pocket django storage upload management --stage=dev
     ```toml
     [general.django_fallback.storages]
     management = { store = "filesystem", location = "data/management" }
-    [awscontainer.django.storages]
+    [container.main.django.storages]
     management = { store = "s3", location = "management" }
     ```
 
@@ -396,52 +396,52 @@ pocket django storage upload management --stage=dev
 
 個別リソースの状態確認や管理を行います。
 
-### awscontainer
+### container
 
 ```bash
 # Lambda環境の状態確認
-pocket resource awscontainer status --stage=dev
+pocket resource container status --stage=dev
 
 # wsgiエンドポイントのURLを表示
-pocket resource awscontainer url --stage=dev
+pocket resource container url --stage=dev
 
 # CloudFormation YAMLを表示
-pocket resource awscontainer yaml --stage=dev
+pocket resource container yaml --stage=dev
 
 # CloudFormation YAMLの差分を確認
-pocket resource awscontainer yaml-diff --stage=dev
+pocket resource container yaml-diff --stage=dev
 
 # CFNスタックの作成 / 更新（通常は pocket deploy 経由で実行）
-pocket resource awscontainer create --stage=dev
-pocket resource awscontainer update --stage=dev
+pocket resource container create --stage=dev
+pocket resource container update --stage=dev
 
 # SSM/Secrets Manager の最新値で Lambda 環境変数を即時更新（CFNを介さない）
-pocket resource awscontainer reload-env --stage=dev
+pocket resource container reload-env --stage=dev
 
 # Lambda の現在の環境変数と SSM/Secrets Manager 上の宣言値の差分を表示
-pocket resource awscontainer status-env --stage=dev
+pocket resource container status-env --stage=dev
 
 # リソース削除（CFNスタック + ECRリポジトリ）
-pocket resource awscontainer destroy --stage=dev
+pocket resource container destroy --stage=dev
 
 # シークレットも含めて削除
-pocket resource awscontainer destroy --stage=dev --with-secrets
+pocket resource container destroy --stage=dev --with-secrets
 ```
 
 #### secrets サブコマンド
 
 ```bash
 # シークレットの一覧表示
-pocket resource awscontainer secrets list --stage=dev
+pocket resource container secrets list --stage=dev
 
 # 値も表示
-pocket resource awscontainer secrets list --stage=dev --show-values
+pocket resource container secrets list --stage=dev --show-values
 
 # pocket管理シークレットの作成
-pocket resource awscontainer secrets create-pocket-managed --stage=dev
+pocket resource container secrets create-pocket-managed --stage=dev
 
 # pocket管理シークレットの削除
-pocket resource awscontainer secrets delete-pocket-managed --stage=dev
+pocket resource container secrets delete-pocket-managed --stage=dev
 ```
 
 ### image
@@ -739,8 +739,8 @@ pocket resource vpc destroy
 AWS にアクセスせずにテンプレートの内容を確認したい場合に便利です。
 
 ```bash
-# awscontainer（Lambda関連）
-pocket resource awscontainer yaml --stage=dev
+# container（Lambda関連）
+pocket resource container yaml --stage=dev
 
 # cloudfront
 pocket resource cloudfront yaml --stage=dev

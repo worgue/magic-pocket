@@ -268,14 +268,16 @@ def _root_settings_dict(*, waf: dict, awscontainer: bool = True) -> dict:
         },
     }
     if awscontainer:
-        data["awscontainer"] = {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {
-                "wsgi": {
-                    "command": "pocket.django.lambda_handlers.wsgi_handler",
-                    "apigateway": {},
-                }
-            },
+        data["container"] = {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "handlers": {
+                    "wsgi": {
+                        "command": "pocket.django.lambda_handlers.wsgi_handler",
+                        "apigateway": {},
+                    }
+                },
+            }
         }
     return data
 
@@ -288,7 +290,7 @@ def test_waf_allow_rule_header_requires_awscontainer():
     )
     with pytest.raises(ValidationError) as exc:
         settings.Settings.model_validate(data)
-    assert "awscontainer" in str(exc.value)
+    assert "container is required" in str(exc.value)
 
 
 def test_waf_allow_rule_path_only_works_without_awscontainer():
@@ -305,7 +307,9 @@ def test_waf_allow_rule_header_rejects_declared_secret_collision():
     from pocket import settings
 
     data = _root_settings_dict(waf={"allow_rules": [{"header": "MY_SECRET"}]})
-    data["awscontainer"]["secrets"] = {"managed": {"MY_SECRET": {"type": "password"}}}
+    data["container"]["main"]["secrets"] = {
+        "managed": {"MY_SECRET": {"type": "password"}}
+    }
     with pytest.raises(ValidationError) as exc:
         settings.Settings.model_validate(data)
     assert "MY_SECRET" in str(exc.value)
@@ -321,9 +325,9 @@ def test_context_injects_waf_allow_secret():
     )
     s = settings.Settings.model_validate(data)
     context = Context.from_settings(s)
-    assert context.awscontainer is not None
-    assert context.awscontainer.secrets is not None
-    managed = context.awscontainer.secrets.managed
+    assert context.container["main"] is not None
+    assert context.container["main"].secrets is not None
+    managed = context.container["main"].secrets.managed
     assert "SMOKE_ALLOW_SECRET" in managed
     assert managed["SMOKE_ALLOW_SECRET"].type == "waf_allow_secret"
     waf_ctx = context.cloudfront["web"].waf
@@ -400,7 +404,7 @@ def test_waf_resource_prepare_deploy_reads_allow_secrets():
 
     ctx = _make_cf_context(waf=_waf_ctx_with_allow_rules())
     mediator = mock.MagicMock()
-    mediator.context.awscontainer.secrets.pocket_store.secrets = {
+    mediator.context.secrets.pocket_store.secrets = {
         "SMOKE_ALLOW_SECRET": "secret-value",
         "OTHER": "x",
     }

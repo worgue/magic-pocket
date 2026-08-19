@@ -17,7 +17,11 @@ _SQS_HANDLER_CMD = (
 
 
 def _build_settings(**overrides) -> Settings:
-    """テスト用の最小 Settings を組み立てる。overrides で追加セクションを上書き。"""
+    """テスト用の最小 Settings を組み立てる。overrides で追加セクションを上書き。
+
+    awscontainer= は旧形式の短縮記法として container = {"main": ...} に変換する
+    (テスト本文の見通し優先)。
+    """
     data: dict = {
         "stage": "dev",
         "general": {
@@ -26,6 +30,8 @@ def _build_settings(**overrides) -> Settings:
             "stages": ["dev", "prod"],
         },
     }
+    if "awscontainer" in overrides:
+        overrides["container"] = {"main": overrides.pop("awscontainer")}
     data.update(overrides)
     return Settings.model_validate(data)
 
@@ -277,10 +283,12 @@ def test_backup_actions_gating():
     rds_data = {"vpc": {"ref": "main", "zone_suffixes": ["a", "c"]}}
     rds_kwargs: dict = {
         "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
-        "awscontainer": {
-            "dockerfile_path": "Dockerfile",
-            "handlers": {},
-            "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+        "container": {
+            "main": {
+                "dockerfile_path": "Dockerfile",
+                "handlers": {},
+                "vpc": {"ref": "main", "zone_suffixes": ["a", "c"]},
+            }
         },
     }
     assert "backup:*" not in compute_actions(
@@ -301,7 +309,7 @@ def test_scheduler_adds_scheduler():
                 "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
             },
         },
-        scheduler={"schedules": {"daily": {"rate": "1 day", "handler": "wsgi"}}},
+        scheduler={"schedules": {"daily": {"rate": "1 day", "handler": "main.wsgi"}}},
     )
     actions = compute_actions(settings)
     assert "scheduler:*" in actions
