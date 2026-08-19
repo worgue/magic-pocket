@@ -10,48 +10,48 @@ provisioning = "command"
 
 [s3]
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 build = "depot"
 permissions_boundary = "arn:aws:iam::123456789012:policy/example-permissions-boundary"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
 # SQS 駆動の非同期 worker。queue + DLQ + EventSourceMapping が自動生成され、
 # runtime には POCKET_SQSMANAGEMENT_QUEUEURL が注入される (pocket_call_command が
 # これを見て SQS 経由になる)。timeout×6 が queue の visibility timeout になる。
-[awscontainer.handlers.sqsmanagement]
+[container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 30
 sqs = {}
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
 
 # sandbox は CloudFront 経由で wsgi lambda を配信するため apigateway origin を持たせる。
-[sandbox.awscontainer.handlers.wsgi]
+[sandbox.container.main.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "filesystem" }
 staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
 
-[awscontainer.secrets]
+[container.main.secrets]
 store = "ssm"
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 
 # DATABASE_URL は stored user secret (provisioning = "command")。deploy 前に
 # `pocket resource tidb store-url --stage <stage>` で SSM (/{pocket_key}-user/tidb_database_url)
 # へ保存しておく。deploy は TiDB API キー無しで保存済み URL を読むだけ。
-[awscontainer.secrets.user]
+[container.main.secrets.user]
 DATABASE_URL = { type = "tidb_database_url" }
 
 # 定期実行は Lambda 直接 invoke ではなく queue を挟む (pocket.sqs_scheduler)。
@@ -60,7 +60,7 @@ DATABASE_URL = { type = "tidb_database_url" }
 [sandbox.scheduler.schedules.worker_heartbeat]
 scheduler = "pocket.sqs_scheduler"
 rate = "15 minutes"
-handler = "sqsmanagement"
+handler = "main.sqsmanagement"
 message = { command = "post_scheduled_comment", args = [], kwargs = {} }
 
 [sandbox.cloudfront.web]
@@ -68,6 +68,6 @@ message = { command = "post_scheduled_comment", args = [], kwargs = {} }
 # 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。
 domain = "tidb.sandbox.magic-pocket.example.com"
 routes = [
-    { type = "lambda", handler = "wsgi", is_default = true },
+    { type = "lambda", handler = "main.wsgi", is_default = true },
     { path_pattern = "/static/*", ref = "static", versioning = "deploy_hash", origin_path = "/static" },
 ]
