@@ -31,8 +31,9 @@
   (`{stage}-{project}-{name}-{namespace}`) に保存され、container ごとに独立した
   値になります (SM コンソール上も container 名で識別可能)。複数 container で
   値を共有する場合は全宣言に `shared = true` を付けます (保存先は従来どおりの
-  `{stage}-{project}-{namespace}`)。`shared` なしの同名宣言はエラーです
-  (偶然の同名を silent に共有させないため)。既存 secret の値は移行 deploy 時に
+  `{stage}-{project}-{namespace}`)。`shared` なしの同名宣言は container ごとに
+  独立した値になります (shared の有無が混在する同名宣言と、cloudfront から
+  名前参照される secret の曖昧な同名宣言はエラー)。既存 secret の値は移行 deploy 時に
   旧パスから container store へ自動コピーされます (再生成しないため Django の
   session / 署名 cookie は無効化されません)。user secret (stored mode) の
   正準パスと dsql endpoint publish 先は project 側のまま不変で、外部

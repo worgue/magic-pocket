@@ -90,20 +90,70 @@ def test_secrets_store_must_match_across_containers():
         settings.Settings.model_validate(data)
 
 
-def test_same_managed_key_without_shared_rejected():
-    """同名 managed key の複数宣言は shared = true 必須 (偶然の同名を防ぐ)。"""
+def test_same_unshared_key_is_independent_per_container():
+    """無印の同名宣言は container store が別れて独立した値になる (エラーにしない)。"""
     data = _base_data()
     data["container"] = {
         "a": {
             "dockerfile_path": "Dockerfile",
-            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+            "secrets": {"managed": {"API_TOKEN": {"type": "password"}}},
+        },
+        "b": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                # 独立した値なので spec が違ってもよい
+                "managed": {
+                    "API_TOKEN": {"type": "password", "options": {"length": 32}}
+                }
+            },
+        },
+    }
+    context = Context.from_settings(settings.Settings.model_validate(data))
+    sc_a = context.container["a"].secrets
+    sc_b = context.container["b"].secrets
+    assert sc_a is not None and sc_b is not None
+    assert sc_a.pocket_key == "dev-testprj-a-pocket"
+    assert sc_b.pocket_key == "dev-testprj-b-pocket"
+    assert "API_TOKEN" in sc_a.managed and "API_TOKEN" in sc_b.managed
+    # shared store には載らない
+    assert context.secrets is not None
+    assert context.secrets.managed == {}
+
+
+def test_mixed_shared_flag_on_same_key_rejected():
+    """同名 key の shared 有無の混在は shared 付け忘れの可能性が高いためエラー。"""
+    data = _base_data()
+    data["container"] = {
+        "a": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
         },
         "b": {
             "dockerfile_path": "Dockerfile",
             "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
         },
     }
-    with pytest.raises(ValueError, match="shared = true"):
+    with pytest.raises(ValueError, match="混在"):
+        settings.Settings.model_validate(data)
+
+
+def test_cloudfront_referenced_secret_must_be_unambiguous():
+    """cloudfront が名前参照する secret は無印の同名複数宣言だと曖昧なのでエラー。"""
+    data = _two_container_data()
+    data["container"]["mydjango"]["secrets"]["managed"]["BA"] = {
+        "type": "basic_auth_credential",
+        "options": {"username": "u"},
+    }
+    data["container"]["v2"]["secrets"] = {
+        "managed": {
+            "BA": {"type": "basic_auth_credential", "options": {"username": "u"}}
+        }
+    }
+    data["s3"] = {}
+    data["cloudfront"]["web"]["basic_auth"] = "BA"
+    with pytest.raises(ValueError, match="曖昧"):
         settings.Settings.model_validate(data)
 
 
@@ -467,3 +517,43 @@ def test_cleanup_legacy_secret_residue_noop_before_copy():
     cleanup_legacy_secret_residue(context)
 
     assert shared_store.deleted == set()
+
+
+def test_cleanup_legacy_secret_residue_waits_for_all_declaring_containers():
+    """同名の無印宣言が複数 container にある場合、全 container のコピー完了まで
+    旧パスを消さない (片方の引き継ぎ元を失わせない)。"""
+    from pocket_cli.cli import interaction
+    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+
+    data = _base_data()
+    data["container"] = {
+        "a": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {"managed": {"API_TOKEN": {"type": "password"}}},
+        },
+        "b": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {"managed": {"API_TOKEN": {"type": "password"}}},
+        },
+    }
+    context = Context.from_settings(settings.Settings.model_validate(data))
+    assert context.secrets is not None
+    sc_a = context.container["a"].secrets
+    sc_b = context.container["b"].secrets
+    assert sc_a is not None and sc_b is not None
+    shared_store = _FakeStore({"API_TOKEN": "legacy"})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(sc_a, "pocket_store", _FakeStore({"API_TOKEN": "legacy"}))
+    object.__setattr__(sc_b, "pocket_store", _FakeStore({}))
+
+    cleanup_legacy_secret_residue(context)
+    assert shared_store.deleted == set()
+
+    # b もコピー済みになれば削除できる
+    object.__setattr__(sc_b, "pocket_store", _FakeStore({"API_TOKEN": "legacy"}))
+    interaction.set_assume_yes(True)
+    try:
+        cleanup_legacy_secret_residue(context)
+    finally:
+        interaction.set_assume_yes(False)
+    assert shared_store.deleted == {"API_TOKEN"}

@@ -869,11 +869,11 @@ routes = [
   他 container の handler は `POCKET_<CONTAINER>_<HANDLER>_HOST` /
   `_ENDPOINT` / `_QUEUEURL` の修飾名で参照します
 - managed secret は既定で **container ごとに独立**です（保存先は
-  `{stage}-{project}-{name}-{namespace}` の container store）。複数 container で
-  値を共有したい場合は全宣言に `shared = true` を付けます（保存先は
+  `{stage}-{project}-{name}-{namespace}` の container store で、同名の宣言も
+  container ごとに別の値が生成されます）。複数 container で値を共有したい
+  場合は全宣言に `shared = true` を付けます（保存先は
   `{stage}-{project}-{namespace}` の shared store。strangler 移行で Django の
-  `SECRET_KEY` を新旧 container が共有する用途）。`shared` なしの同名宣言は
-  エラーになります（偶然の同名を silent に共有させないため）。
+  `SECRET_KEY` を新旧 container が共有する用途）。
   詳細は [container.secrets](#containersecrets) を参照
 
 ### build（ビルドバックエンド）
@@ -1135,8 +1135,11 @@ DATABASE_URL = { type = "auto_database_url" }
 
 各 spec は `shared = true` を付けると shared store (project 共有パス) に保存され、
 同名 + 同 spec で宣言した複数 container が同じ値を共有します。`shared` なしの
-同名宣言 (複数 container) はエラーになります — container ごとに独立した値に
-する場合は key 名を分けてください。
+同名宣言 (複数 container) はそれぞれの container store に独立した値として
+生成されます (spec が違ってもかまいません)。同名 key で `shared` の有無が
+混在する宣言はエラーです (付け忘れの検出)。また cloudfront から key 名で
+参照される secret (`token_secret` / `basic_auth` / `signing_key`) は値が
+一意に決まる必要があるため、単独宣言か `shared = true` にしてください。
 
 ```toml
 # strangler 移行: 新旧 container で Django の署名 secret を共有する

@@ -211,14 +211,24 @@ def cleanup_legacy_secret_residue(context: Context):
     if shared is None:
         return
     shared_keys = set(shared.pocket_store.secrets.keys())
-    residue: set[str] = set()
+    # key → その key を宣言している container store view の一覧。同名の無印宣言は
+    # 独立した値として複数 container に存在しうるため、旧パスの削除は
+    # 「宣言している全 container がコピー済み」を条件にする (片方だけコピー済みの
+    # 段階で消すと、もう片方が引き継ぎ元を失う)
+    declaring: dict[str, list] = {}
     for c_name in sorted(context.container):
         sc = context.container[c_name].secrets
         if sc is None:
             continue
-        migrated = set(sc.managed) & set(sc.pocket_store.secrets) & shared_keys
-        residue |= migrated
-    # shared 宣言 / 自動注入のキーは正規の住人なので残す
+        for key in sc.managed:
+            declaring.setdefault(key, []).append(sc)
+    residue: set[str] = set()
+    for key, views in declaring.items():
+        if key not in shared_keys:
+            continue
+        if all(key in view.pocket_store.secrets for view in views):
+            residue.add(key)
+    # shared 宣言 / 自動注入のキーは正規の住人なので残す (防御的)
     residue -= set(shared.managed)
     if not residue:
         return

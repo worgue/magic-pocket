@@ -91,19 +91,21 @@ def _check_managed_key_sharing(
 ) -> None:
     """managed secret の同名宣言 (複数 container) を検証する。
 
-    全宣言に shared = true が必要 (偶然の同名を silent に共有させない)、かつ
-    spec は一致が必要 (生成の曖昧さ回避)。
+    無印 (shared なし) 同士は container store が別れて独立した値になるため
+    問題ない (spec が違ってもよい)。shared 同士は同一値を共有するため spec
+    一致が必要。shared と無印の混在は、ほぼ確実に shared の付け忘れなので
+    エラーにする。
     """
     first_name, first_spec = first
     second_name, second_spec = second
-    if not (first_spec.shared and second_spec.shared):
+    if first_spec.shared != second_spec.shared:
         raise ValueError(
-            "managed secret '%s' が container '%s' と '%s' の両方で"
-            "宣言されています。値を共有する場合は全宣言に shared = true を"
-            "付けてください。container ごとに独立した値にする場合は key 名を"
-            "分けてください。" % (key, first_name, second_name)
+            "managed secret '%s' が container '%s' と '%s' で shared 指定の"
+            "有無が混在しています。値を共有する場合は全宣言に shared = true を"
+            "付けてください (無印同士なら container ごとに独立した値になります)。"
+            % (key, first_name, second_name)
         )
-    if first_spec != second_spec:
+    if first_spec.shared and first_spec != second_spec:
         raise ValueError(
             "shared managed secret '%s' が container '%s' と '%s' で異なる"
             " spec で宣言されています。共有する secret は全宣言で同一 spec に"
@@ -1453,12 +1455,19 @@ class Settings(BaseModel):
         format_vars["namespace"] = f"{name}-{format_vars['namespace']}"
         return format_vars
 
+    def managed_secret_owners(self, key: str) -> list[tuple[str, ManagedSecretSpec]]:
+        """key を宣言している (container 名, spec) の一覧 (container 名順)。"""
+        owners: list[tuple[str, ManagedSecretSpec]] = []
+        for name in sorted(self.container):
+            secrets = self.container[name].secrets
+            if secrets and key in secrets.managed:
+                owners.append((name, secrets.managed[key]))
+        return owners
+
     def find_managed_secret(self, key: str) -> ManagedSecretSpec | None:
         """全 container の secrets.managed から key の spec を探す。"""
-        for c in self.container.values():
-            if c.secrets and key in c.secrets.managed:
-                return c.secrets.managed[key]
-        return None
+        owners = self.managed_secret_owners(key)
+        return owners[0][1] if owners else None
 
     def resolve_handler(self, ref: str) -> tuple[str, str, LambdaHandler]:
         """ドット記法の handler 参照を解決する。
@@ -1545,8 +1554,35 @@ class Settings(BaseModel):
                     )
         self._check_cloudfront_token_secret(name, cf)
         self._check_cloudfront_basic_auth(name, cf)
+        self._check_cloudfront_secret_ref_uniqueness(name, cf)
         self._check_cloudfront_origin_verify(name, cf)
         self._check_cloudfront_waf_allow_rules(name, cf)
+
+    def _check_cloudfront_secret_ref_uniqueness(self, name: str, cf: CloudFront):
+        """cloudfront が名前参照する managed secret の一意性を検証する。
+
+        token_secret / basic_auth / signing_key は key 名でしか参照できないため、
+        無印 (container store 独立) の同名宣言が複数 container にあると
+        「どの container の値か」が曖昧になる。参照される key に限り、単独宣言か
+        shared = true (値が 1 つ) を要求する。参照されない同名宣言は独立した
+        別の値として問題ない。
+        """
+        for label, key in (
+            ("token_secret", cf.token_secret),
+            ("basic_auth", cf.basic_auth),
+            ("signing_key", cf.signing_key),
+        ):
+            if not key:
+                continue
+            owners = self.managed_secret_owners(key)
+            unshared = [n for n, spec in owners if not spec.shared]
+            if len(unshared) > 1:
+                raise ValueError(
+                    f"cloudfront.{name}: {label} '{key}' が複数の container "
+                    f"({', '.join(unshared)}) で shared なしに宣言されており、"
+                    f"どの値を使うか曖昧です。全宣言に shared = true を付けて"
+                    f"値を共有するか、一意の key 名にしてください。"
+                )
 
     def _check_cloudfront_waf_allow_rules(self, name: str, cf: CloudFront):
         if not cf.waf:
