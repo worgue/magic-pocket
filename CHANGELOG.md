@@ -26,11 +26,18 @@
     - Lambda 実行ロール: `lambda-{slug}-{namespace}` →
       `lambda-{slug}-{name}-{namespace}`
     - scheduler ロール: `{prefix}scheduler` → `{prefix}{name}-scheduler`
-- **secrets の物理 store は project 共有のまま**です (pocket_key に container
-  名は入りません)。既存 secret (Django の `SECRET_KEY`、stored user secret、
-  dsql endpoint publish 先) はパス不変のため**移行作業は不要**です。宣言は
-  per-container で、`store` / `pocket_key_format` は全 container で一致が
-  必要、同名 key は spec 一致なら値を共有します
+- **破壊的変更**: managed secret の保存先が container ごとに分かれました。
+  既定 (`shared` なし) は container store
+  (`{stage}-{project}-{name}-{namespace}`) に保存され、container ごとに独立した
+  値になります (SM コンソール上も container 名で識別可能)。複数 container で
+  値を共有する場合は全宣言に `shared = true` を付けます (保存先は従来どおりの
+  `{stage}-{project}-{namespace}`)。`shared` なしの同名宣言はエラーです
+  (偶然の同名を silent に共有させないため)。既存 secret の値は移行 deploy 時に
+  旧パスから container store へ自動コピーされます (再生成しないため Django の
+  session / 署名 cookie は無効化されません)。user secret (stored mode) の
+  正準パスと dsql endpoint publish 先は project 側のまま不変で、外部
+  provisioner (`pocket.naming`) への影響はありません。`store` /
+  `pocket_key_format` は全 container で一致が必要です
 - 各 Lambda に `POCKET_CONTAINER=<name>` を注入し、runtime (Python / Rust)
   が自分の `[container.<name>]` を自動選択するようにしました
 - runtime env: 自 container の handler は従来どおり `POCKET_<HANDLER>_HOST`
@@ -54,8 +61,10 @@
    リネームします (stage override は `[<stage>.container.<name>]`)。
    cloudfront routes / scheduler の `handler` をドット記法へ変更します
 2. `pocket deploy --stage <stage>` (Django なら `pocket django deploy`) を
-   実行します。新名称の container stack が作成され、CloudFront が新 origin へ
-   切り替わった後、旧 stack / 旧 ECR repo の削除確認が表示されます
+   実行します。managed secret は旧 project 共有パスから container store へ
+   自動コピーされ (値は再生成されません)、新名称の container stack が作成され、
+   CloudFront が新 origin へ切り替わった後、旧 stack / 旧 ECR repo / 旧パスの
+   secret 残骸の削除確認が表示されます
 3. 注意点:
     - SQS 付き handler は queue が作り直されるため、**queue が空の
       タイミング**で deploy してください (in-flight / DLQ のメッセージは

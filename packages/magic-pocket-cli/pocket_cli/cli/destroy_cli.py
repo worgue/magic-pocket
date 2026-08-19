@@ -90,7 +90,8 @@ def _collect_container_targets(context: Context, with_secrets: bool):
         targets.append("Container '%s' (%s)" % (c_name, " + ".join(parts)))
 
     parts = []
-    if with_secrets and context.secrets:
+    has_secrets = context.secrets or any(c.secrets for c in context.container.values())
+    if with_secrets and has_secrets:
         parts.append("secrets")
 
     # CodeBuildリソースの存在チェック（設定に関わらず）
@@ -250,10 +251,16 @@ def _destroy_containers(context: Context, with_secrets: bool):
 
     _destroy_log_groups(context)
 
-    if with_secrets and context.secrets:
-        echo.log("Destroying pocket managed secrets...")
-        context.secrets.pocket_store.delete_secrets()
-        echo.success("Pocket managed secrets were deleted.")
+    if with_secrets:
+        views = [context.secrets] + [
+            context.container[n].secrets for n in sorted(context.container)
+        ]
+        views = [sc for sc in views if sc is not None]
+        if views:
+            echo.log("Destroying pocket managed secrets...")
+            for sc in views:
+                sc.pocket_store.delete_secrets()
+            echo.success("Pocket managed secrets were deleted.")
 
 
 def _destroy_backup(context: Context, yes: bool):

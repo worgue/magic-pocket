@@ -73,6 +73,22 @@ def _pocket_secret_to_envs(
     raise Exception(f"Unsupported pocket secret spec: {spec}")
 
 
+def _tolerated_shared_keys(context: Context) -> set[str]:
+    """shared store 上に存在してよい key の集合 (orphan 警告の基準)。
+
+    shared store は project 共有のため、他 container の shared 宣言や、
+    container store へ移行中の旧残骸 (shared でない宣言 key) も載っている。
+    これらは orphan ではないので警告しない。
+    """
+    keys: set[str] = set()
+    if context.secrets:
+        keys |= set(context.secrets.managed)
+    for c in context.container.values():
+        if c.secrets:
+            keys |= set(c.secrets.managed)
+    return keys
+
+
 def get_secrets(stage: str | None = None, *, container: str | None = None) -> dict:
     stage = stage or get_stage()
     if stage == "__none__":
@@ -81,30 +97,29 @@ def get_secrets(stage: str | None = None, *, container: str | None = None) -> di
     if not context.container:
         return {}
     own = get_own_container(context, container)
-    if (sc := own.secrets) is None:
-        return {}
-    # store は project 共有のため、他 container が宣言したキーも store に載る。
-    # orphan 警告は project union (context.secrets) を基準に判定し、自 container
-    # の env には自宣言 (+ 自動注入) のキーだけを載せる
-    union_managed = context.secrets.managed if context.secrets else {}
     secrets = {}
-    # managed: pocket_store経由で自動ディスパッチ (SM/SSM)
-    for key, value in sc.pocket_store.secrets.items():
-        if key not in union_managed:
-            # 文言はストア種別 (SM/SSM) 非依存にする
-            echo.warning(
-                "store 上のキー '%s' が managed 定義にありません。"
-                " pocket deploy で同期してください。" % key
-            )
-            continue
-        if key not in sc.managed:
-            continue
-        envs = _pocket_secret_to_envs(key, value, sc.managed[key])
-        secrets.update(envs)
-    # user: stored user secret store 経由で読む (CLI の store-url / verify と同一実装)。
-    # 欠落 (NotFound) は required=True で ClientError のまま即失敗させる
-    for key, spec in sc.user.items():
-        secrets[key] = sc.user_store.read(spec, required=True)
+    # managed: container store → shared store の順に pocket_store 経由で読む
+    # (SM/SSM は store 実装が自動ディスパッチ)。shared store には他 container の
+    # キーも載るため、自 view の managed に無いキーは黙ってスキップする
+    tolerated = _tolerated_shared_keys(context)
+    for sc in own.secrets_views():
+        is_shared_store = sc is own.shared_secrets
+        for key, value in sc.pocket_store.secrets.items():
+            if key not in sc.managed:
+                if is_shared_store and key in tolerated:
+                    continue
+                # 文言はストア種別 (SM/SSM) 非依存にする
+                echo.warning(
+                    "store 上のキー '%s' が managed 定義にありません。"
+                    " pocket deploy で同期してください。" % key
+                )
+                continue
+            envs = _pocket_secret_to_envs(key, value, sc.managed[key])
+            secrets.update(envs)
+        # user: stored user secret store 経由で読む (CLI の store-url / verify と
+        # 同一実装)。欠落 (NotFound) は required=True で ClientError のまま即失敗
+        for key, spec in sc.user.items():
+            secrets[key] = sc.user_store.read(spec, required=True)
     return secrets
 
 

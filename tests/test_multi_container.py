@@ -90,7 +90,8 @@ def test_secrets_store_must_match_across_containers():
         settings.Settings.model_validate(data)
 
 
-def test_same_managed_key_with_different_spec_rejected():
+def test_same_managed_key_without_shared_rejected():
+    """同名 managed key の複数宣言は shared = true 必須 (偶然の同名を防ぐ)。"""
     data = _base_data()
     data["container"] = {
         "a": {
@@ -99,9 +100,31 @@ def test_same_managed_key_with_different_spec_rejected():
         },
         "b": {
             "dockerfile_path": "Dockerfile",
+            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+        },
+    }
+    with pytest.raises(ValueError, match="shared = true"):
+        settings.Settings.model_validate(data)
+
+
+def test_shared_key_with_different_spec_rejected():
+    data = _base_data()
+    data["container"] = {
+        "a": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
+        },
+        "b": {
+            "dockerfile_path": "Dockerfile",
             "secrets": {
                 "managed": {
-                    "SECRET_KEY": {"type": "password", "options": {"length": 32}}
+                    "SECRET_KEY": {
+                        "type": "password",
+                        "options": {"length": 32},
+                        "shared": True,
+                    }
                 }
             },
         },
@@ -110,21 +133,36 @@ def test_same_managed_key_with_different_spec_rejected():
         settings.Settings.model_validate(data)
 
 
-def test_same_managed_key_with_same_spec_is_shared():
+def test_shared_key_lives_in_project_store():
+    """shared = true の同名宣言は shared store (project パス) で値を共有する。"""
     data = _base_data()
     data["container"] = {
         "a": {
             "dockerfile_path": "Dockerfile",
-            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
         },
         "b": {
             "dockerfile_path": "Dockerfile",
-            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
         },
     }
     context = Context.from_settings(settings.Settings.model_validate(data))
     assert context.secrets is not None
     assert set(context.secrets.managed) == {"SECRET_KEY"}
+    assert context.secrets.pocket_key == "dev-testprj-pocket"
+    # container store 側には入らない (shared 宣言のみの container は view 無し)
+    assert context.container["a"].secrets is None
+    assert context.container["b"].secrets is None
+    # 両 container の env には shared store view 経由で載る
+    for name in ("a", "b"):
+        shared_view = context.container[name].shared_secrets
+        assert shared_view is not None
+        assert "SECRET_KEY" in shared_view.managed
+        assert shared_view.pocket_key == "dev-testprj-pocket"
 
 
 def test_route_handler_requires_dot_notation():
@@ -174,20 +212,21 @@ def test_api_origins_use_container_qualified_export_names():
     )
 
 
-def test_per_container_secrets_and_union():
-    """宣言は per-container、store は project 共有 (pocket_key に名前が入らない)。"""
+def test_unshared_secret_lives_in_container_store():
+    """shared でない managed 宣言は container store に入る。"""
     context = Context.from_settings(
         settings.Settings.model_validate(_two_container_data())
     )
     django_sc = context.container["mydjango"].secrets
     assert django_sc is not None
     assert set(django_sc.managed) == {"SECRET_KEY"}
-    assert django_sc.pocket_key == "dev-testprj-pocket"
-    # secrets 宣言の無い container には SecretsContext が付かない
+    # container store のパスに container 名が入る (SM コンソールでの識別性)
+    assert django_sc.pocket_key == "dev-testprj-mydjango-pocket"
+    # secrets 宣言の無い container には container store view が付かない
     assert context.container["v2"].secrets is None
-    # union には全宣言が入る
+    # shared store union には shared 宣言が無ければ managed は入らない
     assert context.secrets is not None
-    assert set(context.secrets.managed) == {"SECRET_KEY"}
+    assert context.secrets.managed == {}
     assert context.secrets.pocket_key == "dev-testprj-pocket"
 
 
@@ -312,3 +351,119 @@ def test_cleanup_legacy_noop_when_absent():
 
     fake_cfn.delete_stack.assert_not_called()
     fake_ecr.delete_repository.assert_not_called()
+
+
+def _single_container_secret_data() -> dict:
+    data = _base_data()
+    data["container"] = {
+        "main": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+        },
+    }
+    return data
+
+
+class _FakeStore:
+    def __init__(self, secrets: dict):
+        self.secrets = dict(secrets)
+        self.deleted: set[str] = set()
+
+    def update_secrets(self, new_secrets: dict):
+        self.secrets = dict(new_secrets)
+
+    def delete_secret_keys(self, keys):
+        self.deleted |= set(keys)
+        for key in keys:
+            self.secrets.pop(key, None)
+
+
+def test_mediator_inherits_legacy_value_instead_of_regenerating():
+    """0.28 以前の project 共有パスにある値は container store へ copy される。
+
+    SECRET_KEY を再生成すると Django の session / 署名 cookie が無効化される
+    ため、旧パスの値を引き継ぐ (自己回復移行)。
+    """
+    from pocket_cli.mediator import Mediator
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_single_container_secret_data())
+    )
+    assert context.secrets is not None
+    container_sc = context.container["main"].secrets
+    assert container_sc is not None
+    shared_store = _FakeStore({"SECRET_KEY": "legacy-value"})
+    container_store = _FakeStore({})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(container_sc, "pocket_store", container_store)
+
+    Mediator(context).create_pocket_managed_secrets(exists="ignore")
+
+    assert container_store.secrets["SECRET_KEY"] == "legacy-value"
+    # 旧パス側はこの時点では消さない (旧 stack の Lambda が読み続けるため)
+    assert shared_store.secrets["SECRET_KEY"] == "legacy-value"
+
+
+def test_mediator_shared_store_tolerates_unshared_residue():
+    """shared store の orphan cleanup は移行中の非共有 key を消さない。"""
+    from pocket_cli.mediator import Mediator
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_single_container_secret_data())
+    )
+    assert context.secrets is not None
+    container_sc = context.container["main"].secrets
+    assert container_sc is not None
+    shared_store = _FakeStore({"SECRET_KEY": "legacy-value", "TRULY_ORPHAN": "x"})
+    container_store = _FakeStore({"SECRET_KEY": "copied"})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(container_sc, "pocket_store", container_store)
+
+    Mediator(context)._cleanup_orphaned_secrets()
+
+    assert shared_store.deleted == {"TRULY_ORPHAN"}
+    assert "SECRET_KEY" in shared_store.secrets
+
+
+def test_cleanup_legacy_secret_residue_deletes_migrated_keys():
+    from pocket_cli.cli import interaction
+    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_single_container_secret_data())
+    )
+    assert context.secrets is not None
+    container_sc = context.container["main"].secrets
+    assert container_sc is not None
+    shared_store = _FakeStore({"SECRET_KEY": "legacy-value"})
+    container_store = _FakeStore({"SECRET_KEY": "legacy-value"})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(container_sc, "pocket_store", container_store)
+
+    interaction.set_assume_yes(True)
+    try:
+        cleanup_legacy_secret_residue(context)
+    finally:
+        interaction.set_assume_yes(False)
+
+    assert shared_store.deleted == {"SECRET_KEY"}
+
+
+def test_cleanup_legacy_secret_residue_noop_before_copy():
+    """container store へ未コピーのうちは旧パスを消さない。"""
+    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_single_container_secret_data())
+    )
+    assert context.secrets is not None
+    container_sc = context.container["main"].secrets
+    assert container_sc is not None
+    shared_store = _FakeStore({"SECRET_KEY": "legacy-value"})
+    container_store = _FakeStore({})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(container_sc, "pocket_store", container_store)
+
+    cleanup_legacy_secret_residue(context)
+
+    assert shared_store.deleted == set()

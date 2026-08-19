@@ -137,7 +137,7 @@ class CloudFront:
             return
         if not mediator:
             return
-        sc = mediator.context.secrets
+        sc = mediator.context.managed_secret_view(self.context.token_secret)
         if sc is None:
             return
         secrets = sc.pocket_store.secrets
@@ -168,7 +168,7 @@ class CloudFront:
             return
         if not mediator:
             return
-        sc = mediator.context.secrets
+        sc = mediator.context.managed_secret_view(self.context.basic_auth)
         if sc is None:
             return
         secrets = sc.pocket_store.secrets

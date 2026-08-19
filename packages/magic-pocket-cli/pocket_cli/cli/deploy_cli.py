@@ -197,6 +197,40 @@ def build_image(context: Context, *, tag: str) -> list[str]:
     return targets
 
 
+def cleanup_legacy_secret_residue(context: Context):
+    """shared store に残った旧配置の非共有 secret を確認付きで削除する。
+
+    0.29.0 で shared = true でない managed secret は container store
+    ({stage}-{project}-{name}-{namespace}) へ移った。移行 deploy では mediator が
+    旧 project パスから値を copy-on-missing で引き継ぐが、旧パス側は
+    「旧 stack の Lambda が CloudFront 切替まで読み続ける」ため deploy 中は
+    消せない。deploy 成功後のこのフックで、container store への引き継ぎが
+    確認できたキーだけを旧パスから削除する。冪等 (残骸が無ければ何もしない)。
+    """
+    shared = context.secrets
+    if shared is None:
+        return
+    shared_keys = set(shared.pocket_store.secrets.keys())
+    residue: set[str] = set()
+    for c_name in sorted(context.container):
+        sc = context.container[c_name].secrets
+        if sc is None:
+            continue
+        migrated = set(sc.managed) & set(sc.pocket_store.secrets) & shared_keys
+        residue |= migrated
+    # shared 宣言 / 自動注入のキーは正規の住人なので残す
+    residue -= set(shared.managed)
+    if not residue:
+        return
+    echo.warning(
+        "旧 project 共有パス (%s) に container store へ移行済みの secret が"
+        "残っています: %s" % (shared.pocket_key, ", ".join(sorted(residue)))
+    )
+    if interaction.confirm("旧パス側の残骸を削除しますか？", default=True):
+        shared.pocket_store.delete_secret_keys(residue)
+        echo.success("旧パスの secret 残骸を削除しました。")
+
+
 def cleanup_legacy_container_resources(context: Context):
     """0.29.0 以前の単数 [awscontainer] 由来の旧リソースを検出して削除する。
 
@@ -272,6 +306,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
     cleanup_legacy_container_resources(context)
+    cleanup_legacy_secret_residue(context)
     upload_managed_assets(context)
     if not skip_frontend:
         deploy_frontend(context)

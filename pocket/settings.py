@@ -84,6 +84,33 @@ def _reject_skip_check_existing(data, *, resource: str):
 _CONTAINER_NAME_RE = "^[a-z][a-z0-9]{0,31}$"
 
 
+def _check_managed_key_sharing(
+    key: str,
+    first: tuple[str, ManagedSecretSpec],
+    second: tuple[str, ManagedSecretSpec],
+) -> None:
+    """managed secret の同名宣言 (複数 container) を検証する。
+
+    全宣言に shared = true が必要 (偶然の同名を silent に共有させない)、かつ
+    spec は一致が必要 (生成の曖昧さ回避)。
+    """
+    first_name, first_spec = first
+    second_name, second_spec = second
+    if not (first_spec.shared and second_spec.shared):
+        raise ValueError(
+            "managed secret '%s' が container '%s' と '%s' の両方で"
+            "宣言されています。値を共有する場合は全宣言に shared = true を"
+            "付けてください。container ごとに独立した値にする場合は key 名を"
+            "分けてください。" % (key, first_name, second_name)
+        )
+    if first_spec != second_spec:
+        raise ValueError(
+            "shared managed secret '%s' が container '%s' と '%s' で異なる"
+            " spec で宣言されています。共有する secret は全宣言で同一 spec に"
+            "してください。" % (key, first_name, second_name)
+        )
+
+
 def parse_handler_ref(ref: str) -> tuple[str, str]:
     """handler 参照 "<container>.<handler>" を (container, handler) に分解する。
 
@@ -133,6 +160,13 @@ class ManagedSecretSpec(BaseModel):
         "basic_auth_credential",
     ]
     options: dict[str, str | int] = {}
+    # true にすると project 共有の store ({stage}-{project}-{namespace}) に保存され、
+    # 同名 + 同 spec で宣言した全 container が同じ値を共有する (strangler 移行で
+    # Django の SECRET_KEY を新旧 container が共有する等)。既定の false では
+    # container 単位の store ({stage}-{project}-{name}-{namespace}) に保存され、
+    # container ごとに独立した値になる。複数 container での同名宣言は全宣言に
+    # shared = true が必要 (偶然の同名を silent に共有させない)
+    shared: bool = False
     # Used in mediator
     # PasswordOptions:
     #     length: int
@@ -303,8 +337,9 @@ class Container(BaseModel):
     """[container.<name>] — 1 つのコンテナイメージとその Lambda handler 群。
 
     project は複数 container を持てる (異 runtime の並行稼働 / strangler 移行)。
-    secrets の「宣言」は per-container だが、物理 store は project 共有
-    (pocket_key に container 名は入らない)。store / pocket_key_format は全
+    managed secret は既定で container store ({stage}-{project}-{name}-{namespace})
+    に保存され container ごとに独立、shared = true で project 共有の shared store
+    ({stage}-{project}-{namespace}) を使う。store / pocket_key_format は全
     container で一致が必要 (Settings 側で検証)。
     """
 
@@ -1348,12 +1383,15 @@ class Settings(BaseModel):
 
     @model_validator(mode="after")
     def check_container_secrets_consistency(self):
-        """secrets の store / pocket_key_format が全 container で一致すること。
+        """container 間の secrets 宣言の整合性を検証する。
 
-        物理 store は project 共有 (pocket_key に container 名は入らない) のため、
-        container ごとに違う store / key format を宣言すると保存先が分裂する。
-        また同名の secret key を複数 container が宣言する場合、spec が一致して
-        いなければ生成が曖昧になるためエラーにする (一致していれば値を共有する)。
+        - store / pocket_key_format は全 container で一致 (shared store は project
+          共有で、container store もこの設定から導出するため)
+        - managed secret の同名宣言は「全宣言に shared = true + spec 一致」の
+          場合のみ許可する。無印の同名は container store が別れて別の値になり、
+          意図した共有か偶然の衝突か判別できないため fail-loud にする
+        - user secret の同名宣言は spec 一致のみ要求する (stored mode の保存先は
+          常に project 共有の参照で、生成を伴わないため)
         """
         stores: dict[str, str] = {}
         formats: dict[str, str] = {}
@@ -1365,13 +1403,8 @@ class Settings(BaseModel):
             stores[name] = c.secrets.store
             formats[name] = c.secrets.pocket_key_format
             for key, spec in c.secrets.managed.items():
-                if key in managed_owners and managed_owners[key][1] != spec:
-                    raise ValueError(
-                        "managed secret '%s' が container '%s' と '%s' で異なる"
-                        " spec で宣言されています。store は project 共有のため、"
-                        "同名 key は同一 spec (値を共有) にするか、別の key 名を"
-                        "使ってください。" % (key, managed_owners[key][0], name)
-                    )
+                if key in managed_owners:
+                    _check_managed_key_sharing(key, managed_owners[key], (name, spec))
                 managed_owners.setdefault(key, (name, spec))
             for key, spec in c.secrets.user.items():
                 if key in user_owners and user_owners[key][1] != spec:
@@ -1408,6 +1441,17 @@ class Settings(BaseModel):
                     pocket_key_format=c.secrets.pocket_key_format,
                 )
         return Secrets()
+
+    def container_format_vars(self, name: str) -> dict[str, str]:
+        """container store の pocket_key 導出用 format 変数。
+
+        namespace slot に container 名を前置することで、既定 format では
+        `{stage}-{project}-{name}-{namespace}` になる。pocket_key_format を
+        独自化していても container slot が保たれる。
+        """
+        format_vars = self.format_vars
+        format_vars["namespace"] = f"{name}-{format_vars['namespace']}"
+        return format_vars
 
     def find_managed_secret(self, key: str) -> ManagedSecretSpec | None:
         """全 container の secrets.managed から key の spec を探す。"""

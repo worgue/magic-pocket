@@ -310,6 +310,9 @@ def _cloudfront_resource(basic_auth="BA"):
 
 def _mediator_with_secrets(secrets: dict):
     mediator = MagicMock()
+    view = MagicMock()
+    view.pocket_store.secrets = secrets
+    mediator.context.managed_secret_view.return_value = view
     mediator.context.secrets.pocket_store.secrets = secrets
     return mediator
 

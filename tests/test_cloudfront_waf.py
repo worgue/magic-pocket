@@ -326,8 +326,8 @@ def test_context_injects_waf_allow_secret():
     s = settings.Settings.model_validate(data)
     context = Context.from_settings(s)
     assert context.container["main"] is not None
-    assert context.container["main"].secrets is not None
-    managed = context.container["main"].secrets.managed
+    assert context.container["main"].shared_secrets is not None
+    managed = context.container["main"].shared_secrets.managed
     assert "SMOKE_ALLOW_SECRET" in managed
     assert managed["SMOKE_ALLOW_SECRET"].type == "waf_allow_secret"
     waf_ctx = context.cloudfront["web"].waf

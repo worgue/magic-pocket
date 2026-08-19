@@ -31,14 +31,40 @@ class Mediator:
         else:
             raise Exception(msg)
 
-    def create_pocket_managed_secrets(
-        self, exists: ErrorLevel = "warning", failed: ErrorLevel = "raise"
+    def _unshared_declared_keys(self) -> set[str]:
+        """container store 側に保存される (shared でない) managed key の集合。
+
+        shared store の orphan cleanup で「旧 project パスの残骸」として黙認する
+        (deploy 成功後に cleanup_legacy_secret_residue が確認付きで削除する)。
+        """
+        keys: set[str] = set()
+        for c in self.context.container.values():
+            if c.secrets:
+                keys |= set(c.secrets.managed.keys())
+        return keys
+
+    def _create_store_secrets(
+        self, sc, *, exists: ErrorLevel, failed: ErrorLevel, legacy_source=None
     ):
-        if (sc := self.context.secrets) is None:
-            return
+        """store view 1 つ分の managed secret を生成する。
+
+        legacy_source (shared store の view) を渡すと、生成の前に旧 project パス
+        からの copy-on-missing を試す (0.29.0 の container store 分離の自己回復
+        移行。SECRET_KEY 等の既存値を再生成せず引き継ぐ)。
+        """
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
             if key not in sc.pocket_store.secrets:
+                if (
+                    legacy_source is not None
+                    and key in legacy_source.pocket_store.secrets
+                ):
+                    generated[key] = legacy_source.pocket_store.secrets[key]
+                    echo.log(
+                        "secret '%s' を旧 project 共有パスから container store へ"
+                        "引き継ぎます (値は再生成しません)。" % key
+                    )
+                    continue
                 if managed_secret.type in (
                     "neon_database_url",
                     "tidb_database_url",
@@ -69,43 +95,70 @@ class Mediator:
             new_pocket_secrets = sc.pocket_store.secrets.copy() | generated
             sc.pocket_store.update_secrets(new_pocket_secrets)
 
+    def create_pocket_managed_secrets(
+        self, exists: ErrorLevel = "warning", failed: ErrorLevel = "raise"
+    ):
+        shared = self.context.secrets
+        if shared is not None:
+            self._create_store_secrets(shared, exists=exists, failed=failed)
+        for c_name in sorted(self.context.container):
+            sc = self.context.container[c_name].secrets
+            if sc is not None:
+                self._create_store_secrets(
+                    sc, exists=exists, failed=failed, legacy_source=shared
+                )
+
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")
         self._cleanup_orphaned_secrets()
         if self.context.secrets:
-            sc = self.context.secrets
             # type 付き user secret (stored mode) の deploy 前存在チェック
-            sc.user_store.verify_provisioned()
-            # secret 生成後にキャッシュを無効化する。union (self.context.secrets)
-            # だけでなく、テンプレート描画に使う per-container の SecretsContext
-            # も別インスタンスなので忘れず無効化する
-            targets = [sc] + [
-                c.secrets for c in self.context.container.values() if c.secrets
-            ]
-            for target in targets:
-                # hasattr は getter を実行してしまう (allowed_sm_resources は
-                # pocket_store.arn = SM API 呼び出しまで走る) ため、キャッシュの
-                # 有無を __dict__ で確認してから del する
-                for cached in (
-                    "pocket_store",
-                    "allowed_sm_resources",
-                    "allowed_ssm_resources",
-                ):
-                    if cached in target.__dict__:
-                        delattr(target, cached)
+            # (user secret は shared store view が持つ)
+            self.context.secrets.user_store.verify_provisioned()
+        # secret 生成後にキャッシュを無効化する。shared union だけでなく、
+        # テンプレート描画に使う per-container の view (container store /
+        # shared store) も別インスタンスなので忘れず無効化する
+        targets = list(self.context.all_secrets_views())
+        for c in self.context.container.values():
+            if c.shared_secrets:
+                targets.append(c.shared_secrets)
+        for target in targets:
+            # hasattr は getter を実行してしまう (allowed_sm_resources は
+            # pocket_store.arn = SM API 呼び出しまで走る) ため、キャッシュの
+            # 有無を __dict__ で確認してから del する
+            for cached in (
+                "pocket_store",
+                "allowed_sm_resources",
+                "allowed_ssm_resources",
+            ):
+                if cached in target.__dict__:
+                    delattr(target, cached)
 
     def _cleanup_orphaned_secrets(self):
-        """SSM/SM にあるが managed 定義にないシークレットを削除する"""
-        if (sc := self.context.secrets) is None:
-            return
-        stored_keys = set(sc.pocket_store.secrets.keys())
-        managed_keys = set(sc.managed.keys())
-        orphaned = stored_keys - managed_keys
+        """SSM/SM にあるが managed 定義にないシークレットを削除する。
+
+        shared store では「container store へ移った (shared でない) 宣言 key」を
+        orphan 扱いしない。旧 stack の Lambda が CloudFront 切替まで旧パスを
+        読み続けるためで、残骸の削除は deploy 成功後の
+        cleanup_legacy_secret_residue (確認付き) が担う。
+        """
+        shared = self.context.secrets
+        if shared is not None:
+            stored_keys = set(shared.pocket_store.secrets.keys())
+            expected = set(shared.managed.keys()) | self._unshared_declared_keys()
+            self._delete_orphans(shared, stored_keys - expected)
+        for c in self.context.container.values():
+            if c.secrets is None:
+                continue
+            stored_keys = set(c.secrets.pocket_store.secrets.keys())
+            self._delete_orphans(c.secrets, stored_keys - set(c.secrets.managed.keys()))
+
+    def _delete_orphans(self, sc, orphaned: set[str]):
         if not orphaned:
             return
         echo.warning(
-            "managed 定義にないシークレットを削除します: %s"
-            % ", ".join(sorted(orphaned))
+            "managed 定義にないシークレットを削除します (%s): %s"
+            % (sc.pocket_key, ", ".join(sorted(orphaned)))
         )
         # orphan キーのみ削除する。「全削除 → 書き戻し」は中断時に
         # 無関係な secret (SECRET_KEY / RSA signing key 等) まで喪失する

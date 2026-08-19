@@ -10,32 +10,47 @@ use crate::error::{PocketError, Result};
 
 /// シークレットを取得して環境変数名→値の HashMap として返す
 ///
-/// Python の runtime.py:get_secrets() に相当:
+/// Python の runtime.py:get_secrets() に相当。container store
+/// (`config.secrets`) と shared store (`config.shared_secrets`) の両方を読む:
 /// 1. managed: pocket_store から一括取得 → expand_secret() で展開
 /// 2. user: 各 spec の store に応じて SM/SSM から個別取得
 pub async fn get_secrets(config: &PocketConfig) -> Result<HashMap<String, String>> {
-    let sc = match &config.secrets {
-        Some(sc) => sc,
+    let views: Vec<&SecretsConfig> = [config.secrets.as_ref(), config.shared_secrets.as_ref()]
+        .into_iter()
+        .flatten()
+        .filter(|sc| !(sc.managed.is_empty() && sc.user.is_empty()))
+        .collect();
+    let region = match views.first() {
+        Some(sc) => sc.region.clone(),
         None => return Ok(HashMap::new()),
     };
-    if sc.managed.is_empty() && sc.user.is_empty() {
-        return Ok(HashMap::new());
-    }
 
     // SDK config のロード (credential 解決) は secret 1 件毎に行うと cold start を
     // 引き伸ばすため、ここで一度だけ行い client を使い回す
     let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .region(aws_config::Region::new(sc.region.clone()))
+        .region(aws_config::Region::new(region))
         .load()
         .await;
     let sm_client = aws_sdk_secretsmanager::Client::new(&sdk_config);
     let ssm_client = aws_sdk_ssm::Client::new(&sdk_config);
 
     let mut secrets = HashMap::new();
+    for sc in views {
+        collect_store_secrets(sc, &sm_client, &ssm_client, &mut secrets).await?;
+    }
+    Ok(secrets)
+}
 
+/// store view 1 つ分の managed / user secret を `secrets` へ集める
+async fn collect_store_secrets(
+    sc: &SecretsConfig,
+    sm_client: &aws_sdk_secretsmanager::Client,
+    ssm_client: &aws_sdk_ssm::Client,
+    secrets: &mut HashMap<String, String>,
+) -> Result<()> {
     // managed secrets
     if !sc.managed.is_empty() {
-        let raw_secrets = get_managed_secrets(sc, &sm_client, &ssm_client).await?;
+        let raw_secrets = get_managed_secrets(sc, sm_client, ssm_client).await?;
         for (key, value) in &raw_secrets {
             if let Some(spec) = sc.managed.get(key) {
                 let envs = expand_secret(key, value, spec)?;
@@ -50,17 +65,17 @@ pub async fn get_secrets(config: &PocketConfig) -> Result<HashMap<String, String
         let value = match effective_store {
             StoreType::Sm => {
                 info!("Fetching user secret from SM: {}", spec.name);
-                secretsmanager::get_user_secret(&sm_client, &spec.name).await?
+                secretsmanager::get_user_secret(sm_client, &spec.name).await?
             }
             StoreType::Ssm => {
                 info!("Fetching user secret from SSM: {}", spec.name);
-                ssm::get_user_secret(&ssm_client, &spec.name).await?
+                ssm::get_user_secret(ssm_client, &spec.name).await?
             }
         };
         secrets.insert(key.clone(), value);
     }
 
-    Ok(secrets)
+    Ok(())
 }
 
 /// store に応じて SM / SSM から managed secrets を一括取得

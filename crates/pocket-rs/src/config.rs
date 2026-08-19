@@ -18,8 +18,12 @@ pub struct PocketConfig {
     /// 自 container 名 (`[container.<name>]` の name)。POCKET_CONTAINER env
     /// (CFn が注入) か、container が 1 つだけならそれ。
     pub container_name: String,
-    /// 自 container の secrets 宣言 (物理 store は project 共有)
+    /// container store ({stage}-{project}-{name}-{namespace}) の view
+    /// (shared = true でない managed 宣言)
     pub secrets: Option<SecretsConfig>,
+    /// shared store ({stage}-{project}-{namespace}) の view
+    /// (shared = true の managed + user secret)
+    pub shared_secrets: Option<SecretsConfig>,
     /// 自 container の handlers
     pub handlers: HashMap<String, HandlerConfig>,
     /// 全 container の handlers (container 名 → handlers)。
@@ -130,6 +134,9 @@ struct ManagedSecretToml {
     secret_type: String,
     #[serde(default)]
     options: HashMap<String, toml::Value>,
+    /// true なら project 共有 store に保存 (同名宣言の値共有)。既定は container store
+    #[serde(default)]
+    shared: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,6 +240,7 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         resource_prefix: String::new(),
         container_name: String::new(),
         secrets: None,
+        shared_secrets: None,
         handlers: HashMap::new(),
         containers: HashMap::new(),
         cloudfront_names: Vec::new(),
@@ -394,70 +402,89 @@ pub fn load_config_from_str(
         .cloned()
         .unwrap_or_default();
 
-    let secrets_config = {
-        let secrets_config = match own_secrets_toml {
-            Some(sc) => {
-                let pocket_key = format_vars(&sc.pocket_key_format);
-                let store = parse_store_type(&sc.store);
-                let managed = sc
-                    .managed
+    // shared store (project 共有) と container store の 2 view を組み立てる。
+    // shared = true の managed + user secret は project パス
+    // ({stage}-{project}-{namespace})、無印の managed は container パス
+    // ({stage}-{project}-{name}-{namespace}) に保存される (Python 側と同じ導出)。
+    let (secrets_config, shared_secrets_config) = match own_secrets_toml {
+        Some(sc) => {
+            let project_key = format_vars(&sc.pocket_key_format);
+            let container_key = sc
+                .pocket_key_format
+                .replace("{stage}", stage)
+                .replace("{project}", &project_name)
+                .replace(
+                    "{namespace}",
+                    &format!("{container_name}-{}", general.namespace),
+                );
+            let store = parse_store_type(&sc.store);
+            let mut unshared_managed = HashMap::new();
+            let mut shared_managed = HashMap::new();
+            for (k, v) in sc.managed {
+                let options = v
+                    .options
                     .into_iter()
-                    .map(|(k, v)| {
-                        let options = v
-                            .options
-                            .into_iter()
-                            .map(|(ok, ov)| {
-                                let s = match ov {
-                                    toml::Value::String(s) => s,
-                                    other => other.to_string(),
-                                };
-                                (ok, s)
-                            })
-                            .collect();
-                        (
-                            k,
-                            ManagedSecretSpec {
-                                secret_type: v.secret_type,
-                                options,
-                            },
-                        )
+                    .map(|(ok, ov)| {
+                        let s = match ov {
+                            toml::Value::String(s) => s,
+                            other => other.to_string(),
+                        };
+                        (ok, s)
                     })
                     .collect();
-                let mut user = HashMap::new();
-                for (k, v) in sc.user {
-                    let spec_store = v.store.as_deref().map(parse_store_type);
-                    // name は type 基準の正準パスへ解決してから保持する
-                    // (Python の SecretsContext.from_settings と同じ resolve)。
-                    // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
-                    let name = match (v.name, v.secret_type) {
-                        (Some(_), Some(_)) => {
-                            return Err(PocketError::Config(format!(
-                                "user secret `{k}`: `name` and `type` are mutually \
-                                 exclusive (name = 明示参照 / type = stored mode)"
-                            )));
-                        }
-                        (Some(n), None) => format_vars(&n),
-                        (None, Some(t)) => {
-                            let effective_store = spec_store.clone().unwrap_or(store.clone());
-                            user_secret_path(&pocket_key, &t, &effective_store)
-                        }
-                        (None, None) => {
-                            return Err(PocketError::Config(format!(
-                                "user secret `{k}` must have either `name` or `type`"
-                            )));
-                        }
-                    };
-                    user.insert(
-                        k,
-                        UserSecretSpec {
-                            name,
-                            store: spec_store,
-                        },
-                    );
+                let spec = ManagedSecretSpec {
+                    secret_type: v.secret_type,
+                    options,
+                };
+                if v.shared {
+                    shared_managed.insert(k, spec);
+                } else {
+                    unshared_managed.insert(k, spec);
                 }
+            }
+            let mut user = HashMap::new();
+            for (k, v) in sc.user {
+                let spec_store = v.store.as_deref().map(parse_store_type);
+                // name は type 基準の正準パスへ解決してから保持する
+                // (Python の SecretsContext.from_settings と同じ resolve)。
+                // 正準パスは project 側の pocket_key から導出する。
+                // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
+                let name = match (v.name, v.secret_type) {
+                    (Some(_), Some(_)) => {
+                        return Err(PocketError::Config(format!(
+                            "user secret `{k}`: `name` and `type` are mutually \
+                             exclusive (name = 明示参照 / type = stored mode)"
+                        )));
+                    }
+                    (Some(n), None) => format_vars(&n),
+                    (None, Some(t)) => {
+                        let effective_store = spec_store.clone().unwrap_or(store.clone());
+                        user_secret_path(&project_key, &t, &effective_store)
+                    }
+                    (None, None) => {
+                        return Err(PocketError::Config(format!(
+                            "user secret `{k}` must have either `name` or `type`"
+                        )));
+                    }
+                };
+                user.insert(
+                    k,
+                    UserSecretSpec {
+                        name,
+                        store: spec_store,
+                    },
+                );
+            }
 
+            let make_config = |pocket_key: String,
+                               managed: HashMap<String, ManagedSecretSpec>,
+                               user: HashMap<String, UserSecretSpec>|
+             -> Option<SecretsConfig> {
+                if managed.is_empty() && user.is_empty() {
+                    return None;
+                }
                 Some(SecretsConfig {
-                    store,
+                    store: store.clone(),
                     pocket_key,
                     stage: stage.to_string(),
                     project_name: project_name.clone(),
@@ -465,10 +492,13 @@ pub fn load_config_from_str(
                     managed,
                     user,
                 })
-            }
-            None => None,
-        };
-        secrets_config
+            };
+            (
+                make_config(container_key, unshared_managed, HashMap::new()),
+                make_config(project_key, shared_managed, user),
+            )
+        }
+        None => (None, None),
     };
 
     // [cloudfront.<name>] の name 一覧。値は CFn stack output から引くので
@@ -490,6 +520,7 @@ pub fn load_config_from_str(
         resource_prefix,
         container_name,
         secrets: secrets_config,
+        shared_secrets: shared_secrets_config,
         handlers: handlers_config,
         containers: containers_config,
         cloudfront_names,
@@ -632,17 +663,46 @@ sqs = {}
     #[test]
     fn test_secrets_config() {
         let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
+        // shared でない managed は container store (pocket_key に container 名入り)
         let secrets = config.secrets.unwrap();
         assert_eq!(secrets.store, StoreType::Ssm);
-        // pocket_key は project 共有 (container 名を含まない)
-        assert_eq!(secrets.pocket_key, "dev-myapp-pocket");
+        assert_eq!(secrets.pocket_key, "dev-myapp-main-pocket");
         assert_eq!(secrets.managed.len(), 2);
         assert!(secrets.managed.contains_key("SECRET_KEY"));
         assert!(secrets.managed.contains_key("DATABASE_URL"));
-        assert_eq!(secrets.user.len(), 1);
-        let ext = &secrets.user["EXTERNAL_API_KEY"];
+        assert!(secrets.user.is_empty());
+        // user secret は shared store (project パス) の view に載る
+        let shared = config.shared_secrets.unwrap();
+        assert_eq!(shared.pocket_key, "dev-myapp-pocket");
+        assert_eq!(shared.user.len(), 1);
+        let ext = &shared.user["EXTERNAL_API_KEY"];
         assert_eq!(ext.name, "my-external-key");
         assert_eq!(ext.store, Some(StoreType::Sm));
+    }
+
+    #[test]
+    fn test_shared_managed_secret_goes_to_project_store() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+
+[container.main.secrets.managed]
+SECRET_KEY = { type = "password", shared = true }
+LOCAL_TOKEN = { type = "password" }
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        let container_store = config.secrets.unwrap();
+        assert_eq!(container_store.pocket_key, "dev-myapp-main-pocket");
+        assert!(container_store.managed.contains_key("LOCAL_TOKEN"));
+        assert!(!container_store.managed.contains_key("SECRET_KEY"));
+        let shared = config.shared_secrets.unwrap();
+        assert_eq!(shared.pocket_key, "dev-myapp-pocket");
+        assert!(shared.managed.contains_key("SECRET_KEY"));
     }
 
     #[test]
@@ -764,8 +824,11 @@ domain = "example.com"
     #[test]
     fn test_pocket_key_calculation() {
         let config = load_config_from_str(MINIMAL_TOML, "prod", None).unwrap();
-        let secrets = config.secrets.unwrap();
-        assert_eq!(secrets.pocket_key, "prod-myapp-pocket");
+        assert_eq!(config.secrets.unwrap().pocket_key, "prod-myapp-main-pocket");
+        assert_eq!(
+            config.shared_secrets.unwrap().pocket_key,
+            "prod-myapp-pocket"
+        );
     }
 
     #[test]
@@ -809,7 +872,8 @@ DATABASE_URL = { type = "neon_database_url" }
     #[test]
     fn test_type_based_user_secret_derives_canonical_path() {
         let config = load_config_from_str(TYPE_USER_SECRET_TOML, "sandbox", None).unwrap();
-        let secrets = config.secrets.unwrap();
+        // user secret は shared store view。正準パスは project 側の pocket_key
+        let secrets = config.shared_secrets.unwrap();
         assert_eq!(secrets.pocket_key, "sandbox-myapp-pocket");
         let db = &secrets.user["DATABASE_URL"];
         // store = ssm なので先頭スラッシュ付きの正準パス
@@ -834,7 +898,7 @@ dockerfile_path = "Dockerfile"
 DATABASE_URL = { type = "neon_database_url" }
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
-        let db = &config.secrets.unwrap().user["DATABASE_URL"];
+        let db = &config.shared_secrets.unwrap().user["DATABASE_URL"];
         assert_eq!(db.name, "dev-myapp-pocket-user/neon_database_url");
     }
 
@@ -857,7 +921,7 @@ store = "sm"
 DATABASE_URL = { type = "neon_database_url", store = "ssm" }
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
-        let db = &config.secrets.unwrap().user["DATABASE_URL"];
+        let db = &config.shared_secrets.unwrap().user["DATABASE_URL"];
         assert_eq!(db.store, Some(StoreType::Ssm));
         assert_eq!(db.name, "/dev-myapp-pocket-user/neon_database_url");
     }
@@ -865,7 +929,7 @@ DATABASE_URL = { type = "neon_database_url", store = "ssm" }
     #[test]
     fn test_name_based_user_secret_still_works() {
         let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
-        let ext = &config.secrets.unwrap().user["EXTERNAL_API_KEY"];
+        let ext = &config.shared_secrets.unwrap().user["EXTERNAL_API_KEY"];
         assert_eq!(ext.name, "my-external-key");
         assert_eq!(ext.store, Some(StoreType::Sm));
     }

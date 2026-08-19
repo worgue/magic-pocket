@@ -103,8 +103,8 @@ def test_context_injects_managed_secret_when_enabled():
     s = settings.Settings.model_validate(_settings_dict(enable=True, lambda_route=True))
     context = Context.from_settings(s)
     assert context.container["main"] is not None
-    assert context.container["main"].secrets is not None
-    managed = context.container["main"].secrets.managed
+    assert context.container["main"].shared_secrets is not None
+    managed = context.container["main"].shared_secrets.managed
     assert ORIGIN_VERIFY_SECRET_KEY in managed
     assert managed[ORIGIN_VERIFY_SECRET_KEY].type == "origin_verify_secret"
     assert context.cloudfront["web"].enable_origin_verify is True
@@ -117,7 +117,7 @@ def test_context_no_managed_secret_when_disabled():
     context = Context.from_settings(s)
     assert context.container["main"] is not None
     # secrets を宣言していないので origin verify 無効なら secrets context も作られない
-    assert context.container["main"].secrets is None
+    assert context.container["main"].shared_secrets is None
     assert context.cloudfront["web"].enable_origin_verify is False
 
 

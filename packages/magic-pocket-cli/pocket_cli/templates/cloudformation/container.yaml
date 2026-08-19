@@ -39,7 +39,8 @@ Resources:
         - "{{ arn }}"
         # {% endfor %}
       Policies:
-        # {% if secrets and secrets.allowed_sm_resources %}
+        # {# allowed_*_resources は container store + shared store の合算 #}
+        # {% if allowed_sm_resources %}
         - PolicyName: "{{ resource_prefix }}access-secretsmanager"
           PolicyDocument:
             Version: "2012-10-17"
@@ -48,10 +49,10 @@ Resources:
                 Action:
                   - "secretsmanager:GetSecretValue"
                 Resource:
-                  # {% for value in secrets.allowed_sm_resources %}
+                  # {% for value in allowed_sm_resources %}
                   - Fn::Sub: "{{ value }}"
                   # {% endfor %}
-              # {% if secrets.require_list_secrets %}
+              # {% if require_list_secrets %}
               - Effect: "Allow"
                 Action:
                   - "secretsmanager:ListSecrets"
@@ -59,7 +60,7 @@ Resources:
                   - "*"
               # {% endif %}
         # {% endif %}
-        # {% if secrets and secrets.allowed_ssm_resources %}
+        # {% if allowed_ssm_resources %}
         - PolicyName: "{{ resource_prefix }}access-ssm"
           PolicyDocument:
             Version: "2012-10-17"
@@ -70,7 +71,7 @@ Resources:
                   - "ssm:GetParameters"
                   - "ssm:GetParametersByPath"
                 Resource:
-                  # {% for value in secrets.allowed_ssm_resources %}
+                  # {% for value in allowed_ssm_resources %}
                   - Fn::Sub: "{{ value }}"
                   # {% endfor %}
         # {% endif %}

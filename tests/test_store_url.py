@@ -25,6 +25,7 @@ from pocket.context import SecretsContext
 def _ctx_stub(secrets_context) -> Any:
     class _Ctx:
         secrets = secrets_context
+        container: dict = {}
 
     return _Ctx()
 

@@ -271,10 +271,21 @@ class SecretsContext(BaseModel):
 
     @classmethod
     def from_settings(
-        cls, secrets: settings.Secrets, root: settings.Settings
+        cls,
+        secrets: settings.Secrets,
+        root: settings.Settings,
+        *,
+        pocket_key: str | None = None,
     ) -> SecretsContext:
+        """settings.Secrets から SecretsContext を組み立てる。
+
+        pocket_key を明示すると store の保存先だけを差し替えられる
+        (container store 用。user secret の正準パス導出は常に project 側の
+        pocket_key で行うため、container store では user を宣言しない)。
+        """
         format_vars = root.format_vars
-        pocket_key = secrets.pocket_key_format.format(**format_vars)
+        if pocket_key is None:
+            pocket_key = secrets.pocket_key_format.format(**format_vars)
 
         def _resolve_user_name(key: str, spec: UserSecretSpec) -> str:
             if spec.name is not None:
@@ -361,32 +372,60 @@ def _injected_managed_specs(root: settings.Settings) -> dict[str, ManagedSecretS
 
 
 def _container_secrets_context(
+    name: str, c: settings.Container, root: settings.Settings
+) -> SecretsContext | None:
+    """container store (`{stage}-{project}-{name}-{namespace}`) の view。
+
+    shared = true でない managed 宣言だけがここに保存される (container ごとに
+    独立した値)。user secret は常に project 側の参照なので含まない。
+    """
+    if not c.secrets:
+        return None
+    own_managed = {
+        key: spec for key, spec in c.secrets.managed.items() if not spec.shared
+    }
+    if not (own_managed or c.secrets.extra_resources or c.secrets.require_list_secrets):
+        return None
+    secrets_settings = c.secrets.model_copy(update={"managed": own_managed, "user": {}})
+    pocket_key = c.secrets.pocket_key_format.format(**root.container_format_vars(name))
+    return SecretsContext.from_settings(secrets_settings, root, pocket_key=pocket_key)
+
+
+def _container_shared_secrets_context(
     c: settings.Container, root: settings.Settings
 ) -> SecretsContext | None:
-    """container 1 つ分の SecretsContext (自宣言 + 自動注入)。
+    """shared store (`{stage}-{project}-{namespace}`) の per-container view。
 
-    物理 store は project 共有 (pocket_key は container 名を含まない) だが、
-    「この container の env に注入されるキー / IAM で許可される参照」は
-    per-container で決まる。自動注入 secret は全 container の env に載せる
-    (origin verify は lambda route を持つどの container でも検証に使うため)。
+    この container の env / IAM に関わる shared store 側のキーを持つ:
+    自宣言のうち shared = true の managed、自動注入 secret (origin verify は
+    lambda route を持つどの container でも検証に使うため全 container に載せる)、
+    user secret (stored mode の正準パスは project 単位)。
     """
     injected = _injected_managed_specs(root)
     if not (c.secrets or injected):
         return None
-    secrets_settings = c.secrets or root.project_secrets_base()
-    if injected:
-        secrets_settings = secrets_settings.model_copy(
-            update={"managed": {**secrets_settings.managed, **injected}}
-        )
+    base = c.secrets or root.project_secrets_base()
+    shared_managed = {key: spec for key, spec in base.managed.items() if spec.shared}
+    secrets_settings = base.model_copy(
+        update={
+            "managed": {**shared_managed, **injected},
+            # extra_resources / require_list_secrets は container store 側の
+            # view で扱う (二重付与を避ける)
+            "extra_resources": [],
+            "require_list_secrets": False,
+        }
+    )
+    if not (secrets_settings.managed or secrets_settings.user):
+        return None
     return SecretsContext.from_settings(secrets_settings, root)
 
 
 def _project_secrets_context(root: settings.Settings) -> SecretsContext | None:
-    """project 全体 (全 container 宣言の union + 自動注入) の SecretsContext。
+    """shared store (project 共有) の union view。
 
-    物理 store は project 共有のため、生成 (mediator) / orphan cleanup / 参照系
-    CLI はこの union を正とする。個々の container の env / IAM は
-    ContainerContext.secrets (per-container view) が担う。
+    全 container の shared 宣言 + 自動注入 + user secret の union。mediator の
+    生成 / cleanup と参照系 CLI が shared store を扱うときの正。container store
+    側は ContainerContext.secrets (per-container view) が正。
     """
     injected = _injected_managed_specs(root)
     declared = [c.secrets for c in root.container.values() if c.secrets]
@@ -394,24 +433,19 @@ def _project_secrets_context(root: settings.Settings) -> SecretsContext | None:
         return None
     managed: dict[str, ManagedSecretSpec] = {}
     user: dict[str, settings.UserSecretSpec] = {}
-    extra_resources: list[str] = []
-    require_list_secrets = False
     for s in declared:
         # 同名 key の spec 一致は settings 側で検証済み (先勝ちで問題ない)
         for key, spec in s.managed.items():
-            managed.setdefault(key, spec)
+            if spec.shared:
+                managed.setdefault(key, spec)
         for key, spec in s.user.items():
             user.setdefault(key, spec)
-        for arn in s.extra_resources:
-            if arn not in extra_resources:
-                extra_resources.append(arn)
-        require_list_secrets = require_list_secrets or s.require_list_secrets
+    # shared 宣言が 1 つも無くても view を返す (mediator が旧 project パスからの
+    # copy-on-missing 移行や orphan cleanup で shared store を扱うため)
     secrets_settings = root.project_secrets_base().model_copy(
         update={
             "managed": {**managed, **injected},
             "user": user,
-            "extra_resources": extra_resources,
-            "require_list_secrets": require_list_secrets,
         }
     )
     return SecretsContext.from_settings(secrets_settings, root)
@@ -425,7 +459,12 @@ class ContainerIamContext(BaseModel):
 class ContainerContext(BaseModel):
     name: str
     vpc: VpcContext | None = None
+    # container store ({stage}-{project}-{name}-{namespace}) の view。
+    # shared = true でない managed 宣言 (container 独立の値) を持つ
     secrets: SecretsContext | None = None
+    # shared store ({stage}-{project}-{namespace}) の per-container view。
+    # 自宣言の shared managed + 自動注入 + user secret を持つ
+    shared_secrets: SecretsContext | None = None
     dockerfile_path: str
     envs: dict[str, str] = {}
     signing_key_imports: dict[str, str] = {}
@@ -465,6 +504,37 @@ class ContainerContext(BaseModel):
         """
         return "arm64" if self.platform == "linux/arm64" else "x86_64"
 
+    def secrets_views(self) -> list[SecretsContext]:
+        """この container が読む store view の一覧 (container store → shared store)。"""
+        return [sc for sc in (self.secrets, self.shared_secrets) if sc is not None]
+
+    @computed_field
+    @property
+    def allowed_sm_resources(self) -> list[str]:
+        """IAM 許可対象の SM ARN (container store + shared store の合算)。"""
+        result: list[str] = []
+        for sc in self.secrets_views():
+            for arn in sc.allowed_sm_resources:
+                if arn not in result:
+                    result.append(arn)
+        return result
+
+    @computed_field
+    @property
+    def allowed_ssm_resources(self) -> list[str]:
+        """IAM 許可対象の SSM ARN (container store + shared store の合算)。"""
+        result: list[str] = []
+        for sc in self.secrets_views():
+            for arn in sc.allowed_ssm_resources:
+                if arn not in result:
+                    result.append(arn)
+        return result
+
+    @computed_field
+    @property
+    def require_list_secrets(self) -> bool:
+        return any(sc.require_list_secrets for sc in self.secrets_views())
+
     @classmethod
     def from_settings(
         cls, name: str, c: settings.Container, root: settings.Settings
@@ -475,7 +545,8 @@ class ContainerContext(BaseModel):
         if c.vpc:
             vpc_ctx = VpcContext.from_settings(c.vpc, root.general)
 
-        secrets_ctx = _container_secrets_context(c, root)
+        secrets_ctx = _container_secrets_context(name, c, root)
+        shared_secrets_ctx = _container_shared_secrets_context(c, root)
 
         handlers = {}
         use_route53 = False
@@ -507,6 +578,7 @@ class ContainerContext(BaseModel):
             name=name,
             vpc=vpc_ctx,
             secrets=secrets_ctx,
+            shared_secrets=shared_secrets_ctx,
             dockerfile_path=c.dockerfile_path,
             envs=c.envs,
             platform=c.platform,
@@ -1459,8 +1531,8 @@ def _build_service_contexts(s: settings.Settings) -> dict:
 class Context(BaseModel):
     general: GeneralContext | None = None
     container: dict[str, ContainerContext] = {}
-    # project 共有 store の union view (生成 / cleanup / 参照系 CLI の正)。
-    # container ごとの env / IAM は container[<name>].secrets が担う
+    # shared store (project 共有パス) の union view。shared 宣言 + 自動注入 +
+    # user secret を持つ。container store は container[<name>].secrets が正
     secrets: SecretsContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
@@ -1475,6 +1547,32 @@ class Context(BaseModel):
     scheduler: dict[str, SchedulerContext] = {}
     project_name: str
     stage: str
+
+    def managed_secret_view(self, key: str) -> SecretsContext | None:
+        """managed secret key の値が保存されている store view を解決する。
+
+        shared 宣言 + 自動注入は shared store (Context.secrets)、それ以外は
+        宣言している container の container store。cloudfront 系 resource が
+        token_secret / basic_auth / signing_key の実値を読むときに使う。
+        """
+        if self.secrets and key in self.secrets.managed:
+            return self.secrets
+        for c_name in sorted(self.container):
+            sc = self.container[c_name].secrets
+            if sc and key in sc.managed:
+                return sc
+        return None
+
+    def all_secrets_views(self) -> list[SecretsContext]:
+        """全 store view (shared union + 各 container store)。mediator が使う。"""
+        views: list[SecretsContext] = []
+        if self.secrets:
+            views.append(self.secrets)
+        for c_name in sorted(self.container):
+            sc = self.container[c_name].secrets
+            if sc:
+                views.append(sc)
+        return views
 
     @staticmethod
     def _build_api_origins(

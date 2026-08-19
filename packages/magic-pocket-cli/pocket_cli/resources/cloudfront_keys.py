@@ -66,7 +66,7 @@ class CloudFrontKeys(StackBackedResource):
     def _prepare_signing_key(self, mediator: Mediator):
         if not self.context.signing_key:
             return
-        sc = mediator.context.secrets
+        sc = mediator.context.managed_secret_view(self.context.signing_key)
         if sc is None:
             echo.warning("container secrets is not configured.")
             return

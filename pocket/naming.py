@@ -76,7 +76,10 @@ def pocket_key(
 
     pocket.toml の ``[container.<name>.secrets].pocket_key_format`` を変えている
     場合のみ ``pocket_key_format`` を渡す。既定運用ならデフォルトのままでよい。
-    pocket_key は container 名を含まない (secrets の物理 store は project 共有)。
+    ここで導出するのは shared store / stored user secret の project 側 pocket_key
+    (container 名を含まない)。shared = true でない managed secret の container
+    store は namespace slot に container 名を前置した
+    ``{stage}-{project}-{name}-{namespace}`` になる。
     """
     return pocket_key_format.format(stage=stage, project=project, namespace=namespace)
 

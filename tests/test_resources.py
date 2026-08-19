@@ -43,7 +43,8 @@ def test_secretsmanager(use_toml):
     )
     context = Context.from_settings(settings)
     assert context.container["main"]
-    assert context.container["main"].secrets
+    # user secret は shared store view に載る (保存先参照は project 単位)
+    assert context.container["main"].shared_secrets
     # user secretはSM経由で直接取得できる
     value = client.get_secret_value(SecretId=res["ARN"])
     assert value["SecretString"] == "postgres://localhost:5432"

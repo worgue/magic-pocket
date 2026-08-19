@@ -63,60 +63,72 @@ def secrets():
     pass
 
 
-def _project_secrets_context(stage):
-    """project 共有 store の union SecretsContext を返す (secrets 系コマンド用)。"""
-    context = Context.from_toml(stage=stage)
-    return context, context.secrets
+def _secrets_views(context: Context):
+    """(ラベル, SecretsContext) の一覧 (shared store + 各 container store)。"""
+    views = []
+    if context.secrets:
+        views.append(("shared", context.secrets))
+    for c_name in sorted(context.container):
+        sc = context.container[c_name].secrets
+        if sc:
+            views.append((c_name, sc))
+    return views
 
 
 @secrets.command("list")
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--show-values", is_flag=True, default=False)
 def list_secrets(stage, show_values):
-    _context, sc = _project_secrets_context(stage)
-    if not sc:
+    context = Context.from_toml(stage=stage)
+    views = _secrets_views(context)
+    if not views:
         echo.warning("secrets is not configured for this stage")
         return
-    for key, spec in sc.user.items():
-        effective_store = spec.store or sc.store
-        print("%s: %s (store=%s)" % (key, spec.name, effective_store))
-        if show_values:
-            if effective_store == "sm":
-                client = boto3.client("secretsmanager", region_name=sc.region)
-                value = client.get_secret_value(SecretId=spec.name)["SecretString"]
-            else:
-                client = boto3.client("ssm", region_name=sc.region)
-                value = client.get_parameter(Name=spec.name, WithDecryption=True)[
-                    "Parameter"
-                ]["Value"]
-            print("  - " + value)
-    for key, pocket_secret in sc.managed.items():
-        status = "CREATED" if key in sc.pocket_store.secrets else "NOEXIST"
-        print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
-        print("  - " + status)
-        if (status == "CREATED") and show_values:
-            value = sc.pocket_store.secrets[key]
-            if isinstance(value, str):
+    for label, sc in views:
+        echo.info("[%s] %s" % (label, sc.pocket_key))
+        for key, spec in sc.user.items():
+            effective_store = spec.store or sc.store
+            print("%s: %s (store=%s)" % (key, spec.name, effective_store))
+            if show_values:
+                if effective_store == "sm":
+                    client = boto3.client("secretsmanager", region_name=sc.region)
+                    value = client.get_secret_value(SecretId=spec.name)["SecretString"]
+                else:
+                    client = boto3.client("ssm", region_name=sc.region)
+                    value = client.get_parameter(Name=spec.name, WithDecryption=True)[
+                        "Parameter"
+                    ]["Value"]
                 print("  - " + value)
-            else:
-                for k, v in value.items():
-                    print(f"  - {k}: {v}")
+        for key, pocket_secret in sc.managed.items():
+            status = "CREATED" if key in sc.pocket_store.secrets else "NOEXIST"
+            print("%s: %s %s" % (key, pocket_secret.type, pocket_secret.options))
+            print("  - " + status)
+            if (status == "CREATED") and show_values:
+                value = sc.pocket_store.secrets[key]
+                if isinstance(value, str):
+                    print("  - " + value)
+                else:
+                    for k, v in value.items():
+                        print(f"  - {k}: {v}")
 
 
 @secrets.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def create_pocket_managed(stage):
-    context, sc = _project_secrets_context(stage)
-    if not sc:
+    context = Context.from_toml(stage=stage)
+    if not _secrets_views(context):
         echo.warning("secrets is not configured for this stage")
         return
     mediator = Mediator(context)
     mediator.create_pocket_managed_secrets()
 
 
-def _confirm_delete_pocket_managed_secrets(sc):
+def _confirm_delete_pocket_managed_secrets(views):
     existing_secret_keys = [
-        key for key in sc.managed.keys() if key in sc.pocket_store.secrets
+        "%s (%s)" % (key, label)
+        for label, sc in views
+        for key in sc.managed.keys()
+        if key in sc.pocket_store.secrets
     ]
     if not existing_secret_keys:
         echo.warning("No pocket managed secets are created yet.")
@@ -132,12 +144,14 @@ def _confirm_delete_pocket_managed_secrets(sc):
 @secrets.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def delete_pocket_managed(stage):
-    _context, sc = _project_secrets_context(stage)
-    if not sc:
+    context = Context.from_toml(stage=stage)
+    views = _secrets_views(context)
+    if not views:
         echo.warning("secrets is not configured")
         return
-    _confirm_delete_pocket_managed_secrets(sc)
-    sc.pocket_store.delete_secrets()
+    _confirm_delete_pocket_managed_secrets(views)
+    for _label, sc in views:
+        sc.pocket_store.delete_secrets()
 
 
 @container.command()

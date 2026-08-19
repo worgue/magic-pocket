@@ -136,11 +136,12 @@ class Container:
             self.stack.name,
             self.ecr.name,
         )
-        if self.context.secrets and self.context.secrets.managed:
-            msg += "\nCreate pocket managed secrets (%s): %s" % (
-                self.context.secrets.store,
-                self.context.secrets.pocket_key,
-            )
+        for sc in self.context.secrets_views():
+            if sc.managed:
+                msg += "\nCreate pocket managed secrets (%s): %s" % (
+                    sc.store,
+                    sc.pocket_key,
+                )
         return msg
 
     def _require_acm_manual_upadte(self):

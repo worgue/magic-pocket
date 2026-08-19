@@ -868,11 +868,13 @@ routes = [
 - 自 container の handler は従来どおり `POCKET_<HANDLER>_HOST` 等で参照でき、
   他 container の handler は `POCKET_<CONTAINER>_<HANDLER>_HOST` /
   `_ENDPOINT` / `_QUEUEURL` の修飾名で参照します
-- secrets の**宣言**は per-container ですが、**物理 store は project 共有**です
-  （pocket_key に container 名は入りません）。`store` / `pocket_key_format` は
-  全 container で一致が必要で、同名 key を複数 container で宣言する場合は
-  spec が一致していれば値を共有します（strangler 移行で Django の
-  `SECRET_KEY` を新旧 container が共有できます）
+- managed secret は既定で **container ごとに独立**です（保存先は
+  `{stage}-{project}-{name}-{namespace}` の container store）。複数 container で
+  値を共有したい場合は全宣言に `shared = true` を付けます（保存先は
+  `{stage}-{project}-{namespace}` の shared store。strangler 移行で Django の
+  `SECRET_KEY` を新旧 container が共有する用途）。`shared` なしの同名宣言は
+  エラーになります（偶然の同名を silent に共有させないため）。
+  詳細は [container.secrets](#containersecrets) を参照
 
 ### build（ビルドバックエンド）
 
@@ -1105,6 +1107,21 @@ pocket_key_format = "{stage}-{project}-{namespace}"
 | `pocket_key_format` | str | `"{stage}-{project}-{namespace}"` | シークレットキーのフォーマット |
 | `require_list_secrets` | bool | `false` | ListSecrets権限を付与 |
 
+`store` と `pocket_key_format` は全 container で一致が必要です（複数 container
+構成でも保存の起点を 1 つに保つため）。
+
+!!! info "保存先パス: container store と shared store"
+    managed secret の保存先は宣言によって 2 種類に分かれます。
+
+    | 宣言 | 保存先 (pocket_key) | 意味 |
+    |------|--------------------|------|
+    | 既定 (`shared` なし) | `{stage}-{project}-{name}-{namespace}` | container ごとに独立した値。SM コンソール上も container 名で識別できる |
+    | `shared = true` | `{stage}-{project}-{namespace}` | 同名 + 同 spec で宣言した全 container が同じ値を共有 |
+
+    user secret (stored mode) の正準パスと dsql endpoint の publish 先は常に
+    project 側 (`{pocket_key}-user/...`) です。DB URL 等は stage 単位の外部資源への
+    参照であり、container ごとに分ける対象ではないためです。
+
 #### secrets.managed
 
 magic-pocketが自動生成・管理するシークレットを定義します。
@@ -1114,6 +1131,20 @@ magic-pocketが自動生成・管理するシークレットを定義します�
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "auto_database_url" }
+```
+
+各 spec は `shared = true` を付けると shared store (project 共有パス) に保存され、
+同名 + 同 spec で宣言した複数 container が同じ値を共有します。`shared` なしの
+同名宣言 (複数 container) はエラーになります — container ごとに独立した値に
+する場合は key 名を分けてください。
+
+```toml
+# strangler 移行: 新旧 container で Django の署名 secret を共有する
+[container.mydjango.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
+
+[container.v2.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
 ```
 
 **type = "auto_database_url"**
