@@ -84,35 +84,6 @@ def _reject_skip_check_existing(data, *, resource: str):
 _CONTAINER_NAME_RE = "^[a-z][a-z0-9]{0,31}$"
 
 
-def _check_managed_key_sharing(
-    key: str,
-    first: tuple[str, ManagedSecretSpec],
-    second: tuple[str, ManagedSecretSpec],
-) -> None:
-    """managed secret の同名宣言 (複数 container) を検証する。
-
-    無印 (shared なし) 同士は container store が別れて独立した値になるため
-    問題ない (spec が違ってもよい)。shared 同士は同一値を共有するため spec
-    一致が必要。shared と無印の混在は、ほぼ確実に shared の付け忘れなので
-    エラーにする。
-    """
-    first_name, first_spec = first
-    second_name, second_spec = second
-    if first_spec.shared != second_spec.shared:
-        raise ValueError(
-            "managed secret '%s' が container '%s' と '%s' で shared 指定の"
-            "有無が混在しています。値を共有する場合は全宣言に shared = true を"
-            "付けてください (無印同士なら container ごとに独立した値になります)。"
-            % (key, first_name, second_name)
-        )
-    if first_spec.shared and first_spec != second_spec:
-        raise ValueError(
-            "shared managed secret '%s' が container '%s' と '%s' で異なる"
-            " spec で宣言されています。共有する secret は全宣言で同一 spec に"
-            "してください。" % (key, first_name, second_name)
-        )
-
-
 def parse_handler_ref(ref: str) -> tuple[str, str]:
     """handler 参照 "<container>.<handler>" を (container, handler) に分解する。
 
@@ -1389,15 +1360,17 @@ class Settings(BaseModel):
 
         - store / pocket_key_format は全 container で一致 (shared store は project
           共有で、container store もこの設定から導出するため)
-        - managed secret の同名宣言は「全宣言に shared = true + spec 一致」の
-          場合のみ許可する。無印の同名は container store が別れて別の値になり、
-          意図した共有か偶然の衝突か判別できないため fail-loud にする
+        - managed secret の同名宣言: 無印同士は container store が別れて独立した
+          値になるため自由 (spec 相違も可)。shared = true 同士は同一値を共有する
+          ため spec 一致が必要。shared と無印の混在も許可する (shared 宣言側だけ
+          が値を共有し、無印側は独立。「2 container で共有 + 1 container は独立」
+          のようなユースケースがある)
         - user secret の同名宣言は spec 一致のみ要求する (stored mode の保存先は
           常に project 共有の参照で、生成を伴わないため)
         """
         stores: dict[str, str] = {}
         formats: dict[str, str] = {}
-        managed_owners: dict[str, tuple[str, ManagedSecretSpec]] = {}
+        shared_owners: dict[str, tuple[str, ManagedSecretSpec]] = {}
         user_owners: dict[str, tuple[str, UserSecretSpec]] = {}
         for name, c in self.container.items():
             if not c.secrets:
@@ -1405,9 +1378,16 @@ class Settings(BaseModel):
             stores[name] = c.secrets.store
             formats[name] = c.secrets.pocket_key_format
             for key, spec in c.secrets.managed.items():
-                if key in managed_owners:
-                    _check_managed_key_sharing(key, managed_owners[key], (name, spec))
-                managed_owners.setdefault(key, (name, spec))
+                if not spec.shared:
+                    continue
+                if key in shared_owners and shared_owners[key][1] != spec:
+                    raise ValueError(
+                        "shared managed secret '%s' が container '%s' と '%s' で"
+                        "異なる spec で宣言されています。共有する secret は"
+                        "全宣言で同一 spec にしてください。"
+                        % (key, shared_owners[key][0], name)
+                    )
+                shared_owners.setdefault(key, (name, spec))
             for key, spec in c.secrets.user.items():
                 if key in user_owners and user_owners[key][1] != spec:
                     raise ValueError(
@@ -1562,10 +1542,9 @@ class Settings(BaseModel):
         """cloudfront が名前参照する managed secret の一意性を検証する。
 
         token_secret / basic_auth / signing_key は key 名でしか参照できないため、
-        無印 (container store 独立) の同名宣言が複数 container にあると
-        「どの container の値か」が曖昧になる。参照される key に限り、単独宣言か
-        shared = true (値が 1 つ) を要求する。参照されない同名宣言は独立した
-        別の値として問題ない。
+        値の候補が 1 つに決まる必要がある。候補は「shared 宣言 (全体で 1 値)」と
+        「無印宣言 (container ごとに 1 値)」の合計で数える。参照されない同名宣言
+        は独立した別の値として問題ない。
         """
         for label, key in (
             ("token_secret", cf.token_secret),
@@ -1576,12 +1555,16 @@ class Settings(BaseModel):
                 continue
             owners = self.managed_secret_owners(key)
             unshared = [n for n, spec in owners if not spec.shared]
-            if len(unshared) > 1:
+            has_shared = any(spec.shared for _n, spec in owners)
+            value_sources = len(unshared) + (1 if has_shared else 0)
+            if value_sources > 1:
+                shared_note = "あり" if has_shared else "なし"
                 raise ValueError(
-                    f"cloudfront.{name}: {label} '{key}' が複数の container "
-                    f"({', '.join(unshared)}) で shared なしに宣言されており、"
-                    f"どの値を使うか曖昧です。全宣言に shared = true を付けて"
-                    f"値を共有するか、一意の key 名にしてください。"
+                    f"cloudfront.{name}: {label} '{key}' の値の候補が複数あり"
+                    f"どれを使うか曖昧です (shared 宣言: {shared_note} / "
+                    f"無印宣言: {', '.join(unshared)})。参照される secret は"
+                    f"全宣言に shared = true を付けて値を 1 つにするか、一意の"
+                    f" key 名にしてください。"
                 )
 
     def _check_cloudfront_waf_allow_rules(self, name: str, cf: CloudFront):

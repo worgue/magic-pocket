@@ -50,13 +50,17 @@ class Mediator:
 
         legacy_source (shared store の view) を渡すと、生成の前に旧 project パス
         からの copy-on-missing を試す (0.29.0 の container store 分離の自己回復
-        移行。SECRET_KEY 等の既存値を再生成せず引き継ぐ)。
+        移行。SECRET_KEY 等の既存値を再生成せず引き継ぐ)。shared 宣言の正規の
+        住人 (legacy_source.managed にある key) は移行残骸ではないため引き継ぎ元に
+        しない — shared と無印の混在構成で、無印側が共有値を初期値として
+        コピーしてしまうのを防ぐ。
         """
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
             if key not in sc.pocket_store.secrets:
                 if (
                     legacy_source is not None
+                    and key not in legacy_source.managed
                     and key in legacy_source.pocket_store.secrets
                 ):
                     generated[key] = legacy_source.pocket_store.secrets[key]

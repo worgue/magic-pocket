@@ -120,8 +120,12 @@ def test_same_unshared_key_is_independent_per_container():
     assert context.secrets.managed == {}
 
 
-def test_mixed_shared_flag_on_same_key_rejected():
-    """同名 key の shared 有無の混在は shared 付け忘れの可能性が高いためエラー。"""
+def test_mixed_shared_flag_on_same_key_allowed():
+    """同名 key の shared 有無の混在は許可 (shared 側が共有、無印側は独立)。
+
+    「2 container で共有 + 1 container は独立」のようなユースケースがあるため
+    エラーにしない。
+    """
     data = _base_data()
     data["container"] = {
         "a": {
@@ -132,11 +136,28 @@ def test_mixed_shared_flag_on_same_key_rejected():
         },
         "b": {
             "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
+        },
+        "c": {
+            "dockerfile_path": "Dockerfile",
             "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
         },
     }
-    with pytest.raises(ValueError, match="混在"):
-        settings.Settings.model_validate(data)
+    context = Context.from_settings(settings.Settings.model_validate(data))
+    # a / b は shared store で値を共有
+    assert context.secrets is not None
+    assert "SECRET_KEY" in context.secrets.managed
+    for name in ("a", "b"):
+        assert context.container[name].secrets is None
+        shared_view = context.container[name].shared_secrets
+        assert shared_view is not None and "SECRET_KEY" in shared_view.managed
+    # c は container store に独立した値
+    sc_c = context.container["c"].secrets
+    assert sc_c is not None
+    assert sc_c.pocket_key == "dev-testprj-c-pocket"
+    assert "SECRET_KEY" in sc_c.managed
 
 
 def test_cloudfront_referenced_secret_must_be_unambiguous():
@@ -155,6 +176,15 @@ def test_cloudfront_referenced_secret_must_be_unambiguous():
     data["cloudfront"]["web"]["basic_auth"] = "BA"
     with pytest.raises(ValueError, match="曖昧"):
         settings.Settings.model_validate(data)
+
+    # shared と無印の混在参照も候補が 2 つになるため曖昧
+    data["container"]["mydjango"]["secrets"]["managed"]["BA"]["shared"] = True
+    with pytest.raises(ValueError, match="曖昧"):
+        settings.Settings.model_validate(data)
+
+    # 全宣言 shared なら値が 1 つに決まるので OK
+    data["container"]["v2"]["secrets"]["managed"]["BA"]["shared"] = True
+    settings.Settings.model_validate(data)
 
 
 def test_shared_key_with_different_spec_rejected():
@@ -557,3 +587,39 @@ def test_cleanup_legacy_secret_residue_waits_for_all_declaring_containers():
     finally:
         interaction.set_assume_yes(False)
     assert shared_store.deleted == {"API_TOKEN"}
+
+
+def test_copy_on_missing_skips_shared_resident_value():
+    """shared 宣言の正規の住人は legacy 扱いせず、無印側は新規生成する。
+
+    shared と無印の混在構成で、無印宣言の初期値が共有値のコピーになると
+    「独立した値」の意味論が壊れるため。
+    """
+    from pocket_cli.mediator import Mediator
+
+    data = _base_data()
+    data["container"] = {
+        "a": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "managed": {"SECRET_KEY": {"type": "password", "shared": True}}
+            },
+        },
+        "c": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {"managed": {"SECRET_KEY": {"type": "password"}}},
+        },
+    }
+    context = Context.from_settings(settings.Settings.model_validate(data))
+    assert context.secrets is not None
+    sc_c = context.container["c"].secrets
+    assert sc_c is not None
+    shared_store = _FakeStore({"SECRET_KEY": "shared-value"})
+    container_store = _FakeStore({})
+    object.__setattr__(context.secrets, "pocket_store", shared_store)
+    object.__setattr__(sc_c, "pocket_store", container_store)
+
+    Mediator(context).create_pocket_managed_secrets(exists="ignore")
+
+    assert "SECRET_KEY" in container_store.secrets
+    assert container_store.secrets["SECRET_KEY"] != "shared-value"

@@ -1136,10 +1136,13 @@ DATABASE_URL = { type = "auto_database_url" }
 各 spec は `shared = true` を付けると shared store (project 共有パス) に保存され、
 同名 + 同 spec で宣言した複数 container が同じ値を共有します。`shared` なしの
 同名宣言 (複数 container) はそれぞれの container store に独立した値として
-生成されます (spec が違ってもかまいません)。同名 key で `shared` の有無が
-混在する宣言はエラーです (付け忘れの検出)。また cloudfront から key 名で
-参照される secret (`token_secret` / `basic_auth` / `signing_key`) は値が
-一意に決まる必要があるため、単独宣言か `shared = true` にしてください。
+生成されます (spec が違ってもかまいません)。`shared` の有無が混在する同名宣言も
+可能で、`shared` を付けた container 同士だけが値を共有し、無印の container は
+独立した値を持ちます (「2 container で共有 + 1 container は独立」のような構成)。
+ただし cloudfront から key 名で参照される secret
+(`token_secret` / `basic_auth` / `signing_key`) は値の候補が 1 つに決まる必要が
+あるため、その key に限り「無印の複数宣言」や「shared と無印の混在」はエラーに
+なります。
 
 ```toml
 # strangler 移行: 新旧 container で Django の署名 secret を共有する
