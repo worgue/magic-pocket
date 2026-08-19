@@ -1,9 +1,13 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 use crate::error::{PocketError, Result};
+
+/// enable_origin_verify 用 managed secret の予約キー (= Lambda runtime env 名)。
+/// Python 側 pocket.context.ORIGIN_VERIFY_SECRET_KEY と一致させること。
+pub const ORIGIN_VERIFY_SECRET_KEY: &str = "POCKET_ORIGIN_VERIFY_SECRET";
 
 /// pocket.toml から読み取った設定（ステージマージ済み）
 #[derive(Debug, Clone)]
@@ -162,6 +166,28 @@ struct HandlerToml {
 #[derive(Debug, Deserialize)]
 struct ApiGatewayToml {
     domain: Option<String>,
+}
+
+/// `[cloudfront.<name>]` のうち runtime が必要とするキーのみ読む
+/// (routes 等は CLI 専用なので無視する)
+#[derive(Debug, Deserialize)]
+struct CloudFrontToml {
+    #[serde(default)]
+    enable_origin_verify: bool,
+    waf: Option<WafToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WafToml {
+    #[serde(default)]
+    allow_rules: Vec<WafAllowRuleToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WafAllowRuleToml {
+    /// managed secret のキー名 (path のみのルールでは None)
+    #[serde(default)]
+    header: Option<String>,
 }
 
 // --- パブリック関数 ---
@@ -391,7 +417,15 @@ pub fn load_config_from_str(
 
     let mut containers_config: HashMap<String, HashMap<String, HandlerConfig>> = HashMap::new();
     let mut own_secrets_toml: Option<SecretsToml> = None;
+    // secrets を宣言するいずれかの container の (store, pocket_key_format)。
+    // Python の project_secrets_base 相当 (全 container での一致は settings 側で
+    // 検証済みなので最初に見つかった宣言でよい)
+    let mut declared_store_format: Option<(String, String)> = None;
     for (name, c) in container_tables {
+        if let Some(sc) = &c.secrets {
+            declared_store_format
+                .get_or_insert_with(|| (sc.store.clone(), sc.pocket_key_format.clone()));
+        }
         if name == container_name {
             own_secrets_toml = c.secrets;
         }
@@ -402,113 +436,157 @@ pub fn load_config_from_str(
         .cloned()
         .unwrap_or_default();
 
+    // [cloudfront.<name>] をパースする。name は distribution ドメインの env 注入用
+    // (順序は決定的にするため sorted)。enable_origin_verify / waf.allow_rules は
+    // 自動注入 managed secret の導出に使う (値は CFn stack output / secret store
+    // から引くのでここでは宣言だけ読む)
+    let mut cloudfront_names: Vec<String> = Vec::new();
+    let mut cloudfront_tables: Vec<CloudFrontToml> = Vec::new();
+    if let Some(table) = data.get("cloudfront").and_then(|v| v.as_table()) {
+        for (name, c_val) in table {
+            cloudfront_names.push(name.clone());
+            let c: CloudFrontToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
+            cloudfront_tables.push(c);
+        }
+    }
+    cloudfront_names.sort();
+
+    // 自動注入 managed secret (Python の pocket.context._injected_managed_specs と
+    // 同じ導出)。enable_origin_verify の検証用 secret と waf.allow_rules の header
+    // secret は shared store の managed 扱いで runtime env に載せる
+    let mut injected: Vec<(String, ManagedSecretSpec)> = Vec::new();
+    if cloudfront_tables.iter().any(|c| c.enable_origin_verify) {
+        injected.push((
+            ORIGIN_VERIFY_SECRET_KEY.to_string(),
+            ManagedSecretSpec {
+                secret_type: "origin_verify_secret".to_string(),
+                options: HashMap::new(),
+            },
+        ));
+    }
+    let waf_headers: BTreeSet<String> = cloudfront_tables
+        .iter()
+        .filter_map(|c| c.waf.as_ref())
+        .flat_map(|w| w.allow_rules.iter())
+        .filter_map(|r| r.header.clone())
+        .collect();
+    for header in waf_headers {
+        injected.push((
+            header,
+            ManagedSecretSpec {
+                secret_type: "waf_allow_secret".to_string(),
+                options: HashMap::new(),
+            },
+        ));
+    }
+
     // shared store (project 共有) と container store の 2 view を組み立てる。
-    // shared = true の managed + user secret は project パス
+    // shared = true の managed + user secret + 自動注入 secret は project パス
     // ({stage}-{project}-{namespace})、無印の managed は container パス
     // ({stage}-{project}-{name}-{namespace}) に保存される (Python 側と同じ導出)。
-    let (secrets_config, shared_secrets_config) = match own_secrets_toml {
-        Some(sc) => {
-            let project_key = format_vars(&sc.pocket_key_format);
-            let container_key = sc
-                .pocket_key_format
-                .replace("{stage}", stage)
-                .replace("{project}", &project_name)
-                .replace(
-                    "{namespace}",
-                    &format!("{container_name}-{}", general.namespace),
-                );
-            let store = parse_store_type(&sc.store);
-            let mut unshared_managed = HashMap::new();
-            let mut shared_managed = HashMap::new();
-            for (k, v) in sc.managed {
-                let options = v
-                    .options
-                    .into_iter()
-                    .map(|(ok, ov)| {
-                        let s = match ov {
-                            toml::Value::String(s) => s,
-                            other => other.to_string(),
-                        };
-                        (ok, s)
-                    })
-                    .collect();
-                let spec = ManagedSecretSpec {
-                    secret_type: v.secret_type,
-                    options,
-                };
-                if v.shared {
-                    shared_managed.insert(k, spec);
-                } else {
-                    unshared_managed.insert(k, spec);
-                }
-            }
-            let mut user = HashMap::new();
-            for (k, v) in sc.user {
-                let spec_store = v.store.as_deref().map(parse_store_type);
-                // name は type 基準の正準パスへ解決してから保持する
-                // (Python の SecretsContext.from_settings と同じ resolve)。
-                // 正準パスは project 側の pocket_key から導出する。
-                // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
-                let name = match (v.name, v.secret_type) {
-                    (Some(_), Some(_)) => {
-                        return Err(PocketError::Config(format!(
-                            "user secret `{k}`: `name` and `type` are mutually \
-                             exclusive (name = 明示参照 / type = stored mode)"
-                        )));
-                    }
-                    (Some(n), None) => format_vars(&n),
-                    (None, Some(t)) => {
-                        let effective_store = spec_store.clone().unwrap_or(store.clone());
-                        user_secret_path(&project_key, &t, &effective_store)
-                    }
-                    (None, None) => {
-                        return Err(PocketError::Config(format!(
-                            "user secret `{k}` must have either `name` or `type`"
-                        )));
-                    }
-                };
-                user.insert(
-                    k,
-                    UserSecretSpec {
-                        name,
-                        store: spec_store,
-                    },
-                );
-            }
-
-            let make_config = |pocket_key: String,
-                               managed: HashMap<String, ManagedSecretSpec>,
-                               user: HashMap<String, UserSecretSpec>|
-             -> Option<SecretsConfig> {
-                if managed.is_empty() && user.is_empty() {
-                    return None;
-                }
-                Some(SecretsConfig {
-                    store: store.clone(),
-                    pocket_key,
-                    stage: stage.to_string(),
-                    project_name: project_name.clone(),
-                    region: general.region.clone(),
-                    managed,
-                    user,
-                })
-            };
-            (
-                make_config(container_key, unshared_managed, HashMap::new()),
-                make_config(project_key, shared_managed, user),
-            )
+    // store / pocket_key_format は自 container の宣言 > 宣言のある container からの
+    // 継承 > 既定値 (Python の project_secrets_base 相当)。自 container に secrets
+    // 宣言が無くても、自動注入があれば shared view を作る。
+    let (base_store, base_format) = match &own_secrets_toml {
+        Some(sc) => (sc.store.clone(), sc.pocket_key_format.clone()),
+        None => {
+            declared_store_format.unwrap_or_else(|| (default_store(), default_pocket_key_format()))
         }
-        None => (None, None),
     };
+    let store = parse_store_type(&base_store);
+    let project_key = format_vars(&base_format);
+    let container_key = base_format
+        .replace("{stage}", stage)
+        .replace("{project}", &project_name)
+        .replace(
+            "{namespace}",
+            &format!("{container_name}-{}", general.namespace),
+        );
 
-    // [cloudfront.<name>] の name 一覧。値は CFn stack output から引くので
-    // ここでは名前だけ拾う (順序は env 注入を決定的にするため sorted)
-    let mut cloudfront_names: Vec<String> = data
-        .get("cloudfront")
-        .and_then(|v| v.as_table())
-        .map(|t| t.keys().cloned().collect())
-        .unwrap_or_default();
-    cloudfront_names.sort();
+    let mut unshared_managed = HashMap::new();
+    let mut shared_managed = HashMap::new();
+    let mut user = HashMap::new();
+    if let Some(sc) = own_secrets_toml {
+        for (k, v) in sc.managed {
+            let options = v
+                .options
+                .into_iter()
+                .map(|(ok, ov)| {
+                    let s = match ov {
+                        toml::Value::String(s) => s,
+                        other => other.to_string(),
+                    };
+                    (ok, s)
+                })
+                .collect();
+            let spec = ManagedSecretSpec {
+                secret_type: v.secret_type,
+                options,
+            };
+            if v.shared {
+                shared_managed.insert(k, spec);
+            } else {
+                unshared_managed.insert(k, spec);
+            }
+        }
+        for (k, v) in sc.user {
+            let spec_store = v.store.as_deref().map(parse_store_type);
+            // name は type 基準の正準パスへ解決してから保持する
+            // (Python の SecretsContext.from_settings と同じ resolve)。
+            // 正準パスは project 側の pocket_key から導出する。
+            // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
+            let name = match (v.name, v.secret_type) {
+                (Some(_), Some(_)) => {
+                    return Err(PocketError::Config(format!(
+                        "user secret `{k}`: `name` and `type` are mutually \
+                         exclusive (name = 明示参照 / type = stored mode)"
+                    )));
+                }
+                (Some(n), None) => format_vars(&n),
+                (None, Some(t)) => {
+                    let effective_store = spec_store.clone().unwrap_or(store.clone());
+                    user_secret_path(&project_key, &t, &effective_store)
+                }
+                (None, None) => {
+                    return Err(PocketError::Config(format!(
+                        "user secret `{k}` must have either `name` or `type`"
+                    )));
+                }
+            };
+            user.insert(
+                k,
+                UserSecretSpec {
+                    name,
+                    store: spec_store,
+                },
+            );
+        }
+    }
+    // 注入 spec は宣言より優先する (Python の `{**shared_managed, **injected}` と
+    // 同じ。キー衝突は settings 側で検証済み)
+    for (k, spec) in injected {
+        shared_managed.insert(k, spec);
+    }
+
+    let make_config = |pocket_key: String,
+                       managed: HashMap<String, ManagedSecretSpec>,
+                       user: HashMap<String, UserSecretSpec>|
+     -> Option<SecretsConfig> {
+        if managed.is_empty() && user.is_empty() {
+            return None;
+        }
+        Some(SecretsConfig {
+            store: store.clone(),
+            pocket_key,
+            stage: stage.to_string(),
+            project_name: project_name.clone(),
+            region: general.region.clone(),
+            managed,
+            user,
+        })
+    };
+    let secrets_config = make_config(container_key, unshared_managed, HashMap::new());
+    let shared_secrets_config = make_config(project_key, shared_managed, user);
 
     Ok(PocketConfig {
         region: general.region,
@@ -796,6 +874,165 @@ domain = "example.com"
     fn test_cloudfront_names_empty_when_absent() {
         let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         assert!(config.cloudfront_names.is_empty());
+    }
+
+    #[test]
+    fn test_origin_verify_secret_injected_without_secrets_section() {
+        // Python の _injected_managed_specs 相当: secrets 宣言が無い container でも
+        // enable_origin_verify があれば shared view が作られ env に載る
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+
+[container.main.handlers.wsgi]
+command = "app"
+apigateway = {}
+
+[cloudfront.web]
+enable_origin_verify = true
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        // container store 側 view は作られない
+        assert!(config.secrets.is_none());
+        let shared = config.shared_secrets.unwrap();
+        // 既定 store / 既定 pocket_key_format (project パス)
+        assert_eq!(shared.store, StoreType::Sm);
+        assert_eq!(shared.pocket_key, "dev-myapp-pocket");
+        assert_eq!(shared.managed.len(), 1);
+        let spec = &shared.managed[ORIGIN_VERIFY_SECRET_KEY];
+        assert_eq!(spec.secret_type, "origin_verify_secret");
+    }
+
+    #[test]
+    fn test_origin_verify_disabled_or_absent_injects_nothing() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+
+[cloudfront.web]
+enable_origin_verify = false
+
+[cloudfront.admin]
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        assert!(config.secrets.is_none());
+        assert!(config.shared_secrets.is_none());
+    }
+
+    #[test]
+    fn test_waf_allow_headers_injected_sorted_dedup() {
+        // header 付き allow_rules は宣言キー名の managed secret になる。
+        // path のみのルールは対象外、複数 distribution 越しの同名は dedup
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+
+[cloudfront.web.waf]
+allow_rules = [
+    { header = "ZULU_TOKEN" },
+    { path = "/healthz" },
+    { path = "/smoke", header = "ALPHA_TOKEN" },
+]
+
+[cloudfront.admin]
+enable_origin_verify = true
+
+[cloudfront.admin.waf]
+allow_rules = [{ header = "ZULU_TOKEN" }]
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        let shared = config.shared_secrets.unwrap();
+        assert_eq!(shared.managed.len(), 3);
+        assert_eq!(
+            shared.managed["ALPHA_TOKEN"].secret_type,
+            "waf_allow_secret"
+        );
+        assert_eq!(shared.managed["ZULU_TOKEN"].secret_type, "waf_allow_secret");
+        assert_eq!(
+            shared.managed[ORIGIN_VERIFY_SECRET_KEY].secret_type,
+            "origin_verify_secret"
+        );
+    }
+
+    #[test]
+    fn test_injected_inherits_store_format_from_other_container() {
+        // 自 container (v2) に secrets 宣言が無くても、宣言のある container
+        // (mydjango) から store / pocket_key_format を継承する
+        // (Python の project_secrets_base 相当)
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.mydjango]
+dockerfile_path = "Dockerfile"
+
+[container.mydjango.secrets]
+store = "ssm"
+
+[container.mydjango.secrets.managed]
+SECRET_KEY = { type = "password" }
+
+[container.v2]
+dockerfile_path = "v2/Dockerfile"
+
+[cloudfront.web]
+enable_origin_verify = true
+"#;
+        let config = load_config_from_str(toml, "dev", Some("v2")).unwrap();
+        assert!(config.secrets.is_none());
+        let shared = config.shared_secrets.unwrap();
+        assert_eq!(shared.store, StoreType::Ssm);
+        assert_eq!(shared.pocket_key, "dev-myapp-pocket");
+        assert!(shared.managed.contains_key(ORIGIN_VERIFY_SECRET_KEY));
+        // mydjango の無印 managed は v2 の view には載らない
+        assert!(!shared.managed.contains_key("SECRET_KEY"));
+    }
+
+    #[test]
+    fn test_injected_merges_with_declared_shared_secrets() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+
+[container.main.secrets.managed]
+SHARED_KEY = { type = "password", shared = true }
+LOCAL_KEY = { type = "password" }
+
+[cloudfront.web]
+enable_origin_verify = true
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        let container_store = config.secrets.unwrap();
+        assert!(container_store.managed.contains_key("LOCAL_KEY"));
+        assert!(!container_store
+            .managed
+            .contains_key(ORIGIN_VERIFY_SECRET_KEY));
+        let shared = config.shared_secrets.unwrap();
+        assert_eq!(shared.managed.len(), 2);
+        assert!(shared.managed.contains_key("SHARED_KEY"));
+        assert!(shared.managed.contains_key(ORIGIN_VERIFY_SECRET_KEY));
     }
 
     #[test]

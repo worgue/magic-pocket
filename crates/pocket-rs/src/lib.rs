@@ -1,5 +1,6 @@
 pub mod config;
 pub mod error;
+pub mod origin_verify;
 pub mod rds;
 pub mod resources;
 pub mod secrets;

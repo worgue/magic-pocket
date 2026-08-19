@@ -1880,6 +1880,12 @@ middleware の挙動:
 !!! note "secret rotation"
     secret は managed secret なので `pocket` の rotate 経路で再生成し、`pocket deploy`
     で CloudFront origin header (CFn) と Lambda env (SM/SSM) の両方が同値に更新されます。
+
+#### axum (Rust) middleware の組み込み
+
+Rust container には pocket-rs 同梱の axum middleware (feature `axum`) を使います。
+挙動は Django 版と同じで、secret の env 注入は `set_envs()` が自動で行います。
+組み込み方は「[Rust 連携](loco.md#origin-verify-middleware)」を参照してください。
     rotate 直後は、新 header を受け取る warm Lambda がまだ旧 env を保持する一瞬の窓で
     403 になり得ます (cold start で解消)。無停止 rotation が必要な場合は別途検討します。
 

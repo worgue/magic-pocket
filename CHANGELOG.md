@@ -4,6 +4,19 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- pocket-rs が `enable_origin_verify` に対応しました。
+  Rust runtime の `set_envs()` が cloudfront 設定
+  (`enable_origin_verify` / `waf.allow_rules[].header`) から Python と同じ導出で
+  自動注入 managed secret (`POCKET_ORIGIN_VERIFY_SECRET` 等) を解決し、
+  container に secrets 宣言が無くても runtime env に載るようになりました。
+  また feature `axum` で Django 版 `OriginVerifyMiddleware` 相当の
+  検証 middleware (`origin_verify::origin_verify_middleware`) を提供します
+  (secret header の定数時間比較 + 詐称耐性 client IP の `ClientIp` extension 提供。
+  env secret 未設定時は no-op、不一致は 403)
+
 ## [0.29.0](https://github.com/worgue/magic-pocket/releases/tag/0.29.0) - 2026-08-19
 
 ### Changed

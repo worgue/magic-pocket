@@ -45,8 +45,7 @@ pub fn generate_token(
         .as_secs();
     let expiry = now + max_age_secs;
     let msg = format!("{user_id}:{expiry}");
-    let mut mac =
-        HmacSha256::new_from_slice(&secret).expect("HMAC キー長エラー");
+    let mut mac = HmacSha256::new_from_slice(&secret).expect("HMAC キー長エラー");
     mac.update(msg.as_bytes());
     let sig = hex::encode(mac.finalize().into_bytes());
     Ok(format!("{user_id}:{expiry}:{sig}"))
@@ -97,8 +96,7 @@ pub fn logout_cookie_value() -> String {
 mod tests {
     use super::*;
 
-    const TEST_SECRET: &str =
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const TEST_SECRET: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     #[test]
     fn test_generate_and_verify() {

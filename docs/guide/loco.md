@@ -104,6 +104,46 @@ async fn main() -> Result<(), lambda_http::Error> {
 
 ---
 
+## origin verify middleware
+
+[`enable_origin_verify`](configuration.md#origin-verify-enable_origin_verify) を使う
+distribution 配下に Rust container を置く場合は、feature `axum` を有効にして同梱の
+middleware を Router に組み込みます（Django 版 `OriginVerifyMiddleware` の axum 版）。
+検証用 secret（`POCKET_ORIGIN_VERIFY_SECRET`）の runtime env 注入は `set_envs()` が
+cloudfront 設定から自動で行うため、利用者側の宣言は不要です。
+
+```toml
+[dependencies]
+magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", features = ["axum"] }
+```
+
+```rust
+use axum::{routing::get, Extension, Router};
+use magic_pocket_rs::origin_verify::{origin_verify_middleware, ClientIp};
+
+// origin verify を通過したリクエストには詐称耐性のある client IP が
+// ClientIp extension として入る (Django 版の REMOTE_ADDR 上書きに相当)
+async fn whoami(ip: Option<Extension<ClientIp>>) -> String {
+    ip.map(|Extension(ClientIp(ip))| ip.to_string())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+let app: Router = Router::new()
+    .route("/whoami", get(whoami))
+    // client IP を読む layer より外側 (.layer() は後着が外側) に置く
+    .layer(axum::middleware::from_fn(origin_verify_middleware));
+```
+
+挙動は Django 版と同じです:
+
+| 状況 | 挙動 |
+|------|------|
+| env secret 未設定 (local/dev、CloudFront 無し) | **no-op**。`ClientIp` は挿入されない |
+| secret header が一致 (CloudFront 経由) | viewer IP を `ClientIp` extension で提供 |
+| secret header が無い / 不一致 (origin 直叩き) | **403** で拒否 |
+
+---
+
 ## pocket.toml の構成例
 
 ```toml

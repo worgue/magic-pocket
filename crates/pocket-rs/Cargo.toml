@@ -21,8 +21,19 @@ tracing = "0.1"
 # 依存ツリーは増えない (Python 側 urllib.parse.quote との一致が要件)
 percent-encoding = "2"
 aws_lambda_events = { version = "1.2.0", default-features = false, features = ["sqs"] }
+# origin verify middleware (feature "axum") 用。axum は HTTP serve 側の機能を
+# 使わないため default features を外す。subtle は secret header の定数時間比較
+# (Python 側 hmac.compare_digest との対応)
+axum = { version = "0.8", optional = true, default-features = false }
+subtle = { version = "2", optional = true }
+
+[features]
+# pocket.django.origin_verify.OriginVerifyMiddleware 相当の axum middleware を有効化
+axum = ["dep:axum", "dep:subtle"]
 
 [dev-dependencies]
 # 本体は async fn を提供するだけで tokio API を直接使わない (runtime は利用側が
 # 用意する)。テストの Runtime::new() と doc 例の #[tokio::main] にのみ必要
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# origin verify middleware テストの Router::oneshot 用
+tower = { version = "0.5", features = ["util"] }

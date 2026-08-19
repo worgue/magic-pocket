@@ -3,4 +3,4 @@ docs:
 
 test *args:
     uv run pytest {{args}}
-    cargo test
+    cargo test --all-features
