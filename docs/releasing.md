@@ -27,7 +27,7 @@ build & publish** する。
    `## [X.Y.Z](https://github.com/worgue/magic-pocket/releases/tag/X.Y.Z) - YYYY-MM-DD`
    に書き換える。
 4. **コミットする**: `:bookmark: X.Y.Z リリース (<要約>)`。
-5. **main を push する**: `git push origin main` (pre-push hook で gitleaks / ruff /
+5. **dev を push する**: `git push origin dev` (pre-push hook で gitleaks / ruff /
    semgrep / pyright / pytest が走る。green でないと push されない)。
 6. **tag を作成して push する**: `git tag -a X.Y.Z -m "..."` → `git push origin X.Y.Z`。
    これで `release.yml` が発火し PyPI publish される。
@@ -57,6 +57,8 @@ build & publish** する。
    gh release create X.Y.Z --title "X.Y.Z" --notes "<CHANGELOG の該当節>"
    ```
 
-!!! note "main / tag の push について"
-    magic-pocket は main ベース運用なので、main / tag はそのまま
-    `git push origin main` / `git push origin X.Y.Z` でよい。
+!!! note "dev / main の運用について"
+    magic-pocket は **dev ベース運用**。日常の作業・リリースコミット・tag はすべて
+    dev 上で行い、tag も dev のコミットに打つ (`release.yml` は tag push で発火する
+    ため branch は問わない)。main はリリース等の区切りで dev を fast-forward で
+    反映する: `git push origin dev:main`。
