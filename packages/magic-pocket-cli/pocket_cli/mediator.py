@@ -5,6 +5,7 @@ import secrets
 from typing import TYPE_CHECKING, Literal
 
 from pocket.utils import echo
+from pocket_cli import migrations
 from pocket_cli.resources.neon import Neon, NeonResourceIsNotReady
 from pocket_cli.resources.tidb import TiDb, TiDbResourceIsNotReady
 from pocket_cli.resources.upstash import Upstash, UpstashResourceIsNotReady
@@ -43,32 +44,16 @@ class Mediator:
                 keys |= set(c.secrets.managed.keys())
         return keys
 
-    def _create_store_secrets(
-        self, sc, *, exists: ErrorLevel, failed: ErrorLevel, legacy_source=None
-    ):
+    def _create_store_secrets(self, sc, *, exists: ErrorLevel, failed: ErrorLevel):
         """store view 1 つ分の managed secret を生成する。
 
-        legacy_source (shared store の view) を渡すと、生成の前に旧 project パス
-        からの copy-on-missing を試す (0.29.0 の container store 分離の自己回復
-        移行。SECRET_KEY 等の既存値を再生成せず引き継ぐ)。shared 宣言の正規の
-        住人 (legacy_source.managed にある key) は移行残骸ではないため引き継ぎ元に
-        しない — shared と無印の混在構成で、無印側が共有値を初期値として
-        コピーしてしまうのを防ぐ。
+        旧 project パスからの値の引き継ぎは migrations (run_deploy_ensure /
+        create_pocket_managed_secrets 冒頭) が先に済ませている前提で、ここは
+        純粋に「無いものを生成する」だけを行う。
         """
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
             if key not in sc.pocket_store.secrets:
-                if (
-                    legacy_source is not None
-                    and key not in legacy_source.managed
-                    and key in legacy_source.pocket_store.secrets
-                ):
-                    generated[key] = legacy_source.pocket_store.secrets[key]
-                    echo.log(
-                        "secret '%s' を旧 project 共有パスから container store へ"
-                        "引き継ぎます (値は再生成しません)。" % key
-                    )
-                    continue
                 if managed_secret.type in (
                     "neon_database_url",
                     "tidb_database_url",
@@ -102,15 +87,18 @@ class Mediator:
     def create_pocket_managed_secrets(
         self, exists: ErrorLevel = "warning", failed: ErrorLevel = "raise"
     ):
+        # 生成の前にリリース跨ぎ移行 (旧配置からの値引き継ぎ) を済ませる。
+        # deploy 以外の経路 (`pocket resource container create/update` や
+        # `secrets create-pocket-managed`) でも引き継ぎ前に再生成してしまわない
+        # よう、deploy pipeline ではなく生成の入口で呼ぶ
+        migrations.run_deploy_ensure(self.context)
         shared = self.context.secrets
         if shared is not None:
             self._create_store_secrets(shared, exists=exists, failed=failed)
         for c_name in sorted(self.context.container):
             sc = self.context.container[c_name].secrets
             if sc is not None:
-                self._create_store_secrets(
-                    sc, exists=exists, failed=failed, legacy_source=shared
-                )
+                self._create_store_secrets(sc, exists=exists, failed=failed)
 
     def ensure_pocket_managed_secrets(self):
         self.create_pocket_managed_secrets(exists="ignore")

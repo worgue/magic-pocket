@@ -58,6 +58,13 @@
   (`{prefix}lambda`) を検出し、確認プロンプト付きで自動削除するようにしました
   (`-y` で自動承認)。旧 stack の scheduler / SQS event source が動き続ける
   事故を防ぐためです
+- リリース跨ぎの移行処理を migrate フェーズ (`pocket_cli.migrations` の
+  registry) に集約しました。deploy は毎回このフェーズを呼び (冪等・移行済み
+  環境では実質 no-op)、旧 project 共有パスからの managed secret の引き継ぎと
+  旧リソースの掃除はここで行われます。`pocket migrate container-secrets` で
+  deploy 前に引き継ぎだけ先行実行することもできます。将来この移行を registry
+  から外すリリースでは、CHANGELOG に「移行を含む版で一度 deploy (または
+  `pocket migrate`) を挟ぶ必要がある」旨を明記します
 
 ### 移行手順 (0.28.x → this version)
 1. `pocket.toml` の `[awscontainer]` 系セクションを `[container.<name>]` へ

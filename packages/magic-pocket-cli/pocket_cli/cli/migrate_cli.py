@@ -6,8 +6,12 @@
   タグを付与し、yaml_synced の判定をハッシュベースに移行する。
 - ``secret-paths``: stored user secret を旧キー基準パス ({pocket_key}-user/{key})
   から新 type 基準パス ({pocket_key}-user/{type}) へ移設する (0.11→0.12)。
+- ``container-secrets``: managed secret を旧 project 共有パスから container store
+  へ引き継ぐ (0.28→0.29)。deploy が毎回同じ処理を呼ぶため通常は不要だが、
+  deploy より先に移行だけ済ませたい場合に使う。
 
 サブコマンド無指定 (``pocket migrate``) なら全 migration を冪等に順次実行する。
+deploy 自体も毎回 migrate フェーズ (pocket_cli.migrations の registry) を呼ぶ。
 """
 
 from __future__ import annotations
@@ -328,7 +332,8 @@ def migrate(ctx: click.Context, stage: str | None, yes: bool):
 
     check_aws_credentials()
     resolved_stage: str = stage or click.prompt("Stage")
-    # secret-paths を先に (高速・ガードで中断しない)、template-hash を後に。
+    # container-secrets → secret-paths (高速・ガードで中断しない) → template-hash。
+    _run_container_secrets(resolved_stage)
     _run_secret_paths(resolved_stage, yes=yes, dry_run=False)
     try:
         _run_template_hash(resolved_stage, yes=yes)
@@ -351,6 +356,33 @@ def template_hash(stage: str, yes: bool):
 
     check_aws_credentials()
     _run_template_hash(stage, yes=yes)
+
+
+def _run_container_secrets(stage: str) -> None:
+    """managed secret を旧 project 共有パスから container store へ引き継ぐ。
+
+    registry (pocket_cli.migrations) の ensure 相のみ実行する。旧パス残骸の
+    削除 (cleanup 相) は deploy 成功後にしか安全に行えないため、deploy の
+    migrate フェーズに任せる。
+    """
+    from pocket_cli import migrations
+
+    context = Context.from_toml(stage=stage)
+    migrations.run_deploy_ensure(context)
+    echo.success(
+        "container-secrets: 引き継ぎを実行しました (移行済みなら no-op)。"
+        "旧パス残骸の削除は deploy 成功後に行われます。"
+    )
+
+
+@migrate.command(name="container-secrets")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+def container_secrets(stage: str):
+    """managed secret を旧 project 共有パス→container store へ引き継ぐ (0.28→0.29)。"""
+    from pocket_cli.cli.aws_auth import check_aws_credentials
+
+    check_aws_credentials()
+    _run_container_secrets(stage)
 
 
 @migrate.command(name="secret-paths")

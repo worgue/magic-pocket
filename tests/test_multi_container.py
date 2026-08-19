@@ -367,7 +367,9 @@ def test_resolve_container_name_env_and_fallback(monkeypatch):
 
 def test_cleanup_legacy_container_resources_deletes_old_stack_and_repo():
     from pocket_cli.cli import interaction
-    from pocket_cli.cli.deploy_cli import cleanup_legacy_container_resources
+    from pocket_cli.migrations import (
+        _cleanup_legacy_container_resources as cleanup_legacy_container_resources,
+    )
 
     context = Context.from_settings(
         settings.Settings.model_validate(_two_container_data())
@@ -388,7 +390,7 @@ def test_cleanup_legacy_container_resources_deletes_old_stack_and_repo():
     def _client(service, region_name=None):
         return {"cloudformation": fake_cfn, "ecr": fake_ecr}[service]
 
-    with mock.patch("pocket_cli.cli.deploy_cli.boto3.client", _client):
+    with mock.patch("pocket_cli.migrations.boto3.client", _client):
         interaction.set_assume_yes(True)
         try:
             cleanup_legacy_container_resources(context)
@@ -403,7 +405,9 @@ def test_cleanup_legacy_container_resources_deletes_old_stack_and_repo():
 
 
 def test_cleanup_legacy_noop_when_absent():
-    from pocket_cli.cli.deploy_cli import cleanup_legacy_container_resources
+    from pocket_cli.migrations import (
+        _cleanup_legacy_container_resources as cleanup_legacy_container_resources,
+    )
 
     context = Context.from_settings(
         settings.Settings.model_validate(_two_container_data())
@@ -426,7 +430,7 @@ def test_cleanup_legacy_noop_when_absent():
     def _client(service, region_name=None):
         return {"cloudformation": fake_cfn, "ecr": fake_ecr}[service]
 
-    with mock.patch("pocket_cli.cli.deploy_cli.boto3.client", _client):
+    with mock.patch("pocket_cli.migrations.boto3.client", _client):
         cleanup_legacy_container_resources(context)
 
     fake_cfn.delete_stack.assert_not_called()
@@ -507,7 +511,9 @@ def test_mediator_shared_store_tolerates_unshared_residue():
 
 def test_cleanup_legacy_secret_residue_deletes_migrated_keys():
     from pocket_cli.cli import interaction
-    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+    from pocket_cli.migrations import (
+        _cleanup_legacy_secret_residue as cleanup_legacy_secret_residue,
+    )
 
     context = Context.from_settings(
         settings.Settings.model_validate(_single_container_secret_data())
@@ -531,7 +537,9 @@ def test_cleanup_legacy_secret_residue_deletes_migrated_keys():
 
 def test_cleanup_legacy_secret_residue_noop_before_copy():
     """container store へ未コピーのうちは旧パスを消さない。"""
-    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+    from pocket_cli.migrations import (
+        _cleanup_legacy_secret_residue as cleanup_legacy_secret_residue,
+    )
 
     context = Context.from_settings(
         settings.Settings.model_validate(_single_container_secret_data())
@@ -553,7 +561,9 @@ def test_cleanup_legacy_secret_residue_waits_for_all_declaring_containers():
     """同名の無印宣言が複数 container にある場合、全 container のコピー完了まで
     旧パスを消さない (片方の引き継ぎ元を失わせない)。"""
     from pocket_cli.cli import interaction
-    from pocket_cli.cli.deploy_cli import cleanup_legacy_secret_residue
+    from pocket_cli.migrations import (
+        _cleanup_legacy_secret_residue as cleanup_legacy_secret_residue,
+    )
 
     data = _base_data()
     data["container"] = {

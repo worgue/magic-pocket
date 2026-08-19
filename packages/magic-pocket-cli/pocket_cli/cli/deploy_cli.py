@@ -1,11 +1,11 @@
 import inspect
 import webbrowser
 
-import boto3
 import click
 
 from pocket.context import Context, deploy_hash_report
 from pocket.utils import echo
+from pocket_cli import migrations
 from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.mediator import Mediator
@@ -197,107 +197,6 @@ def build_image(context: Context, *, tag: str) -> list[str]:
     return targets
 
 
-def cleanup_legacy_secret_residue(context: Context):
-    """shared store に残った旧配置の非共有 secret を確認付きで削除する。
-
-    0.29.0 で shared = true でない managed secret は container store
-    ({stage}-{project}-{name}-{namespace}) へ移った。移行 deploy では mediator が
-    旧 project パスから値を copy-on-missing で引き継ぐが、旧パス側は
-    「旧 stack の Lambda が CloudFront 切替まで読み続ける」ため deploy 中は
-    消せない。deploy 成功後のこのフックで、container store への引き継ぎが
-    確認できたキーだけを旧パスから削除する。冪等 (残骸が無ければ何もしない)。
-    """
-    shared = context.secrets
-    if shared is None:
-        return
-    shared_keys = set(shared.pocket_store.secrets.keys())
-    # key → その key を宣言している container store view の一覧。同名の無印宣言は
-    # 独立した値として複数 container に存在しうるため、旧パスの削除は
-    # 「宣言している全 container がコピー済み」を条件にする (片方だけコピー済みの
-    # 段階で消すと、もう片方が引き継ぎ元を失う)
-    declaring: dict[str, list] = {}
-    for c_name in sorted(context.container):
-        sc = context.container[c_name].secrets
-        if sc is None:
-            continue
-        for key in sc.managed:
-            declaring.setdefault(key, []).append(sc)
-    residue: set[str] = set()
-    for key, views in declaring.items():
-        if key not in shared_keys:
-            continue
-        if all(key in view.pocket_store.secrets for view in views):
-            residue.add(key)
-    # shared 宣言 / 自動注入のキーは正規の住人なので残す (防御的)
-    residue -= set(shared.managed)
-    if not residue:
-        return
-    echo.warning(
-        "旧 project 共有パス (%s) に container store へ移行済みの secret が"
-        "残っています: %s" % (shared.pocket_key, ", ".join(sorted(residue)))
-    )
-    if interaction.confirm("旧パス側の残骸を削除しますか？", default=True):
-        shared.pocket_store.delete_secret_keys(residue)
-        echo.success("旧パスの secret 残骸を削除しました。")
-
-
-def cleanup_legacy_container_resources(context: Context):
-    """0.29.0 以前の単数 [awscontainer] 由来の旧リソースを検出して削除する。
-
-    旧 container stack ({slug}-container) は scheduler / SQS event source を
-    持ったまま残ると旧コードの cron / queue 消費が動き続けるため、放置は
-    実害がある。新 stack + cloudfront 切替が完了した deploy の後 (= 旧 stack が
-    参照フリーになった後) に、確認プロンプト付きで削除する (-y で自動承認)。
-    旧 ECR repo ({prefix}lambda) も、どの container も ecr_name で参照して
-    いなければ削除する。冪等 (無ければ何もしない)。
-    """
-    if not context.container or not context.general:
-        return
-    slug = f"{context.stage}-{context.project_name}"
-    region = context.general.region
-    legacy_stack_name = f"{slug}-container"
-    cfn = boto3.client("cloudformation", region_name=region)
-    try:
-        cfn.describe_stacks(StackName=legacy_stack_name)
-        stack_exists = True
-    except cfn.exceptions.ClientError:
-        stack_exists = False
-    if stack_exists:
-        echo.warning(
-            "旧形式の container stack '%s' が残っています (0.29.0 の "
-            "multi-container 化で stack 名が {slug}-container-{name} に"
-            "変わりました)。旧 stack の scheduler / SQS が動き続けるため、"
-            "削除を推奨します。" % legacy_stack_name
-        )
-        if interaction.confirm(
-            "旧 stack '%s' を削除しますか？" % legacy_stack_name, default=True
-        ):
-            cfn.delete_stack(StackName=legacy_stack_name)
-            echo.log("旧 stack の削除を開始しました (完了待ちはしません)。")
-    resource_prefix = context.general.prefix_template.format(
-        stage=context.stage,
-        project=context.project_name,
-        namespace=context.general.namespace,
-    )
-    legacy_repo = f"{resource_prefix}lambda"
-    if any(c.ecr_name == legacy_repo for c in context.container.values()):
-        return
-    ecr = boto3.client("ecr", region_name=region)
-    try:
-        ecr.describe_repositories(repositoryNames=[legacy_repo])
-    except ecr.exceptions.RepositoryNotFoundException:
-        return
-    echo.warning(
-        "旧形式の ECR repository '%s' が残っています (新しい repo 名は "
-        "{prefix}{container}-lambda)。" % legacy_repo
-    )
-    if interaction.confirm(
-        "旧 ECR repository '%s' を削除しますか？" % legacy_repo, default=True
-    ):
-        ecr.delete_repository(repositoryName=legacy_repo, force=True)
-        echo.success("旧 ECR repository を削除しました。")
-
-
 def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     """deploy / promote 共通のパイプライン本体。
 
@@ -315,8 +214,9 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     state_bucket = state_store.bucket_name
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
-    cleanup_legacy_container_resources(context)
-    cleanup_legacy_secret_residue(context)
+    # リリース跨ぎ移行の掃除フェーズ (旧配置の削除は deploy 成功後にしか
+    # できないため、cloudfront 切替完了後のここで毎回呼ぶ。冪等)
+    migrations.run_deploy_cleanup(context)
     upload_managed_assets(context)
     if not skip_frontend:
         deploy_frontend(context)
