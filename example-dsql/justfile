@@ -1,0 +1,88 @@
+# 引数にスペースが含まれても分解されないよう位置パラメータを有効化する
+# (pass-through するレシピの body では {{args}} ではなく "$@" を使う)
+set positional-arguments
+
+# デフォルトレシピ: レシピ一覧を表示
+default:
+    @just --list
+
+# --- Rust (axum) ---
+
+# 開発サーバー起動 (http://0.0.0.0:8000)
+app:
+    cargo run
+
+# ビルド
+build:
+    cargo build --release
+
+# テスト実行 (引数は cargo test にパススルー)
+test *args:
+    cargo test "$@"
+
+# フォーマッター実行
+fmt:
+    cargo fmt --all
+
+# フォーマットチェック (CI 用)
+fmt-check:
+    cargo fmt --all --check
+
+# リンター実行
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+# --- DB スキーマ ---
+# 信頼の源は schema.sql。DSQL 方言の SQL を migrations/ に置き、schema-apply で
+# 1 文ずつ適用する (適用済みは schema_migrations に記録され再実行で飛ばされる)。
+# 接続先は通常のアプリと同じ env で解決する (DATABASE_URL > PG_HOST 系 > DSQL_HOST)。
+
+# migrations/*.sql を接続先へ適用する
+schema-apply *args:
+    cargo run -q --bin schema-apply "$@"
+
+# --- SeaORM entity 生成 (生成元は DSQL ではなくローカル PostgreSQL) ---
+
+entity_dir := "src/entity"
+lab_url := "postgres://postgres@127.0.0.1:5432/_dsql_lab?sslmode=disable"
+# 作業台の作り方: ローカル PG に _dsql_lab を作り、schema.sql を流し込む
+
+# 作業台 (_dsql_lab) から entity を生成し差分表示
+entity-gen:
+    sea-orm-cli generate entity \
+        --database-url "{{lab_url}}" \
+        --output-dir /tmp/entity-gen \
+        --with-serde both --date-time-crate chrono --lib
+    diff -ru {{entity_dir}} /tmp/entity-gen || true
+
+# 生成した entity を反映
+entity-apply:
+    cp /tmp/entity-gen/*.rs {{entity_dir}}/
+
+# --- フロントエンド (SvelteKit) ---
+
+# フロントエンド開発サーバー (port 3000、/api は 8000 へ proxy)
+front:
+    cd frontend && bun run dev -- --host 0.0.0.0 --port 3000
+
+# フロントエンドをビルド (pocket は再ビルドしないので deploy 前に必須)
+front-build:
+    cd frontend && bun install --frozen-lockfile && bun run build
+
+# フロントエンドのチェック (雛形に test script が無いため svelte-check を実行)
+front-check *args:
+    cd frontend && bun install --frozen-lockfile && bun run check
+
+# --- デプロイ (sandbox のみ) ---
+# SPA を持つため front-build を必ず先行させる (pocket は frontend/build を再ビルドしない)。
+# pocket.toml の domain は公開 repo では placeholder なので、deploy 前に実ドメインへ
+# 書き戻し、終わったら placeholder に戻すこと。
+#
+# 例:
+#   just deploy                          … sandbox へ
+#   just deploy sandbox --skip-frontend  … その他 pocket フラグもそのまま渡せる
+deploy stage="sandbox" *args: front-build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    shift   # $1 = stage を落として、残り (*args) だけを pocket へ渡す
+    pocket deploy --stage={{stage}} -y "$@"

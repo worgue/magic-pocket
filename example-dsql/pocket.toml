@@ -1,0 +1,63 @@
+[general]
+region = "ap-northeast-1"
+stages = ["sandbox"]
+project_name = "pocket-example-dsql"
+
+[s3]
+
+[container.main]
+dockerfile_path = "Dockerfile"
+build = "depot"
+
+# HTTP (axum + lambda_http)。CloudFront の /api/* をこの handler に振る。
+[container.main.handlers.wsgi]
+command = "pocket-example-dsql-lambda"
+
+[sandbox.container.main.handlers.wsgi]
+apigateway = {}
+
+# SQS 駆動の非同期 worker。sqs = {} だけで queue + DLQ + EventSourceMapping が
+# 生成され、runtime には POCKET_WORKER_QUEUEURL が注入される。
+# handler 側は magic_pocket_rs::sqs::process_sqs_records で partial batch
+# response を返すので、1 record の失敗が同バッチの成功分を巻き戻さない。
+[container.main.handlers.worker]
+command = "pocket-example-dsql-worker"
+timeout = 30
+sqs = {}
+
+# Aurora DSQL。[dsql] を置くだけで deploy 時にクラスターが provision される
+# (VPC 不要)。Lambda へは POCKET_DSQL_ENDPOINT / POCKET_DSQL_REGION が注入され、
+# IAM 認証トークンはアプリ側で生成する (src/db.rs)。
+[dsql]
+
+[container.main.secrets]
+store = "ssm"
+
+[container.main.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 } }
+
+# 定期実行は Lambda 直接 invoke ではなく queue を挟む (pocket.sqs_scheduler)。
+# リトライ/失敗系が SQS の visibility timeout / redrive に一元化され、監視は
+# DLQ 1 箇所で済む。message はそのまま MessageBody (JSON) になり、worker 側の
+# Job 型にデシリアライズされる。
+#
+# rate を 1 日 1 回にしているのは意図的。sandbox の常設デモを短周期で回すと、
+# サーバーレス DB の無料枠を静かに焼き切る (15 分毎で実害があった)。
+# 経路が生きていることを示すには 1 日 1 回で足りる。
+[sandbox.scheduler.schedules.daily_message]
+scheduler = "pocket.sqs_scheduler"
+rate = "1 day"
+handler = "main.worker"
+message = { type = "post_message", note = "scheduled" }
+
+[sandbox.cloudfront.web]
+# deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
+# 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。
+domain = "dsql.sandbox.magic-pocket.example.com"
+routes = [
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
+    # upload_dir のビルドは just front-build の責任で、pocket はアップロードのみ行う。
+    # catch-all の S3 route は origin_path 必須。spa_fallback_html は
+    # adapter-static の fallback (200.html) と揃える。
+    { path_pattern = "", is_default = true, type = "s3", is_spa = true, upload_dir = "frontend/build", spa_fallback_html = "200.html", origin_path = "/spa" },
+]

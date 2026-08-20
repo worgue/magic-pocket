@@ -43,3 +43,6 @@ forge.local.toml
 /example-tidb/pocket.runtime.toml
 /example-tidb/pocket_cache/
 /example-tidb/staticfiles/
+
+# 参考用に置いた他プロジェクト (公開 repo に混入させない)
+/sample/

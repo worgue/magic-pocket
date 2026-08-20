@@ -1,0 +1,6 @@
+target/
+# フロントは S3 配信なのでイメージに要らない (pocket が frontend/build を直接 upload する)
+frontend/
+.git/
+*.md
+migrations/

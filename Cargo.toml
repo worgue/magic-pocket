@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/pocket-rs", "crates/pocket-spa-auth"]
+# example は独立した利用者側プロジェクト (リリース済みの magic-pocket-rs を参照する)。
+# sample は参考用に置いた他プロジェクトで、公開 repo の管理対象ではない。
+exclude = ["example-dsql", "sample"]
