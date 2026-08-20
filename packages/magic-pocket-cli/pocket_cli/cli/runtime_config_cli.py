@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -16,11 +17,15 @@ else:
     import tomli as tomllib
 
 # container.<name> から除外するキー（ビルド時のみ必要）
+# iam (managed_policy_arns / inline_policies) は Lambda execution role を組む
+# provision 専用で runtime は参照しない。IAM Condition のようにキーへ ":" を含む
+# 任意の dict を抱えるため、runtime toml の表面積から外しておく。
 _CONTAINER_REMOVE_KEYS = {
     "platform",
     "build",
     "permissions_boundary",
     "use_vpc",
+    "iam",
 }
 
 # container.<name> でダミー値に置き換えるキー（必須フィールドだが runtime では不要）
@@ -109,13 +114,14 @@ def _to_toml(data: dict, prefix: str = "") -> str:
     for key, value in data.items():
         if not isinstance(value, dict):
             continue
-        section = f"{prefix}{key}" if prefix else key
+        section = f"{prefix}{_toml_key(key)}" if prefix else _toml_key(key)
         # dict の中身が全て dict なら、各サブキーをサブセクションに
         if all(isinstance(v, dict) for v in value.values()) and value:
             for sub_key, sub_value in value.items():
+                sub_section = f"{section}.{_toml_key(sub_key)}"
                 lines.append("")
-                lines.append(f"[{section}.{sub_key}]")
-                lines.append(_to_toml(sub_value, prefix=f"{section}.{sub_key}."))
+                lines.append(f"[{sub_section}]")
+                lines.append(_to_toml(sub_value, prefix=f"{sub_section}."))
             continue
         lines.append("")
         lines.append(f"[{section}]")
@@ -134,30 +140,44 @@ def _toml_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+_BARE_KEY_RE = re.compile(r"\A[A-Za-z0-9_-]+\Z")
+
+
+def _toml_key(key: str) -> str:
+    """TOML のキーとして安全な表現を返す。
+
+    bare key に使える文字は `[A-Za-z0-9_-]` だけ。IAM Condition の
+    `"kms:ViaService"` のように ":" や "." を含むキーをそのまま書くと不正 TOML に
+    なり、image に焼き込まれて Lambda INIT で初めて落ちる (値側の _toml_string と
+    同じ事故がキー側で起きる)。dotted なセクション名は各パートを個別に通すこと。
+    """
+    if _BARE_KEY_RE.match(key):
+        return key
+    return _toml_string(key)
+
+
 def _format_value(key: str, value) -> str:
-    if isinstance(value, bool):
-        return f"{key} = {'true' if value else 'false'}"
-    if isinstance(value, int):
-        return f"{key} = {value}"
-    if isinstance(value, str):
-        return f"{key} = {_toml_string(value)}"
     if isinstance(value, list):
-        return f"{key} = {_format_list(value)}"
-    return f"{key} = {value!r}"
+        return f"{_toml_key(key)} = {_format_list(value)}"
+    return f"{_toml_key(key)} = {_format_inline_value(value)}"
 
 
 def _format_list(items: list) -> str:
     if not items:
         return "[]"
-    if all(isinstance(i, str) for i in items):
-        return "[%s]" % ", ".join(_toml_string(i) for i in items)
     if all(isinstance(i, dict) for i in items):
-        parts = []
-        for item in items:
-            kvs = ", ".join(f"{k} = {_format_inline_value(v)}" for k, v in item.items())
-            parts.append("{ %s }" % kvs)
+        parts = [_format_inline_table(item) for item in items]
         return "[\n    %s,\n]" % ",\n    ".join(parts)
-    return repr(items)
+    return "[%s]" % ", ".join(_format_inline_value(i) for i in items)
+
+
+def _format_inline_table(table: dict) -> str:
+    if not table:
+        return "{}"
+    kvs = ", ".join(
+        f"{_toml_key(k)} = {_format_inline_value(v)}" for k, v in table.items()
+    )
+    return "{ %s }" % kvs
 
 
 def _format_inline_value(value) -> str:
@@ -167,6 +187,12 @@ def _format_inline_value(value) -> str:
         return str(value)
     if isinstance(value, str):
         return _toml_string(value)
+    # inline table / 配列は再帰。IAM の Condition のようにネストした dict を
+    # repr() で吐くと Python 表記 ({'k': 'v'}) になり不正 TOML になる。
+    if isinstance(value, dict):
+        return _format_inline_table(value)
+    if isinstance(value, list):
+        return _format_list(value)
     return repr(value)
 
 
@@ -176,6 +202,27 @@ def _generator_version() -> str | None:
         return version("magic-pocket-cli")
     except PackageNotFoundError:
         return None
+
+
+class RuntimeConfigGenerationError(Exception):
+    """生成した pocket.runtime.toml が不正な TOML だった。"""
+
+
+def _check_valid_toml(toml_str: str) -> None:
+    """生成物を自己検証する (fail-loud)。
+
+    自前 dumper が取りこぼした値/キーがあっても、ここで落ちれば build/deploy 時に
+    分かる。素通しすると不正な toml が image に焼かれ、Lambda INIT の
+    TOMLDecodeError として全 handler が死ぬまで気づけない。
+    """
+    try:
+        tomllib.loads(toml_str)
+    except tomllib.TOMLDecodeError as e:
+        raise RuntimeConfigGenerationError(
+            "生成した pocket.runtime.toml が不正な TOML です: %s\n"
+            "pocket.toml の値/キーが自前 dumper の想定外の可能性があります。\n"
+            "--- 生成結果 ---\n%s" % (e, toml_str)
+        ) from e
 
 
 def _runtime_config_str() -> str:
@@ -194,6 +241,7 @@ def _runtime_config_str() -> str:
     generator_version = _generator_version()
     if generator_version:
         toml_str = "%s %s\n%s" % (GENERATOR_VERSION_MARKER, generator_version, toml_str)
+    _check_valid_toml(toml_str)
     return toml_str
 
 

@@ -4,6 +4,25 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- `pocket.runtime.toml` 生成器が、bare key に使えない文字 (`:` 等) を含むキーを
+  quote せず不正 TOML を吐いていた問題を修正しました。IAM Condition
+  (`"kms:ViaService"` 等) を `[container.<name>.iam.inline_policies]` に宣言すると
+  deploy は成功するのに、image に焼かれた `pocket.runtime.toml` が壊れており
+  その container の全 Lambda が INIT で `TOMLDecodeError` 死していました
+- 同生成器が inline table 内のネストした dict / list を Python の `repr()` で
+  出力していた問題を修正しました (`{'StringLike': {...}}` は不正 TOML)。
+  IAM Statement の `Condition` がこれに該当します
+
+### Changed
+- `pocket.runtime.toml` の生成直後に自己検証 (`tomllib.loads`) を行い、
+  不正な TOML なら生成時点で fail-loud で停止するようになりました
+  (従来は image に焼かれ、Lambda INIT で初めて落ちていました)
+- `[container.<name>.iam]` は Lambda execution role を組む provision 専用で
+  runtime は参照しないため、`pocket.runtime.toml` に出力しなくなりました
+
 ## [0.31.0](https://github.com/worgue/magic-pocket/releases/tag/0.31.0) - 2026-08-20
 
 ### Changed
