@@ -123,6 +123,7 @@ pocket destroy --stage=dev
 | `--without-secrets` | pocket管理シークレットを削除せずに残す |
 | `--with-state-bucket` | ステートバケットも削除 |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 デフォルトでpocket管理シークレット（SSM / Secrets Manager）も削除されます。
 残したい場合は `--without-secrets` を指定してください。
@@ -164,6 +165,7 @@ pocket backup cleanup --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 削除対象は pocket 管理 vault（`pocket-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
 
@@ -215,11 +217,18 @@ pocket django deploy --stage=dev
 | `--stage` | 対象ステージ |
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 !!! note "`pocket deploy` との違い"
     `pocket deploy` はインフラのデプロイのみ行います。
     `pocket django deploy` はインフラデプロイに加え、ローカルでの `collectstatic` + S3アップロード、Lambda上での `migrate` も対話形式で実行します。
+
+!!! tip "DB に繋がらない状態でデプロイしたいとき"
+    `migrate` は Lambda 経由で実際に DB へ接続するため、DB が停止・制限中だと
+    そこで失敗します。`-y` は「聞かれたことに全部 yes」なので `migrate` も走ります。
+    インフラ更新だけ通したい場合は `--skip-migrate` を付けてください
+    （`pocket deploy` に切り替えると `collectstatic` も行われない点に注意）。
 
 ### pocket django build
 
@@ -256,6 +265,7 @@ pocket django promote --stage=stg --commit-hash=<full-sha>
 | `--commit-hash` | 昇格するイメージの git commit hash（**必須**） |
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 ### build once と昇格 {#build-once}
@@ -320,6 +330,7 @@ pocket django resetdb --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
+| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 リセット後は `pocket django manage migrate --stage=dev` でマイグレーションをやり直してください。
 

@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- `pocket django deploy` / `pocket django promote` に `--skip-migrate` を追加しました。
+  `migrate` を確認ごと省きます。`migrate` は Lambda 経由で実際に DB へ接続するため
+  DB が停止・制限中だと失敗しますが、`-y` は「聞かれたことに全部 yes」の意味なので
+  非対話実行では `migrate` を外す手段がありませんでした
+  (`pocket deploy` へ切替えると `collectstatic` も行われなくなる)
+
 ## [0.31.2](https://github.com/worgue/magic-pocket/releases/tag/0.31.2) - 2026-08-20
 
 ### Fixed

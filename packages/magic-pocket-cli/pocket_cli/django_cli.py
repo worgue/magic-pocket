@@ -83,8 +83,14 @@ def _update_dotenv(jinja2_env):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
+@click.option(
+    "--skip-migrate",
+    is_flag=True,
+    default=False,
+    help="migrate を実行しない (確認も出さない)。-y と併用可",
+)
 @removed_skip_check_existing
-def deploy(stage: str, openpath, yes):
+def deploy(stage: str, openpath, yes, skip_migrate):
     from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
 
     # pocket deploy を実行（インフラ + SPA フロントエンド）
@@ -96,11 +102,16 @@ def deploy(stage: str, openpath, yes):
         skip_frontend=False,
         yes=yes,
     )
-    _django_post_deploy(stage, yes=yes, openpath=openpath)
+    _django_post_deploy(stage, yes=yes, openpath=openpath, skip_migrate=skip_migrate)
 
 
-def _django_post_deploy(stage: str, *, yes: bool, openpath):
-    """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。"""
+def _django_post_deploy(stage: str, *, yes: bool, openpath, skip_migrate: bool = False):
+    """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。
+
+    skip_migrate=True なら migrate は確認ごと省く。`-y` は「聞かれたことに全部
+    yes」の意味を保ちたいので、非対話で migrate を外す手段はフラグ側に置く
+    (DB が到達不能でもインフラ更新だけ通したい、という状況が実在する)。
+    """
     if yes:
         interaction.set_assume_yes(True)
     context = Context.from_toml(stage=stage)
@@ -112,7 +123,9 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
     elif interaction.confirm("deploystatic?", default=True):
         collectstatic_locally(stage, link=_staticfiles_link(context))
         upload_collected_staticfiles(stage)
-    if interaction.confirm("migrate?", default=True):
+    if skip_migrate:
+        echo.info("--skip-migrate: migrate をスキップしました。")
+    elif interaction.confirm("migrate?", default=True):
         # handler 解決は migrate 実行が確定してから行う (management handler
         # 未設定 stage で deploy 本体成功後に例外になり URL 表示へ到達しない
         # のを防ぐ)
@@ -135,8 +148,14 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
+@click.option(
+    "--skip-migrate",
+    is_flag=True,
+    default=False,
+    help="migrate を実行しない (確認も出さない)。-y と併用可",
+)
 @removed_skip_check_existing
-def promote(stage: str, commit_hash, openpath, yes):
+def promote(stage: str, commit_hash, openpath, yes, skip_migrate):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 
     `pocket django build` で push した image に :<stage> タグを移し、インフラ/Lambda
@@ -154,7 +173,7 @@ def promote(stage: str, commit_hash, openpath, yes):
         skip_frontend=False,
         yes=yes,
     )
-    _django_post_deploy(stage, yes=yes, openpath=openpath)
+    _django_post_deploy(stage, yes=yes, openpath=openpath, skip_migrate=skip_migrate)
 
 
 @django.command()
