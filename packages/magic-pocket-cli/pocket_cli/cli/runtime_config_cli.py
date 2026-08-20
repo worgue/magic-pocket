@@ -198,8 +198,13 @@ def _runtime_config_str() -> str:
 
 
 def generate_runtime_config(output_path: Path) -> None:
-    """pocket.runtime.toml を生成する（プログラムから呼び出し用）"""
+    """pocket.runtime.toml を生成する（プログラムから呼び出し用）
+
+    runtime が INIT で読むファイルのため、strict な umask 環境でも
+    other-read を保証する (context_check がエラーにする条件を自ら作らない)。
+    """
     output_path.write_text(_runtime_config_str())
+    output_path.chmod(0o644)
 
 
 @click.command("runtime-config")

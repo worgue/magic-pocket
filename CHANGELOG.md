@@ -4,6 +4,18 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- build context の other-read チェックで、runtime が INIT フェーズで読む
+  `pocket.toml` / `pocket.runtime.toml` に other-read が無い場合は警告でなく
+  エラーで deploy を中断するようになりました (該当 container が確実に INIT
+  失敗するため。`chmod 644` で修正、image に COPY しないなら .dockerignore へ)。
+  その他のファイルは従来どおり警告です (`COPY --chmod` で image 内を正規化
+  する構成があるため)
+- CLI が生成する `pocket.runtime.toml` は umask に依らず other-read 付き
+  (0644) で書き出すようになりました
+
 ## [0.30.0](https://github.com/worgue/magic-pocket/releases/tag/0.30.0) - 2026-08-19
 
 ### Added

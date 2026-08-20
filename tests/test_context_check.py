@@ -7,6 +7,7 @@ mode 600 のファイルが image に COPY され、Lambda の非 root 実行ユ
 
 from pathlib import Path
 
+import pytest
 from pocket_cli.resources.aws.builders.context_check import (
     find_files_without_world_read,
     warn_files_without_world_read,
@@ -60,3 +61,55 @@ def test_warn_silent_when_clean(tmp_path, capsys):
     _context(tmp_path)
     assert warn_files_without_world_read(tmp_path) == []
     assert capsys.readouterr().err == ""
+
+
+def test_init_critical_pocket_toml_raises(tmp_path):
+    """pocket.toml は runtime が INIT で読むため警告でなくエラーに昇格する
+
+    (2026-08-19 受領 feedback の運用知見: mode 600 の pocket.toml で Rust
+    container が INIT PermissionDenied。警告では deploy が止まらない)
+    """
+    _context(tmp_path)
+    (tmp_path / "pocket.toml").write_text("[general]")
+    (tmp_path / "pocket.toml").chmod(0o600)
+    with pytest.raises(RuntimeError, match="pocket.toml"):
+        warn_files_without_world_read(tmp_path)
+
+
+def test_init_critical_runtime_toml_in_subdir_raises(tmp_path):
+    """pocket.runtime.toml は配置先 (django project_dir 等) を問わずエラー"""
+    _context(tmp_path)
+    sub = tmp_path / "mysite"
+    sub.mkdir()
+    (sub / "pocket.runtime.toml").write_text("[general]")
+    (sub / "pocket.runtime.toml").chmod(0o600)
+    with pytest.raises(RuntimeError, match="pocket.runtime.toml"):
+        warn_files_without_world_read(tmp_path)
+
+
+def test_non_critical_files_stay_warning(tmp_path, capsys):
+    """COPY --chmod で正規化する構成があるため一般ファイルは警告のまま"""
+    _context(tmp_path)
+    (tmp_path / "pocket.toml").write_text("[general]")
+    (tmp_path / "pyproject.toml").chmod(0o600)
+    assert warn_files_without_world_read(tmp_path) == ["pyproject.toml"]
+    assert "chmod 644" in capsys.readouterr().err.replace("\n", "")
+
+
+def test_generate_runtime_config_forces_world_read(tmp_path, monkeypatch):
+    """生成した pocket.runtime.toml は strict umask 下でも other-read を持つ"""
+    import os
+
+    from pocket_cli.cli.runtime_config_cli import generate_runtime_config
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pocket.toml").write_text(
+        '[general]\nproject_name = "x"\nstages = ["dev"]\nregion = "ap-northeast-1"\n'
+    )
+    old_umask = os.umask(0o077)
+    try:
+        out = tmp_path / "pocket.runtime.toml"
+        generate_runtime_config(out)
+    finally:
+        os.umask(old_umask)
+    assert out.stat().st_mode & 0o044 == 0o044
