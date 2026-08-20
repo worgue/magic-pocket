@@ -633,3 +633,81 @@ def test_copy_on_missing_skips_shared_resident_value():
 
     assert "SECRET_KEY" in container_store.secrets
     assert container_store.secrets["SECRET_KEY"] != "shared-value"
+
+
+def _user_secret_only_shared_data() -> dict:
+    """managed は container store のみ、shared store は user secret だけ持つ構成。
+
+    example-neon と同じ形 (`type =` の stored user secret + shared 宣言なし)。
+    """
+    data = _base_data()
+    data["neon"] = {"project_name": "testprj", "provisioning": "command"}
+    data["container"] = {
+        "main": {
+            "dockerfile_path": "Dockerfile",
+            "secrets": {
+                "store": "ssm",
+                "managed": {"SECRET_KEY": {"type": "password"}},
+                "user": {"DATABASE_URL": {"type": "neon_database_url"}},
+            },
+        },
+    }
+    return data
+
+
+def test_shared_view_without_managed_is_not_granted_nor_read():
+    """managed が空の shared view は IAM 許可も pocket_store 読み取りもしないこと
+
+    0.29.0 の multi-container 化以降、user secret だけを持つ container では
+    shared view が「managed 空 + user あり」で生成される。IAM 側は
+    `self.managed` が空だと store パスを許可しないのに、runtime は
+    pocket_store を無条件に読んでいたため、GetParametersByPath が
+    AccessDenied になり Lambda が INIT で全滅していた。
+    """
+    from pocket import runtime as pocket_runtime
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_user_secret_only_shared_data())
+    )
+    own = context.container["main"]
+    shared_view = own.shared_secrets
+    # user secret があるため shared view 自体は生成されるが managed は空
+    assert shared_view is not None
+    assert shared_view.managed == {}
+    # IAM: shared store のパス (/{pocket_key}/*) は許可されない
+    shared_path_arn = (
+        "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/"
+        + shared_view.pocket_key
+        + "/*"
+    )
+    assert shared_path_arn not in own.allowed_ssm_resources
+
+    # runtime: 許可されていない shared store を読みに行かないこと
+    container_sc = own.secrets
+    assert container_sc is not None
+    object.__setattr__(container_sc, "pocket_store", _FakeStore({"SECRET_KEY": "v"}))
+
+    class _ExplodingStore(_FakeStore):
+        @property
+        def secrets(self):  # type: ignore[override]
+            raise AssertionError("許可の無い shared store を読んではいけない")
+
+        @secrets.setter
+        def secrets(self, value):
+            pass
+
+    object.__setattr__(shared_view, "pocket_store", _ExplodingStore({}))
+
+    class _FakeUserStore:
+        def read(self, spec, required=True):
+            return "postgres://example/db"
+
+    for sc in own.secrets_views():
+        object.__setattr__(sc, "user_store", _FakeUserStore())
+
+    with mock.patch.object(pocket_runtime, "get_context", return_value=context):
+        with mock.patch.object(pocket_runtime, "get_own_container", return_value=own):
+            secrets = pocket_runtime.get_secrets(stage="dev")
+
+    assert secrets["SECRET_KEY"] == "v"
+    assert secrets["DATABASE_URL"] == "postgres://example/db"

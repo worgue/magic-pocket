@@ -4,6 +4,19 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- managed 宣言が空の secret store view を runtime が読みに行き、Lambda が INIT で
+  `AccessDeniedException` (`ssm:GetParametersByPath`) を出して全 handler が
+  落ちる問題を修正しました。0.29.0 の multi-container 化以降、`shared = true` の
+  宣言が無くても **stored user secret (`type =`) があれば shared store の view が
+  生成される** ため、「managed 空 + user あり」の view ができます。IAM 側は
+  `managed` が空だと store パス (`/{pocket_key}/*`) を許可しないのに runtime は
+  無条件に読んでいたため、条件が食い違っていました。managed が空の view は
+  store を読まないようにしています (全キーが捨てられるだけなので挙動は変わらず、
+  cold start の store 往復が 1 回減ります)
+
 ## [0.31.1](https://github.com/worgue/magic-pocket/releases/tag/0.31.1) - 2026-08-20
 
 ### Fixed

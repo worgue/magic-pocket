@@ -104,7 +104,12 @@ def get_secrets(stage: str | None = None, *, container: str | None = None) -> di
     tolerated = _tolerated_shared_keys(context)
     for sc in own.secrets_views():
         is_shared_store = sc is own.shared_secrets
-        for key, value in sc.pocket_store.secrets.items():
+        # managed が空の view は pocket_store を読まない。読んでも全キーが
+        # 「自 view の managed に無い」で捨てられるだけな上、IAM 側の
+        # allowed_ssm_resources / allowed_sm_resources は `self.managed` が
+        # 空だと store パスを許可しないため、読みに行くと AccessDenied で
+        # INIT が落ちる (user secret だけを持つ shared view で発生する)。
+        for key, value in (sc.pocket_store.secrets if sc.managed else {}).items():
             if key not in sc.managed:
                 if is_shared_store and key in tolerated:
                     continue
