@@ -1,12 +1,12 @@
 [project]
 name = "magic-pocket-cli"
-version = "0.30.0"
+version = "0.31.0"
 description = "CLI and deploy tools for magic-pocket."
 requires-python = ">=3.10"
 dependencies = [
     # lib は同 minor に束縛する。0.x では minor が breaking の単位のため、
     # 上限なしだと cli を pin した消費者にも lib の破壊的変更が届いてしまう
-    "magic-pocket>=0.30.0,<0.31",
+    "magic-pocket>=0.31.0,<0.32",
     "click>=8.1.7",
     "jinja2>=3.1.3",
     "python-on-whales>=0.68.0",
