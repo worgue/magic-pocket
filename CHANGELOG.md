@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.31.2](https://github.com/worgue/magic-pocket/releases/tag/0.31.2) - 2026-08-20
 
 ### Fixed
 - managed 宣言が空の secret store view を runtime が読みに行き、Lambda が INIT で
