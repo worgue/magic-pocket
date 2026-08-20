@@ -939,7 +939,10 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
     - `backend = "codebuild"` はソース zip 作成時に mode を 0644/0755 へ自動正規化
       します
     - `backend = "docker"` / `"depot"` は生の permission のまま image に入るため、
-      build 前にコンテキストを走査して該当ファイルを警告します
+      build 前にコンテキストを走査して該当ファイルを警告します。ただし runtime が
+      INIT フェーズで読む `pocket.toml` / `pocket.runtime.toml` は該当 container が
+      確実に INIT 失敗するため、警告でなく**エラーで deploy を中断**します
+      (0.31.0 から。`chmod 644` で修正、image に COPY しないなら .dockerignore へ)
     - 自前の Dockerfile では COPY に `--chmod` を付けて build 段で正規化するのが
       確実です（`pocket django init` 生成のテンプレートは適用済み）:
 
