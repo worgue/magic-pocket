@@ -21,9 +21,11 @@ pub async fn create(
 
 /// 全 message を新しい順で返す。
 ///
-/// ページングを持たないのは意図的。DSQL の 1 クエリ 3,000 行制限に対して
-/// 1 日 1 行しか増えないので、約 8.2 年ぶんは素の SELECT で収まる
-/// (schema.sql の messages テーブルのコメントに根拠を書いている)。
+/// ページングを持たないのは意図的。1 日 1 行しか増えないため、デモとしては
+/// 素の SELECT で足りる (無制限に伸びるので実運用ではページングが要る)。
+///
+/// DSQL の 3,000 行制限は 1 トランザクションで**変更**できる行数 (DML) の
+/// 上限であり、SELECT には掛からない (schema.sql のコメント参照)。
 pub async fn list(db: &DatabaseConnection) -> Result<Vec<messages::Model>, DbErr> {
     messages::Entity::find()
         .order_by_desc(messages::Column::CreatedAt)

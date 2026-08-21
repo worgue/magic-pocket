@@ -12,8 +12,7 @@
 	};
 
 	// 一覧はページングなしで全件取得する。日次スケジューラが 1 日 1 件しか
-	// 追加しないため、DSQL の 1 クエリ 3,000 行制限に当たるまで約 8.2 年ある
-	// (根拠は schema.sql の messages テーブルのコメント)。
+	// 追加しないため、デモとしてはこれで足りる (実運用ではページングが要る)。
 	async function load(): Promise<MessageList> {
 		const res = await fetch('/api/messages');
 		if (!res.ok) {

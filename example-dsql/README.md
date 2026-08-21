@@ -24,11 +24,16 @@ EventBridge Scheduler ──(1 日 1 回)──▶ SQS queue ──▶ Lambda wo
 
 ## なぜ prune もページングも無いのか
 
-DSQL は **1 クエリで取得できる行数が 3,000 件**に制限される。このデモは 1 日 1 行しか
-追加せず削除もしないので、**約 8.2 年 (3,000 日) は素の `SELECT` で全件返せる**。
-上限に当たったら一覧 API にページングか期間絞り込みが必要になる。
-「上限に当たるまでは単純に書く」という判断を意図的に残している
-(根拠は `schema.sql` の `messages` テーブルのコメント)。
+1 日 1 行しか増えないため、数千行に達するまで年単位かかる。デモとして単純さを
+優先し、一覧 API はページングなしの素の `SELECT` にしてある。無制限に伸びる
+設計ではあるので、実運用ではページングか期間絞り込みを入れる。
+
+!!! note "DSQL の 3,000 行制限との関係"
+    よく混同されるが、DSQL の 3,000 行制限は **1 トランザクションで変更できる
+    行数** (DML: `INSERT` / `UPDATE` / `DELETE`) の上限であって、**`SELECT` の
+    取得行数の制限ではない**。この example は 1 トランザクション 1 行の `INSERT`
+    だけなので抵触しない。ただし将来まとめて削除する場合は、3,000 行以下に
+    チャンク分割する必要がある。
 
 ## なぜ 1 日 1 回なのか
 
@@ -62,9 +67,16 @@ DSQL_HOST=<endpoint> just schema-apply
 DSQL の制約が素の PostgreSQL と違う点:
 
 - `FOREIGN KEY` は使えない (参照整合性はアプリ層で担保)
+- `UPSERT` (`INSERT ... ON CONFLICT`) は使えない (delete + insert で代替)
 - `SERIAL` は使えない (主キーは `uuid` + `gen_random_uuid()`)
 - 二次インデックスは `CREATE INDEX ASYNC` (作成は非同期。進行は `sys.jobs`)
-- 1 トランザクションに DDL は 1 文まで
+- DDL と DML は別トランザクション。1 トランザクションに DDL は 1 文まで
+- 1 トランザクションで変更できるのは 3,000 行まで (DML)
+
+一次情報は AWS の
+[Migrating from PostgreSQL to Aurora DSQL](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-unsupported-features.html)
+と [Cluster quotas and database limits](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/CHAP_quotas.html)。
+「PostgreSQL 互換だから」と通常の PostgreSQL の常識で書くと確実にハマる。
 
 運用プロジェクトでは専用のマイグレーションツールを使うが、この example は
 テーブルが 1 つだけなので依存を増やさず SeaORM の生 SQL 実行で完結させている
