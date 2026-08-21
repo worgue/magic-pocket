@@ -456,6 +456,31 @@ Amazon Aurora DSQL の設定です。`[dsql]` を追加するだけでクラス�
 [dsql]
 ```
 
+!!! warning "PostgreSQL 互換だが、通常の PostgreSQL の常識では書けない"
+    Aurora DSQL は PostgreSQL 互換の分散データベースですが、**スキーマとクエリの
+    書き方に無視できない制約があります**。pocket はクラスターの作成までを担当し、
+    スキーマ設計はアプリ側の責任なので、`[dsql]` を使う前に把握しておいてください。
+
+    | 項目 | 通常の PostgreSQL | Aurora DSQL |
+    |------|------------------|-------------|
+    | `FOREIGN KEY` | 使える | **使えない**（参照整合性はアプリ層で担保する） |
+    | `UPSERT`（`INSERT ... ON CONFLICT`） | 使える | **使えない**（delete + insert で代替する） |
+    | `SERIAL` / シーケンス | 使える | 非推奨。主キーは `uuid DEFAULT gen_random_uuid()` 等にする |
+    | インデックス作成 | `CREATE INDEX`（同期） | **`CREATE INDEX ASYNC`**（非同期。発行直後は未有効の可能性がある） |
+    | トランザクション内の DDL | 制限なし | **DDL と DML は別トランザクション。1 トランザクションに DDL は 1 文まで** |
+    | 1 トランザクションの更新行数 | 制限なし | **3,000 行まで**（`INSERT` / `UPDATE` / `DELETE`。大量更新はバッチ分割が必要） |
+    | 同時実行制御 | ロック（MVCC） | **楽観的並行性制御（OCC）**。コミット時に `40001` で失敗しうるためリトライ設計が要る |
+    | 接続 | パスワード等 | **IAM 認証トークン（最大 15 分）**。プールは接続を短命化し、常駐プロセスは期限前に再生成する |
+
+    **3,000 行制限は「更新できる行数」であって、`SELECT` が返せる行数の制限ではありません**
+    （混同されがちです）。
+
+    一次情報は AWS の
+    [Migrating from PostgreSQL to Aurora DSQL](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/working-with-postgresql-compatibility-unsupported-features.html)
+    と [Cluster quotas and database limits](https://docs.aws.amazon.com/aurora-dsql/latest/userguide/CHAP_quotas.html) です。
+    実際に動く構成は [サンプルプロジェクト](examples.md) の `example-dsql` を参照してください
+    （IAM トークンの生成とプール設定、`CREATE INDEX ASYNC` を含む migration の実例があります）。
+
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `deletion_protection` | bool | `false` | 削除保護の有効化 |
