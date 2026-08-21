@@ -15,6 +15,7 @@ nav = [
     { "Rust連携 (Loco / axum)" = "guide/loco.md" },
     { "ベストプラクティス" = "guide/best-practices.md" },
     { "コールドスタート" = "guide/cold-start.md" },
+    { "サンプルプロジェクト" = "guide/examples.md" },
   ] },
   { "デプロイ権限" = [
     { "AWS" = "permissions/aws.md" },
