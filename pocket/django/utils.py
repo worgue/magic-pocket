@@ -9,6 +9,7 @@ from django.core.management import call_command
 from ..context import Context
 from ..general_context import GeneralContext
 from ..runtime import get_context
+from ..utils import echo
 from .db_url import parse_database_url_credentials
 
 
@@ -273,6 +274,16 @@ def get_databases(*, stage: str | None = None) -> dict:
         }
 
     parsed = urllib.parse.urlparse(database_url)
+    if parsed.query:
+        # django-environ の env.db() と違い、クエリパラメータは解釈しない。
+        # 黙って捨てると「URL に書いてあるのに効いていない」形で顕在化する
+        # (env.db() からの移行時に気付けない) ため、明示的に警告する。
+        params = ", ".join(urllib.parse.parse_qs(parsed.query))
+        echo.warning(
+            "DATABASE_URL のクエリパラメータは get_databases() では解釈されず"
+            "無視されます: %s。ATOMIC_REQUESTS / CONN_MAX_AGE 等は settings.py "
+            "側で DATABASES に直接設定してください。" % params
+        )
     engine = _detect_engine(stage, parsed.scheme)
 
     db: dict = {

@@ -40,6 +40,28 @@ CACHES = get_caches()
 
 ---
 
+## DATABASES
+
+`DATABASE_URL` 環境変数からは `get_databases()` で `DATABASES` を構築できます。
+
+```python
+from pocket.django.utils import get_databases
+
+DATABASES = get_databases()
+```
+
+`DATABASE_URL` が未設定の場合は SQLite（`pocket.toml` と同じディレクトリの
+`db.sqlite3`）にフォールバックします。engine はステージの設定
+（`[tidb]` / `[rds]` など）から自動判別されます。
+
+!!! warning "URL のクエリパラメータは解釈されません"
+    django-environ の `env.db()` と異なり、`?ATOMIC_REQUESTS=True` や
+    `?CONN_MAX_AGE=60` のような URL クエリパラメータは解釈されず無視されます
+    （検出時は警告を表示します）。これらのオプションは `settings.py` で
+    `DATABASES` に直接設定してください。
+
+---
+
 ## EMAIL_BACKEND
 
 `pocket.toml` に `[ses]` セクションを設定すると、Django のメール送信バックエンドを SES に切り替えられます。

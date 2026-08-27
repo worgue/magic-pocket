@@ -28,6 +28,11 @@
   `SSO token refresh attempt failed` の WARNING traceback も抑制しています
 
 ### Added
+- `get_databases()` が DATABASE_URL のクエリパラメータ (`?ATOMIC_REQUESTS=True`
+  等) を検出したとき、パラメータ名を挙げて警告するようにしました。
+  django-environ の `env.db()` と違い解釈されないため、黙って捨てると
+  「URL に書いてあるのに効いていない」形で顕在化していました。
+  docs にも解釈されないことを明記しています
 - `pocket django deploy` / `pocket django promote` に `--skip-migrate` を追加しました。
   `migrate` を確認ごと省きます。`migrate` は Lambda 経由で実際に DB へ接続するため
   DB が停止・制限中だと失敗しますが、`-y` は「聞かれたことに全部 yes」の意味なので

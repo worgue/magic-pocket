@@ -316,3 +316,26 @@ def test_get_databases_tidb_ssl_and_persistent_conn(monkeypatch):
     }
     assert db["CONN_MAX_AGE"] is None
     assert db["CONN_HEALTH_CHECKS"] is True
+
+
+def test_get_databases_warns_on_ignored_query_params(monkeypatch, capsys):
+    # env.db() と違いクエリパラメータは解釈しない。黙って捨てると「URL に
+    # 書いてあるのに効いていない」形で顕在化する (2026-08-27 受領 feedback
+    # KN1270) ため、パラメータ名を挙げて警告する。
+    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "x.postgres")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgres://u:p@h/db?ATOMIC_REQUESTS=True&CONN_MAX_AGE=60"
+    )
+    databases = get_databases(stage="dev")
+    assert "ATOMIC_REQUESTS" not in databases["default"]
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "解釈されず" in err
+    assert "ATOMIC_REQUESTS" in err
+    assert "CONN_MAX_AGE" in err
+
+
+def test_get_databases_silent_without_query_params(monkeypatch, capsys):
+    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "x.postgres")
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+    get_databases(stage="dev")
+    assert capsys.readouterr().err == ""
