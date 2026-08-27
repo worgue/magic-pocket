@@ -1,3 +1,5 @@
+import logging
+
 import click
 
 from pocket import __version__
@@ -24,6 +26,7 @@ from pocket_cli.cli import (
     vpc_cli,
     waf_cli,
 )
+from pocket_cli.cli.aws_auth import CREDENTIAL_EXCEPTIONS, print_credential_guide
 
 
 class PocketCLI(click.Group):
@@ -33,11 +36,18 @@ class PocketCLI(click.Group):
         except ValueError as e:
             click.echo(f"エラー: {e}", err=True)
             ctx.exit(1)
+        except CREDENTIAL_EXCEPTIONS as e:
+            # SSO 失効等で botocore の traceback が 100 行流れると「login し直せば
+            # よい」という結論に辿り着けない。原因 1 行 + 認証手順に変換する
+            print_credential_guide(e)
+            ctx.exit(1)
 
 
 @click.group(cls=PocketCLI)
 def main():
-    pass
+    # SSO token の refresh 失敗時に botocore.tokens が WARNING + traceback を
+    # 出すのを抑制する (失敗自体は上の CREDENTIAL_EXCEPTIONS 捕捉で案内される)
+    logging.getLogger("botocore.tokens").setLevel(logging.ERROR)
 
 
 @main.command()

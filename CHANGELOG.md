@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Fixed
+- SSO 失効や未認証の状態で CLI を実行すると botocore の traceback (約 100 行)
+  がそのまま流れていたのを、原因 1 行 + 認証手順の案内 + 非ゼロ exit に
+  変換しました。`pocket deploy` の事前チェックだけでなく全サブコマンドが対象です
+  (`pocket resource dsql endpoint` 等)。あわせて botocore.tokens が出す
+  `SSO token refresh attempt failed` の WARNING traceback も抑制しています
+
 ### Added
 - `pocket django deploy` / `pocket django promote` に `--skip-migrate` を追加しました。
   `migrate` を確認ごと省きます。`migrate` は Lambda 経由で実際に DB へ接続するため
