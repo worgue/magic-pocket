@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Changed
+- build context の other-read チェックの警告を強化しました (deploy は通るのに
+  Lambda が INIT で必ず死ぬ状態に気付きにくかったため)。警告にファイル名に加えて
+  mode (600 等) を出し、build ログに埋もれないよう deploy の最後にも再掲します。
+  さらに management Lambda の INIT 失敗エラーには、build 時に検出済みのファイルが
+  あればそれを列挙して原因の切り分けを短縮します
+
 ### Fixed
 - SSO 失効や未認証の状態で CLI を実行すると botocore の traceback (約 100 行)
   がそのまま流れていたのを、原因 1 行 + 認証手順の案内 + 非ゼロ exit に

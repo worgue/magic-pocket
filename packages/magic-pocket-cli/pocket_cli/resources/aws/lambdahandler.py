@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from pocket.resources.base import ResourceStatus
 from pocket.utils import MANAGE_HANDLER_SUCCESS_SENTINEL
+from pocket_cli.resources.aws.builders.context_check import warned_files_with_mode
 
 if TYPE_CHECKING:
     from pocket.context import LambdaHandlerContext
@@ -196,7 +197,7 @@ class LambdaHandler:
                 if message.startswith(report_prefix):
                     if not success_seen:
                         if _looks_like_init_failure("\n".join(printed)):
-                            raise ManagementCommandFailed(
+                            message = (
                                 "Lambda が INIT フェーズで失敗しました "
                                 "(Runtime.Unknown / INIT_REPORT ... Status: error)。"
                                 "これはアプリの例外ではなく runtime 側の問題の可能性が"
@@ -211,9 +212,19 @@ class LambdaHandler:
                                 "PermissionError になります。ログに PermissionError が"
                                 "あれば該当ファイルを chmod 644 して再 deploy して"
                                 "ください。"
+                            )
+                            detected = warned_files_with_mode()
+                            if detected:
+                                message += (
+                                    "今回の build では other-read の無いファイルを"
+                                    "検出済みです ((2) が濃厚): %s。"
+                                    % ", ".join(detected)
+                                )
+                            message += (
                                 "アプリの traceback ではなく上の INIT_REPORT / "
                                 "Runtime.Unknown 行を確認してください。"
                             )
+                            raise ManagementCommandFailed(message)
                         raise ManagementCommandFailed(
                             "management command handler did not complete successfully "
                             "(no success marker before REPORT). "

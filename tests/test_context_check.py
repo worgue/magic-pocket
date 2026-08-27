@@ -8,10 +8,20 @@ mode 600 のファイルが image に COPY され、Lambda の非 root 実行ユ
 from pathlib import Path
 
 import pytest
+from pocket_cli.resources.aws.builders import context_check
 from pocket_cli.resources.aws.builders.context_check import (
     find_files_without_world_read,
+    resummarize_world_read_warnings,
     warn_files_without_world_read,
+    warned_files_with_mode,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_warned_files():
+    context_check._warned_files.clear()
+    yield
+    context_check._warned_files.clear()
 
 
 def _context(tmp_path: Path) -> Path:
@@ -55,6 +65,40 @@ def test_warn_lists_files_and_guidance(tmp_path, capsys):
     err = capsys.readouterr().err.replace("\n", "")
     assert "pyproject.toml" in err
     assert "chmod 644" in err
+
+
+def test_warn_shows_mode(tmp_path, capsys):
+    """警告にはファイル名だけでなく mode も出す (2026-08-26 受領 feedback)"""
+    _context(tmp_path)
+    (tmp_path / "pyproject.toml").chmod(0o600)
+    warn_files_without_world_read(tmp_path)
+    assert "pyproject.toml (600)" in capsys.readouterr().err.replace("\n", "")
+
+
+def test_resummarize_repeats_warning_at_deploy_end(tmp_path, capsys):
+    """build 中の警告はログに埋もれるため deploy 終了時に再掲する
+
+    (2026-08-26 受領 feedback: 警告に気付けず Lambda の INIT 失敗まで到達し、
+    版不整合の方を先に疑って遠回りした実害への回帰テスト)
+    """
+    _context(tmp_path)
+    (tmp_path / "pyproject.toml").chmod(0o600)
+    warn_files_without_world_read(tmp_path)
+    # multi-container で同じ context を複数回 build しても重複しては積まない
+    warn_files_without_world_read(tmp_path)
+    assert warned_files_with_mode() == ["pyproject.toml (600)"]
+    capsys.readouterr()
+    resummarize_world_read_warnings()
+    err = capsys.readouterr().err.replace("\n", "")
+    assert "pyproject.toml (600)" in err
+    assert "chmod 644" in err
+
+
+def test_resummarize_silent_when_clean(tmp_path, capsys):
+    _context(tmp_path)
+    warn_files_without_world_read(tmp_path)
+    resummarize_world_read_warnings()
+    assert capsys.readouterr().err == ""
 
 
 def test_warn_silent_when_clean(tmp_path, capsys):

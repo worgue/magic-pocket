@@ -9,6 +9,9 @@ from pocket_cli import migrations
 from pocket_cli.cli import interaction
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.mediator import Mediator
+from pocket_cli.resources.aws.builders.context_check import (
+    resummarize_world_read_warnings,
+)
 from pocket_cli.resources.aws.state import StateStore, create_state_store
 from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
@@ -220,6 +223,8 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     upload_managed_assets(context)
     if not skip_frontend:
         deploy_frontend(context)
+    # build 時の other-read 警告はログに埋もれて気付けないため最後に再掲する
+    resummarize_world_read_warnings()
     # デプロイ完了後の URL 表示
     url = _get_deploy_url(context)
     if url:

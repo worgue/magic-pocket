@@ -26,6 +26,12 @@ from pocket_cli.resources.aws.builders.dockerignore import (
 
 _MAX_LISTED = 10
 
+# この process の build で警告した other-read 無しファイル ("path (mode)" 形式)。
+# build ログに警告が埋もれて INIT 失敗まで気付けない実害があったため、deploy
+# 終了時の再掲 (deploy_cli) と INIT 失敗エラーの原因提示 (lambdahandler) に使う。
+# multi-container で同じ context を複数回 build しても重複しては積まない。
+_warned_files: list[str] = []
+
 # runtime が INIT フェーズで読む設定ファイル。other-read が無いまま COPY される
 # と確実に INIT 失敗する (Rust runtime は pocket.toml を上方探索、Python runtime
 # は pocket.runtime.toml を読む) ため、警告でなくエラーに昇格する。
@@ -57,9 +63,16 @@ def warn_files_without_world_read(context_dir: Path) -> list[str]:
     unreadable = find_files_without_world_read(context_dir)
     critical = [r for r in unreadable if Path(r).name in _INIT_CRITICAL_NAMES]
     if unreadable:
-        listed = ", ".join(unreadable[:_MAX_LISTED])
-        if len(unreadable) > _MAX_LISTED:
-            listed += " (他 %d 件)" % (len(unreadable) - _MAX_LISTED)
+        with_mode = [
+            "%s (%o)" % (rel, os.stat(context_dir / rel).st_mode & 0o777)
+            for rel in unreadable
+        ]
+        for entry in with_mode:
+            if entry not in _warned_files:
+                _warned_files.append(entry)
+        listed = ", ".join(with_mode[:_MAX_LISTED])
+        if len(with_mode) > _MAX_LISTED:
+            listed += " (他 %d 件)" % (len(with_mode) - _MAX_LISTED)
         echo.warning(
             "build context に other-read の無いファイルがあります (%d 件): %s。"
             "Lambda の実行ユーザーは非 root のため、このまま image に COPY されると"
@@ -79,3 +92,28 @@ def warn_files_without_world_read(context_dir: Path) -> list[str]:
             % ", ".join(critical)
         )
     return unreadable
+
+
+def warned_files_with_mode() -> list[str]:
+    """この process の build で警告済みの other-read 無しファイル ("path (mode)")"""
+    return list(_warned_files)
+
+
+def resummarize_world_read_warnings() -> None:
+    """build 時の other-read 警告を deploy 終了時に再掲する。
+
+    build ログの途中に出る警告は大量の出力に埋もれて気付けず、INIT 失敗まで
+    到達してしまう実害があった (2026-08-26 受領 feedback)。deploy の最後に
+    ファイル名 + mode を再掲して、その場で chmod できるようにする。
+    """
+    if not _warned_files:
+        return
+    listed = ", ".join(_warned_files[:_MAX_LISTED])
+    if len(_warned_files) > _MAX_LISTED:
+        listed += " (他 %d 件)" % (len(_warned_files) - _MAX_LISTED)
+    echo.warning(
+        "注意: build context に other-read の無いファイルがありました (%d 件): "
+        "%s。Dockerfile で `COPY --chmod` 等により正規化していない場合、Lambda の"
+        "非 root 実行ユーザーが読めず INIT フェーズで失敗します。"
+        "`chmod 644 <file>` で修正してください。" % (len(_warned_files), listed)
+    )
