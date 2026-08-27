@@ -125,25 +125,25 @@ wheels = [
 
 [[package]]
 name = "magic-pocket"
-version = "0.31.2"
+version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "apig-wsgi" },
     { name = "awslambdaric" },
     { name = "boto3" },
-    { name = "django-storages" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/6a/cdd9a523f00c6b04b22482ffee8e2b1d67c9e82efc04101f05ac264958c0/magic_pocket-0.31.2.tar.gz", hash = "sha256:be7a4d5233eb76dc058f9517d53e67630d34a320f9caa7314b572c6b19d1fe9d", size = 717300, upload-time = "2026-08-20T08:10:12.408Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/82/7c/ce3a236961f4012f7179401bfefcd0343164a303bb37f5f612bd003d4858/magic_pocket-0.32.0.tar.gz", hash = "sha256:7fe94c4283204dba3c34c6bd993cbf7249f28fb3490b21aca88f1eb278dc1f67", size = 785456, upload-time = "2026-08-27T06:32:05.381Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1f/09/c9a7fcd721747ba63db1849d573d717c3af38d580e5aede046907efa4849/magic_pocket-0.31.2-py3-none-any.whl", hash = "sha256:92351f2d74a167d0888db2a27537c8c1562836860105db7c4c9b20321c48e440", size = 106103, upload-time = "2026-08-20T08:10:09.806Z" },
+    { url = "https://files.pythonhosted.org/packages/35/f6/64e1d737ea183668034c646227d91038cf43e299e69f6c1a6dba6fe14654/magic_pocket-0.32.0-py3-none-any.whl", hash = "sha256:c08c7b9a1e69d3f3d65a64f7b601a4b9059c664940a1a3e8e22f3985ac1f6b0f", size = 106405, upload-time = "2026-08-27T06:32:02.08Z" },
 ]
 
 [package.optional-dependencies]
 django = [
     { name = "django" },
+    { name = "django-storages" },
 ]
 
 [[package]]
@@ -199,7 +199,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.34.28" },
     { name = "django-tidb", specifier = ">=5.0" },
-    { name = "magic-pocket", extras = ["django"], specifier = "==0.31.2" },
+    { name = "magic-pocket", extras = ["django"], specifier = "==0.32.0" },
     { name = "mysqlclient", specifier = ">=2.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.2.1" },
 ]
