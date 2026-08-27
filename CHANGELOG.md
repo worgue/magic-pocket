@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### Changed
+- **破壊的**: `django-storages` を必須依存から `[django]` extra へ移しました。
+  `django-storages` は `django` を必須依存に持つため、extra 無しの
+  `magic-pocket` を入れるだけで Django 一式が入ってしまい、SQS worker 等の
+  非 Django container の image を細くできませんでした。
+  `magic-pocket[django]` を使っている Django プロジェクトは無影響です。
+  extra 無しで S3 storage を使っていた場合は `magic-pocket[django]` に
+  切り替えてください
 - build context の other-read チェックの警告を強化しました (deploy は通るのに
   Lambda が INIT で必ず死ぬ状態に気付きにくかったため)。警告にファイル名に加えて
   mode (600 等) を出し、build ログに埋もれないよう deploy の最後にも再掲します。

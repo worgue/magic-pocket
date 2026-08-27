@@ -86,7 +86,7 @@ graph LR
 
 ```bash
 # インストール（PyPI）
-uv add magic-pocket              # runtime ライブラリ
+uv add "magic-pocket[django]"    # runtime ライブラリ (Django プロジェクトは [django] 付き)
 uv add --dev magic-pocket-cli    # deploy CLI (`pocket` コマンド)
 
 # Djangoプロジェクトで初期設定を生成

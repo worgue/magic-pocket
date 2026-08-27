@@ -15,7 +15,6 @@ dependencies = [
     "rich>=13.7.0",
     "awslambdaric>=2.0.10",
     "apig_wsgi>=2.18.0",
-    "django-storages>=1.14.2,!=1.14.3",
 ]
 
 [project.urls]
@@ -23,7 +22,10 @@ Documentation = "https://worgue.github.io/magic-pocket/"
 Source = "https://github.com/worgue/magic-pocket"
 
 [project.optional-dependencies]
-django = ["django>=4.2.0"]
+django = [
+    "django>=4.2.0",
+    "django-storages>=1.14.2,!=1.14.3",
+]
 ses = ["django-ses>=4.0.0"]
 signing = ["cryptography>=41.0.0"]
 
@@ -53,6 +55,7 @@ dev = [
     "icecream>=2.1.3",
     "pyright>=1.1.408",
     "psycopg[binary]>=3.1.0",
+    "django-storages>=1.14.2,!=1.14.3",
 ]
 
 [tool.pyright]

@@ -52,8 +52,9 @@ localhost:8000 でDjangoが動くことを確認してください。
 ## 2. 依存パッケージの追加
 
 ```bash
-# runtime ライブラリ (Lambda image にも入る)
-uv add django-environ psycopg magic-pocket
+# runtime ライブラリ (Lambda image にも入る)。Django プロジェクトでは
+# [django] extra を付ける (django-storages 等の Django 向け依存が入る)
+uv add django-environ psycopg "magic-pocket[django]"
 
 # deploy CLI (`pocket` コマンド)。デプロイ時のみ必要なので dev グループ推奨
 uv add --dev magic-pocket-cli
