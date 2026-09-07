@@ -63,6 +63,9 @@ uv add --dev magic-pocket-cli
 !!! note "パッケージ構成"
     `magic-pocket` は Lambda runtime ライブラリ、`magic-pocket-cli` は
     `pocket` コマンドを提供する deploy CLI です。CLI は Lambda image には不要です。
+    Django を使わないプロジェクト (Rust backend 等) は extra なしの
+    `magic-pocket` で CLI が動作します (`pocket django` サブコマンドのみ
+    `magic-pocket[django]` が必要)。
 
 !!! note "psycopgについて"
     macで開発している場合、`uv add "psycopg[binary]"` が必要になることがあります。

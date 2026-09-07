@@ -4,6 +4,18 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- django 未導入の環境で `pocket` CLI 全体が `ModuleNotFoundError: django` の
+  traceback で起動不能になっていたのを修正しました (KN1281)。0.32.0 の
+  `django-storages` extra 化で django が transitive に入らなくなったことで
+  顕在化していました。django 非依存のサブコマンド (`pocket deploy` /
+  `pocket settings` 等) は django 無しで動作し、`pocket django ...` の実行時のみ
+  `magic-pocket[django]` の install 手順を 1 行で案内して終了します。
+  **extra なしの `magic-pocket` で `pocket django` を使っていた project は
+  install 行を `magic-pocket[django]` に変更してください**
+
 ## [0.32.0](https://github.com/worgue/magic-pocket/releases/tag/0.32.0) - 2026-08-27
 
 ### Changed

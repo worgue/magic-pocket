@@ -3,7 +3,17 @@ import logging
 import click
 
 from pocket import __version__
-from pocket_cli import django_cli
+
+try:
+    from pocket_cli import django_cli
+except ModuleNotFoundError as e:
+    # 0.32.0 で django-storages が [django] extra へ移り、django は transitive に
+    # 入らなくなった。django 未導入でも django 非依存のサブコマンドは使えるべき
+    # なので、ここで落とさず `pocket django` だけを案内スタブに差し替える
+    if (e.name or "").split(".")[0] != "django":
+        raise
+    django_cli = None
+
 from pocket_cli.cli import (
     backup_cli,
     cloudfront_cli,
@@ -27,6 +37,35 @@ from pocket_cli.cli import (
     waf_cli,
 )
 from pocket_cli.cli.aws_auth import CREDENTIAL_EXCEPTIONS, print_credential_guide
+
+
+def _django_unavailable_command() -> click.Command:
+    """django 未導入時に `pocket django` へ登録する案内スタブ。
+
+    生 traceback (ModuleNotFoundError: django) からは「何を install すれば
+    直るのか」が読み手に伝わらないため、install 手順 1 行に変換して落とす。
+    どのサブコマンド・引数でも同じ案内を出したいので、引数は全て素通しで
+    受けて即エラーにする。
+    """
+
+    @click.command(
+        name="django",
+        context_settings={"ignore_unknown_options": True},
+        add_help_option=False,
+        short_help="Django 用コマンド (magic-pocket[django] が必要)",
+    )
+    @click.argument("args", nargs=-1, type=click.UNPROCESSED)
+    def django(args):
+        raise click.ClickException(
+            "`pocket django` サブコマンドには django が必要です。\n"
+            "magic-pocket を [django] extra 付きで入れ直してください:\n\n"
+            '  uv tool install "magic-pocket-cli==%s"'
+            ' --with "magic-pocket[django]==%s"\n\n'
+            "(0.32.0 で django-storages が [django] extra へ移動したため、"
+            "django は transitive に入らなくなりました)" % (__version__, __version__)
+        )
+
+    return django
 
 
 class PocketCLI(click.Group):
@@ -86,7 +125,7 @@ main.add_command(deploy_cli.deploy)
 main.add_command(deploy_cli.promote)
 main.add_command(destroy_cli.destroy)
 main.add_command(status_cli.status)
-main.add_command(django_cli.django)
+main.add_command(django_cli.django if django_cli else _django_unavailable_command())
 main.add_command(runtime_config_cli.runtime_config)
 main.add_command(migrate_cli.migrate)
 main.add_command(permissions_cli.permissions)
