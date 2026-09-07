@@ -504,7 +504,10 @@ Resources:
       ToPort: 2049
   # {% endif %}
 
-  # {% if use_rds %}
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+  # {% if use_rds and vpc %}
   LambdaRDSAccess:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:

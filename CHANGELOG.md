@@ -7,6 +7,12 @@
 ## [Unreleased]
 
 ### Fixed
+- `use_vpc = false` の container が `[rds]` のある stage で CreateStack の
+  validation ("Unresolved resource dependencies [LambdaSecurityGroup]") に
+  落ちていたのを修正しました (KN1352)。VPC 外 Lambda は RDS SG への ingress
+  自体が不要なため、`LambdaRDSAccess` を出力しません。あわせて、この組合せでは
+  「container が RDS に到達できない」旨を `pocket settings` 等の設定読込時に
+  警告します (DB を使わない container なら無視して構いません)
 - django 未導入の環境で `pocket` CLI 全体が `ModuleNotFoundError: django` の
   traceback で起動不能になっていたのを修正しました (KN1281)。0.32.0 の
   `django-storages` extra 化で django が transitive に入らなくなったことで

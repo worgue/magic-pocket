@@ -1712,6 +1712,14 @@ class Settings(BaseModel):
                 message = route.double_prefix_advisory()
                 if message:
                     echo.warning(message)
+        if self.rds:
+            for name, c in self.container.items():
+                if c.vpc is None:
+                    echo.warning(
+                        "container.%s は use_vpc=false のため、この stage の "
+                        "[rds] (private subnet 内) に到達できません。この "
+                        "container が DB を使わないなら問題ありません" % name
+                    )
 
     @classmethod
     def resolve_vpc(cls, data: dict):
