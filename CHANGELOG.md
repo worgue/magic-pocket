@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.33.0](https://github.com/worgue/magic-pocket/releases/tag/0.33.0) - 2026-09-07
 
 ### Changed
 - `get_databases()` の持続接続 (`CONN_MAX_AGE` + `CONN_HEALTH_CHECKS`) を
