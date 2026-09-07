@@ -54,6 +54,41 @@ DATABASES = get_databases()
 `db.sqlite3`）にフォールバックします。engine はステージの設定
 （`[tidb]` / `[rds]` など）から自動判別されます。
 
+### 持続接続（CONN_MAX_AGE）
+
+pocket 管理の DB（TiDB / Neon / RDS）には、Lambda の warm リクエストから
+接続確立（TLS handshake 含む。実測で平均 0.1 秒超）を省くため、
+**既定で持続接続を設定します**: `CONN_MAX_AGE = 300`（秒）+
+`CONN_HEALTH_CHECKS = True`。idle 切断された接続はリクエスト開始時の
+health check（1 往復、実測 数 ms）が検知して張り直すので、Neon の
+autosuspend や DB 再起動があっても安全です。`[rds]` の master password
+自動ローテーションも、再接続経路が最新パスワードを取り直すため追従します。
+
+`conn_max_age` 引数で調整できます:
+
+```python
+DATABASES = get_databases(conn_max_age=None)  # 年齢上限なしの持続接続
+DATABASES = get_databases(conn_max_age=0)     # Django 既定（毎リクエスト接続）
+```
+
+ローカル開発（stage 解決されない `DATABASE_URL`）には適用されません。
+
+!!! warning "psycopg の pool と併用する場合"
+    Django は `OPTIONS["pool"]` と `CONN_MAX_AGE != 0` の併用を
+    `ImproperlyConfigured` で拒否します。pool を使う場合は
+    `get_databases(conn_max_age=0)` で持続接続を無効化してから
+    `OPTIONS["pool"]` を設定してください。
+
+!!! note "接続数の目安"
+    保持される接続は「warm な Lambda 実行環境 1 つにつき 1 本」です。
+    ピーク時の同時接続数は毎リクエスト接続の場合と変わらず、増えるのは
+    アイドル中の warm コンテナが握り続ける分だけです。なお `CONN_MAX_AGE`
+    はリクエスト終了時に Django が古い接続を閉じる client 側の仕組みなので、
+    回収された実行環境の接続はこの設定では閉じられず、DB 側の TCP
+    keepalive / idle timeout で回収されます。同時実行が数百を超える規模では
+    `conn_max_age` の短縮や DB 側の接続上限（RDS は max ACU 依存）を確認
+    してください。
+
 !!! warning "URL のクエリパラメータは解釈されません"
     django-environ の `env.db()` と異なり、`?ATOMIC_REQUESTS=True` や
     `?CONN_MAX_AGE=60` のような URL クエリパラメータは解釈されず無視されます

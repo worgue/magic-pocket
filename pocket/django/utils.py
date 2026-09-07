@@ -258,7 +258,18 @@ def get_caches(*, stage: str | None = None) -> dict:
     return caches
 
 
-def get_databases(*, stage: str | None = None) -> dict:
+def get_databases(*, stage: str | None = None, conn_max_age: int | None = 300) -> dict:
+    """DATABASE_URL と stage 設定から Django の DATABASES を組み立てる。
+
+    conn_max_age は pocket 管理 DB (TiDB / Neon / RDS) の持続接続の年齢上限:
+
+    - 数値 (秒。既定 300): CONN_MAX_AGE に設定し CONN_HEALTH_CHECKS を有効化
+    - None: 上限なしの持続接続 (health check は同様に有効)
+    - 0: Django 既定 (毎リクエスト接続。health check も付けない)。
+      psycopg の pool (OPTIONS["pool"]) を使う場合はこれを渡す
+
+    ローカル開発 (stage 解決なし) の DB には適用しない。
+    """
     stage = stage or os.environ.get("POCKET_STAGE")
 
     database_url = os.environ.get("DATABASE_URL")
@@ -284,7 +295,7 @@ def get_databases(*, stage: str | None = None) -> dict:
             "無視されます: %s。ATOMIC_REQUESTS / CONN_MAX_AGE 等は settings.py "
             "側で DATABASES に直接設定してください。" % params
         )
-    engine = _detect_engine(stage, parsed.scheme)
+    engine, stage_managed = _detect_engine(stage, parsed.scheme)
 
     db: dict = {
         "ENGINE": engine,
@@ -295,10 +306,16 @@ def get_databases(*, stage: str | None = None) -> dict:
             "ssl_mode": "VERIFY_IDENTITY",
             "ssl": {"ca": _tidb_ca_bundle_path()},
         }
+    if stage_managed and conn_max_age != 0:
         # Lambda は実行環境 (コンテナ) を再利用するため、持続接続で TLS
         # handshake を warm リクエストから省く。idle 切断された接続は再利用前の
-        # health check で検知して張り直すので None (期限なし) でも安全。
-        db["CONN_MAX_AGE"] = None
+        # health check で検知して張り直す。年齢上限 (既定 300 秒) はリクエスト
+        # 終了時に Django が古い接続を閉じる client 側の仕組みで、接続の
+        # 生存期間を有界にする保険 (freeze 中や回収済み環境では動かない点に
+        # 注意)。psycopg の pool (OPTIONS["pool"]) を使う場合、Django は
+        # CONN_MAX_AGE != 0 との併用を ImproperlyConfigured で弾くため、
+        # conn_max_age=0 を渡してから pool を設定すること。
+        db["CONN_MAX_AGE"] = conn_max_age
         db["CONN_HEALTH_CHECKS"] = True
 
     return {"default": db}
@@ -322,21 +339,25 @@ def _tidb_ca_bundle_path() -> str:
     return _TIDB_CA_BUNDLE_CANDIDATES[0]
 
 
-def _detect_engine(stage: str | None, scheme: str) -> str:
+def _detect_engine(stage: str | None, scheme: str) -> tuple[str, bool]:
+    """engine と、pocket 管理 DB (stage 解決 = Lambda 前提) かどうかを返す。
+
+    第 2 要素が True の DB には get_databases() が持続接続を既定適用する。
+    """
     if stage:
         context = get_context(stage=stage)
         if context.tidb:
-            return "django_tidb"
+            return "django_tidb", True
         if context.rds:
             # master password ローテーションに追従する RDS 専用 backend。
-            return "pocket.django.db_backends.rds"
+            return "pocket.django.db_backends.rds", True
         if context.neon:
-            return "django.db.backends.postgresql"
+            return "django.db.backends.postgresql", True
     if scheme in ("postgres", "postgresql"):
-        return "django.db.backends.postgresql"
+        return "django.db.backends.postgresql", False
     if scheme == "mysql":
-        return "django.db.backends.mysql"
-    return "django.db.backends.sqlite3"
+        return "django.db.backends.mysql", False
+    return "django.db.backends.sqlite3", False
 
 
 _sqs_client = None

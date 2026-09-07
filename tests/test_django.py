@@ -301,8 +301,10 @@ def test_tidb_ca_bundle_path_default_when_none_exist(monkeypatch):
 
 def test_get_databases_tidb_ssl_and_persistent_conn(monkeypatch):
     # tidb backend では TLS CA を候補探索で解決し、Lambda 向けに持続接続を
-    # 標準デフォルト化する。
-    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "django_tidb")
+    # 標準デフォルト化する (年齢上限は既定 300 秒)。
+    monkeypatch.setattr(
+        django_utils, "_detect_engine", lambda *a, **k: ("django_tidb", True)
+    )
     monkeypatch.setattr(django_utils.os.path, "exists", lambda p: True)
     monkeypatch.setenv("DATABASE_URL", "mysql://u:p@gateway.tidbcloud.com:4000/testdb")
 
@@ -314,15 +316,62 @@ def test_get_databases_tidb_ssl_and_persistent_conn(monkeypatch):
         "ssl_mode": "VERIFY_IDENTITY",
         "ssl": {"ca": "/etc/pki/tls/certs/ca-bundle.crt"},
     }
+    assert db["CONN_MAX_AGE"] == 300
+    assert db["CONN_HEALTH_CHECKS"] is True
+
+
+def test_get_databases_persistent_conn_for_stage_postgres(monkeypatch):
+    # 持続接続は TiDB 限定ではなく、stage 解決された Postgres (Neon / RDS) にも
+    # 既定適用する (feedback KN1351。接続確立コストは Lambda + TLS 必須 DB に共通)。
+    monkeypatch.setattr(
+        django_utils,
+        "_detect_engine",
+        lambda *a, **k: ("pocket.django.db_backends.rds", True),
+    )
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+
+    db = get_databases(stage="dev")["default"]
+    assert db["CONN_MAX_AGE"] == 300
+    assert db["CONN_HEALTH_CHECKS"] is True
+
+
+def test_get_databases_conn_max_age_none_and_zero(monkeypatch):
+    monkeypatch.setattr(
+        django_utils,
+        "_detect_engine",
+        lambda *a, **k: ("django.db.backends.postgresql", True),
+    )
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
+
+    # None = 上限なしの持続接続
+    db = get_databases(stage="dev", conn_max_age=None)["default"]
     assert db["CONN_MAX_AGE"] is None
     assert db["CONN_HEALTH_CHECKS"] is True
+
+    # 0 = Django 既定 (毎リクエスト接続)。pool (OPTIONS["pool"]) 利用者向け
+    db = get_databases(stage="dev", conn_max_age=0)["default"]
+    assert "CONN_MAX_AGE" not in db
+    assert "CONN_HEALTH_CHECKS" not in db
+
+
+def test_get_databases_no_persistent_conn_for_local_db(monkeypatch):
+    # stage 解決なし (ローカル開発の DATABASE_URL) には適用しない
+    monkeypatch.delenv("POCKET_STAGE", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgres://u:p@localhost/db")
+
+    db = get_databases()["default"]
+    assert db["ENGINE"] == "django.db.backends.postgresql"
+    assert "CONN_MAX_AGE" not in db
+    assert "CONN_HEALTH_CHECKS" not in db
 
 
 def test_get_databases_warns_on_ignored_query_params(monkeypatch, capsys):
     # env.db() と違いクエリパラメータは解釈しない。黙って捨てると「URL に
     # 書いてあるのに効いていない」形で顕在化する (2026-08-27 受領 feedback
     # KN1270) ため、パラメータ名を挙げて警告する。
-    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "x.postgres")
+    monkeypatch.setattr(
+        django_utils, "_detect_engine", lambda *a, **k: ("x.postgres", False)
+    )
     monkeypatch.setenv(
         "DATABASE_URL", "postgres://u:p@h/db?ATOMIC_REQUESTS=True&CONN_MAX_AGE=60"
     )
@@ -335,7 +384,9 @@ def test_get_databases_warns_on_ignored_query_params(monkeypatch, capsys):
 
 
 def test_get_databases_silent_without_query_params(monkeypatch, capsys):
-    monkeypatch.setattr(django_utils, "_detect_engine", lambda *a, **k: "x.postgres")
+    monkeypatch.setattr(
+        django_utils, "_detect_engine", lambda *a, **k: ("x.postgres", False)
+    )
     monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
     get_databases(stage="dev")
     assert capsys.readouterr().err == ""

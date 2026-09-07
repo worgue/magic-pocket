@@ -183,14 +183,14 @@ def test_detect_engine_rds_uses_custom_backend(use_toml):
     use_toml("tests/data/toml/rds.toml")
     from pocket.django.utils import _detect_engine
 
-    assert _detect_engine("dev", "postgres") == "pocket.django.db_backends.rds"
+    assert _detect_engine("dev", "postgres") == ("pocket.django.db_backends.rds", True)
 
 
 def test_detect_engine_neon_unaffected(use_toml):
     use_toml("tests/data/toml/default.toml")
     from pocket.django.utils import _detect_engine
 
-    assert _detect_engine("dev", "postgres") == "django.db.backends.postgresql"
+    assert _detect_engine("dev", "postgres") == ("django.db.backends.postgresql", True)
 
 
 def test_rds_backend_loads_and_overrides_get_new_connection():

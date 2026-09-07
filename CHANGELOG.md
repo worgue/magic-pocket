@@ -4,6 +4,19 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- `get_databases()` の持続接続 (`CONN_MAX_AGE` + `CONN_HEALTH_CHECKS`) を
+  TiDB 限定から pocket 管理の全 DB (TiDB / Neon / RDS) に広げました (KN1351)。
+  接続確立コスト (TLS handshake 含む) は Lambda + TLS 必須 DB に共通のためです。
+  既定値は「無期限 (None)」から「300 秒」に変更しています (接続の生存期間を
+  有界にする保険。TiDB も同様)。`get_databases(conn_max_age=...)` で調整でき、
+  `None` = 無期限 / `0` = 従来の毎リクエスト接続。psycopg の pool
+  (`OPTIONS["pool"]`) を使う場合は `conn_max_age=0` を渡してください
+  (Django が併用を `ImproperlyConfigured` で弾きます)。ローカル開発
+  (stage 解決なし) の DB には適用しません
+
 ## [0.32.1](https://github.com/worgue/magic-pocket/releases/tag/0.32.1) - 2026-09-07
 
 ### Fixed
