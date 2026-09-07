@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.32.1](https://github.com/worgue/magic-pocket/releases/tag/0.32.1) - 2026-09-07
 
 ### Fixed
 - `use_vpc = false` の container が `[rds]` のある stage で CreateStack の
