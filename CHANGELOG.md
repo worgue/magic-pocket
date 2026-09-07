@@ -4,6 +4,23 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- **破壊的変更**: SQS の DLQ アラート宣言 (`sqs.dead_letter_alert`) を必須に
+  しました (KN1110)。`sqs = {}` を持つ既存の `pocket.toml` は設定ロード時に
+  エラーになります。通知するなら
+  `sqs = { dead_letter_alert = { email = "ops@example.com" } }`、意図的に
+  監視しないなら `sqs = { dead_letter_alert = { enabled = false } }` を
+  宣言してください。email 宣言時は handler ごとに SNS topic + email 購読 +
+  DLQ の CloudWatch アラーム (`ApproximateNumberOfMessagesVisible >= 1`、
+  復旧の OK 通知つき) を生成します。SNS の email 購読は宛先が確認メールを
+  踏むまで通知が届かないため、未確認のあいだは deploy の最後と
+  `pocket status` に警告を出します。背景: pocket は queue / DLQ を自動生成する
+  一方で「DLQ に溜まったこと」を知らせる手段が無く、example-tidb で DLQ に
+  1,072 通が 11 日間気づかれず滞留する実害がありました。deploy ロールには
+  `sns:*` / `cloudwatch:*` が追加で必要です (`docs/permissions/aws.md`)
+
 ## [0.33.0](https://github.com/worgue/magic-pocket/releases/tag/0.33.0) - 2026-09-07
 
 ### Changed

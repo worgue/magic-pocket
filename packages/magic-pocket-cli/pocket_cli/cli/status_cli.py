@@ -5,6 +5,7 @@ from pocket.resources.aws.secretsmanager import PocketSecretIsNotReady
 from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
 from pocket_cli.resources.container import Container
+from pocket_cli.resources.sqs_alert import echo_dead_letter_alert_statuses
 
 
 def show_status_message(resource):
@@ -56,3 +57,5 @@ def status(stage, show_info):
         show_status_message(resource)
         if show_info:
             show_info_message(resource)
+    # DLQ アラートの email 購読状態 (PendingConfirmation のままだと通知が届かない)
+    echo_dead_letter_alert_statuses(context)

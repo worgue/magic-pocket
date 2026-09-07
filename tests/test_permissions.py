@@ -11,6 +11,7 @@ from pocket.permissions import action_groups, compute_actions
 from pocket.settings import Settings
 
 # 長いハンドラ command を test 内で 90 列に収めるための定数化
+_SQS_WITH_ALERT = {"dead_letter_alert": {"email": "alerts@example.com"}}
 _SQS_HANDLER_CMD = (
     "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 )
@@ -221,12 +222,33 @@ def test_sqs_handler_adds_sqs():
         awscontainer={
             "dockerfile_path": "Dockerfile",
             "handlers": {
-                "worker": {"command": _SQS_HANDLER_CMD, "sqs": {}},
+                "worker": {"command": _SQS_HANDLER_CMD, "sqs": _SQS_WITH_ALERT},
             },
         },
     )
     actions = compute_actions(settings)
     assert "sqs:*" in actions
+    # dead_letter_alert が enabled なので通知系も要求される
+    assert "sns:*" in actions
+    assert "cloudwatch:*" in actions
+
+
+def test_sqs_alert_disabled_omits_notification_actions():
+    settings = _build_settings(
+        awscontainer={
+            "dockerfile_path": "Dockerfile",
+            "handlers": {
+                "worker": {
+                    "command": _SQS_HANDLER_CMD,
+                    "sqs": {"dead_letter_alert": {"enabled": False}},
+                },
+            },
+        },
+    )
+    actions = compute_actions(settings)
+    assert "sqs:*" in actions
+    assert "sns:*" not in actions
+    assert "cloudwatch:*" not in actions
 
 
 def test_ses_adds_ses_actions():
@@ -354,7 +376,7 @@ def test_full_config_contains_everything():
             "vpc": {"ref": "main", "zone_suffixes": ["a", "c"], "efs": {}},
             "handlers": {
                 "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
-                "worker": {"command": _SQS_HANDLER_CMD, "sqs": {}},
+                "worker": {"command": _SQS_HANDLER_CMD, "sqs": _SQS_WITH_ALERT},
             },
         },
         rds={},
@@ -386,6 +408,8 @@ def test_full_config_contains_everything():
         "ec2:*SecurityGroup*",
         "elasticfilesystem:*",
         "sqs:*",
+        "sns:*",
+        "cloudwatch:*",
         "ses:SendEmail",
         "codebuild:*",
     }
@@ -420,6 +444,7 @@ def test_action_groups_public_keys_stable():
         "rds",
         "efs",
         "sqs",
+        "sqs_alert",
         "ses",
         "codebuild",
         "dsql",
@@ -459,7 +484,7 @@ def test_action_groups_is_single_source_for_compute_actions():
             "vpc": {"ref": "main", "zone_suffixes": ["a", "c"], "efs": {}},
             "handlers": {
                 "wsgi": {"command": "pocket.django.lambda_handlers.wsgi_handler"},
-                "worker": {"command": _SQS_HANDLER_CMD, "sqs": {}},
+                "worker": {"command": _SQS_HANDLER_CMD, "sqs": _SQS_WITH_ALERT},
             },
         },
         rds={},

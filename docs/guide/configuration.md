@@ -1107,7 +1107,7 @@ SQSキューの設定です。マネジメントコマンドの非同期実行�
 [container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
-sqs = {}
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
@@ -1118,6 +1118,44 @@ sqs = {}
 | `dead_letter_max_receive_count` | int | `5` | DLQの最大受信回数 |
 | `dead_letter_message_retention_period` | int | `1209600` | DLQメッセージ保持期間（秒） |
 | `report_batch_item_failures` | bool | `true` | バッチアイテム失敗をレポート |
+| `dead_letter_alert` | table | **必須** | DLQ 到達の通知宣言（下記） |
+
+##### sqs.dead_letter_alert（必須）
+
+pocket は queue と DLQ を自動生成しますが、リトライ・失敗系を DLQ に一元化する
+設計は「その DLQ を見る手段」があって初めて成立します。**`dead_letter_alert` は
+宣言必須**で、未宣言の `pocket.toml` は設定ロード時にエラーになります
+（うっかり無監視の防止）。
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `enabled` | bool | `true` | `false` で「意図した無監視」を明示（通知リソースを作らない） |
+| `email` | str | - | 通知先メールアドレス（`enabled = true` のとき必須） |
+
+```toml
+# 通知する（SNS topic + email 購読 + CloudWatch アラームを生成）
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
+
+# 意図的に通知しない（リソースは queue / DLQ のみ）
+sqs = { dead_letter_alert = { enabled = false } }
+```
+
+`email` を宣言すると、handler ごとに SNS topic（`{queue名}-dead-letter-alert`）と
+email 購読、および DLQ の `ApproximateNumberOfMessagesVisible >= 1`（period 300 秒
+× 1 datapoint、欠測は正常扱い）で鳴る CloudWatch アラームが生成されます。DLQ が
+空に戻ったとき（redrive / purge 後）の OK 通知も届きます。
+
+!!! warning "SNS email 購読の確認が必要です"
+    SNS の email 購読は、**宛先が確認メールのリンクを踏むまで
+    `PendingConfirmation` のままで、アラームが鳴っても通知は届きません**。
+    初回 deploy 後に届く「AWS Notification - Subscription Confirmation」
+    メールを必ず確認してください。未確認のあいだは deploy の最後と
+    `pocket status` に警告が出ます。
+
+!!! info "CloudWatch アラームの課金"
+    CloudWatch アラームの無料枠はアカウントあたり 10 個です。sqs handler が
+    多いプロジェクトや多 stage 運用では超過分が課金対象（standard 解像度
+    1 個あたり月 $0.10）になりえます。
 
 ### container.secrets
 
@@ -2327,13 +2365,13 @@ manage = "send_daily_digest some_param --verbose --batch-size 100"
 
 ### `pocket.sqs_scheduler`
 
-Lambda を直接 invoke せず、**handler の SQS queue へ `SendMessage`** します（EventBridge Scheduler の universal target。`message` が JSON 化されて MessageBody になります）。定期実行を queue に載せることで、リトライは SQS の visibility timeout / redrive に一元化され、**失敗系の監視は queue の DLQ 1 箇所だけ**になります。worker handler は SQS event だけを受ければよく、「EventBridge 直接 invoke と SQS event の両受け」を実装する必要がありません。
+Lambda を直接 invoke せず、**handler の SQS queue へ `SendMessage`** します（EventBridge Scheduler の universal target。`message` が JSON 化されて MessageBody になります）。定期実行を queue に載せることで、リトライは SQS の visibility timeout / redrive に一元化され、**失敗系の監視は queue の DLQ 1 箇所だけ**になります。worker handler は SQS event だけを受ければよく、「EventBridge 直接 invoke と SQS event の両受け」を実装する必要がありません。その 1 箇所の監視は `sqs.dead_letter_alert`（宣言必須。上記）が担います。
 
 ```toml
 [container.main.handlers.sqsmanagement]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 60
-sqs = {}
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
 
 [scheduler.schedules.cleanup]
 scheduler = "pocket.sqs_scheduler"

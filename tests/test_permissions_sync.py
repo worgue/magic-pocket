@@ -136,6 +136,9 @@ RESOURCE_TYPE_ACTIONS: dict[str, list[str]] = {
     ],
     "AWS::Scheduler::Schedule": ["scheduler:*", "iam:PassRole"],
     "AWS::SQS::Queue": ["sqs:*"],
+    "AWS::SNS::Topic": ["sns:*"],
+    "AWS::SNS::Subscription": ["sns:*"],
+    "AWS::CloudWatch::Alarm": ["cloudwatch:*"],
     "AWS::WAFv2::IPSet": ["wafv2:*"],
     "AWS::WAFv2::WebACL": ["wafv2:*"],
 }

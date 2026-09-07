@@ -67,6 +67,14 @@ class ApiGatewayContext(BaseModel):
         )
 
 
+class SqsDeadLetterAlertContext(BaseModel):
+    # settings 側で dead_letter_alert は必須のため、context では
+    # 「enabled=false → None / enabled=true → email 込みで生成」に正規化する
+    email: str
+    topic_name: str
+    alarm_name: str
+
+
 class SqsContext(BaseModel):
     batch_size: int = 10
     message_retention_period: int = 345600
@@ -76,6 +84,7 @@ class SqsContext(BaseModel):
     report_batch_item_failures: bool = True
     name: str
     visibility_timeout: int
+    dead_letter_alert: SqsDeadLetterAlertContext | None = None
 
     @classmethod
     def from_settings(
@@ -87,6 +96,16 @@ class SqsContext(BaseModel):
         key: str,
         timeout: int,
     ) -> SqsContext:
+        name = f"{resource_prefix}{container}-{key}"
+        alert_ctx = None
+        alert = sqs.dead_letter_alert
+        # enabled 時の email は settings の validator が保証している
+        if alert and alert.enabled and alert.email:
+            alert_ctx = SqsDeadLetterAlertContext(
+                email=alert.email,
+                topic_name=f"{name}-dead-letter-alert",
+                alarm_name=f"{name}-dead-letter-alert",
+            )
         return cls(
             batch_size=sqs.batch_size,
             message_retention_period=sqs.message_retention_period,
@@ -94,8 +113,9 @@ class SqsContext(BaseModel):
             dead_letter_max_receive_count=sqs.dead_letter_max_receive_count,
             dead_letter_message_retention_period=sqs.dead_letter_message_retention_period,
             report_batch_item_failures=sqs.report_batch_item_failures,
-            name=f"{resource_prefix}{container}-{key}",
+            name=name,
             visibility_timeout=timeout * 6,
+            dead_letter_alert=alert_ctx,
         )
 
 

@@ -467,6 +467,30 @@ class Scheduler(BaseModel):
         return data
 
 
+class Alert(BaseModel):
+    """通知宣言の共通形。
+
+    現状の利用箇所は ``Sqs.dead_letter_alert`` のみだが、将来 Lambda Errors 等へ
+    広げるときも「監視したいリソースに同型の ``<信号>_alert`` フィールドを生やす」
+    方針でこのモデルを使い回す。``enabled = false`` は「意図した無監視」の明示
+    (書き忘れと型レベルで区別するための表現)。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    email: str | None = None
+
+    @model_validator(mode="after")
+    def check_email_required_when_enabled(self):
+        if self.enabled and self.email is None:
+            raise ValueError(
+                "alert requires email when enabled. "
+                'Set email = "..." or disable explicitly with enabled = false.'
+            )
+        return self
+
+
 class Sqs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -480,6 +504,22 @@ class Sqs(BaseModel):
     dead_letter_max_receive_count: int = 5
     dead_letter_message_retention_period: int = 1209600
     report_batch_item_failures: bool = True
+    # DLQ 到達の通知宣言 (必須)。pocket は queue も DLQ も自動生成するため、
+    # 未宣言のまま黙って無監視になるのを fail-loud で防ぐ (KN1110)
+    dead_letter_alert: Alert | None = None
+
+    @model_validator(mode="after")
+    def check_dead_letter_alert_declared(self):
+        if self.dead_letter_alert is None:
+            raise ValueError(
+                "sqs.dead_letter_alert is required so that messages falling into "
+                "the dead-letter queue never go unnoticed. Either declare a "
+                "notification target:\n"
+                '  sqs = { dead_letter_alert = { email = "ops@example.com" } }\n'
+                "or explicitly opt out of monitoring:\n"
+                "  sqs = { dead_letter_alert = { enabled = false } }"
+            )
+        return self
 
 
 class Neon(BaseSettings):

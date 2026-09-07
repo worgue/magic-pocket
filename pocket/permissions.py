@@ -97,6 +97,11 @@ _EFS_ACTIONS: list[str] = ["elasticfilesystem:*"]
 # いずれかのハンドラに sqs 設定がある時
 _SQS_ACTIONS: list[str] = ["sqs:*"]
 
+# いずれかのハンドラの sqs.dead_letter_alert が enabled の時 (CFn が
+# AWS::SNS::Topic / Subscription / AWS::CloudWatch::Alarm を作成し、deploy 後の
+# 購読状態チェックが sns API を照会する)
+_SQS_ALERT_ACTIONS: list[str] = ["sns:*", "cloudwatch:*"]
+
 # [ses] が設定されている時
 _SES_ACTIONS: list[str] = ["ses:SendEmail", "ses:SendRawEmail"]
 
@@ -173,6 +178,16 @@ def _has_sqs_handler(settings: Settings) -> bool:
     )
 
 
+def _has_sqs_alert(settings: Settings) -> bool:
+    return any(
+        h.sqs is not None
+        and h.sqs.dead_letter_alert is not None
+        and h.sqs.dead_letter_alert.enabled
+        for c in settings.container.values()
+        for h in c.handlers.values()
+    )
+
+
 def _has_vpc(settings: Settings) -> bool:
     return any(c.vpc for c in settings.container.values())
 
@@ -231,6 +246,7 @@ def action_groups() -> dict[str, list[str]]:
         "rds": list(_RDS_ACTIONS),
         "efs": list(_EFS_ACTIONS),
         "sqs": list(_SQS_ACTIONS),
+        "sqs_alert": list(_SQS_ALERT_ACTIONS),
         "ses": list(_SES_ACTIONS),
         "codebuild": list(_CODEBUILD_ACTIONS),
         "dsql": list(_DSQL_ACTIONS),
@@ -258,6 +274,7 @@ def compute_actions(settings: Settings) -> list[str]:
         ("rds", settings.rds is not None),
         ("efs", _has_efs(settings)),
         ("sqs", _has_sqs_handler(settings)),
+        ("sqs_alert", _has_sqs_alert(settings)),
         ("ses", settings.ses is not None),
         ("codebuild", _uses_codebuild(settings)),
         ("dsql", settings.dsql is not None),

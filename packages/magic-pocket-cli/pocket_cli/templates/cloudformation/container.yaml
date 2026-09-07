@@ -400,6 +400,48 @@ Resources:
       # max 14 days
       MessageRetentionPeriod: "{{ handler.sqs.dead_letter_message_retention_period }}"
 
+  # {% if handler.sqs.dead_letter_alert %}
+  # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
+  # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
+  # (deploy 後の購読状態チェックと pocket status で可視化する)
+  "{{ handler.key|capitalize }}DeadLetterAlertTopic":
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "{{ handler.sqs.dead_letter_alert.topic_name }}"
+
+  "{{ handler.key|capitalize }}DeadLetterAlertSubscription":
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: "{{ handler.key|capitalize }}DeadLetterAlertTopic"
+      Protocol: email
+      Endpoint: "{{ handler.sqs.dead_letter_alert.email }}"
+
+  "{{ handler.key|capitalize }}DeadLetterAlarm":
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "{{ handler.sqs.dead_letter_alert.alarm_name }}"
+      AlarmDescription: "Messages arrived in the dead-letter queue of {{ handler.sqs.name }}"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: "{{ handler.key|capitalize }}DeadLetterQueue.QueueName"
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Ref: "{{ handler.key|capitalize }}DeadLetterAlertTopic"
+      # 復旧 (redrive / purge で DLQ が空に戻った) も通知する
+      OKActions:
+        - Ref: "{{ handler.key|capitalize }}DeadLetterAlertTopic"
+  # {% endif %}
+
   "{{ handler.key|capitalize }}SqsEventSourceMapping":
     DependsOn:
       - "{{ handler.key|capitalize }}SqsQueue"

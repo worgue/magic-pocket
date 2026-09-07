@@ -68,6 +68,13 @@
 |------|------|
 | `sqs:*` | キューの作成・メッセージ操作 |
 
+### SQS DLQ アラート（`sqs.dead_letter_alert` が enabled のハンドラーがある時）
+
+| 権限 | 用途 |
+|------|------|
+| `sns:*` | 通知 topic / email 購読の作成と、deploy 後の購読状態照会 |
+| `cloudwatch:*` | DLQ 監視の CloudWatch アラーム作成 |
+
 ### SES（`[ses]` 使用時）
 
 | 権限 | 用途 |
@@ -200,6 +207,8 @@ dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言
         "rds:*",
         "elasticfilesystem:*",
         "sqs:*",
+        "sns:*",
+        "cloudwatch:*",
         "ses:*",
         "codebuild:*",
         "dsql:*",

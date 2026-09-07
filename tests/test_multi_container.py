@@ -51,7 +51,10 @@ def _two_container_data() -> dict:
             "dockerfile_path": "v2/Dockerfile",
             "handlers": {
                 "wsgi": {"command": "admin-v2", "apigateway": {}},
-                "worker": {"command": "admin-v2", "sqs": {}},
+                "worker": {
+                    "command": "admin-v2",
+                    "sqs": {"dead_letter_alert": {"enabled": False}},
+                },
             },
         },
     }

@@ -16,14 +16,16 @@ command = "pocket-example-dsql-lambda"
 [sandbox.container.main.handlers.wsgi]
 apigateway = {}
 
-# SQS 駆動の非同期 worker。sqs = {} だけで queue + DLQ + EventSourceMapping が
+# SQS 駆動の非同期 worker。sqs を宣言すると queue + DLQ + EventSourceMapping が
 # 生成され、runtime には POCKET_WORKER_QUEUEURL が注入される。
 # handler 側は magic_pocket_rs::sqs::process_sqs_records で partial batch
 # response を返すので、1 record の失敗が同バッチの成功分を巻き戻さない。
+# dead_letter_alert は必須宣言 (0.34.0+)。DLQ 到達で SNS email 通知 + 復旧通知。
+# email は placeholder (deploy 時に domain と同様、実値へ書き戻す。commit しない)
 [container.main.handlers.worker]
 command = "pocket-example-dsql-worker"
 timeout = 30
-sqs = {}
+sqs = { dead_letter_alert = { email = "alerts@example.com" } }
 
 # Aurora DSQL。[dsql] を置くだけで deploy 時にクラスターが provision される
 # (VPC 不要)。Lambda へは POCKET_DSQL_ENDPOINT / POCKET_DSQL_REGION が注入され、

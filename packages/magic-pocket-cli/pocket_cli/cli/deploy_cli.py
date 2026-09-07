@@ -23,6 +23,7 @@ from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
+from pocket_cli.resources.sqs_alert import echo_dead_letter_alert_warnings
 from pocket_cli.resources.tidb import TiDb
 from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
@@ -225,6 +226,9 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
         deploy_frontend(context)
     # build 時の other-read 警告はログに埋もれて気付けないため最後に再掲する
     resummarize_world_read_warnings()
+    # DLQ アラートの email 購読が未確認のままだと通知が届かないため、
+    # deploy の最後に購読状態を確認して警告する
+    echo_dead_letter_alert_warnings(context)
     # デプロイ完了後の URL 表示
     url = _get_deploy_url(context)
     if url:

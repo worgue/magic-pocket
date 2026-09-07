@@ -20,7 +20,7 @@ timeout = 60
 [container.main.handlers.sqsworker]
 command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
 timeout = 60
-sqs = {}
+sqs = { dead_letter_alert = { email = "alerts@example.com" } }
 
 [scheduler.schedules.cleanup]
 scheduler = "pocket.sqs_scheduler"
