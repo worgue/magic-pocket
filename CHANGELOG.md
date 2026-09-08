@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.34.1](https://github.com/worgue/magic-pocket/releases/tag/0.34.1) - 2026-09-08
 
 ### Fixed
 - DLQ アラートの email 購読が unsubscribe 済み (`SubscriptionArn=Deleted`) の
