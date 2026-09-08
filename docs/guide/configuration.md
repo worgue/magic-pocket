@@ -1152,6 +1152,22 @@ email 購読、および DLQ の `ApproximateNumberOfMessagesVisible >= 1`（per
     メールを必ず確認してください。未確認のあいだは deploy の最後と
     `pocket status` に警告が出ます。
 
+!!! warning "メールスキャナによる自動 unsubscribe"
+    組織のメール経路にリンクスキャナ（サンドボックス検査等）があると、
+    確認リンクを自動クリックして購読を確定した直後に、確認完了ページ内の
+    unsubscribe リンクまで辿って**購読を勝手に解除**することがあります
+    （解除された購読は `pocket status` に `Deleted` と表示されます）。
+    この場合はリンクを踏む代わりに、確認メール内のリンク URL から `Token`
+    パラメータを取り出して CLI で確認してください:
+
+    ```bash
+    aws sns confirm-subscription --topic-arn <topic-arn> \
+      --token <token> --authenticate-on-unsubscribe true
+    ```
+
+    `--authenticate-on-unsubscribe true` で確認した購読は、解除に AWS 認証が
+    必要になり、スキャナの無認証クリックでは解除されなくなります。
+
 !!! info "CloudWatch アラームの課金"
     CloudWatch アラームの無料枠はアカウントあたり 10 個です。sqs handler が
     多いプロジェクトや多 stage 運用では超過分が課金対象（standard 解像度

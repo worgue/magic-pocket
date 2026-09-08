@@ -15,7 +15,7 @@ import boto3
 from pocket.context import Context
 from pocket.utils import echo
 
-SubscriptionState = Literal["Confirmed", "PendingConfirmation", "NotCreated"]
+SubscriptionState = Literal["Confirmed", "PendingConfirmation", "Deleted", "NotCreated"]
 
 
 class DeadLetterAlertStatus(NamedTuple):
@@ -28,7 +28,11 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
     """dead_letter_alert が enabled な handler ごとの email 購読状態を返す。
 
     topic 未作成 (deploy 前 / 削除済み) は ``NotCreated``。購読が確認済みなら
-    ``Confirmed``、確認メール未対応なら ``PendingConfirmation``。
+    ``Confirmed``、確認メール未対応なら ``PendingConfirmation``、unsubscribe 済みなら
+    ``Deleted``。SNS の ``SubscriptionArn`` は実 ARN のほかに特殊値
+    (``PendingConfirmation`` / ``Deleted``) を取るため、実 ARN (``arn:`` 始まり) の
+    ときだけ ``Confirmed`` と判定する。同一 email の購読が複数並ぶ場合
+    (unsubscribe 後の再購読など) は良い方の状態を採る。
     """
     targets = [
         (c.region, h.sqs.dead_letter_alert.topic_name, h.sqs.dead_letter_alert.email)
@@ -52,11 +56,14 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
         for sub in res["Subscriptions"]:
             if sub["Protocol"] != "email" or sub["Endpoint"] != email:
                 continue
-            if sub["SubscriptionArn"] == "PendingConfirmation":
-                state = "PendingConfirmation"
-            else:
+            arn = sub["SubscriptionArn"]
+            if arn.startswith("arn:"):
                 state = "Confirmed"
-            break
+                break
+            if arn == "PendingConfirmation":
+                state = "PendingConfirmation"
+            elif state == "NotCreated":
+                state = "Deleted"
         statuses.append(DeadLetterAlertStatus(topic_name, email, state))
     return statuses
 
@@ -76,6 +83,13 @@ def echo_dead_letter_alert_warnings(context: Context) -> None:
                 f"DLQ alert subscription for {status.email} ({status.topic_name}) "
                 "is still PendingConfirmation. Alarm notifications will NOT be "
                 "delivered until the confirmation link in the email is clicked."
+            )
+        elif status.state == "Deleted":
+            echo.warning(
+                f"DLQ alert subscription for {status.email} ({status.topic_name}) "
+                "has been unsubscribed (SubscriptionArn=Deleted). Alarm "
+                "notifications will NOT be delivered. Re-subscribe the email and "
+                "confirm it again."
             )
         else:
             echo.warning(

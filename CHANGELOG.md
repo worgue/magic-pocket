@@ -4,6 +4,18 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- DLQ アラートの email 購読が unsubscribe 済み (`SubscriptionArn=Deleted`) の
+  とき、deploy 後の警告と `pocket status` が `Confirmed` と誤表示していたのを
+  修正しました (状態 `Deleted` として警告します)。実 ARN のときだけ確認済みと
+  判定し、再購読で `Deleted` の残骸と `PendingConfirmation` が並ぶ場合は
+  後者を採ります。あわせて、メールスキャナが確認リンクと unsubscribe リンクを
+  自動クリックして購読が勝手に解除されるケースの対処
+  (`aws sns confirm-subscription --authenticate-on-unsubscribe true`) を
+  docs に記載しました
+
 ## [0.34.0](https://github.com/worgue/magic-pocket/releases/tag/0.34.0) - 2026-09-07
 
 ### Changed

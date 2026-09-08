@@ -234,3 +234,66 @@ def test_pending_confirmation_warns(use_toml, tmp_path):
         echo_dead_letter_alert_warnings(context)
     assert warning.called
     assert "PendingConfirmation" in warning.call_args[0][0]
+
+
+@mock_aws
+def test_deleted_subscription_is_not_reported_confirmed(use_toml, tmp_path):
+    """unsubscribe 済み (SubscriptionArn=Deleted) を Confirmed と誤表示しない"""
+    context = _context(
+        use_toml,
+        tmp_path,
+        'sqs = { dead_letter_alert = { email = "ops@example.com" } }',
+    )
+    deleted = {
+        "Subscriptions": [
+            {
+                "SubscriptionArn": "Deleted",
+                "Protocol": "email",
+                "Endpoint": "ops@example.com",
+            }
+        ]
+    }
+    with (
+        mock.patch("pocket_cli.resources.sqs_alert.boto3.client") as client_factory,
+        mock.patch("pocket.utils.echo.warning") as warning,
+    ):
+        client_factory.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        client_factory.return_value.list_subscriptions_by_topic.return_value = deleted
+        statuses = dead_letter_alert_statuses(context)
+        echo_dead_letter_alert_warnings(context)
+    assert [s.state for s in statuses] == ["Deleted"]
+    assert warning.called
+    assert "unsubscribed" in warning.call_args[0][0]
+
+
+@mock_aws
+def test_resubscribed_pending_wins_over_deleted(use_toml, tmp_path):
+    """unsubscribe 後の再購読では Deleted の残骸より PendingConfirmation を採る"""
+    context = _context(
+        use_toml,
+        tmp_path,
+        'sqs = { dead_letter_alert = { email = "ops@example.com" } }',
+    )
+    mixed = {
+        "Subscriptions": [
+            {
+                "SubscriptionArn": "Deleted",
+                "Protocol": "email",
+                "Endpoint": "ops@example.com",
+            },
+            {
+                "SubscriptionArn": "PendingConfirmation",
+                "Protocol": "email",
+                "Endpoint": "ops@example.com",
+            },
+        ]
+    }
+    with mock.patch("pocket_cli.resources.sqs_alert.boto3.client") as client_factory:
+        client_factory.return_value.get_caller_identity.return_value = {
+            "Account": "123456789012"
+        }
+        client_factory.return_value.list_subscriptions_by_topic.return_value = mixed
+        statuses = dead_letter_alert_statuses(context)
+    assert [s.state for s in statuses] == ["PendingConfirmation"]
