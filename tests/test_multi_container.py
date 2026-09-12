@@ -14,6 +14,7 @@ from __future__ import annotations
 from unittest import mock
 
 import pytest
+import yaml
 from pocket_cli.resources.aws.cloudformation import ContainerStack
 
 from pocket import settings
@@ -293,6 +294,33 @@ def test_api_origins_use_container_qualified_export_names():
         context.container["v2"].handlers["wsgi"].export_api_domain
         == "dev-testprj-v2-wsgi-api-domain"
     )
+
+
+@pytest.mark.parametrize("remove_cloudfront", [False, True])
+def test_api_export_survives_last_route_removal(remove_cloudfront):
+    """最後の参照削除でも container の Export を維持し、CFn の更新を妨げない。"""
+    data = _two_container_data()
+    before = Context.from_settings(settings.Settings.model_validate(data))
+    if remove_cloudfront:
+        del data["cloudfront"]
+    else:
+        del data["cloudfront"]["web"]["routes"][0]
+    after = Context.from_settings(settings.Settings.model_validate(data))
+
+    before_outputs = yaml.safe_load(ContainerStack(before.container["v2"]).yaml)[
+        "Outputs"
+    ]
+    after_outputs = yaml.safe_load(ContainerStack(after.container["v2"]).yaml)[
+        "Outputs"
+    ]
+    assert after_outputs["WsgiApiDomain"] == before_outputs["WsgiApiDomain"]
+    assert after_outputs["WsgiApiDomain"]["Export"]["Name"] == (
+        "dev-testprj-v2-wsgi-api-domain"
+    )
+    assert "WorkerApiDomain" not in after_outputs
+    assert after.container["v2"].handlers["worker"].export_api_domain is None
+    for cf in after.cloudfront.values():
+        assert "v2.wsgi" not in cf.api_origins
 
 
 def test_unshared_secret_lives_in_container_store():

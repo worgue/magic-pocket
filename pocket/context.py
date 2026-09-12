@@ -1603,8 +1603,18 @@ class Context(BaseModel):
         """API route の handler 参照 → CFn Export名 のマッピングを構築する。
 
         route.handler は "<container>.<handler>" のドット記法。Export 名は
-        {slug}-{container}-{handler}-api-domain。
+        {slug}-{container}-{handler}-api-domain。API がある間は route 参照に
+        関係なく Export を維持し、最後の route 削除時の更新順序競合を防ぐ。
         """
+        for c_name, container_ctx in containers.items():
+            for h_key, handler_ctx in container_ctx.handlers.items():
+                if handler_ctx.apigateway and not handler_ctx.export_api_domain:
+                    container_ctx.handlers[h_key] = handler_ctx.model_copy(
+                        update={
+                            "export_api_domain": f"{slug}-{c_name}-{h_key}-api-domain"
+                        }
+                    )
+
         for cf_name, cf_ctx in cloudfront_ctx.items():
             api_origins: dict[str, str] = {}
             for route in cf_ctx.routes:
@@ -1613,13 +1623,6 @@ class Context(BaseModel):
                 c_name, h_key = settings.parse_handler_ref(route.handler)
                 export_name = f"{slug}-{c_name}-{h_key}-api-domain"
                 api_origins[route.handler] = export_name
-                container_ctx = containers.get(c_name)
-                if container_ctx and h_key in container_ctx.handlers:
-                    handler_ctx = container_ctx.handlers[h_key]
-                    if not handler_ctx.export_api_domain:
-                        container_ctx.handlers[h_key] = handler_ctx.model_copy(
-                            update={"export_api_domain": export_name}
-                        )
             if api_origins:
                 cloudfront_ctx[cf_name] = cf_ctx.model_copy(
                     update={"api_origins": api_origins}

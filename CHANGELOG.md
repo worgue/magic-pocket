@@ -4,6 +4,14 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- API Gateway handler への最後の CloudFront route を削除した際に、参照中の
+  Export を先に削除しようとして deploy が rollback する問題を修正しました
+  (KN1444)。API が存在する間は route の有無に関係なく Export を維持します。
+  handler / API 自体の撤去は、先に route を削除して deploy してから行ってください。
+
 ## [0.34.1](https://github.com/worgue/magic-pocket/releases/tag/0.34.1) - 2026-09-08
 
 ### Fixed
