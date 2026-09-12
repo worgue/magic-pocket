@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Added
+- Django に依存しない `pocket build --stage=<stage>` を追加しました。
+  `pocket django build` は同じ処理の別名として維持します (KN1448)。
+
 ### Fixed
 - VPC 削除前にスタック外の ENI / SG を検知し、CloudFormation の失敗理由を
   リソース単位で表示するようにしました。VPC / RDS の削除待機を30分に延長し、

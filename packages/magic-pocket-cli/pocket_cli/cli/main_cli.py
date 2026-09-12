@@ -16,6 +16,7 @@ except ModuleNotFoundError as e:
 
 from pocket_cli.cli import (
     backup_cli,
+    build_cli,
     cloudfront_cli,
     cloudfront_keys_cli,
     cloudfront_waf_cli,
@@ -121,6 +122,7 @@ def settings(stage):
     print(json.dumps(mask_secret_values(s.model_dump(mode="json")), indent=2))
 
 
+main.add_command(build_cli.build)
 main.add_command(deploy_cli.deploy)
 main.add_command(deploy_cli.promote)
 main.add_command(destroy_cli.destroy)

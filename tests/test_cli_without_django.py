@@ -26,6 +26,8 @@ sys.meta_path.insert(0, _BlockDjango())
 
 from click.testing import CliRunner
 from pocket_cli.cli.main_cli import main
+from pocket_cli.cli import build_cli
+from unittest.mock import patch
 
 runner = CliRunner()
 
@@ -40,6 +42,15 @@ r = runner.invoke(main, ["django", "build", "--stage=dev"])
 assert r.exit_code != 0, "pocket django should fail without django"
 assert "magic-pocket[django]" in r.output, "install guide missing: %s" % r.output
 assert "Traceback" not in r.output
+
+with patch.object(build_cli, "check_aws_credentials"), \
+     patch.object(build_cli, "is_working_tree_dirty", return_value=False), \
+     patch.object(build_cli, "get_commit_hash", return_value="abc123"), \
+     patch.object(build_cli.Context, "from_toml", return_value="context"), \
+     patch.object(build_cli, "build_image", return_value=["repo:abc123"]) as build:
+    r = runner.invoke(main, ["build", "--stage=dev"])
+    assert r.exit_code == 0, r.output
+    build.assert_called_once_with("context", tag="abc123")
 
 print("OK")
 """

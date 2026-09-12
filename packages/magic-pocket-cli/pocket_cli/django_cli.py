@@ -15,6 +15,7 @@ from pocket.django import django_installed
 from pocket.django.utils import get_storages, resolve_django_container
 from pocket.utils import echo
 from pocket_cli.cli import interaction
+from pocket_cli.cli.build_cli import build
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.resources.container import Container
 
@@ -176,44 +177,8 @@ def promote(stage: str, commit_hash, openpath, yes, skip_migrate):
     _django_post_deploy(stage, yes=yes, openpath=openpath, skip_migrate=skip_migrate)
 
 
-@django.command()
-@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
-@click.option(
-    "--allow-dirty",
-    is_flag=True,
-    default=False,
-    help="working tree が dirty でも build する (ローカル検証用)",
-)
-def build(stage: str, allow_dirty: bool):
-    """現在の作業ツリーを build し、git commit hash をタグにして ECR へ push する。
-
-    deploy はしない (build once)。`pocket django promote --commit-hash <sha>` で
-    このイメージへ昇格する。タグは COMMIT_HASH 環境変数があればそれを、なければ
-    `git rev-parse HEAD` を使う。
-
-    commit hash = image 内容 の同一性が前提のため、working tree が dirty の場合は
-    エラーになる (--allow-dirty で回避可能)。
-    """
-    from pocket.context import get_commit_hash, is_working_tree_dirty
-    from pocket_cli.cli.aws_auth import check_aws_credentials
-    from pocket_cli.cli.deploy_cli import build_image
-
-    check_aws_credentials()
-    if not allow_dirty and is_working_tree_dirty():
-        raise click.ClickException(
-            "working tree に未コミットの変更があります。build once では"
-            " commit hash と image 内容の一致が前提のため、commit してから"
-            " build してください (--allow-dirty で回避できますが、その image の"
-            " 昇格は推奨しません)。"
-        )
-    try:
-        tag = get_commit_hash()
-    except RuntimeError as e:
-        raise click.ClickException(str(e)) from e
-    context = Context.from_toml(stage=stage)
-    targets = build_image(context, tag=tag)
-    for target in targets:
-        echo.success("built and pushed: %s" % target)
+# 旧コマンドは同じ Click command の別名として維持する。
+django.add_command(build)
 
 
 def _staticfiles_publish_mode(context: Context) -> str:

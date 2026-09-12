@@ -266,7 +266,7 @@ def deploy(stage: str, openpath, skip_frontend, yes):
 def promote(stage: str, commit_hash, openpath, skip_frontend, yes):
     """build 済みの :<commit-hash> image へ stage を向けて deploy する (再ビルドなし)。
 
-    `pocket django build` で push した image に :<stage> タグを移し、
+    `pocket build` で push した image に :<stage> タグを移し、
     インフラ/Lambda を更新する。image build は行わない (build once の昇格)。
     """
     from pocket_cli.cli.aws_auth import check_aws_credentials

@@ -77,6 +77,30 @@ pocket deploy --stage=dev
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
+### pocket build
+
+現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして
+ECR へ push します。デプロイは行いません。
+
+```bash
+pocket build --stage=dev
+```
+
+- タグは `COMMIT_HASH` 環境変数があればそれを、なければ `git rev-parse HEAD` を使います
+  （CI では `COMMIT_HASH=${{ github.sha }}` のように渡せます）
+- commit hash とイメージ内容の一致が前提のため、作業ツリーに未コミットの変更がある
+  場合はエラーになります（`--allow-dirty` で回避できますが、そのイメージの昇格は
+  推奨しません）
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
+
+Django の導入は不要です。Rust / axum でも同じコマンドを使います。
+ビルド後は `pocket promote --stage=<stage> --commit-hash=<sha>` で反映します。
+Django の static / migration 処理も必要な場合は `pocket django promote` を使います。
+
 ### pocket promote
 
 ビルド済みのコンテナイメージへステージを向けてデプロイします（再ビルドなし）。
@@ -85,7 +109,7 @@ pocket deploy --stage=dev
 pocket promote --stage=stg --commit-hash=<full-sha>
 ```
 
-[`pocket django build`](#pocket-django-build) で push した `:<commit hash>` イメージに
+[`pocket build`](#pocket-build) で push した `:<commit hash>` イメージに
 `:<stage>` タグを付け替え、インフラ / Lambda を更新します。イメージのビルドは行いません。
 指定した commit hash のイメージが ECR に存在しない場合はエラーになります（勝手にビルドしません）。
 
@@ -259,23 +283,7 @@ pocket django deploy --stage=dev
 
 ### pocket django build
 
-現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして
-ECR へ push します。デプロイは行いません。
-
-```bash
-pocket django build --stage=dev
-```
-
-- タグは `COMMIT_HASH` 環境変数があればそれを、なければ `git rev-parse HEAD` を使います
-  （CI では `COMMIT_HASH=${{ github.sha }}` のように渡せます）
-- commit hash とイメージ内容の一致が前提のため、作業ツリーに未コミットの変更がある
-  場合はエラーになります（`--allow-dirty` で回避できますが、そのイメージの昇格は
-  推奨しません）
-
-| オプション | 説明 |
-|-----------|------|
-| `--stage` | 対象ステージ |
-| `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
+[`pocket build`](#pocket-build) の互換用の別名です。処理とオプションは同じです。
 
 ### pocket django promote
 
