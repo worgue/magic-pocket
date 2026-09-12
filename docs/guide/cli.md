@@ -768,6 +768,19 @@ pocket resource vpc destroy
 `[<stage>.vpc]` を共通設定にマージします。省略時は従来どおり共通の `[vpc]` を使用します。
 container が VPC を使わなくなった後でも、VPC 宣言があれば操作できます。
 
+削除前に VPC 内のスタック外 ENI（ID・種別・状態・説明）と SG を表示し、残っていれば
+削除を中断します。スタック自身の NAT Gateway / EFS の ENI と SG は除外します。
+consumer タグだけでは分からない、VPC 離脱後の Lambda ENI・孤立 SG も対象です。
+`available` や名前だけを根拠に削除せず、所有元と他の利用者を確認してください。
+[Lambda の ENI 解放条件](https://docs.aws.amazon.com/ja_jp/lambda/latest/dg/configuration-vpc.html)
+には、他の関数・公開済みバージョンによる共有や実行ロールの権限も関係します。
+
+VPC と RDS の削除待機は各段階で最大30分です。タイムアウトしても AWS 側の処理を
+取り消しません。同じ destroy コマンドを再実行すると、削除中なら待機を再開します。
+CloudFormation の `DELETE_FAILED` では失敗リソースと理由を表示します。依存を解消して
+再実行すると残りのリソースの削除を再試行します。検査対象外の依存（VPC Peering 等）や
+検査後に発生した依存は CloudFormation の失敗理由で確認してください。
+
 !!! note "VPCコマンド"
     VPC は `pocket.toml` の `[vpc]` セクションから自動的に読み込まれます。
     外部 VPC（`manage = false`）の場合、`create` / `update` / `destroy` は実行できません。

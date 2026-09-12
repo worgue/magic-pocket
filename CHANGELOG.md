@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Fixed
+- VPC 削除前にスタック外の ENI / SG を検知し、CloudFormation の失敗理由を
+  リソース単位で表示するようにしました。VPC / RDS の削除待機を30分に延長し、
+  削除中に再実行した場合は待機を再開します (KN1447)。
 - VPC の resource コマンドに `--stage` を追加し、stage 別の VPC 宣言を撤去時にも
   選択できるようにしました。宣言を消す前に削除する手順も明記しました (KN1443)。
 - API Gateway handler への最後の CloudFront route を削除した際に、参照中の

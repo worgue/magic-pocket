@@ -657,11 +657,12 @@ class Rds:
         # 1. インスタンス削除
         if self.instance:
             echo.log("Deleting Aurora instance: %s" % self.context.instance_identifier)
-            self._rds_client.delete_db_instance(
-                DBInstanceIdentifier=self.context.instance_identifier,
-                SkipFinalSnapshot=True,
-            )
-            self._wait_instance_deleted(timeout=600)
+            if self.instance.get("DBInstanceStatus") != "deleting":
+                self._rds_client.delete_db_instance(
+                    DBInstanceIdentifier=self.context.instance_identifier,
+                    SkipFinalSnapshot=True,
+                )
+            self._wait_instance_deleted(timeout=1800)
             echo.success("Aurora instance deleted.")
 
         # 2. クラスター削除（FinalSnapshot 付き）
@@ -671,13 +672,15 @@ class Rds:
                 int(time.time()),
             )
             echo.log("Deleting Aurora cluster: %s" % self.context.cluster_identifier)
-            self._rds_client.delete_db_cluster(
-                DBClusterIdentifier=self.context.cluster_identifier,
-                SkipFinalSnapshot=False,
-                FinalDBSnapshotIdentifier=snapshot_id,
-            )
-            self._wait_cluster_deleted(timeout=600)
-            echo.success("Aurora cluster deleted. Final snapshot: %s" % snapshot_id)
+            if self.cluster.get("Status") != "deleting":
+                self._rds_client.delete_db_cluster(
+                    DBClusterIdentifier=self.context.cluster_identifier,
+                    SkipFinalSnapshot=False,
+                    FinalDBSnapshotIdentifier=snapshot_id,
+                )
+                echo.info("Final snapshot: %s" % snapshot_id)
+            self._wait_cluster_deleted(timeout=1800)
+            echo.success("Aurora cluster deleted.")
 
         # 3. Security Group 削除
         if self.security_group_id:
@@ -770,7 +773,11 @@ class Rds:
             timeout=timeout,
             interval=interval,
             start_message="Waiting for instance deletion",
-            timeout_message="Instance not deleted within %s seconds" % timeout,
+            timeout_message=(
+                "Instance の削除待機が %s 秒でタイムアウトしました。"
+                "AWS 側の削除は継続中の可能性があります。"
+                "同じ destroy コマンドを再実行すると待機を再開します。" % timeout
+            ),
         )
 
     def _wait_cluster_deleted(self, timeout: int = 600, interval: int = 10):
@@ -790,7 +797,11 @@ class Rds:
             timeout=timeout,
             interval=interval,
             start_message="Waiting for cluster deletion",
-            timeout_message="Cluster not deleted within %s seconds" % timeout,
+            timeout_message=(
+                "Cluster の削除待機が %s 秒でタイムアウトしました。"
+                "AWS 側の削除は継続中の可能性があります。"
+                "同じ destroy コマンドを再実行すると待機を再開します。" % timeout
+            ),
         )
 
     def clear_cache(self):

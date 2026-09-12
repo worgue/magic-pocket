@@ -89,6 +89,36 @@ class Stack:
         if hasattr(self, "uploaded_template"):
             del self.uploaded_template
 
+    def resource_summaries(self) -> list[dict]:
+        """スタック内リソースをページ末尾まで取得する。"""
+        return [
+            resource
+            for page in self.client.get_paginator("list_stack_resources").paginate(
+                StackName=self.name
+            )
+            for resource in page["StackResourceSummaries"]
+        ]
+
+    def failure_summary(self) -> str:
+        """失敗理由だけを表示し、設定値を含むスタック全体の dump を避ける。"""
+        lines = [f"Stack '{self.name}': {self.status_detail}"]
+        if self.description and self.description.get("StackStatusReason"):
+            lines.append(self.description["StackStatusReason"])
+        try:
+            resources = self.resource_summaries()
+        except ClientError as error:
+            lines.append(f"リソース詳細を取得できません: {error}")
+        else:
+            for resource in resources:
+                if resource.get("ResourceStatus", "").endswith("FAILED"):
+                    lines.append(
+                        f"{resource['LogicalResourceId']} "
+                        f"({resource.get('PhysicalResourceId', '-')}, "
+                        f"{resource['ResourceStatus']}): "
+                        f"{resource.get('ResourceStatusReason', '理由なし')}"
+                    )
+        return "\n".join(lines)
+
     def wait_status(
         self,
         status: ResourceStatus,
@@ -113,19 +143,15 @@ class Stack:
                 and detail != initial_detail
             ):
                 print("")
-                print(self.description)
                 raise RuntimeError(
                     f"Stack operation was rolled back ({detail}). "
-                    "Please check the console."
+                    + self.failure_summary()
                 )
             if current == status:
                 print("")
                 return
             if current in error_statuses:
-                print(self.description)
-                raise RuntimeError(
-                    f"Stack status is {current}. Please check the console."
-                )
+                raise RuntimeError(self.failure_summary())
             # COMPLETED を待っているのにスタックが見つからない場合
             if status != "NOEXIST" and current == "NOEXIST":
                 noexist_count += 1
@@ -145,7 +171,13 @@ class Stack:
                 print(msg, end="", flush=True)
             print(".", end="", flush=True)
             time.sleep(interval)
-        raise RuntimeError("Timeout is %s seconds" % timeout)
+        message = f"Stack '{self.name}' の待機が {timeout} 秒でタイムアウトしました。"
+        if status == "NOEXIST":
+            message += (
+                "AWS 側の削除は継続している可能性があります。"
+                "状態を確認し、同じ destroy コマンドを再実行してください。"
+            )
+        raise RuntimeError(message)
 
     @property
     def output(self) -> dict[str, str] | None:
