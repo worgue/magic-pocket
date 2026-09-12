@@ -332,3 +332,25 @@ S3/SQS/CloudFormationは既存のcore/sqsグループを利用します。送信
 `ses:ListReceiptRuleSets`、`ses:CreateReceiptRuleSet`、`ses:SetActiveReceiptRuleSet`、
 `ses:VerifyDomainIdentity` を必要に応じて付与します。通常deployは共有セットを切り替えません。
 詳しくは[メール受信](../inbound.md)を参照してください。
+
+### このリポジトリのexample検証環境
+
+`forge.toml` の `llm.aws.developer_inline_policies` に指定した
+`infra/iam/inbound-example.json` は、このプロジェクトの開発用IAMユーザーに
+東京リージョンのSES操作を追加する設定です。受信ルールのdeploy、初期設定、
+検証メールの送信を別々のStatementで列挙しています。
+通常deploy用の `inbound` グループには初期設定・送信の権限を追加しません。
+
+このポリシーはリージョンと操作を制限しますが、SESリソース名では制限しません。
+active receipt rule setの切り替えはアカウントの同一リージョンに影響するため、
+初期設定前に既存のactive setを確認し、既存セットがあれば利用します。
+検証の受信ドメインはsandbox用サブドメインを使用します。
+
+設定のコミットだけではAWSの権限は変わりません。host側の管理者が対象プロジェクトで
+`forge llm aws provision` を実行して反映します。VM内の開発用IAMユーザーでは
+自分へのポリシー追加はできません。全プロジェクト共通のbaselineや
+Permissions Boundaryを変更する必要はありません。
+
+反映後は、東京リージョンを指定したSES APIの実行で確認します。
+IAMシミュレーターを補助的に使う場合も `aws:RequestedRegion` を指定してください。
+リージョン条件を省略した判定だけで、組織ポリシーによる拒否と断定しないでください。

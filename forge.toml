@@ -41,3 +41,7 @@ POCKET_PERMISSIONS_BOUNDARY_ARN = "FORGE_PERMISSIONS_BOUNDARY_ARN"
 
 [security]
 nesting = true
+
+[[llm.aws.developer_inline_policies]]
+name = "inbound-example"
+document_path = "infra/iam/inbound-example.json"
