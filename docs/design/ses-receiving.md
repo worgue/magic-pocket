@@ -57,8 +57,6 @@ SNS topicやsubscriptionは内部リソースとして生成し、利用者は�
 [mail_receiving.inbox]
 domain = "inbox.example.com"
 recipients = ["capture@inbox.example.com"]
-rule_set = "shared-inbound"         # 管理者が用意した既存の有効rule set
-after_rule = "shared-anchor"       # 管理者と合意した既存の挿入位置
 handler = "mail.worker"
 enabled = true
 tls_policy = "Require"
@@ -67,7 +65,7 @@ raw_prefix = "raw/"
 metadata_prefix = "metadata/"
 import_prefix = "imports/"
 retention_days = 365                # 原本とmetadataを同期間保持する例
-delivery_alert = { eventbridge = true }
+delivery_alert = { email = "ops@example.com" }
 
 [container.mail]
 dockerfile_path = "mail/Dockerfile"
@@ -75,14 +73,16 @@ dockerfile_path = "mail/Dockerfile"
 [container.mail.handlers.worker]
 command = "mail-worker"
 timeout = 120
-sqs = { dead_letter_alert = { eventbridge = true } }
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
 
 [dev.mail_receiving.inbox]
 domain = "inbox-dev.example.com"
 recipients = ["capture@inbox-dev.example.com"]
 ```
 
-`eventbridge = true` も未実装のAlert拡張案です。email / eventbridge / enabled=falseを
+通知の標準例は既存DLQと同じ `email` 指定とします。配送DLQと処理DLQは別alarmですが、
+同じemail宛先を指定できます。SNS email購読の初回確認が必要です。
+`eventbridge = true` は外部通知経路を利用する場合の、未実装のAlert拡張案です。email / eventbridge / enabled=falseを
 排他的に検証し、eventbridgeではalarmを作成してARNを出力します。監視の無設定を
 許可しない既存方針は維持します。上の保持日数は例で、全stageで明示指定を必須にします。
 stage名には意味を持たせず、受信先・保持期間・有効化はすべて通常のstage上書きで選びます。
@@ -102,6 +102,25 @@ stage名には意味を持たせず、受信先・保持期間・有効化はす
   対象とし、raw / metadata / imports / attachmentsのprefix重複も拒否します。
 - `scan_enabled=true` は判定情報を付ける設定です。隔離・解析可否はアプリが決めます。
   不合格メールも原本・通知情報を保存し、通常の解析処理と区別します。
+
+## handlerの参照形式
+
+`handler = "mail.worker"` は既存のCloudFront routes / schedulerと同じ
+`<container名>.<handler名>` の形式に揃えます。`pocket.settings.parse_handler_ref` が
+既存機能の共通パーサーです。新機能だけ `container = "mail"` と `handler = "worker"` の
+2項目に分けると、同じhandler参照に異なる記法が増えるため、この案では採用しません。
+
+- CloudFront: `handler = "main.wsgi"` は `container.main.handlers.wsgi` を参照。
+- scheduler: `handler = "main.worker"` は `container.main.handlers.worker` を参照。
+- メール受信: `handler = "mail.worker"` は `container.mail.handlers.worker` を参照。
+
+参照側は処理の接続先を選び、`container.<name>.handlers.<key>` 側はcommand・timeout・
+SQS等を定義します。メール専用containerは必須ではなく、既存containerのworkerを使うなら
+`handler = "main.worker"` と指定できます。専用containerの例はメール原本のアクセス権を
+他handlerから分離したい場合の選択であり、参照形式が2要素なのはそのためではありません。
+
+既存設定の例は[複数containerとroutes](../guide/configuration.md#container)および
+[設定ガイドのscheduler](../guide/configuration.md#scheduler)を参照してください。
 
 ## 受信メタデータと再処理契約
 
@@ -136,22 +155,47 @@ attachmentsの保存でも受信イベントは発生しないため、再帰処
 
 ## rule set共存とDNS
 
-SESで有効なrule setはaccount / regionごとに1つです。初版は管理者所有の既存rule setを
-名前で参照し、pocketは自projectのReceiptRuleのみを管理します。
-deploy / promote / destroyに `SetActiveReceiptRuleSet`、共有rule setの削除・順序一括変更を
-組み込みません。有効化は初回の管理者作業として分離します。
-[rule setの仕様](https://docs.aws.amazon.com/ses/latest/dg/receiving-email-concepts.html)
+通常のTOMLには **`rule_set` も `after_rule` も書きません**。次の解決をdeploy側で行います。
 
-deploy前に有効rule set名、挿入位置、既存宛先を確認し、指定と違う場合は中断します。
-既存のドメインcatch-all、重複宛先、先行するStop ruleなどがあれば、勝手に並べ替えず
-競合rule名を表示します。共有管理者の割当と排他的な変更時間帯を前提とし、直前・直後に
-再確認します。AWSにatomicな宛先予約はないので、同時deployの完全排他を検査だけで保証しません。
+1. 初回deployで `DescribeActiveReceiptRuleSet` を呼び、有効なセットを選択します。
+   自projectのruleのみを追加し、既存セットや既存ruleの所有権は取得しません。
+2. 作成時は既存ruleの末尾を取得して `After` へ渡します。空のセットなら `After` を省略。
+   複数の新規ruleは安定したslot順で順次追加します。既存anchorの準備は不要です。
+3. 解決したセット名と自所有rule名を受信stackのparameter/outputに記録します。
+   次のdeployで有効セットが変わっていても別セットへ自動移設せず、差異を示して中断します。
+   省略は初回の自動解決であり、毎回任意のセットへ追随する意味ではありません。
+4. 更新時は既存ruleの位置を維持します。`After` を毎回現在の末尾で再計算して
+   自ruleや他projectのruleを参照する並べ替え・循環を起こさないことを実装条件とします。
+   AWS上から自所有ruleが消えている場合も、勝手な再作成より先にdriftとして報告します。
 
-ReceiptRule名はstage / project / slotを含む安定名にします。挿入位置は `After` で指定し、
-初版では管理者が用意した既存anchorを必須とします。StopActionは他宛先への影響を避けて
-自動追加しません。AWSの挿入位置・置換条件は
-[CloudFormation ReceiptRule](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-ses-receiptrule.html)
-を正とします。
+有効なセットがまだない場合は、account / regionで一度だけ初期設定が必要です。
+名前を選ばせず、共有の固定名 `pocket-inbound` を作成・有効化するセットアップを用意する案です。
+通常deployはこのアカウント全体の操作を暗黙に行わず、未初期化時に実行方法を案内します。
+セットアップのコマンド名は未確定で、現時点では実行できません。
+
+セットアップは既存の有効セットがあれば変更せず再利用します。有効セットがなくても同名の
+未管理セットがあれば所有権を自動取得せず、内容・管理者の確認を求めます。
+作成・有効化の直前と直後に有効セットを再確認し、他のセットが有効になっていた場合は
+上書きしません。SESには条件付き有効化のAPIがないため、同時の初期設定は管理者側で
+直列化する必要があります。作成した共有セットはprojectのdestroyでは削除・無効化しません。
+
+管理者が設定を明示固定したい場合のみ、任意の `rule_set` を指定できる余地を残します。
+その場合も有効セットと一致することを検証します。`after_rule` は公開設定に設けず、
+既存の順序に例外的な調整が必要なら共有セットの管理者が対応します。
+
+末尾に置くだけで既存ルールとの共存を保証できるわけではありません。
+deploy前に宛先重複・ドメインcatch-all・Stop/Bounce等の先行アクションを検査し、
+処理競合や到達できない可能性があれば該当rule名を示して中断します。複数宛先を含む
+同一メールへの影響もあるため、宛先が違うだけで安全とは判定しません。
+共有管理者の宛先割当と排他的な変更時間帯を前提とし、直前・直後にも再確認します。
+AWSにatomicな宛先予約はないため、同時deployの完全排他を検査だけで保証しません。
+ReceiptRule名はstage / project / slotを含む安定名とし、StopActionは自動追加しません。
+
+AWSは有効セットとそのrule一覧を取得できます。一方で `After` を単に省略すると
+先頭に追加されるため、「TOMLから省略」と「AWS APIに値を渡さない」は区別します。
+根拠は [有効セット取得](https://docs.aws.amazon.com/ses/latest/APIReference/API_DescribeActiveReceiptRuleSet.html)、
+[ルール追加位置](https://docs.aws.amazon.com/ses/latest/APIReference/API_CreateReceiptRule.html)、
+[有効化API](https://docs.aws.amazon.com/ses/latest/APIReference/API_SetActiveReceiptRuleSet.html)です。
 
 ドメイン所有権確認・MXレコードは、受信stage accountでidentityを作成して必要レコードを
 出力し、DNS所有accountの管理者に渡します。通常deployはDNSを直接変更しません。
@@ -220,7 +264,7 @@ bucket / topic / delivery DLQ / ReceiptRuleは受信専用stack、worker queue�
 container stackへ置きます。相互ImportValueの循環を作らないよう、topic / queue ARNと
 bucket名はaccount / region / slug / slotから計算する安定名を使います。
 
-1. 設定検証・identity / 有効rule set / 宛先競合の事前検査。
+1. 設定検証・identity / 有効rule setの自動解決と保存済み参照の照合 / 宛先競合の事前検査。
 2. bucket / topic / 配送DLQ等を作成。初回ReceiptRuleは無効のまま。
 3. 既存container stackでworker / queue / metadata権限を構築。
 4. SNS subscription、両queue policy、alarmを構築して状態確認。
@@ -247,10 +291,13 @@ UpdateReplacePolicyのRetainを設定し、通常destroyからデータを消し
 1. 設定・テンプレート・通知保存ヘルパを実装し、新機能としてminorリリース。
    公開APIをCLIが新たに参照する場合はCLIのruntime下限もその版へ更新。
    deploy roleに要求権限を反映し、同じ版を使う検証用の受信containerを用意。
-2. 管理者が検証accountに受信domain identity、既存有効rule setとanchorを用意。
+2. 管理者が検証accountに受信domain identityを用意。rule setは既存有効セットを
+   自動選択し、なければ名前入力不要の初回セットアップで共有セットを用意。
    出力した所有権確認・MXレコードをDNS側で設定し、dev専用宛先を用意。
 3. 通常のbuild / promoteを実行し、rule有効化までの順序、SNS→SQS配信、alarm ARN出力を確認。
    別projectの既存ruleの順序・宛先・有効性が変わらないことも確認。
+   有効セットあり/なし/空、同名未管理セット、再deploy時の有効セット変更、
+   自rule削除、Stop/Bounce競合、同時初期設定を検証。省略設定での順序安定性も確認。
 4. Gmailの転送先確認メールを受信し、原本・metadata・解析結果を確認して確認リンクを操作。
    選択したフィルターだけを転送し、実メール、添付あり、非ASCII、日本語件名、複数宛先を検証。
    notificationにMIME本文が無く、envelope宛先とヘッダ宛先を区別できることを確認。
