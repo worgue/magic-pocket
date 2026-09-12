@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- VPC の resource コマンドに `--stage` を追加し、stage 別の VPC 宣言を撤去時にも
+  選択できるようにしました。宣言を消す前に削除する手順も明記しました (KN1443)。
 - API Gateway handler への最後の CloudFront route を削除した際に、参照中の
   Export を先に削除しようとして deploy が rollback する問題を修正しました
   (KN1444)。API が存在する間は route の有無に関係なく Export を維持します。

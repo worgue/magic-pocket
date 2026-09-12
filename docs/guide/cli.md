@@ -131,11 +131,11 @@ pocket destroy --stage=dev
 削除は以下の順序（デプロイの逆順）で行われます:
 
 1. CloudFront（CFNスタック + バケットポリシー）+ ACM 証明書
-2. AwsContainer（CFNスタック + ECR + CodeBuild + CloudWatch Logs + secrets）+ VPC（CFNスタック + EFS）
+2. Container（CFNスタック + ECR + CodeBuild + CloudWatch Logs + secrets）
 3. AWS Backup plan / selection（DSQL / RDS の cluster 削除より先。recovery point と vault は残す）
 4. DSQL クラスター
 5. RDS Aurora クラスター（Final Snapshot 付き）
-6. CloudFront 署名鍵（`signing_key` 設定時）
+6. VPC（CFNスタック + EFS。RDS の削除後）と CloudFront 署名鍵（`signing_key` 設定時）
 7. S3 バケット
 8. TiDB クラスタ
 9. Upstash Redis
@@ -152,6 +152,33 @@ pocket destroy --stage=dev
     バックアップ**データ**（recovery point）は既定では削除されず、残る場合は件数が警告表示されます。[`[backup]` の `deletable = true`](configuration.md#backup) を宣言している場合のみ、destroy 実行中に `[y/N]` で削除するか確認されます（既定 No。`--yes` による一括承認ではデータ削除は行いません）。
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
+
+### リソースの撤去手順
+
+`pocket.toml` の宣言を消しても、既存リソースは削除されません。deploy / destroy は
+現在の宣言を対象にするため、宣言を先に消すと削除対象にも載らなくなり、課金が続きます。
+リソースを撤去するときは **宣言を残して削除を完了し、その後で宣言を外します**。
+現状、未宣言リソースの自動検知・自動削除は行いません。
+
+RDS と VPC を使わなくなる場合（`live` は任意のステージ名の例）:
+
+1. `[live.rds]` / `[live.vpc]` を残し、対象 container を `use_vpc = false` にして
+   deploy します。アプリの DB 接続先の移行も先に済ませてください。
+2. AWS Backup を利用していた場合は、対象 RDS の selection と不要になった plan を
+   AWS Backup で削除します。`pocket resource rds destroy` は plan を削除しません。
+   `pocket destroy` は plan / selection も削除しますが、その stage の他リソースも対象です。
+   recovery point を消す必要がある場合は DB 削除前に `pocket backup cleanup --stage=live`
+   を使います（`[backup] deletable = true` が必要）。保存する場合は残存課金を確認します。
+3. `pocket resource rds destroy --stage=live` で RDS を削除します。
+   最終スナップショットは残るため、その保持・削除は別途管理してください。
+4. `pocket resource vpc destroy --stage=live` で VPC を削除します。
+   他の consumer がある共有 VPC は削除できません。Lambda / RDS の ENI 解放には
+   時間がかかり、ENI や SG が残る場合は所有元・依存関係を確認してから再実行します。
+5. AWS 上で削除を確認した後に、不要な RDS / VPC / backup の宣言を外します。
+
+宣言を既に外した場合は、元と同じ ref・namespace・region・識別子の宣言を復元して
+削除してください。VPC 名は ref と namespace から決まり、stage 名を含みません。
+`--stage` は対象設定の選択であり、VPC を stage 別に作り直す指定ではありません。
 
 ### pocket backup cleanup
 
@@ -736,6 +763,10 @@ pocket resource vpc update
 # VPCを削除（CFNスタック + EFS）
 pocket resource vpc destroy
 ```
+
+各 VPC サブコマンドは `--stage=<stage>`（または `POCKET_DEPLOY_STAGE`）を受け取り、
+`[<stage>.vpc]` を共通設定にマージします。省略時は従来どおり共通の `[vpc]` を使用します。
+container が VPC を使わなくなった後でも、VPC 宣言があれば操作できます。
 
 !!! note "VPCコマンド"
     VPC は `pocket.toml` の `[vpc]` セクションから自動的に読み込まれます。

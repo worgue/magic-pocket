@@ -1,6 +1,7 @@
 import click
 
 from pocket.general_context import VpcContext
+from pocket.settings import Settings
 from pocket.utils import echo
 from pocket_cli.resources.vpc import Vpc
 
@@ -10,26 +11,50 @@ def vpc():
     pass
 
 
-def get_vpc_resource():
-    vpc_context = VpcContext.from_toml()
+def get_vpc_resource(stage: str | None = None):
+    if stage is None:
+        vpc_context = VpcContext.from_toml()
+    else:
+        settings = Settings.from_toml(stage=stage)
+        if settings.vpc is None:
+            raise click.ClickException(
+                f"stage '{stage}' に VPC が定義されていません。"
+                "撤去する場合は元の VPC 宣言を復元してください。"
+            )
+        vpc_context = VpcContext.from_settings(settings.vpc, settings.general)
     return Vpc(vpc_context)
 
 
 @vpc.command()
-def yaml():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def yaml(stage: str | None):
+    vpc = get_vpc_resource(stage)
     print(vpc.stack.yaml)
 
 
 @vpc.command()
-def yaml_diff():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def yaml_diff(stage: str | None):
+    vpc = get_vpc_resource(stage)
     print(vpc.stack.yaml_diff.to_json(indent=2))
 
 
 @vpc.command()
-def create():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def create(stage: str | None):
+    vpc = get_vpc_resource(stage)
     if not vpc.context.manage:
         echo.danger("外部 VPC は他で管理されています。")
         return
@@ -41,8 +66,13 @@ def create():
 
 
 @vpc.command()
-def update():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def update(stage: str | None):
+    vpc = get_vpc_resource(stage)
     if not vpc.context.manage:
         echo.danger("外部 VPC は他で管理されています。")
         return
@@ -59,8 +89,13 @@ def update():
 
 
 @vpc.command()
-def destroy():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def destroy(stage: str | None):
+    vpc = get_vpc_resource(stage)
     if not vpc.context.manage:
         echo.danger("外部 VPC は他で管理されています。")
         return
@@ -80,8 +115,13 @@ def destroy():
 
 
 @vpc.command()
-def status():
-    vpc = get_vpc_resource()
+@click.option(
+    "--stage",
+    envvar="POCKET_DEPLOY_STAGE",
+    help="対象ステージ。省略時は共通の [vpc] を使用",
+)
+def status(stage: str | None):
+    vpc = get_vpc_resource(stage)
     if vpc.status == "COMPLETED":
         echo.success("Vpc has been created.")
     elif vpc.status == "NOEXIST":
