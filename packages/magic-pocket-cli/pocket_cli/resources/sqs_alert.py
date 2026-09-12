@@ -38,8 +38,17 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
         (c.region, h.sqs.dead_letter_alert.topic_name, h.sqs.dead_letter_alert.email)
         for c in context.container.values()
         for h in c.handlers.values()
-        if h.sqs and h.sqs.dead_letter_alert
+        if h.sqs and h.sqs.dead_letter_alert and h.sqs.dead_letter_alert.email
     ]
+    targets.extend(
+        (
+            inlet.region,
+            inlet.resource_name + "-alert",
+            inlet.config.delivery_alert.email,
+        )
+        for inlet in context.inbound.values()
+        if inlet.config.delivery_alert.enabled and inlet.config.delivery_alert.email
+    )
     if not targets:
         return []
     account_id = boto3.client("sts").get_caller_identity()["Account"]

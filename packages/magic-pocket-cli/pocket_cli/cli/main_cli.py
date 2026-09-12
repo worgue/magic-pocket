@@ -25,6 +25,7 @@ from pocket_cli.cli import (
     destroy_cli,
     dsql_cli,
     image_cli,
+    inbound_cli,
     migrate_cli,
     neon_cli,
     permissions_cli,
@@ -140,6 +141,7 @@ def resource():
     pass
 
 
+resource.add_command(inbound_cli.inbound)
 resource.add_command(vpc_cli.vpc)
 resource.add_command(container_cli.container)
 resource.add_command(neon_cli.neon)

@@ -1,6 +1,6 @@
 [project]
 name = "magic-pocket"
-version = "0.34.1"
+version = "0.35.0"
 description = "Deploy system for Django projects."
 authors = [{ name = "Masaaki Yasui", email = "yasu@worgue.com" }]
 readme = "README.md"
@@ -11,7 +11,7 @@ dependencies = [
     "tomli>=1.1.0; python_version < '3.11'",
     "pydantic>=2.5.3",
     "pydantic-settings>=2.1.0",
-    "boto3>=1.34.28",
+    "boto3>=1.35.2",
     "rich>=13.7.0",
     "awslambdaric>=2.0.10",
     "apig_wsgi>=2.18.0",

@@ -14,6 +14,7 @@ from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
+from pocket_cli.resources.inbound import Inbound
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
@@ -176,6 +177,9 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
         if cf_ctx.domain:
             targets.append("CloudFront ACM '%s' (us-east-1 証明書)" % name)
 
+    targets.extend(
+        f"Inbound {name} (原本バケットと配送DLQは保持)" for name in context.inbound
+    )
     targets.extend(_collect_container_targets(context, with_secrets))
     targets.extend(_collect_database_targets(context))
     targets.extend(_collect_vpc_targets(context))
@@ -431,6 +435,9 @@ def _destroy_resources(
     yes: bool = False,
 ):
     """リソースをデプロイの逆順で削除"""
+    for inlet in context.inbound.values():
+        Inbound(inlet).delete()
+
     # 1. CloudFront + ACM
     _destroy_cloudfront_and_acm(context)
 

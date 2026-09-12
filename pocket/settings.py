@@ -470,7 +470,8 @@ class Scheduler(BaseModel):
 class Alert(BaseModel):
     """通知宣言の共通形。
 
-    現状の利用箇所は ``Sqs.dead_letter_alert`` のみだが、将来 Lambda Errors 等へ
+    ``Sqs.dead_letter_alert`` と ``Inbound.delivery_alert`` で使用する。
+    Lambda Errors 等へ
     広げるときも「監視したいリソースに同型の ``<信号>_alert`` フィールドを生やす」
     方針でこのモデルを使い回す。``enabled = false`` は「意図した無監視」の明示
     (書き忘れと型レベルで区別するための表現)。
@@ -480,14 +481,18 @@ class Alert(BaseModel):
 
     enabled: bool = True
     email: str | None = None
+    eventbridge: bool = False
 
     @model_validator(mode="after")
     def check_email_required_when_enabled(self):
-        if self.enabled and self.email is None:
+        if not self.enabled:
+            return self
+        if self.enabled and bool(self.email) == self.eventbridge:
             raise ValueError(
-                "alert requires email when enabled. "
-                'Set email = "..." or disable explicitly with enabled = false.'
+                "alert requires email or eventbridge = true (どちらか一方)"
             )
+        if self.email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", self.email):
+            raise ValueError("通知先emailの形式が不正です")
         return self
 
 
@@ -519,6 +524,57 @@ class Sqs(BaseModel):
                 "or explicitly opt out of monitoring:\n"
                 "  sqs = { dead_letter_alert = { enabled = false } }"
             )
+        return self
+
+
+class Inbound(BaseModel):
+    """SES受信口。内部のSNS接続とrule順序はdeployが解決する。"""
+
+    model_config = ConfigDict(extra="forbid")
+    domain: str
+    recipients: list[str] = Field(min_length=1)
+    handler: str
+    rule_set: str | None = None
+    enabled: bool = True
+    tls_policy: Literal["Require", "Optional"] = "Require"
+    scan_enabled: bool = True
+    raw_prefix: str = "raw/"
+    metadata_prefix: str = "metadata/"
+    import_prefix: str = "imports/"
+    retention_days: int = Field(ge=14)
+    delivery_alert: Alert
+
+    @model_validator(mode="after")
+    def validate_inbound(self):
+        if not re.fullmatch(
+            r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+",
+            self.domain,
+        ):
+            raise ValueError("inbound.domain は小文字のDNS名で指定してください")
+        if len(set(self.recipients)) != len(self.recipients):
+            raise ValueError("受信宛先が重複しています")
+        for address in self.recipients:
+            if not re.fullmatch(
+                r"[a-z0-9!#$%&'+/=?^_`{|}~.-]+@" + re.escape(self.domain), address
+            ):
+                raise ValueError(
+                    "recipients はdomain内の完全なメールアドレスを指定してください"
+                )
+        prefixes = [
+            self.raw_prefix,
+            self.metadata_prefix,
+            self.import_prefix,
+            "attachments/",
+        ]
+        for prefix in prefixes:
+            if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9/_-]*/", prefix):
+                raise ValueError("prefixは安全な文字で指定し末尾を / にしてください")
+        for index, prefix in enumerate(prefixes):
+            if any(
+                prefix.startswith(other) or other.startswith(prefix)
+                for other in prefixes[index + 1 :]
+            ):
+                raise ValueError("inboundのprefixが重複しています")
         return self
 
 
@@ -1320,6 +1376,7 @@ class Settings(BaseModel):
     # DB 層の定期バックアップ (opt-in。宣言時のみ AWS Backup を provision する)
     backup: Backup | None = None
     ses: Ses | None = None
+    inbound: dict[str, Inbound] = {}
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
     scheduler: Scheduler | None = None
@@ -1488,6 +1545,29 @@ class Settings(BaseModel):
         """全 container の secrets.managed から key の spec を探す。"""
         owners = self.managed_secret_owners(key)
         return owners[0][1] if owners else None
+
+    @model_validator(mode="after")
+    def check_inbound_handlers(self):
+        handlers: set[str] = set()
+        recipients: set[str] = set()
+        for name, inlet in self.inbound.items():
+            if not re.fullmatch(_CONTAINER_NAME_RE, name):
+                raise ValueError("inbound名はcontainer名と同じ形式で指定してください")
+            container, _, handler = self.resolve_handler(inlet.handler)
+            if handler.sqs is None or not handler.sqs.report_batch_item_failures:
+                raise ValueError(
+                    "inbound.handlerにはpartial batch response対応SQS workerが必要です"
+                )
+            if inlet.handler in handlers or recipients.intersection(inlet.recipients):
+                raise ValueError("inboundのhandlerまたは宛先が重複しています")
+            if "POCKET_INBOUND" in self.container[container].envs or any(
+                "POCKET_INBOUND" in item.envs
+                for item in self.container[container].handlers.values()
+            ):
+                raise ValueError("POCKET_INBOUND はpocketが管理します")
+            handlers.add(inlet.handler)
+            recipients.update(inlet.recipients)
+        return self
 
     def resolve_handler(self, ref: str) -> tuple[str, str, LambdaHandler]:
         """ドット記法の handler 参照を解決する。

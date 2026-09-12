@@ -1,6 +1,7 @@
 # SES 受信宣言の設計案（KN1449）
 
-2026-09-12 時点。**設計回答であり、以下の宣言・追加コマンドは未実装です。**
+2026-09-12の設計記録です。実装した設定名は `inbound` です。
+**現在の仕様と手順は[メール受信](../inbound.md)を参照してください。以下は実装前の検討記録です。**
 KN1449 の同日07:45 UTCの要件更新（S3保存アクションのSNS通知を使う）を対象とします。
 メール受信基盤の実装・公開と、利用側の本番導入は別工程です。
 
@@ -49,12 +50,12 @@ S3 Object Created通知、EventBridge、橋渡し専用Lambdaは受信経路に�
 
 ## 宣言案（未実装）
 
-送信専用の `[ses]` を必須にしない独立節 `[mail_receiving.<name>]` を追加する案です。
+送信専用の `[ses]` を必須にしない独立節 `[inbound.<name>]` を追加する案です。
 SNS topicやsubscriptionは内部リソースとして生成し、利用者は受信先とworkerを指定します。
 設定名は実装時に確定します。
 
 ```toml
-[mail_receiving.inbox]
+[inbound.inbox]
 domain = "inbox.example.com"
 recipients = ["capture@inbox.example.com"]
 handler = "mail.worker"
@@ -75,7 +76,7 @@ command = "mail-worker"
 timeout = 120
 sqs = { dead_letter_alert = { email = "ops@example.com" } }
 
-[dev.mail_receiving.inbox]
+[dev.inbound.inbox]
 domain = "inbox-dev.example.com"
 recipients = ["capture@inbox-dev.example.com"]
 ```

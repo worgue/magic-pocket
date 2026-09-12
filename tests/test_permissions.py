@@ -446,6 +446,7 @@ def test_action_groups_public_keys_stable():
         "sqs",
         "sqs_alert",
         "ses",
+        "inbound",
         "codebuild",
         "dsql",
         "backup",

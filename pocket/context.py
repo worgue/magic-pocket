@@ -11,6 +11,7 @@ from pydantic import BaseModel, computed_field, model_validator
 from . import settings
 from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
+from .inbound_context import InboundContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.aws.ssm import SsmStore
 from .secret_store import StoredUserSecretStore
@@ -69,13 +70,15 @@ class ApiGatewayContext(BaseModel):
 
 class SqsDeadLetterAlertContext(BaseModel):
     # settings 側で dead_letter_alert は必須のため、context では
-    # 「enabled=false → None / enabled=true → email 込みで生成」に正規化する
-    email: str
+    # enabled=falseではNone、それ以外はemail/EventBridgeの監視を生成する
+    email: str | None = None
+    eventbridge: bool = False
     topic_name: str
     alarm_name: str
 
 
 class SqsContext(BaseModel):
+    retain: bool = False
     batch_size: int = 10
     message_retention_period: int = 345600
     maximum_concurrency: int = 2
@@ -99,10 +102,11 @@ class SqsContext(BaseModel):
         name = f"{resource_prefix}{container}-{key}"
         alert_ctx = None
         alert = sqs.dead_letter_alert
-        # enabled 時の email は settings の validator が保証している
-        if alert and alert.enabled and alert.email:
+        # 有効時の通知先はsettingsのvalidatorが保証している
+        if alert and alert.enabled:
             alert_ctx = SqsDeadLetterAlertContext(
                 email=alert.email,
+                eventbridge=alert.eventbridge,
                 topic_name=f"{name}-dead-letter-alert",
                 alarm_name=f"{name}-dead-letter-alert",
             )
@@ -488,6 +492,7 @@ class ContainerContext(BaseModel):
     dockerfile_path: str
     envs: dict[str, str] = {}
     signing_key_imports: dict[str, str] = {}
+    inbound: dict[str, InboundContext] = {}
     platform: str = "linux/amd64"
     django: DjangoContext | None = None
     region: str
@@ -554,6 +559,11 @@ class ContainerContext(BaseModel):
     @property
     def require_list_secrets(self) -> bool:
         return any(sc.require_list_secrets for sc in self.secrets_views())
+
+    @computed_field
+    @property
+    def inbound_runtime_config(self) -> dict:
+        return {name: inlet.runtime_config for name, inlet in self.inbound.items()}
 
     @classmethod
     def from_settings(
@@ -1561,6 +1571,7 @@ class Context(BaseModel):
     rds: RdsContext | None = None
     backup: BackupContext | None = None
     ses: SesContext | None = None
+    inbound: dict[str, InboundContext] = {}
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
     # container 名 → その container stack に配置する scheduler
@@ -1682,6 +1693,27 @@ class Context(BaseModel):
 
         return containers
 
+    @staticmethod
+    def _connect_inbound(s: settings.Settings, containers: dict[str, ContainerContext]):
+        inbound = {
+            name: InboundContext.from_settings(name, s) for name in sorted(s.inbound)
+        }
+        for name, inlet in inbound.items():
+            container, handler = settings.parse_handler_ref(inlet.config.handler)
+            target = containers[container]
+            if not target.permissions_boundary:
+                target.permissions_boundary = os.environ.get(
+                    "FORGE_PERMISSIONS_BOUNDARY_ARN"
+                )
+            target.inbound[name] = inlet
+            sqs = target.handlers[handler].sqs
+            if sqs is not None:
+                sqs.message_retention_period = 1209600
+                sqs.dead_letter_message_retention_period = 1209600
+                sqs.retain = True
+
+        return inbound
+
     @classmethod
     def from_settings(cls, s: settings.Settings) -> Context:
         general_ctx = GeneralContext.from_general_settings(s.general)
@@ -1690,6 +1722,8 @@ class Context(BaseModel):
         containers: dict[str, ContainerContext] = {}
         for name, c in s.container.items():
             containers[name] = ContainerContext.from_settings(name, c, s)
+
+        inbound = cls._connect_inbound(s, containers)
 
         cloudfront_ctx: dict[str, CloudFrontContext] = {}
         for name, cf in s.cloudfront.items():
@@ -1720,6 +1754,7 @@ class Context(BaseModel):
             secrets=_project_secrets_context(s),
             cloudfront=cloudfront_ctx,
             scheduler=scheduler_ctx,
+            inbound=inbound,
             project_name=s.project_name,
             stage=s.stage,
             **svc,

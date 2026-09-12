@@ -320,3 +320,15 @@ permissions_boundary = "arn:aws:iam::123456789012:policy/MyBoundaryPolicy"
 - **CodeBuild ロール** — `build.backend = "codebuild"` 使用時、ビルド用ロールにも同じ Boundary が適用されます
 
 CodeBuild ロールのみ別の Boundary を指定したい場合は、環境変数 `CODEBUILD_PERMISSIONS_BOUNDARY` で上書きできます。
+
+
+## メール受信の追加権限
+
+`[inbound.*]` は `inbound` グループ（SES receipt ruleの照会・作成・更新・削除・位置設定、
+active setとidentityの照会）と、`sqs_alert` グループ（SNS・CloudWatch）を要求します。
+S3/SQS/CloudFormationは既存のcore/sqsグループを利用します。送信用 `ses` グループとは独立です。
+
+`pocket resource inbound ... init` は管理者向けの初期設定です。通常deployの権限とは別に
+`ses:ListReceiptRuleSets`、`ses:CreateReceiptRuleSet`、`ses:SetActiveReceiptRuleSet`、
+`ses:VerifyDomainIdentity` を必要に応じて付与します。通常deployは共有セットを切り替えません。
+詳しくは[メール受信](../inbound.md)を参照してください。

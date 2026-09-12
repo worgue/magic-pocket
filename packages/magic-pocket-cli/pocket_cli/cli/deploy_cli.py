@@ -4,6 +4,7 @@ import webbrowser
 import click
 
 from pocket.context import Context, deploy_hash_report
+from pocket.settings import parse_handler_ref
 from pocket.utils import echo
 from pocket_cli import migrations
 from pocket_cli.cli import interaction
@@ -20,6 +21,11 @@ from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
+from pocket_cli.resources.inbound import (
+    Inbound,
+    check_removed_inbound,
+    echo_inbound_details,
+)
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
@@ -82,6 +88,7 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     if context.s3:
         resources.append(S3(context.s3, cloudfront_contexts=context.cloudfront))
     _append_infra_resources(resources, context, state_bucket)
+    resources.extend(Inbound(ctx) for ctx in context.inbound.values())
     for _name, cf_ctx in context.cloudfront.items():
         resources.append(CloudFront(cf_ctx))
     return resources
@@ -209,6 +216,11 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     """
     # DEPLOY_HASH の解決結果を deploy 時に 1 回可視化する (env 伝播漏れで
     # 黙って git short hash に落ちる footgun の早期発見用)。
+    for inlet in context.inbound.values():
+        container_name, _ = parse_handler_ref(inlet.config.handler)
+        if not context.container[container_name].permissions_boundary:
+            raise ValueError("inbound workerにpermissions_boundaryが必要です")
+        Inbound(inlet).prepare_deploy()
     deploy_hash_message = deploy_hash_report(context)
     if deploy_hash_message:
         echo.info(deploy_hash_message)
@@ -216,6 +228,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     state_store = _create_state_store(context)
     state_store.ensure_bucket()
     state_bucket = state_store.bucket_name
+    check_removed_inbound(context, state_store)
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
     # リリース跨ぎ移行の掃除フェーズ (旧配置の削除は deploy 成功後にしか
@@ -229,6 +242,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     # DLQ アラートの email 購読が未確認のままだと通知が届かないため、
     # deploy の最後に購読状態を確認して警告する
     echo_dead_letter_alert_warnings(context)
+    echo_inbound_details(context)
     # デプロイ完了後の URL 表示
     url = _get_deploy_url(context)
     if url:

@@ -40,6 +40,31 @@ Resources:
         # {% endfor %}
       Policies:
         # {# allowed_*_resources は container store + shared store の合算 #}
+        # {% for inlet in inbound.values() %}
+        - PolicyName: "inbound-{{ inlet.name }}"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ["s3:ListBucket"]
+                Resource:
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}"
+              - Effect: Deny
+                Action: ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+                Resource:
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.raw_prefix }}*"
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.metadata_prefix }}*"
+              - Effect: Allow
+                Action: ["s3:GetObject", "s3:GetObjectVersion"]
+                Resource:
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.raw_prefix }}*"
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.import_prefix }}*"
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.metadata_prefix }}*"
+              - Effect: Allow
+                Action: ["s3:PutObject"]
+                Resource:
+                  - Fn::Sub: "arn:${AWS::Partition}:s3:::{{ inlet.bucket_name }}/{{ inlet.config.metadata_prefix }}*"
+        # {% endfor %}
         # {% if allowed_sm_resources %}
         - PolicyName: "{{ resource_prefix }}access-secretsmanager"
           PolicyDocument:
@@ -177,6 +202,10 @@ Resources:
           "POCKET_STAGE": "{{ stage }}"
           # runtime が自分の [container.<name>] を選択するための識別子
           "POCKET_CONTAINER": "{{ name }}"
+          # {% if inbound %}
+          POCKET_INBOUND:
+            Fn::Sub: {{ inbound_runtime_config | tojson | tojson }}
+          # {% endif %}
           # {# tojson で YAML セーフに埋め込む (値内の二重引用符等で ParserError にしない)。
           #    container 共通 envs に handler.envs をマージし handler 側を優先する。
           #    重複キーを 2 回出さないよう共通側は handler.envs にあるキーをスキップ #}
@@ -381,7 +410,12 @@ Resources:
   # {% if handler.sqs %}
   "{{ handler.key|capitalize }}SqsQueue":
     Type: AWS::SQS::Queue
+    # {% if handler.sqs.retain %}
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    # {% endif %}
     Properties:
+      SqsManagedSseEnabled: true
       QueueName:
         Fn::Sub: "{{ handler.sqs.name }}"
       RedrivePolicy:
@@ -394,7 +428,12 @@ Resources:
 
   "{{ handler.key|capitalize }}DeadLetterQueue":
     Type: AWS::SQS::Queue
+    # {% if handler.sqs.retain %}
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    # {% endif %}
     Properties:
+      SqsManagedSseEnabled: true
       QueueName:
         Fn::Sub: "{{ handler.sqs.name }}-dead-letter"
       # max 14 days
@@ -404,6 +443,7 @@ Resources:
   # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
   # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
   # (deploy 後の購読状態チェックと pocket status で可視化する)
+  # {% if handler.sqs.dead_letter_alert.email %}
   "{{ handler.key|capitalize }}DeadLetterAlertTopic":
     Type: AWS::SNS::Topic
     Properties:
@@ -417,6 +457,7 @@ Resources:
       Protocol: email
       Endpoint: "{{ handler.sqs.dead_letter_alert.email }}"
 
+  # {% endif %}
   "{{ handler.key|capitalize }}DeadLetterAlarm":
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -435,11 +476,13 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
       TreatMissingData: notBreaching
+      # {% if handler.sqs.dead_letter_alert.email %}
       AlarmActions:
         - Ref: "{{ handler.key|capitalize }}DeadLetterAlertTopic"
       # 復旧 (redrive / purge で DLQ が空に戻った) も通知する
       OKActions:
         - Ref: "{{ handler.key|capitalize }}DeadLetterAlertTopic"
+      # {% endif %}
   # {% endif %}
 
   "{{ handler.key|capitalize }}SqsEventSourceMapping":
@@ -567,6 +610,11 @@ Outputs:
   "{{ handler.key|capitalize }}LambdaFunction":
     Value:
       Fn::GetAtt: "{{ handler.key|capitalize }}LambdaFunction.Arn"
+  # {% if handler.sqs and handler.sqs.dead_letter_alert %}
+  "{{ handler.key|capitalize }}DeadLetterAlarmArn":
+    Value:
+      Fn::GetAtt: "{{ handler.key|capitalize }}DeadLetterAlarm.Arn"
+  # {% endif %}
   # {% if handler.export_api_domain %}
   "{{ handler.key|capitalize }}ApiDomain":
     Value:

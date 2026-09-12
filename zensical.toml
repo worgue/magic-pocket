@@ -16,14 +16,15 @@ nav = [
     { "ベストプラクティス" = "guide/best-practices.md" },
     { "コールドスタート" = "guide/cold-start.md" },
     { "サンプルプロジェクト" = "guide/examples.md" },
+    { "メール受信" = "inbound.md" },
   ] },
   { "デプロイ権限" = [
     { "AWS" = "permissions/aws.md" },
   ] },
   { "Changelog" = "changelog.md" },
   { "リリース手順" = "releasing.md" },
-  { "設計案（未実装）" = [
-    { "SES受信" = "design/ses-receiving.md" },
+  { "設計記録" = [
+    { "SES受信の設計記録" = "design/ses-receiving.md" },
   ] },
   { "旧ドキュメント" = [
     { "Intro" = "old/index.md" },

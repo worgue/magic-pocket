@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Added
+- `[inbound.<name>]` によるSES受信を追加しました。原本・受信情報の保存、
+  SNS→SQS配送、DLQ・EventBridge対応の通知、初期設定・照合・コピー・取り込みCLIを備えます (KN1449)。
+  条件付き保存に必要なboto3の下限を1.35.2へ更新しました。
 - Django に依存しない `pocket build --stage=<stage>` を追加しました。
   `pocket django build` は同じ処理の別名として維持します (KN1448)。
 

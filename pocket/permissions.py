@@ -224,6 +224,18 @@ def _uses_backup(settings: Settings) -> bool:
     return bool(settings.backup and settings.backup.rds)
 
 
+_INBOUND_ACTIONS = [
+    "ses:DescribeActiveReceiptRuleSet",
+    "ses:DescribeReceiptRuleSet",
+    "ses:DescribeReceiptRule",
+    "ses:GetIdentityVerificationAttributes",
+    "ses:CreateReceiptRule",
+    "ses:UpdateReceiptRule",
+    "ses:DeleteReceiptRule",
+    "ses:SetReceiptRulePosition",
+]
+
+
 def action_groups() -> dict[str, list[str]]:
     """feature group ごとの Action 一覧を settings 非依存で名前付きで返す。
 
@@ -248,6 +260,7 @@ def action_groups() -> dict[str, list[str]]:
         "sqs": list(_SQS_ACTIONS),
         "sqs_alert": list(_SQS_ALERT_ACTIONS),
         "ses": list(_SES_ACTIONS),
+        "inbound": list(_INBOUND_ACTIONS),
         "codebuild": list(_CODEBUILD_ACTIONS),
         "dsql": list(_DSQL_ACTIONS),
         "backup": list(_BACKUP_ACTIONS),
@@ -274,8 +287,9 @@ def compute_actions(settings: Settings) -> list[str]:
         ("rds", settings.rds is not None),
         ("efs", _has_efs(settings)),
         ("sqs", _has_sqs_handler(settings)),
-        ("sqs_alert", _has_sqs_alert(settings)),
+        ("sqs_alert", _has_sqs_alert(settings) or bool(settings.inbound)),
         ("ses", settings.ses is not None),
+        ("inbound", bool(settings.inbound)),
         ("codebuild", _uses_codebuild(settings)),
         ("dsql", settings.dsql is not None),
         ("backup", _uses_backup(settings)),

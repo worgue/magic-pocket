@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         SchedulerContext,
     )
     from pocket.general_context import VpcContext
+    from pocket.inbound_context import InboundContext
 
 
 def _is_stack_not_exist_error(e: ClientError) -> bool:
@@ -51,7 +52,10 @@ class Stack:
     def stack_tags(self) -> list[dict]:
         return []
 
-    def __init__(self, context: ContainerContext | VpcContext | CloudFrontContext):
+    def __init__(
+        self,
+        context: ContainerContext | VpcContext | CloudFrontContext | InboundContext,
+    ):
         self.context = context
         self.client = self.get_client()
 
@@ -834,6 +838,8 @@ class ContainerStack(Stack):
 
     @property
     def yaml(self) -> str:
+        if self.context.inbound and not self.context.permissions_boundary:
+            raise ValueError("inbound workerにpermissions_boundaryが必要です")
         rds_info = self._resolve_rds()
         dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
         context_dump = self.context.model_dump()
