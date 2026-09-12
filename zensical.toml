@@ -22,6 +22,9 @@ nav = [
   ] },
   { "Changelog" = "changelog.md" },
   { "リリース手順" = "releasing.md" },
+  { "設計案（未実装）" = [
+    { "SES受信" = "design/ses-receiving.md" },
+  ] },
   { "旧ドキュメント" = [
     { "Intro" = "old/index.md" },
     { "概要" = "old/features/outline.md" },
