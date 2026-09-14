@@ -207,6 +207,14 @@ let set_cookie = login_cookie_value(&token, 604800);
 let delete_cookie = logout_cookie_value();
 ```
 
+!!! note "axum-extra の CookieJar 経由では ':' が percent-encode される"
+    `login_cookie_value()` の戻り値は `Set-Cookie` ヘッダにそのまま載せてください
+    (`response.headers_mut().append(SET_COOKIE, value.parse()?)`)。axum-extra の
+    `CookieJar` / `PrivateCookieJar` を経由すると cookie crate の `encoded()` により
+    トークン区切りの `:` が `%3A` に置き換わります。pocket の CloudFront Function は
+    cookie 値を `decodeURIComponent` してから検証するため、encode された値でも
+    ゲートは通りますが、ヘッダ直書きが最も確実です。
+
 ### API リファレンス
 
 **Python**

@@ -14,6 +14,10 @@
   `pocket django build` は同じ処理の別名として維持します (KN1448)。
 
 ### Fixed
+- SPA gate (`require_token`) の CloudFront Function が `pocket-spa-token` cookie の
+  値を `decodeURIComponent` してから検証するようにしました (KN1458)。axum-extra の
+  CookieJar 等で `:` が `%3A` に percent-encode された cookie でも 302 にならなく
+  なります。不正な percent-encoding はログインへ redirect します。
 - VPC 削除前にスタック外の ENI / SG を検知し、CloudFormation の失敗理由を
   リソース単位で表示するようにしました。VPC / RDS の削除待機を30分に延長し、
   削除中に再実行した場合は待機を再開します (KN1447)。

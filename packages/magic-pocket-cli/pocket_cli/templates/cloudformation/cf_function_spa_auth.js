@@ -8,7 +8,12 @@ async function handler(event) {
     if (!lastItem.includes('.')) { request.uri = '{{ fallback_uri }}'; }
     var cookie = request.cookies['pocket-spa-token'];
     if (!cookie) { return _redirect(originalUri); }
-    var parts = cookie.value.split(':');
+    // cookie ライブラリによっては値の ':' が %3A に percent-encode される
+    // (axum-extra の CookieJar 等)。raw 値には no-op なので常に decode してから分割する。
+    var value;
+    try { value = decodeURIComponent(cookie.value); }
+    catch (e) { return _redirect(originalUri); }
+    var parts = value.split(':');
     if (parts.length !== 3) { return _redirect(originalUri); }
     var expiry = parseInt(parts[1], 10);
     if (Math.floor(Date.now() / 1000) > expiry) { return _redirect(originalUri); }

@@ -80,6 +80,12 @@ pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
 }
 
 /// ログイン用 Cookie 値を生成する
+///
+/// 戻り値は `Set-Cookie` ヘッダにそのまま載せることを想定した文字列。
+/// axum-extra の `CookieJar` / `PrivateCookieJar` (cookie crate の `encoded()`) を
+/// 経由するとトークン区切りの `:` が `%3A` に percent-encode される。pocket の
+/// CloudFront Function は decode してから検証するため動作はするが、
+/// 生の値を `SET_COOKIE` に append する方が確実 (KN1458)。
 pub fn login_cookie_value(token: &str, max_age_secs: u64) -> String {
     format!(
         "{COOKIE_NAME}={token}; Max-Age={max_age_secs}; \
