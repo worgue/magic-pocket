@@ -67,6 +67,7 @@ def test_top_level_destroy_skips_overridden_ecr(use_toml, monkeypatch):
     monkeypatch.setattr(destroy_cli, "Container", lambda ctx: _FakeAc())
     monkeypatch.setattr(destroy_cli, "_destroy_codebuild", lambda c: None)
     monkeypatch.setattr(destroy_cli, "_destroy_log_groups", lambda c: None)
+    monkeypatch.setattr(destroy_cli, "_destroy_legacy_containers", lambda c: None)
     ac_ctx = context.container["main"].model_copy(update={"ecr_name_overridden": True})
     guarded = context.model_copy(update={"container": {"main": ac_ctx}})
     destroy_cli._destroy_containers(guarded, with_secrets=False)
@@ -112,6 +113,11 @@ def test_destroy_neon_root_branch_deletes_project(use_toml, monkeypatch):
 
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
+    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
+    assert context.neon is not None
+    context = context.model_copy(
+        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
+    )
     calls: list[str] = []
     monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("project", calls))
     destroy_cli._destroy_neon(context)
@@ -125,6 +131,11 @@ def test_destroy_neon_blocked_skips_without_error(use_toml, monkeypatch):
 
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
+    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
+    assert context.neon is not None
+    context = context.model_copy(
+        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
+    )
     calls: list[str] = []
     monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("blocked", calls))
     destroy_cli._destroy_neon(context)
@@ -137,6 +148,11 @@ def test_destroy_neon_non_root_deletes_branch(use_toml, monkeypatch):
 
     use_toml("tests/data/toml/default.toml")
     context = Context.from_toml(stage="dev")
+    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
+    assert context.neon is not None
+    context = context.model_copy(
+        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
+    )
     calls: list[str] = []
     monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("branch", calls))
     destroy_cli._destroy_neon(context)

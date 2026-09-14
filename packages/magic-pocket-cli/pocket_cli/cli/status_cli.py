@@ -6,7 +6,22 @@ from pocket.utils import echo
 from pocket_cli.cli.deploy_cli import get_resources
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.inbound import echo_inbound_details
+from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.sqs_alert import echo_dead_letter_alert_statuses
+
+
+def skip_reason(resource) -> str | None:
+    """status を取らずに skip する理由 (無ければ None)。
+
+    外部 provider の資格情報が無い環境 (例: NEON_API_KEY を持たない VM) でも、
+    stack の状態確認に provider は無関係なので止めずに続行する (KN1456)。
+    """
+    if isinstance(resource, Neon) and not resource.has_credential:
+        return (
+            "Neon status: NEON_API_KEY が未設定のため状態確認をスキップします "
+            "(stack の状態確認・削除に Neon の資格情報は不要です)"
+        )
+    return None
 
 
 def show_status_message(resource):
@@ -55,6 +70,10 @@ def status(stage, show_info):
     context = Context.from_toml(stage=stage)
     resources = get_resources(context)
     for resource in resources:
+        reason = skip_reason(resource)
+        if reason:
+            echo.warning(reason)
+            continue
         show_status_message(resource)
         if show_info:
             show_info_message(resource)

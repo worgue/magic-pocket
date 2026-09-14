@@ -3,6 +3,12 @@ import click
 
 from pocket.context import Context
 from pocket.utils import echo
+from pocket_cli.migrations import (
+    legacy_container_stack_exists,
+    legacy_container_stack_name,
+    legacy_ecr_repo_exists,
+    legacy_ecr_repo_name,
+)
 from pocket_cli.resources.aws.builders.codebuild import CodeBuildBuilder
 from pocket_cli.resources.aws.state import (
     context_resource_prefix,
@@ -90,6 +96,8 @@ def _collect_container_targets(context: Context, with_secrets: bool):
                 parts.append("ECR")
         targets.append("Container '%s' (%s)" % (c_name, " + ".join(parts)))
 
+    targets.extend(_collect_legacy_container_targets(context))
+
     parts = []
     has_secrets = context.secrets or any(c.secrets for c in context.container.values())
     if with_secrets and has_secrets:
@@ -104,6 +112,38 @@ def _collect_container_targets(context: Context, with_secrets: bool):
         targets.append("Container 共有リソース (%s)" % " + ".join(parts))
 
     return targets
+
+
+def _collect_legacy_container_targets(context: Context) -> list[str]:
+    """0.29.0 以前の単数 [awscontainer] 命名 ({slug}-container) の残骸を削除対象にする。
+
+    移行 deploy を経ずに旧 stack だけ消したいケース (region 移設・廃止) では
+    現行命名の stack が NOEXIST で destroy の対象から漏れるため (KN1456)。
+    """
+    targets: list[str] = []
+    if legacy_container_stack_exists(context):
+        targets.append(
+            "旧形式の container stack '%s' (0.29.0 以前の [awscontainer] 命名。"
+            "CFNスタック)" % legacy_container_stack_name(context)
+        )
+    if legacy_ecr_repo_exists(context):
+        targets.append(
+            "旧形式の ECR repository '%s' (0.29.0 以前の命名)"
+            % legacy_ecr_repo_name(context)
+        )
+    return targets
+
+
+def _neon_credential_missing(context: Context) -> bool:
+    """[neon] 宣言があるのに NEON_API_KEY が無ければ warning を出して True。"""
+    if not context.neon or context.neon.api_key:
+        return False
+    echo.warning(
+        "Neon: NEON_API_KEY が未設定のため Neon の確認・削除をスキップします "
+        "(stack の削除に Neon の資格情報は不要です。Neon branch は "
+        "pocket resource neon delete か Neon コンソールで削除してください)。"
+    )
+    return True
 
 
 def _warn_command_provisioned(label: str, hint: str):
@@ -145,7 +185,11 @@ def _collect_external_database_targets(context: Context) -> list[str]:
     if context.upstash and context.upstash.provisioning != "command":
         if Upstash(context.upstash).database:
             targets.append("Upstash Redis: %s" % context.upstash.database_name)
-    if context.neon and context.neon.provisioning != "command":
+    if (
+        context.neon
+        and context.neon.provisioning != "command"
+        and not _neon_credential_missing(context)
+    ):
         neon = Neon(context.neon)
         if neon.branch:
             plan = neon.destroy_plan()
@@ -251,6 +295,8 @@ def _destroy_containers(context: Context, with_secrets: bool):
                 c.ecr.delete()
                 echo.success("ECR repository was deleted.")
 
+    _destroy_legacy_containers(context)
+
     _destroy_codebuild(context)
 
     _destroy_log_groups(context)
@@ -265,6 +311,43 @@ def _destroy_containers(context: Context, with_secrets: bool):
             for sc in views:
                 sc.pocket_store.delete_secrets()
             echo.success("Pocket managed secrets were deleted.")
+
+
+def _destroy_legacy_containers(context: Context):
+    """0.29.0 以前の命名の container stack / ECR repo / log group を削除する。"""
+    if not context.general:
+        return
+    region = context.general.region
+    if legacy_container_stack_exists(context):
+        stack_name = legacy_container_stack_name(context)
+        cfn = boto3.client("cloudformation", region_name=region)
+        echo.log("Destroying legacy container stack '%s'..." % stack_name)
+        cfn.delete_stack(StackName=stack_name)
+        # 現行 stack と同様、ENI 解放を含む削除完了を待たないと後続の VPC 削除が
+        # subnet 使用中で DELETE_FAILED になる
+        cfn.get_waiter("stack_delete_complete").wait(
+            StackName=stack_name, WaiterConfig={"Delay": 10, "MaxAttempts": 180}
+        )
+        echo.success("Legacy container stack '%s' was destroyed." % stack_name)
+    if legacy_ecr_repo_exists(context):
+        repo = legacy_ecr_repo_name(context)
+        ecr = boto3.client("ecr", region_name=region)
+        echo.log("Destroying legacy ECR repository '%s'..." % repo)
+        ecr.delete_repository(repositoryName=repo, force=True)
+        echo.success("Legacy ECR repository was deleted.")
+    # 旧命名の Lambda ({prefix}{handler}) が自動作成した log group
+    prefix = context_resource_prefix(context)
+    logs_client = boto3.client("logs", region_name=region)
+    handler_keys = sorted(
+        {key for c in context.container.values() for key in c.handlers}
+    )
+    for key in handler_keys:
+        log_group_name = f"/aws/lambda/{prefix}{key}"
+        try:
+            logs_client.delete_log_group(logGroupName=log_group_name)
+            echo.log("Deleted legacy log group: %s" % log_group_name)
+        except logs_client.exceptions.ResourceNotFoundException:
+            pass
 
 
 def _destroy_backup(context: Context, yes: bool):
@@ -389,6 +472,8 @@ def _destroy_neon(context: Context):
         return
     if context.neon.provisioning == "command":
         _warn_command_provisioned("Neon", "pocket resource neon delete")
+        return
+    if _neon_credential_missing(context):
         return
     neon = Neon(context.neon)
     if not neon.branch:

@@ -836,6 +836,17 @@ AWS Lambda コンテナの設定です。`[container.<name>]` の dict 形式で
 複数の container を宣言できます**（0.29.0 で旧 `[awscontainer]`（単数）から
 リネーム・一般化。移行手順は CHANGELOG 0.29.0 を参照）。
 
+!!! note "旧命名の stack を残したまま region 移設・廃止する場合"
+    0.29.0 で container stack 名が `{slug}-container` → `{slug}-container-{name}` に
+    変わっています。移行 deploy を経ずに旧 stack だけ消したい場合（region 移設で旧
+    region を片付ける、プロジェクト廃止など）も、`[container.<name>]` 形式の toml で
+    `pocket destroy` を実行すれば、旧命名の stack / ECR repository / log group を
+    検出して削除対象に含めます（確認プロンプトに「旧形式の container stack」として
+    表示されます）。また `[neon]` を宣言していても `NEON_API_KEY` が無い環境では、
+    `pocket status` / `pocket destroy` は Neon の解決を warning で skip して続行します
+    （stack の確認・削除に Neon の資格情報は不要です。Neon branch は別途
+    `pocket resource neon delete` で削除してください）。
+
 ```toml
 [container.main]
 dockerfile_path = "pocket.Dockerfile"

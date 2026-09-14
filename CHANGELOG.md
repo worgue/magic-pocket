@@ -20,6 +20,13 @@
   明示している場合はそちらが優先されます。
 
 ### Fixed
+- `pocket destroy` が 0.29.0 以前の旧命名 (`{slug}-container` / `{prefix}lambda`) の
+  container stack・ECR repository・log group を検出して削除対象に含めるように
+  しました (KN1456)。移行 deploy を経ずに旧 stack だけ消す (region 移設・廃止)
+  ケースで、現行命名が NOEXIST でも取りこぼしません。
+- `[neon]` 宣言があっても `NEON_API_KEY` が無い環境では、`pocket status` /
+  `pocket destroy` が Neon の解決 (401) で止まらず warning を出して続行するように
+  しました (KN1456)。stack の確認・削除に Neon の資格情報は不要です。
 - 削除直後の同名 bucket (region 移設で旧 region を destroy した直後など) の
   CreateBucket が `OperationAborted` で拒否された場合、deploy が 30 秒間隔で最長
   1 時間まで待って再試行するようにしました (KN1454)。state bucket と `[s3]`

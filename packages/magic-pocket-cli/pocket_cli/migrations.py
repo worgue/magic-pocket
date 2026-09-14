@@ -120,6 +120,54 @@ def _cleanup_legacy_secret_residue(context: Context):
         echo.success("旧パスの secret 残骸を削除しました。")
 
 
+def legacy_container_stack_name(context: Context) -> str:
+    """0.29.0 以前の単数 [awscontainer] 時代の container stack 名 ({slug}-container)。
+
+    現行は {slug}-container-{name}。region 移設や廃止で「移行 deploy を経ずに旧
+    stack だけ消したい」ケースのため destroy からも参照する (KN1456)。
+    """
+    return f"{context.stage}-{context.project_name}-container"
+
+
+def legacy_ecr_repo_name(context: Context) -> str:
+    """0.29.0 以前の ECR repo 名 ({prefix}lambda。現行は {prefix}{name}-lambda)。"""
+    if not context.general:
+        raise RuntimeError("general context is not configured")
+    resource_prefix = context.general.prefix_template.format(
+        stage=context.stage,
+        project=context.project_name,
+        namespace=context.general.namespace,
+    )
+    return f"{resource_prefix}lambda"
+
+
+def legacy_container_stack_exists(context: Context) -> bool:
+    """旧命名の container stack が (削除済み以外の状態で) 存在するか。"""
+    if not context.general:
+        return False
+    cfn = boto3.client("cloudformation", region_name=context.general.region)
+    try:
+        cfn.describe_stacks(StackName=legacy_container_stack_name(context))
+    except cfn.exceptions.ClientError:
+        return False
+    return True
+
+
+def legacy_ecr_repo_exists(context: Context) -> bool:
+    """旧命名の ECR repo が存在し、どの container も ecr_name で参照していないか。"""
+    if not context.general:
+        return False
+    legacy_repo = legacy_ecr_repo_name(context)
+    if any(c.ecr_name == legacy_repo for c in context.container.values()):
+        return False
+    ecr = boto3.client("ecr", region_name=context.general.region)
+    try:
+        ecr.describe_repositories(repositoryNames=[legacy_repo])
+    except ecr.exceptions.RepositoryNotFoundException:
+        return False
+    return True
+
+
 def _cleanup_legacy_container_resources(context: Context):
     """0.29.0 以前の単数 [awscontainer] 由来の旧リソースを検出して削除する。
 
@@ -132,16 +180,10 @@ def _cleanup_legacy_container_resources(context: Context):
     """
     if not context.container or not context.general:
         return
-    slug = f"{context.stage}-{context.project_name}"
     region = context.general.region
-    legacy_stack_name = f"{slug}-container"
-    cfn = boto3.client("cloudformation", region_name=region)
-    try:
-        cfn.describe_stacks(StackName=legacy_stack_name)
-        stack_exists = True
-    except cfn.exceptions.ClientError:
-        stack_exists = False
-    if stack_exists:
+    legacy_stack_name = legacy_container_stack_name(context)
+    if legacy_container_stack_exists(context):
+        cfn = boto3.client("cloudformation", region_name=region)
         echo.warning(
             "旧形式の container stack '%s' が残っています (0.29.0 の "
             "multi-container 化で stack 名が {slug}-container-{name} に"
@@ -153,19 +195,10 @@ def _cleanup_legacy_container_resources(context: Context):
         ):
             cfn.delete_stack(StackName=legacy_stack_name)
             echo.log("旧 stack の削除を開始しました (完了待ちはしません)。")
-    resource_prefix = context.general.prefix_template.format(
-        stage=context.stage,
-        project=context.project_name,
-        namespace=context.general.namespace,
-    )
-    legacy_repo = f"{resource_prefix}lambda"
-    if any(c.ecr_name == legacy_repo for c in context.container.values()):
+    if not legacy_ecr_repo_exists(context):
         return
+    legacy_repo = legacy_ecr_repo_name(context)
     ecr = boto3.client("ecr", region_name=region)
-    try:
-        ecr.describe_repositories(repositoryNames=[legacy_repo])
-    except ecr.exceptions.RepositoryNotFoundException:
-        return
     echo.warning(
         "旧形式の ECR repository '%s' が残っています (新しい repo 名は "
         "{prefix}{container}-lambda)。" % legacy_repo

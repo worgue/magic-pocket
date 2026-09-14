@@ -396,6 +396,15 @@ class Neon:
         return self._build_database_url("****")
 
     @property
+    def has_credential(self) -> bool:
+        """NEON_API_KEY (neon_api_key) が設定されているか。
+
+        stack の状態確認・削除に Neon の資格情報は不要なので、status / destroy は
+        未設定なら Neon の解決を warning で skip して続行する (KN1456)。
+        """
+        return bool(self.context.api_key)
+
+    @property
     def status(self) -> ResourceStatus:
         # provisioning="command" の Neon は get_resources で除外されるため、ここに
         # 到達するのは deploy が Neon を管理する provisioning="deploy" の場合のみ。
