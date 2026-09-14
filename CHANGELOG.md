@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.35.0](https://github.com/worgue/magic-pocket/releases/tag/0.35.0) - 2026-09-14
+
 ### Added
 - `[inbound.<name>]` によるSES受信を追加しました。原本・受信情報の保存、
   SNS→SQS配送、DLQ・EventBridge対応の通知、初期設定・照合・コピー・取り込みCLIを備えます (KN1449)。
