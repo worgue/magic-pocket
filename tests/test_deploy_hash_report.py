@@ -36,8 +36,13 @@ def test_report_shows_git_fallback_when_env_unset(use_toml):
     assert "未設定" in message  # 明示を促す文言
 
 
-def test_report_is_none_without_deploy_hash_route(use_toml):
-    """deploy_hash versioning の route が無ければ DEPLOY_HASH は無関係 → None。"""
-    use_toml("tests/data/toml/default.toml")
-    context = Context.from_toml(stage="dev")
-    assert deploy_hash_report(context) is None
+def test_report_shown_without_deploy_hash_route(use_toml):
+    """deploy_hash route が無くても container があれば DEPLOY_HASH は env に注入
+    されるので報告する (KN1450)。"""
+    with mock.patch.dict(os.environ, {"DEPLOY_HASH": "abc1234"}):
+        use_toml("tests/data/toml/default.toml")
+        context = Context.from_toml(stage="dev")
+        message = deploy_hash_report(context)
+    assert message is not None
+    assert "abc1234" in message
+    assert "DEPLOY_HASH env より" in message

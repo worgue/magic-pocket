@@ -851,6 +851,14 @@ slot として使われます。
 | `dockerfile_path` | str | **必須** | Dockerfileのパス |
 | `platform` | str | `"linux/amd64"` | Dockerビルドプラットフォーム（`"linux/amd64"` / `"linux/arm64"`）。Lambda の `Architectures` もこの値から導出される |
 | `envs` | dict[str, str] | `{}` | Lambda環境変数 |
+
+!!! note "DEPLOY_HASH は常に注入されます"
+    deploy 時の git short hash（`DEPLOY_HASH` 環境変数があればその値）が、
+    全 container の Lambda 環境変数 `DEPLOY_HASH` に常に注入されます（CloudFront の
+    deploy_hash route の有無には依存しません）。version 表示・Sentry release・ログの
+    版識別にそのまま使えます。`envs` に `DEPLOY_HASH` を明示した場合はそちらが優先されます。
+    build once（`pocket build` → promote）では「版 = image」なので、image に焼いた
+    hash を優先し env は fallback にする設計も有効です。
 | `use_vpc` | bool \| None | None | VPC利用の制御（[use_vpc](#use_vpccontainer--rds) 参照） |
 | `ecr_name` | str \| None | None | ECRリポジトリ名の上書き。省略時は `{stage}-{project}-{namespace}-{name}-lambda` |
 | `build` | str \| dict | `"codebuild"` | コンテナイメージのビルドバックエンド（下記参照） |
@@ -2208,7 +2216,7 @@ routes = [
 動作:
 
 1. pocket がデプロイ時に `git rev-parse --short HEAD` で hash を取得（`DEPLOY_HASH` 環境変数があればそちらを優先）
-2. Lambda 環境変数 `DEPLOY_HASH` に自動注入
+2. Lambda 環境変数 `DEPLOY_HASH` に自動注入（deploy_hash route の有無に関係なく、全 container に常に注入されます。下記参照）
 3. CloudFront Function が自動生成され、`/static/{hash}/foo.js` → `/static/foo.js` に変換してオリジンに転送
 4. CloudFront のキャッシュキーはフル URL (hash 込み) なので、デプロイごとにキャッシュが自然に更新される
 5. `versioned_max_age`（デフォルト 1 年）の長期キャッシュが付与される

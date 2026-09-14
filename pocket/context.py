@@ -26,6 +26,7 @@ from .utils import (
     camel_logical_name,
     echo,
     get_hosted_zone_id_from_domain,
+    is_runtime,
     route_logical_name,
 )
 
@@ -1455,17 +1456,26 @@ class CloudFrontContext(BaseModel):
 
 
 def _get_deploy_hash() -> str:
-    """git の short hash を取得する。DEPLOY_HASH 環境変数があればそちらを優先。"""
+    """git の short hash を取得する。DEPLOY_HASH 環境変数があればそちらを優先。
+
+    Lambda runtime (Context を toml から再構築する経路) では git を呼ばない。
+    deploy 時に env として注入済みなので通常は env で解決する。
+    """
     import subprocess
 
     env_hash = os.environ.get("DEPLOY_HASH")
     if env_hash:
         return env_hash
-    result = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 git は PATH 前提の標準ツール
-        capture_output=True,
-        text=True,
-    )
+    if is_runtime():
+        return "unknown"
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 git は PATH 前提の標準ツール
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return "unknown"
     if result.returncode == 0:
         return result.stdout.strip()
     return "unknown"
@@ -1474,13 +1484,20 @@ def _get_deploy_hash() -> str:
 def deploy_hash_report(context: Context) -> str | None:
     """deploy 時に表示する DEPLOY_HASH の解決結果メッセージ (無関係なら None)。
 
-    deploy_hash versioning の route が無ければ DEPLOY_HASH は使われないので None。
-    route がある場合は「実際に使う値」と「出所 (DEPLOY_HASH env / git HEAD)」を
-    明示する。DEPLOY_HASH env の伝播漏れで黙って git short hash に落ち、版や
-    CloudFront cache の分離が効かない footgun を deploy 時に可視化するのが狙い。
-    出所判定は `_get_deploy_hash()` の優先順位 (env 優先) を鏡写しにする。
+    DEPLOY_HASH は全 container の env に注入されるため、container か deploy_hash
+    route のどちらかがあれば「実際に使う値」と「出所 (DEPLOY_HASH env / git HEAD)」を
+    明示する。どちらも無い構成 (S3 + CloudFront のみ等) では None。DEPLOY_HASH env
+    の伝播漏れで黙って git short hash に落ち、版や CloudFront cache の分離が効かない
+    footgun を deploy 時に可視化するのが狙い。出所判定は `_get_deploy_hash()` の
+    優先順位 (env 優先) を鏡写しにする。
     """
     hashes = [cf.deploy_hash for cf in context.cloudfront.values() if cf.deploy_hash]
+    if not hashes:
+        hashes = [
+            c.envs["DEPLOY_HASH"]
+            for c in context.container.values()
+            if c.envs.get("DEPLOY_HASH")
+        ]
     if not hashes:
         return None
     value = hashes[0]
@@ -1679,18 +1696,31 @@ class Context(BaseModel):
                         update={"signing_key_imports": imports}
                     )
 
-        # deploy_hash route があれば DEPLOY_HASH を全 container の envs に追加
+        return containers
+
+    @staticmethod
+    def _inject_deploy_hash(
+        containers: dict[str, ContainerContext],
+        cloudfront_ctx: dict[str, CloudFrontContext],
+    ) -> dict[str, ContainerContext]:
+        """DEPLOY_HASH を全 container の envs に注入する (route の有無に依らず)。
+
+        version 表示 / Sentry release / ログの版識別は CloudFront route と無関係な
+        用途なので、deploy_hash route の有無で注入が切り替わると、route を撤去した
+        側が気付かないまま他 container の版識別が消える (KN1450)。deploy_hash
+        route があればその値 (同じ `_get_deploy_hash()` 由来) と揃える。利用者が
+        envs に DEPLOY_HASH を明示している場合はそちらを優先する。
+        """
         deploy_hashes = [
             cf_ctx.deploy_hash
             for cf_ctx in cloudfront_ctx.values()
             if cf_ctx.deploy_hash
         ]
-        if deploy_hashes:
-            for name, container_ctx in containers.items():
-                envs = dict(container_ctx.envs)
-                envs.setdefault("DEPLOY_HASH", deploy_hashes[0])
-                containers[name] = containers[name].model_copy(update={"envs": envs})
-
+        deploy_hash = deploy_hashes[0] if deploy_hashes else _get_deploy_hash()
+        for name, container_ctx in containers.items():
+            envs = dict(container_ctx.envs)
+            envs.setdefault("DEPLOY_HASH", deploy_hash)
+            containers[name] = containers[name].model_copy(update={"envs": envs})
         return containers
 
     @staticmethod
@@ -1731,6 +1761,7 @@ class Context(BaseModel):
 
         if containers:
             containers = cls._apply_cloudfront_cross_refs(s, containers, cloudfront_ctx)
+            containers = cls._inject_deploy_hash(containers, cloudfront_ctx)
 
         scheduler_ctx: dict[str, SchedulerContext] = {}
         if s.scheduler and s.scheduler.schedules:

@@ -13,6 +13,12 @@
 - Django に依存しない `pocket build --stage=<stage>` を追加しました。
   `pocket django build` は同じ処理の別名として維持します (KN1448)。
 
+### Changed
+- Lambda 環境変数 `DEPLOY_HASH` を、CloudFront の deploy_hash route の有無に関係なく
+  全 container に常に注入するようにしました (KN1450)。route を撤去しても他 container の
+  version 表示・Sentry release 等の版識別が消えなくなります。`envs` に `DEPLOY_HASH` を
+  明示している場合はそちらが優先されます。
+
 ### Fixed
 - 削除直後の同名 bucket (region 移設で旧 region を destroy した直後など) の
   CreateBucket が `OperationAborted` で拒否された場合、deploy が 30 秒間隔で最長

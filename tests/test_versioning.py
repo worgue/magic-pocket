@@ -85,6 +85,16 @@ def test_deploy_hash_context(use_toml):
 
 
 @mock_aws
+def test_deploy_hash_injected_without_deploy_hash_route(use_toml):
+    """deploy_hash route が無い構成でも DEPLOY_HASH が全 container の envs に注入
+    されること (KN1450: route の撤去で他 container の版識別が消えない)"""
+    with patch.dict(os.environ, {"DEPLOY_HASH": "abc1234"}):
+        use_toml("tests/data/toml/default.toml")
+        context = Context.from_toml(stage="dev")
+    assert not any(cf.deploy_hash for cf in context.cloudfront.values())
+    assert context.container["main"].envs.get("DEPLOY_HASH") == "abc1234"
+
+
 def test_deploy_hash_cf_function_rendering(use_toml):
     """deploy_hash route 用の CF Function が生成されること"""
     with patch.dict(os.environ, {"DEPLOY_HASH": "abc1234"}):

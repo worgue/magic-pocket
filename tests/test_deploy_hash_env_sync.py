@@ -87,11 +87,12 @@ def test_post_deploy_skips_when_in_sync(use_toml, monkeypatch):
     assert client._updates == []
 
 
-def test_post_deploy_noop_without_deploy_hash(use_toml, monkeypatch):
-    """deploy_hash route が無い構成では env を一切触らない。"""
+def test_post_deploy_syncs_without_deploy_hash_route(use_toml, monkeypatch):
+    """deploy_hash route が無い構成でも DEPLOY_HASH は全 container に注入されるため
+    (KN1450)、post-deploy 同期の対象になる。"""
     monkeypatch.setattr("time.sleep", lambda *a, **k: None)
     client = _fake_lambda_client({"POCKET_STAGE": "dev"})
-    with mock_aws():
+    with mock_aws(), mock.patch.dict(os.environ, {"DEPLOY_HASH": "abc1234"}):
         use_toml("tests/data/toml/default.toml")
         context = Context.from_toml(stage="dev")
     assert context.container["main"]
@@ -106,4 +107,6 @@ def test_post_deploy_noop_without_deploy_hash(use_toml, monkeypatch):
         ac = Container(context=context.container["main"])
         ac.ensure_post_deploy_state()
 
-    assert client._updates == []
+    assert client._updates
+    for update in client._updates:
+        assert update["Environment"]["Variables"]["DEPLOY_HASH"] == "abc1234"
