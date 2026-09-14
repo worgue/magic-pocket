@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import time
+
 from botocore.exceptions import ClientError
+
+from pocket.utils import echo
+
+# 削除直後の同名 bucket は S3 の削除伝播が終わるまで CreateBucket が
+# OperationAborted で拒否される (AWS docs では最大 1 時間程度、実測 20 分前後)。
+# region 移設で必ず踏む経路なので CLI 側で待って再試行する (KN1454)。
+CREATE_BUCKET_RETRY_INTERVAL = 30
+CREATE_BUCKET_RETRY_TIMEOUT = 3600
 
 
 def bucket_exists(client, bucket_name: str) -> bool:
@@ -14,8 +24,45 @@ def bucket_exists(client, bucket_name: str) -> bool:
         raise
 
 
-def create_bucket(client, bucket_name: str, region: str):
-    """リージョンを考慮してバケットを作成"""
+def create_bucket(
+    client,
+    bucket_name: str,
+    region: str,
+    *,
+    retry_interval: float = CREATE_BUCKET_RETRY_INTERVAL,
+    retry_timeout: float = CREATE_BUCKET_RETRY_TIMEOUT,
+):
+    """リージョンを考慮してバケットを作成。
+
+    削除伝播待ちの OperationAborted は retry_interval 秒ごとに retry_timeout 秒まで
+    再試行する (進捗は stderr)。それ以外の ClientError は即座に再送出する。
+    """
+    deadline = time.monotonic() + retry_timeout
+    while True:
+        try:
+            _create_bucket_once(client, bucket_name, region)
+            return
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") != "OperationAborted":
+                raise
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError(
+                    "bucket '%s' の作成が OperationAborted のまま %d 分以内に成功"
+                    "しませんでした。削除直後の同名 bucket は削除の伝播 (最大 1 時間"
+                    "程度) が終わるまで再作成できません。時間を置いて再実行して"
+                    "ください。" % (bucket_name, retry_timeout // 60)
+                ) from e
+        echo.warning(
+            "bucket '%s' の作成が OperationAborted で拒否されました (削除直後の"
+            "同名 bucket は削除の伝播が終わるまで再作成できません)。%d 秒後に"
+            "再試行します (最長あと %d 分待ちます)..."
+            % (bucket_name, retry_interval, remaining // 60)
+        )
+        time.sleep(retry_interval)
+
+
+def _create_bucket_once(client, bucket_name: str, region: str):
     if region == "us-east-1":
         client.create_bucket(Bucket=bucket_name)
     else:

@@ -14,6 +14,10 @@
   `pocket django build` は同じ処理の別名として維持します (KN1448)。
 
 ### Fixed
+- 削除直後の同名 bucket (region 移設で旧 region を destroy した直後など) の
+  CreateBucket が `OperationAborted` で拒否された場合、deploy が 30 秒間隔で最長
+  1 時間まで待って再試行するようにしました (KN1454)。state bucket と `[s3]`
+  bucket の両方が対象で、進捗は stderr に出ます。
 - SPA gate (`require_token`) の CloudFront Function が `pocket-spa-token` cookie の
   値を `decodeURIComponent` してから検証するようにしました (KN1458)。axum-extra の
   CookieJar 等で `:` が `%3A` に percent-encode された cookie でも 302 にならなく
