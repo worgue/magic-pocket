@@ -27,3 +27,21 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX messages_created_at_idx ON messages (created_at);
+
+-- SES で受信したメールの要約。原本 (MIME) と受信情報は pocket の inbound bucket に
+-- あり、ここには一覧表示に要る項目だけを置く。主キーは pocket の受信 ID
+-- (原本 object 単位の sha256) で、同じ通知の再送では二重登録しない。
+-- DSQL は UPSERT を持たないため、worker は SELECT → INSERT で冪等化する。
+CREATE TABLE mails (
+    receipt_id text NOT NULL,
+    subject text NOT NULL,
+    sender text NOT NULL,
+    -- ルールに一致した実際の受信宛先 (JSON 配列の文字列。MIME の To ではない)
+    recipients text NOT NULL,
+    raw_key text NOT NULL,
+    received_at timestamptz NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (receipt_id)
+);
+
+CREATE INDEX mails_received_at_idx ON mails (received_at);

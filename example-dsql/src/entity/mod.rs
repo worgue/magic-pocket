@@ -4,6 +4,8 @@
 //! `just entity-gen` で生成する (dsql-schema-migrate のフロー)。この example は
 //! テーブルが 1 つだけなので、生成結果に相当するものを直接置いている。
 
+pub mod mails;
 pub mod messages;
 
+pub use mails::Entity as Mails;
 pub use messages::Entity as Messages;

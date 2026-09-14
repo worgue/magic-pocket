@@ -27,6 +27,7 @@ pub fn router(db: Option<DatabaseConnection>, refresher: Option<TokenRefresher>)
     Router::new()
         .route("/api/health", get(routes::health::health))
         .route("/api/messages", get(routes::messages::list))
+        .route("/api/mails", get(routes::mails::list))
         // DSQL トークンの鮮度維持は「最外層」に置く (DB を触る layer より外側。
         // session layer 等を足すときもこの .layer より前 = 内側に追加すること)
         .layer(middleware::from_fn_with_state(

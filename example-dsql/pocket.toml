@@ -27,6 +27,24 @@ command = "pocket-example-dsql-worker"
 timeout = 30
 sqs = { dead_letter_alert = { email = "alerts@example.com" } }
 
+# SES 受信 (inbound) の worker。[inbound.inbox] の handler = "main.mail" がこの handler を
+# 指し、queue + DLQ + EventSourceMapping はこの sqs 宣言で作られる。受信経路は
+# SES (S3Action) → SNS → この queue → magic_pocket_rs::inbound (src/bin/mail_worker.rs)。
+[container.main.handlers.mail]
+command = "pocket-example-dsql-mail-worker"
+timeout = 60
+sqs = { dead_letter_alert = { email = "alerts@example.com" } }
+
+# SES 受信口。domain は公開 repo では placeholder (deploy 前に実値へ書き戻す。commit しない)。
+# 初回は `pocket resource inbound --stage sandbox --name inbox init` で TXT / MX を出し
+# DNS へ登録 → 検証完了後に deploy。delivery_alert は受信処理の障害通知先 (転送先ではない)。
+[inbound.inbox]
+domain = "inbound.dsql.sandbox.magic-pocket.example.com"
+recipients = ["test@inbound.dsql.sandbox.magic-pocket.example.com"]
+handler = "main.mail"
+retention_days = 30
+delivery_alert = { email = "alerts@example.com" }
+
 # Aurora DSQL。[dsql] を置くだけで deploy 時にクラスターが provision される
 # (VPC 不要)。Lambda へは POCKET_DSQL_ENDPOINT / POCKET_DSQL_REGION が注入され、
 # IAM 認証トークンはアプリ側で生成する (src/db.rs)。

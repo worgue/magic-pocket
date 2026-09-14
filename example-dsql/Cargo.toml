@@ -17,6 +17,10 @@ name = "pocket-example-dsql-worker"
 path = "src/bin/worker.rs"
 
 [[bin]]
+name = "pocket-example-dsql-mail-worker"
+path = "src/bin/mail_worker.rs"
+
+[[bin]]
 name = "schema-apply"
 path = "src/bin/schema_apply.rs"
 
@@ -38,7 +42,10 @@ lambda_http = "0.15"
 lambda_runtime = "0.14"
 aws_lambda_events = { version = "1.2.0", default-features = false, features = ["sqs"] }
 chrono = "0.4"
-magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", tag = "0.31.2" }
+# inbound (SES 受信 worker ヘルパ) は feature で有効化する
+magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", tag = "0.35.0", features = ["inbound"] }
+# 受信メールの MIME 解析 (件名 / From の取り出し)。本文・添付は信頼できない入力
+mail-parser = "0.11"
 aws-config = { version = "1.10.1", features = ["behavior-version-latest"] }
 aws-sdk-dsql = "1.65.0"
 aws-types = "1.5.0"

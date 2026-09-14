@@ -6,9 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake \
 
 WORKDIR /app
 COPY . .
-# 1 イメージに HTTP と worker の両方を焼き、handler ごとに CMD で切り替える
+# 1 イメージに HTTP と 2 つの worker を焼き、handler ごとに CMD で切り替える
 # (pocket.toml の [container.main.handlers.<key>] command が CMD を上書きする)
-RUN cargo build --release --bin pocket-example-dsql-lambda --bin pocket-example-dsql-worker
+RUN cargo build --release --bin pocket-example-dsql-lambda --bin pocket-example-dsql-worker --bin pocket-example-dsql-mail-worker
 
 FROM public.ecr.aws/docker/library/debian:bookworm-slim
 
@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /var/task
 COPY --from=builder /app/target/release/pocket-example-dsql-lambda /usr/local/bin/pocket-example-dsql-lambda
 COPY --from=builder /app/target/release/pocket-example-dsql-worker /usr/local/bin/pocket-example-dsql-worker
+COPY --from=builder /app/target/release/pocket-example-dsql-mail-worker /usr/local/bin/pocket-example-dsql-mail-worker
 # pocket.toml は magic_pocket_rs::set_envs() が実行時に読むためコンテナに含める
 COPY --from=builder /app/pocket.toml ./pocket.toml
 

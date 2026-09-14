@@ -9,7 +9,9 @@ Aurora DSQL + Rust (axum) の example。`example-neon` / `example-tidb` が Djan
 EventBridge Scheduler ──(1 日 1 回)──▶ SQS queue ──▶ Lambda worker ──▶ Aurora DSQL
                                           │                              │
                                           └──▶ DLQ                       │
-                                                                         ▼
+SES 受信 ──▶ S3 (原本) ──▶ SNS ──▶ SQS queue ──▶ Lambda mail worker ─────┤
+                                     │                                   │
+                                     └──▶ 配送 DLQ                       ▼
                           CloudFront ──/api/*──▶ Lambda (axum) ────── SELECT
                                      └──既定──▶ S3 (SvelteKit SPA)
 ```
@@ -18,9 +20,11 @@ EventBridge Scheduler ──(1 日 1 回)──▶ SQS queue ──▶ Lambda wo
 |---|---|
 | HTTP | axum + `lambda_http` (`pocket-example-dsql-lambda`) |
 | worker | `lambda_runtime` + `magic_pocket_rs::sqs::process_sqs_records` (`pocket-example-dsql-worker`) |
+| mail worker | `lambda_runtime` + `magic_pocket_rs::inbound::process_inbound_records` (`pocket-example-dsql-mail-worker`) |
 | DB | Aurora DSQL (IAM 認証、トークンはアプリ内生成) + SeaORM |
 | フロント | SvelteKit (adapter-static) の SPA |
 | 定期実行 | `pocket.sqs_scheduler` で 1 日 1 回 |
+| メール受信 | `[inbound.inbox]` (SES → S3 → SNS → SQS)。要約を `mails` に登録し `/api/mails` で一覧 |
 
 ## なぜ prune もページングも無いのか
 
@@ -81,6 +85,26 @@ DSQL の制約が素の PostgreSQL と違う点:
 運用プロジェクトでは専用のマイグレーションツールを使うが、この example は
 テーブルが 1 つだけなので依存を増やさず SeaORM の生 SQL 実行で完結させている
 (`src/bin/schema_apply.rs`)。
+
+## メール受信 (inbound)
+
+`pocket.toml` の `[inbound.inbox]` が SES の受信口。pocket が原本を非公開 S3 に保存し、
+SNS → SQS で `main.mail` handler (`src/bin/mail_worker.rs`) に届く。worker は
+`magic_pocket_rs::inbound` が原本の版・hash と受信情報を保全した後で、件名 / From /
+実際の宛先を `mails` テーブルに登録する (受信 ID で冪等)。本文・添付は読まない。
+
+初回だけ受信ドメインの初期設定が要る (`domain` も placeholder なので実値へ書き戻す):
+
+```sh
+/app/.venv/bin/pocket resource inbound --stage sandbox --name inbox init   # TXT / MX を出力
+# 出力された TXT (_amazonses.<domain>) と MX を DNS に登録し、SES の検証完了を待つ
+/app/.venv/bin/pocket deploy --stage sandbox -y
+DSQL_HOST=<endpoint> just schema-apply                                    # mails テーブル
+```
+
+deploy 後、`delivery_alert` / `dead_letter_alert` の SNS 購読確認メールのリンクを開く。
+検証は受信アドレス宛にメールを送り、`/api/mails` (画面の「受信メール」) に要約が出ること、
+inbound bucket の `raw/` と `metadata/` に原本と受信情報が揃うことを確認する。
 
 ## デプロイ (sandbox)
 
