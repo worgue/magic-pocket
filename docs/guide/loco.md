@@ -144,7 +144,7 @@ let app: Router = Router::new()
 
 ---
 
-## メール受信 (inbound) worker
+## メール受信 (inbound) worker {: #inbound-worker }
 
 [`[inbound.<name>]`](../inbound.md) の受信 handler を Rust で書く場合は feature `inbound` を
 有効にします。Python 側 `pocket.inbound` と同じ契約で、SNS envelope と SES 通知の検証、
