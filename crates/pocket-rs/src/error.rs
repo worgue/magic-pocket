@@ -26,6 +26,12 @@ pub enum PocketError {
     #[error("DSQL error: {0}")]
     Dsql(String),
 
+    #[error("S3 error: {0}")]
+    S3(String),
+
+    #[error("inbound error: {0}")]
+    Inbound(String),
+
     #[error("unsupported secret type: {0}")]
     UnsupportedSecretType(String),
 

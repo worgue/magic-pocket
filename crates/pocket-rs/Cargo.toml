@@ -26,10 +26,17 @@ aws_lambda_events = { version = "1.2.0", default-features = false, features = ["
 # (Python 側 hmac.compare_digest との対応)
 axum = { version = "0.8", optional = true, default-features = false }
 subtle = { version = "2", optional = true }
+# feature "inbound" (SES 受信 worker ヘルパ) 用。原本・受信情報の S3 読み書きと
+# 原本 hash (Python 側 pocket.inbound と同じ sha256 hex)
+aws-sdk-s3 = { version = "1", optional = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
+sha2 = { version = "0.11", optional = true }
+hex = { version = "0.4", optional = true }
 
 [features]
 # pocket.django.origin_verify.OriginVerifyMiddleware 相当の axum middleware を有効化
 axum = ["dep:axum", "dep:subtle"]
+# pocket.inbound (SES 受信の原本・受信情報の保全 → 利用側処理) 相当の worker ヘルパ
+inbound = ["dep:aws-sdk-s3", "dep:sha2", "dep:hex"]
 
 [dev-dependencies]
 # 本体は async fn を提供するだけで tokio API を直接使わない (runtime は利用側が

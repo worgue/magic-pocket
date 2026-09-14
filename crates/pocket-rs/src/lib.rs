@@ -1,5 +1,7 @@
 pub mod config;
 pub mod error;
+#[cfg(feature = "inbound")]
+pub mod inbound;
 pub mod origin_verify;
 pub mod rds;
 pub mod resources;

@@ -144,6 +144,58 @@ let app: Router = Router::new()
 
 ---
 
+## メール受信 (inbound) worker
+
+[`[inbound.<name>]`](../inbound.md) の受信 handler を Rust で書く場合は feature `inbound` を
+有効にします。Python 側 `pocket.inbound` と同じ契約で、SNS envelope と SES 通知の検証、
+原本の VersionId / SHA256 と完全な通知の `metadata/<受信ID>.json` への条件付き保存を
+行ってから利用側の処理を呼びます。MIME の解析は利用側で行います (`mail-parser` 等)。
+
+```toml
+[dependencies]
+magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", features = ["inbound"] }
+```
+
+```rust
+use aws_lambda_events::event::sqs::{SqsBatchResponse, SqsEvent};
+use lambda_runtime::{service_fn, LambdaEvent};
+use magic_pocket_rs::inbound::{process_inbound_records, ReceivedMail, Receiver};
+
+async fn process(mail: ReceivedMail) -> Result<(), String> {
+    // 業務処理は mail.id (受信 ID) を一意キーにして冪等化する
+    if mail.verdict("virusVerdict") != Some("PASS") {
+        return Ok(()); // 原本と受信情報は保存済み。隔離状態を DB に記録する等
+    }
+    let recipients = mail.recipients(); // ルールに一致した実際の宛先
+    let _ = (recipients, &mail.raw);    // mail.raw を MIME として解析して保存する、など
+    Ok(())
+}
+
+async fn handle(event: LambdaEvent<SqsEvent>) -> Result<SqsBatchResponse, lambda_runtime::Error> {
+    let receiver = Receiver::from_env("inbox").await?; // POCKET_INBOUND の [inbound.inbox]
+    Ok(process_inbound_records(&receiver, event.payload, process).await)
+}
+
+#[tokio::main]
+async fn main() -> Result<(), lambda_runtime::Error> {
+    magic_pocket_rs::set_envs().await?;
+    lambda_runtime::run(service_fn(handle)).await
+}
+```
+
+| 項目 | 挙動 |
+|------|------|
+| 検証失敗 (想定外の topic / 保存先 / 宛先) | その record だけ失敗として報告 (partial batch response)。何も保存しない |
+| 同じ通知の再送・同時受信 | 保存済みの版と受信情報に揃える (`If-None-Match: *` の 412 に追従) |
+| SES の初期設定通知 | 保存だけして `process` には渡さない |
+| `process` が `Err` | その record だけ再配信。副作用は `mail.id` で冪等化すること |
+
+`Receiver::load_import(manifest_key)` は `pocket resource inbound copy` で揃えた原本 +
+受信情報を、明示的な取り込み handler から読むためのものです。S3 の [`ObjectStore`]
+trait を差し替えられるので、AWS 無しでユニットテストできます。
+
+---
+
 ## pocket.toml の構成例
 
 ```toml

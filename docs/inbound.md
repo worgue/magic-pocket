@@ -104,6 +104,10 @@ def import_job(event, context):
     process(mail)
 ```
 
+Rust (axum / Loco) の container では `magic-pocket-rs` の feature `inbound` が同じ契約を
+提供します (`Receiver::from_env` / `process_inbound_records` / `load_import`)。
+handler の書き方は [Rust ランタイム](guide/loco.md#メール受信-inbound-worker) を参照してください。
+
 `mail.metadata["ses"]["receipt"]["recipients"]` はルールに一致した実際の受信宛先です。
 MIMEのToヘッダーや `mail.destination` と区別して保存します。
 `scan_enabled = true`（既定）は迷惑メール・ウイルス判定を付けますが、自動隔離はしません。
