@@ -261,7 +261,10 @@ pub struct Receiver<S: ObjectStore> {
     store: S,
 }
 
-impl Receiver<aws_sdk_s3::Client> {
+/// 本番の S3 client を使う受信口 ([`Receiver::from_env`] の戻り値)。
+pub type S3Receiver = Receiver<aws_sdk_s3::Client>;
+
+impl S3Receiver {
     /// `POCKET_INBOUND` の設定と、その region の S3 client で受信口を用意する。
     pub async fn from_env(name: &str) -> Result<Self> {
         let config = InboundConfig::from_env(name)?;
