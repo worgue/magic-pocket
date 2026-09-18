@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.37.0](https://github.com/worgue/magic-pocket/releases/tag/0.37.0) - 2026-09-18
+
 ### 更新時の作業 (AWS account を複数の stage / project で共有している場合)
 1. 同じ AWS account を使う**すべての** stage・project を、この版以上の pocket で deploy します
    (backup の保存先・ロール、CodeBuild のロールは deploy / ビルド時に自動で新しい名前へ切り替わります)。
