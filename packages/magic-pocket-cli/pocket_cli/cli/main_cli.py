@@ -17,6 +17,7 @@ except ModuleNotFoundError as e:
 from pocket_cli.cli import (
     backup_cli,
     build_cli,
+    cleanup_deprecated_cli,
     cloudfront_cli,
     cloudfront_keys_cli,
     cloudfront_waf_cli,
@@ -134,6 +135,7 @@ main.add_command(migrate_cli.migrate)
 main.add_command(permissions_cli.permissions)
 main.add_command(waf_cli.waf)
 main.add_command(backup_cli.backup)
+main.add_command(cleanup_deprecated_cli.cleanup_deprecated)
 
 
 @main.group()

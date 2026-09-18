@@ -220,6 +220,27 @@ pocket backup cleanup --stage=dev
 
 削除対象はこの stage の pocket 管理 vault（`{stage}-{project}-{namespace}-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
 
+### pocket cleanup-deprecated
+
+旧バージョンの pocket が残した、**AWS account 単位の共有リソース**を削除します。stage 単位の移行（`pocket migrate` や deploy）と違い、account 内の全 stage・全 project が共有していたものが対象なので、deploy から自動では実行されません。
+
+```bash
+pocket cleanup-deprecated --stage=dev --dry-run   # 対象の確認だけ
+pocket cleanup-deprecated --stage=dev
+```
+
+| 対象 | 由来 |
+|------|------|
+| backup vault `pocket-backup` | 0.36 以前の共有 vault（0.37.0 で stage 単位の `{stage}-{project}-{namespace}-backup` に変更） |
+| IAM role `forge-pocket-backup-role` | 0.36 以前の共有サービスロール（同 `…-backup-role` に変更） |
+
+**同じ AWS account を使うすべての stage・project を 0.37.0 以上で deploy し終えてから**、account / region ごとに 1 回実行します（`--stage` は region の解決に使います）。
+
+- 旧 vault・旧ロールをまだ参照している backup plan / selection が 1 つでもあれば、一覧を表示して**中止**します（その stage が未更新のまま消すと、定期バックアップが失敗し始めるため）。
+- 旧 vault に recovery point が残っている場合、既定では vault を残し、すべて失効する日付を案内します（ロールは削除します）。`--delete-recovery-points` を付けた場合だけ、データごと削除します。**旧 vault は共有だったため、他 project のバックアップデータも含まれる点に注意してください。**
+- IAM ロールは全 region 共通です。複数 region で pocket を使っている場合は、全 region の更新後に実行してください。
+- `-y` / `--yes` で確認プロンプトを省略できます。
+
 ### pocket runtime-config
 
 Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）が除外されます。

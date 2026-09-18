@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### 更新時の作業 (AWS account を複数の stage / project で共有している場合)
+1. 同じ AWS account を使う**すべての** stage・project を、この版以上の pocket で deploy します
+   (backup の保存先・ロール、CodeBuild のロールは deploy / ビルド時に自動で新しい名前へ切り替わります)。
+2. その後、account / region ごとに 1 回 `pocket cleanup-deprecated --stage=<stage>` を実行し、
+   旧バージョンが残した共有リソース (backup vault `pocket-backup`、IAM role
+   `forge-pocket-backup-role`) を削除します。未更新の stage が残っていれば、参照を検出して中止します。
+   旧 vault に recovery point が残っている間は vault を残し、すべて失効する日付を案内します
+   (`--delete-recovery-points` でデータごと削除できます)。
+
+### Added
+- `pocket cleanup-deprecated` を追加しました。旧バージョンが残した account 単位の共有リソースを、
+  どの stage からも参照されていないことを検査した上で削除します (`--dry-run` / `-y` 対応)。
+
 ### Changed
 - AWS Backup の vault とサービスロールを、account 共有の固定名 (`pocket-backup` /
   `forge-pocket-backup-role`) から stage 単位の名前 (`{stage}-{project}-{namespace}-backup` /
@@ -15,8 +28,8 @@
   自動で切り替えるため、手作業は不要です。
   **旧 vault の recovery point は移動されず**、取得時の保持期限で失効するまで
   `pocket backup cleanup` / destroy の件数表示の対象外になります (復元には使えます)。
-  旧 vault・旧ロールは他 stage / project と共有のため pocket からは削除しません。
-  手順は `docs/guide/configuration.md` の「0.36 以前から更新する場合」を参照してください。
+  旧 vault・旧ロールは他 stage / project と共有のため deploy / destroy では削除せず、
+  `pocket cleanup-deprecated` で削除します (上の「更新時の作業」を参照)。
 - CodeBuild のサービスロール名から、pocket の命名規約と無関係だった `forge-` prefix を
   外しました (`forge-{prefix}codebuild-role` → `{prefix}codebuild-role`)。次のビルドで
   新しいロールを作って CodeBuild project を付け替え、旧ロールは pocket が削除します。

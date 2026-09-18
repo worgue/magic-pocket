@@ -801,16 +801,7 @@ deploy が AWS Backup の vault（`{stage}-{project}-{namespace}-backup`）・�
     0.36 以前は vault（`pocket-backup`）とサービスロール（`forge-pocket-backup-role`）が account 共有の固定名でした。0.37.0 で stage 単位の名前に改めています。更新後の最初の deploy が、plan の保存先と selection のロールを新しい名前へ自動で切り替えます（手作業は不要です）。
 
     - **旧 vault の recovery point は移動しません**（AWS Backup に移動・改名の API がありません）。取得時に付いた保持期限（lifecycle）で自動的に失効しますが、それまでは `pocket backup cleanup` や destroy の件数表示の**対象外**になります。復元（`pocket resource dsql restore <recovery-point-arn>` / `--latest`）には引き続き使えます。早く消したい場合は AWS Backup コンソールから削除してください。
-    - **旧 vault と旧ロールは pocket からは削除しません**。account 内の他 stage・他 project が使っている可能性があるためです。すべての stage を更新し、旧 vault が空になったら手動で削除できます。
-
-        ```bash
-        aws backup delete-backup-vault --backup-vault-name pocket-backup
-        aws iam detach-role-policy --role-name forge-pocket-backup-role \
-          --policy-arn arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
-        aws iam detach-role-policy --role-name forge-pocket-backup-role \
-          --policy-arn arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
-        aws iam delete-role --role-name forge-pocket-backup-role
-        ```
+    - **旧 vault と旧ロールは deploy / destroy では削除されません**。account 内の他 stage・他 project が使っている可能性があるためです。同じ AWS account を使うすべての stage・project を更新し終えたら、`pocket cleanup-deprecated --stage=<stage>` で削除してください（まだ参照が残っていれば中止します。[CLI リファレンス](cli.md#pocket-cleanup-deprecated) 参照）。
 
 !!! info "宣言を外した場合"
     `[backup.dsql]` 等を後から外しても、deploy は既存の plan（スケジュール）に触りません（snapshot は取られ続けます）。スケジュールを止めるには destroy を実行するか、AWS Backup コンソールから plan を削除してください。
