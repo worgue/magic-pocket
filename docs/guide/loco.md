@@ -30,6 +30,15 @@ loco-rs = "0.14"
 
 Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換しますが、axum では [`lambda_http`](https://crates.io/crates/lambda_http) が axum Router を直接 Lambda ハンドラーとして使えます（Loco の Router も素の axum の Router も同じ）。フレームワーク側で完結するため、Lambda Web Adapter のような外部 Extension は不要です。
 
+!!! warning "アプリ側で `aws-sdk-*` を直接使うときは default feature を外す"
+    `aws-sdk-*` crate の default feature (`rustls`) は legacy TLS スタック (rustls 0.21 系) を引き込み、脆弱性アドバイザリの対象である `rustls-webpki` 0.101.x が依存ツリーに残ります。`magic-pocket-rs` 本体は外して宣言していますが、Cargo の feature は依存全体で合算されるため、アプリ側で 1 箇所でも default のまま使うと元に戻ります。次の形で宣言してください。
+
+    ```toml
+    aws-sdk-dsql = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+    ```
+
+    `aws-config` は default feature に legacy TLS を含まないので、そのままで構いません。`cargo tree -i rustls-webpki` で 0.101.x が残っていないことを確認できます。
+
 ---
 
 ## Lambda エントリポイント

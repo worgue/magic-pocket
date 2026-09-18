@@ -47,7 +47,10 @@ magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", tag = "0
 # 受信メールの MIME 解析 (件名 / From の取り出し)。本文・添付は信頼できない入力
 mail-parser = "0.11"
 aws-config = { version = "1.10.1", features = ["behavior-version-latest"] }
-aws-sdk-dsql = "1.65.0"
+# aws-sdk-* は default の `rustls` feature が legacy TLS スタック (rustls 0.21 系 →
+# 脆弱な rustls-webpki 0.101.x) を依存ツリーに残すため外す。Cargo の feature は依存全体で
+# 合算されるので、1 箇所でも default のままだと利用側では外せない
+aws-sdk-dsql = { version = "1.65.0", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-types = "1.5.0"
 urlencoding = "2.1.3"
 anyhow = "1.0.104"
