@@ -170,15 +170,19 @@ attachmentsの保存でも受信イベントは発生しないため、再帰処
    AWS上から自所有ruleが消えている場合も、勝手な再作成より先にdriftとして報告します。
 
 有効なセットがまだない場合は、account / regionで一度だけ初期設定が必要です。
-名前を選ばせず、共有の固定名 `pocket-inbound` を作成・有効化するセットアップを用意する案です。
-通常deployはこのアカウント全体の操作を暗黙に行わず、未初期化時に実行方法を案内します。
-セットアップのコマンド名は未確定で、現時点では実行できません。
+この初期設定（receipt rule setの作成・有効化）はpocketでは行いません。
+当初は共有の固定名 `pocket-inbound` を確認つきで作成・有効化するセットアップを
+0.35.0で提供しましたが、0.36.0で取りやめました（KN1496）。理由は次のとおりです。
 
-セットアップは既存の有効セットがあれば変更せず再利用します。有効セットがなくても同名の
-未管理セットがあれば所有権を自動取得せず、内容・管理者の確認を求めます。
-作成・有効化の直前と直後に有効セットを再確認し、他のセットが有効になっていた場合は
-上書きしません。SESには条件付き有効化のAPIがないため、同時の初期設定は管理者側で
-直列化する必要があります。作成した共有セットはprojectのdestroyでは削除・無効化しません。
+- 有効セットはaccount / regionで1つだけの共有物で、project単位の道具の1 projectが
+  他projectの前提を決める形になる。人の確認を挟むほどの操作なら、作らないほうが筋がよい
+- pocket固有の名前は、SESコンソールが自動作成する事実上の標準 `default-rule-set` と揃わない
+- SESには条件付き有効化のAPIがなく、同時の初期設定を安全に直列化できない
+- 対話確認はCI / LLMからの非対話実行と相性が悪い
+
+`init` と通常deployは、有効セットが無ければ `default-rule-set` を作成・有効化する
+AWS CLIの手順を案内して停止します。有効セットがあれば名前を問わず再利用し、
+projectのdestroyでも共有セットは削除・無効化しません。
 
 管理者が設定を明示固定したい場合のみ、任意の `rule_set` を指定できる余地を残します。
 その場合も有効セットと一致することを検証します。`after_rule` は公開設定に設けず、
@@ -225,8 +229,8 @@ forge環境では `FORGE_PERMISSIONS_BOUNDARY_ARN` を使用します。
 分離するには上の例のように専用containerを使います。
 
 deploy roleにはSES identity / ReceiptRuleの作成・照会・更新・削除、既存rule set照会、
-S3/SNS/SQS/CloudWatchの構築権限を追加します。`SetActiveReceiptRuleSet`は通常deployの
-要求権限に含めません。APIがresource制約をサポートするものは所有resourceのみに絞り、
+S3/SNS/SQS/CloudWatchの構築権限を追加します。`CreateReceiptRuleSet` / `SetActiveReceiptRuleSet`は
+pocketが呼ばないため要求権限に含めません。APIがresource制約をサポートするものは所有resourceのみに絞り、
 一覧APIは必要なものだけに限定します。`pocket permissions` の機械可読出力と
 `docs/permissions/aws.md` を同時更新し、baselineへの反映後に利用側を更新します。
 Pushoverのsecretは利用側のSSM SecureStringで管理します。

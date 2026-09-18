@@ -58,9 +58,23 @@ pocket resource inbound --stage dev --name inbox status
 ```
 
 1. SES受信対応リージョンを選び、`init` のTXTとMXレコードをDNS管理者が登録します。
-   `init` は既存active rule setをそのまま使います。存在しない場合だけ確認を挟み、
-   共有の `pocket-inbound` を作成・有効化します。初期化はaccount/regionで同時実行しないでください。
-   同名の既存セットは自動で取り込みません。
+   `init` はactiveなreceipt rule setを名前を問わずそのまま使い、ドメイン検証の申請と
+   レコードの出力だけを非対話で行います。`--format json` を付けると、レコードを
+   機械可読な形（`records` に `type` / `name` / `value`、MXは `priority` も）で出力します。
+
+    receipt rule setはaccount/regionで1つしかactiveにできない共有物なので、
+    pocketは作成も有効化もしません。activeなセットが無い場合、`init` とdeployは
+    次の手順を案内して停止します。account/regionの管理者が1回だけ実行してください
+    （provisioningの仕組みがあれば、そちらで用意します）。
+
+    ```bash
+    aws ses create-receipt-rule-set --rule-set-name default-rule-set --region <region>
+    aws ses set-active-receipt-rule-set --rule-set-name default-rule-set --region <region>
+    ```
+
+    `default-rule-set` はSESコンソールが自動作成するセットと同じ名前です。
+    既に別名のセットがactiveなら、それをそのまま使うので作り直す必要はありません。
+
 2. ドメインのSES検証が完了してからdeployします。`rule_set` と `after_rule` は不要です。
    active setの末尾に自分のルールを追加し、選択したセットをスタック出力に保存します。
    `rule_set` を明示する場合はactive setとの一致を必須とします。`after_rule` は設定項目にありません。
@@ -187,6 +201,7 @@ bucket・prefix・handlerの変更は新しいinbound名への移行として行
 
 撤去は `enabled = false` でdeploy後、36時間以上の配送猶予を置き、queue・両DLQを空にしてから
 `pocket resource inbound --stage dev --name inbox destroy` を実行します。
+確認プロンプトは `-y` / `--yes` で省略できます（CIやLLMからの非対話実行向け）。
 SNSの未配送分や原本と受信情報の照合も確認してください。通常の `pocket destroy` でも
 受信スタックを先に撤去します。宣言を消す前にこの手順を実行してください。
 

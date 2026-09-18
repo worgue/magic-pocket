@@ -150,7 +150,7 @@ def test_conflicting_rules_rejected(inlet, recipients, actions):
 
 
 def test_no_active_and_missing_rule_rejected(inlet):
-    with pytest.raises(ValueError, match="init"):
+    with pytest.raises(ValueError, match="create-receipt-rule-set"):
         resolve_rules({}, inlet, None)
     with pytest.raises(ValueError, match="見つかりません"):
         resolve_rules({"Metadata": {"Name": "shared"}}, inlet, {"RuleSet": "shared"})
@@ -386,7 +386,79 @@ def test_cli_init_keeps_existing_active_set(receiving_settings, inlet):
     assert result.exit_code == 0, result.output
     ses.set_active_receipt_rule_set.assert_not_called()
     ses.create_receipt_rule_set.assert_not_called()
+    assert "active rule set: existing" in result.output
     assert "MX receive.example.com" in result.output
+
+
+def _invoke_inbound(receiving_settings, ses, args, **kwargs):
+    with (
+        mock.patch(
+            "pocket_cli.cli.inbound_cli.Settings.from_toml",
+            return_value=receiving_settings,
+        ),
+        mock.patch("pocket_cli.cli.inbound_cli.boto3.client", return_value=ses),
+    ):
+        return CliRunner().invoke(
+            inbound, ["--stage", "dev", "--name", "inbox", *args], **kwargs
+        )
+
+
+def test_cli_init_without_active_set_guides_and_never_creates(
+    receiving_settings, inlet
+):
+    """active setが無ければ作らずに止め、確認プロンプトも出さない (KN1496)。"""
+    ses = mock.Mock()
+    ses.describe_active_receipt_rule_set.return_value = {}
+    # 入力なしで実行する。確認プロンプトが残っていれば Abort になり案内が出ない
+    result = _invoke_inbound(receiving_settings, ses, ["init"])
+    assert result.exit_code != 0
+    assert "default-rule-set" in result.output
+    assert f"--region {inlet.region}" in result.output
+    assert "[y/N]" not in result.output
+    ses.create_receipt_rule_set.assert_not_called()
+    ses.set_active_receipt_rule_set.assert_not_called()
+    ses.verify_domain_identity.assert_not_called()
+
+
+def test_cli_init_json_outputs_dns_records(receiving_settings, inlet):
+    ses = mock.Mock()
+    # pocket-inbound 以外の名前でもそのまま使う
+    ses.describe_active_receipt_rule_set.return_value = {
+        "Metadata": {"Name": "default-rule-set"}
+    }
+    ses.get_identity_verification_attributes.return_value = {
+        "VerificationAttributes": {}
+    }
+    ses.verify_domain_identity.return_value = {"VerificationToken": "tok"}
+    result = _invoke_inbound(receiving_settings, ses, ["init", "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    domain = inlet.config.domain
+    assert payload["active_rule_set"] == "default-rule-set"
+    assert payload["verification_status"] == "Pending"
+    assert payload["records"] == [
+        {"type": "TXT", "name": f"_amazonses.{domain}", "value": "tok"},
+        {
+            "type": "MX",
+            "name": domain,
+            "priority": 10,
+            "value": f"inbound-smtp.{inlet.region}.amazonaws.com",
+        },
+    ]
+
+
+def test_cli_destroy_respects_yes(receiving_settings, monkeypatch):
+    from pocket_cli.cli import interaction
+
+    monkeypatch.setattr(interaction, "_assume_yes", False)
+    resource = mock.Mock()
+    with mock.patch("pocket_cli.cli.inbound_cli.Inbound", return_value=resource):
+        declined = _invoke_inbound(receiving_settings, mock.Mock(), ["destroy"])
+        assert declined.exit_code != 0
+        resource.delete.assert_not_called()
+        accepted = _invoke_inbound(receiving_settings, mock.Mock(), ["destroy", "-y"])
+    assert accepted.exit_code == 0, accepted.output
+    resource.delete.assert_called_once_with()
 
 
 def test_existing_position_survives_predecessor_removal(inlet):

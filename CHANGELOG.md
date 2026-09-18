@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Changed
+- `pocket resource inbound ... init` は共有の receipt rule set を作成・有効化しなくなりました (KN1496)。
+  receipt rule set は account/region で 1 つしか active にできない共有物のため、project 単位の
+  道具である pocket からは触りません。active なセットが無い場合、`init` と deploy は
+  `default-rule-set` を作成・有効化する AWS CLI の手順を案内して停止します。active なセットが
+  あれば名前を問わずそのまま使う点は従来どおりです。これに伴い `init` の確認プロンプトが
+  無くなり、`ses:ListReceiptRuleSets` / `ses:CreateReceiptRuleSet` / `ses:SetActiveReceiptRuleSet`
+  は pocket の実行主体に不要になりました。0.35.0 の `init` で作成済みの `pocket-inbound` は
+  そのまま使い続けられます。
+
+### Added
+- `pocket resource inbound ... init --format json` で、登録すべき DNS レコード (TXT / MX) と
+  active な rule set 名・検証状態を機械可読に出力できます (KN1496)。
+- `pocket resource inbound ... destroy` に `-y` / `--yes` を追加しました (KN1496)。確認は
+  他コマンドと同じ assume-yes の仕組みを通るようになり、CI や LLM から非対話で実行できます。
+
 ## [0.35.0](https://github.com/worgue/magic-pocket/releases/tag/0.35.0) - 2026-09-14
 
 ### Added

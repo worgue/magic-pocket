@@ -10,7 +10,8 @@ from botocore.config import Config
 from pocket.inbound import SETUP_NOTIFICATION, receipt_id, validate_receipt_id
 from pocket.inbound_context import InboundContext
 from pocket.settings import Settings, parse_handler_ref
-from pocket_cli.resources.inbound import Inbound
+from pocket_cli.cli import interaction
+from pocket_cli.resources.inbound import Inbound, no_active_rule_set_guide
 
 
 @click.group()
@@ -27,48 +28,58 @@ def inbound(ctx, stage, name):
 
 
 @inbound.command()
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="DNSレコードの出力形式",
+)
 @click.pass_obj
-def init(resource):
-    """共有rule setの初期化とドメイン検証の申請（初回のみ）。"""
-    ses = boto3.client("ses", region_name=resource.context.region)
+def init(resource, output_format):
+    """ドメイン検証を申請し、登録すべきDNSレコードを出力する（初回のみ）。
+
+    receipt rule setはaccount/regionで1つしかactiveにできない共有物のため、
+    project単位の道具であるpocketは作成も有効化もしない。
+    """
+    region = resource.context.region
+    ses = boto3.client("ses", region_name=region)
     active = ses.describe_active_receipt_rule_set().get("Metadata", {}).get("Name")
     if not active:
-        name = "pocket-inbound"
-        names = [
-            item["Name"]
-            for page in ses.get_paginator("list_receipt_rule_sets").paginate()
-            for item in page["RuleSets"]
-        ]
-        if name in names:
-            raise click.ClickException(
-                "pocket-inboundが既にあります。内容を確認し管理者が有効化してください"
-            )
-        click.confirm(
-            "このaccount/regionで初期化を同時実行していないことを確認してください。"
-            "共有rule set pocket-inboundを作成・有効化しますか？",
-            abort=True,
-        )
-        if ses.describe_active_receipt_rule_set().get("Metadata"):
-            raise click.ClickException("active setが変わりました。再実行してください")
-        ses.create_receipt_rule_set(RuleSetName=name)
-        if ses.describe_active_receipt_rule_set().get("Metadata"):
-            raise click.ClickException(
-                "初期化中にactive setが変わりました。有効化を中止します"
-            )
-        ses.set_active_receipt_rule_set(RuleSetName=name)
-        active = ses.describe_active_receipt_rule_set().get("Metadata", {}).get("Name")
-        if active != name:
-            raise click.ClickException("有効化後のactive setが一致しません")
+        raise click.ClickException(no_active_rule_set_guide(region))
     domain = resource.context.config.domain
     result = ses.get_identity_verification_attributes(Identities=[domain])
     identity = result.get("VerificationAttributes", {}).get(domain, {})
     token = identity.get("VerificationToken")
     if not token and identity.get("VerificationStatus") != "Success":
         token = ses.verify_domain_identity(Domain=domain)["VerificationToken"]
-    click.echo(f"active rule set: {active}")
+    records = []
     if token:
-        click.echo(f"TXT _amazonses.{domain} {token}")
-    click.echo(f"MX {domain} 10 inbound-smtp.{resource.context.region}.amazonaws.com")
+        records.append({"type": "TXT", "name": f"_amazonses.{domain}", "value": token})
+    records.append(
+        {
+            "type": "MX",
+            "name": domain,
+            "priority": 10,
+            "value": f"inbound-smtp.{region}.amazonaws.com",
+        }
+    )
+    if output_format == "json":
+        payload = {
+            "active_rule_set": active,
+            "domain": domain,
+            "region": region,
+            "verification_status": identity.get("VerificationStatus") or "Pending",
+            "records": records,
+        }
+        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    click.echo(f"active rule set: {active}")
+    for record in records:
+        if record["type"] == "TXT":
+            click.echo(f"TXT {record['name']} {record['value']}")
+        else:
+            click.echo(f"MX {record['name']} {record['priority']} {record['value']}")
     click.echo("SES受信対応リージョンとMXの既存配送先を確認してDNSを登録してください。")
 
 
@@ -94,11 +105,17 @@ def show_yaml(resource):
 
 
 @inbound.command()
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
 @click.pass_obj
-def destroy(resource):
+def destroy(resource, yes):
     """無効化・配送猶予・滞留解消後に自分のルールとスタックを削除する。"""
-    click.confirm(
-        "受信停止後36時間以上経過し、原本の照合・必要な退避を終えましたか？", abort=True
+    interaction.set_assume_yes(yes)
+    interaction.confirm(
+        "受信停止後36時間以上経過し、原本の照合・必要な退避を終えましたか？",
+        default=False,
+        abort=True,
     )
     resource.delete()
 

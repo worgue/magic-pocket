@@ -72,11 +72,8 @@ _EXCLUDED_CALLS: set[tuple[str, str]] = {
     # get_secret_value が ssm 側にも帰属する。実際は secretsmanager 側の
     # 呼び出しで secretsmanager:* によりカバー済み。
     ("ssm", "get_secret_value"),
-    # 管理者用inbound initのみ。通常deployで共有active setを切り替える権限を
-    # 付与しない。権限の分離はtest_inbound_permissions_separate_bootstrapで検証。
-    ("ses", "create_receipt_rule_set"),
-    ("ses", "list_receipt_rule_sets"),
-    ("ses", "set_active_receipt_rule_set"),
+    # 管理者用inbound initのみ (ドメイン検証の申請)。共有rule setの作成・有効化は
+    # pocketでは行わない (KN1496)。
     ("ses", "verify_domain_identity"),
 }
 

@@ -329,6 +329,7 @@ active setとidentityの照会）と、`sqs_alert` グループ（SNS・CloudWat
 S3/SQS/CloudFormationは既存のcore/sqsグループを利用します。送信用 `ses` グループとは独立です。
 
 `pocket resource inbound ... init` は管理者向けの初期設定です。通常deployの権限とは別に
-`ses:ListReceiptRuleSets`、`ses:CreateReceiptRuleSet`、`ses:SetActiveReceiptRuleSet`、
-`ses:VerifyDomainIdentity` を必要に応じて付与します。通常deployは共有セットを切り替えません。
+`ses:VerifyDomainIdentity` を必要に応じて付与します。共有のreceipt rule setの作成・有効化
+（`ses:CreateReceiptRuleSet` / `ses:SetActiveReceiptRuleSet`）はpocketでは行わないため、
+pocketの実行主体には不要です。account/regionの管理者が別途実施します。
 詳しくは[メール受信](../inbound.md)を参照してください。

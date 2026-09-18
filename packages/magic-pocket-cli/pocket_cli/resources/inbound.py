@@ -14,16 +14,31 @@ from pocket_cli.resources.aws.stack_backed import StackBackedResource
 from pocket_cli.resources.inbound_template import build_template
 
 
+def no_active_rule_set_guide(region: str) -> str:
+    """active setが無いaccount/region向けの案内。
+
+    receipt rule setはaccount/regionで1つしかactiveにできない共有物なので、
+    pocketは作成・有効化しない。名前はSESコンソールが自動作成する
+    default-rule-setに揃えて案内する（既にactiveなsetがあれば名前は問わない）。
+    """
+    return (
+        "active な receipt rule set がありません。"
+        "account/regionで1回だけ次を実行してください"
+        "（account単位の土台なので、pocketは作成・有効化しません）:\n"
+        "  aws ses create-receipt-rule-set"
+        f" --rule-set-name default-rule-set --region {region}\n"
+        "  aws ses set-active-receipt-rule-set"
+        f" --rule-set-name default-rule-set --region {region}"
+    )
+
+
 def resolve_rules(
     active: dict, ctx: InboundContext, deployed: dict | None
 ) -> tuple[str, str | None]:
     """明示指定なしならactive setへ末尾追加。既存bindingの漂流は拒否する。"""
     name = active.get("Metadata", {}).get("Name")
     if not name:
-        raise ValueError(
-            "active receipt rule set がありません。"
-            "pocket resource inbound init を実行してください"
-        )
+        raise ValueError(no_active_rule_set_guide(ctx.region))
     if ctx.config.rule_set and ctx.config.rule_set != name:
         raise ValueError("明示したrule_setがactive setと一致しません")
     expected = (deployed or {}).get("RuleSet") or ctx.config.rule_set
