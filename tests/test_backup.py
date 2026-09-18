@@ -28,7 +28,12 @@ RDS_PLAN = "dev-testprj-pocket-backup-rds"
 LEGACY_DSQL_PLAN = "dev-testprj-pocket-dsql-backup"  # 0.27 以前の旧形式名
 DSQL_ARN = "arn:aws:dsql:us-east-1:123456789012:cluster/abc123"
 RDS_ARN = "arn:aws:rds:us-east-1:123456789012:cluster:dev-testprj-pocket-rds"
-ROLE_ARN = "arn:aws:iam::123456789012:role/forge-pocket-backup-role"
+VAULT = "dev-testprj-pocket-backup"
+ROLE = "dev-testprj-pocket-backup-role"
+ROLE_ARN = "arn:aws:iam::123456789012:role/%s" % ROLE
+# 0.36 以前の account 共有名 (移行テスト用)
+LEGACY_VAULT = "pocket-backup"
+LEGACY_ROLE_ARN = "arn:aws:iam::123456789012:role/forge-pocket-backup-role"
 RP_ARN = "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-%d"
 
 RDS_UNMANAGED = {
@@ -79,6 +84,8 @@ def _make_backup(
 ) -> tuple[Backup, Stubber]:
     data: dict = {
         "region": REGION,
+        "vault_name": VAULT,
+        "role_name": ROLE,
         "deletable": False,
         "timezone": "Asia/Tokyo",
         "plans": [_dsql_plan_context()] if plans is None else plans,
@@ -100,7 +107,7 @@ def _set_targets(monkeypatch, arns: dict[str, str | None]):
 def _ensure_role(monkeypatch):
     monkeypatch.setattr(
         "pocket_cli.resources.backup.ensure_backup_role",
-        lambda iam_client, boundary: ROLE_ARN,
+        lambda iam_client, role_name, boundary: ROLE_ARN,
     )
 
 
@@ -253,6 +260,13 @@ def test_context_undeclared_is_optin():
     assert context.backup.plans == []
     # 旧形式名 (0.27 以前) も destroy の掃除対象に含める
     assert context.backup.cleanup_plan_names == [DSQL_PLAN, LEGACY_DSQL_PLAN]
+    # vault / サービスロールは stage 単位の名前 (account 共有の固定名にしない)。
+    # オンデマンド backup / restore が使う dsql 側も同じ名前を指す
+    assert context.backup.vault_name == VAULT
+    assert context.backup.role_name == ROLE
+    assert context.dsql is not None
+    assert context.dsql.backup_vault_name == VAULT
+    assert context.dsql.backup_role_name == ROLE
     assert context.backup.legacy_plan_names == [LEGACY_DSQL_PLAN]
     assert context.dsql is not None
     assert context.dsql.backup is None
@@ -309,7 +323,7 @@ def test_ensure_creates_plan_and_selection_per_engine(monkeypatch):
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": VAULT},
     )
     _stub_plan_create(
         stubber,
@@ -318,14 +332,14 @@ def test_ensure_creates_plan_and_selection_per_engine(monkeypatch):
         [
             {
                 "RuleName": "daily",
-                "TargetBackupVaultName": "pocket-backup",
+                "TargetBackupVaultName": VAULT,
                 "ScheduleExpression": "cron(0 3 * * ? *)",
                 "ScheduleExpressionTimezone": "Asia/Tokyo",
                 "Lifecycle": {"DeleteAfterDays": 35},
             },
             {
                 "RuleName": "monthly",
-                "TargetBackupVaultName": "pocket-backup",
+                "TargetBackupVaultName": VAULT,
                 "ScheduleExpression": "cron(0 5 1 * ? *)",
                 "ScheduleExpressionTimezone": "Asia/Tokyo",
                 "Lifecycle": {
@@ -343,7 +357,7 @@ def test_ensure_creates_plan_and_selection_per_engine(monkeypatch):
         [
             {
                 "RuleName": "weekly",
-                "TargetBackupVaultName": "pocket-backup",
+                "TargetBackupVaultName": VAULT,
                 "ScheduleExpression": "cron(0 4 ? * 1 *)",
                 "ScheduleExpressionTimezone": "Asia/Tokyo",
                 "Lifecycle": {"DeleteAfterDays": 365},
@@ -368,7 +382,7 @@ def test_ensure_is_idempotent_regardless_of_rule_order(monkeypatch):
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": VAULT},
     )
     stubber.add_response(
         "list_backup_plans",
@@ -384,7 +398,7 @@ def test_ensure_is_idempotent_regardless_of_rule_order(monkeypatch):
                     {
                         "RuleName": "monthly",
                         "RuleId": "generated-by-aws",
-                        "TargetBackupVaultName": "pocket-backup",
+                        "TargetBackupVaultName": VAULT,
                         "ScheduleExpression": "cron(0 5 1 * ? *)",
                         "ScheduleExpressionTimezone": "Asia/Tokyo",
                         "StartWindowMinutes": 60,
@@ -397,7 +411,7 @@ def test_ensure_is_idempotent_regardless_of_rule_order(monkeypatch):
                     {
                         "RuleName": "daily",
                         "RuleId": "generated-by-aws-2",
-                        "TargetBackupVaultName": "pocket-backup",
+                        "TargetBackupVaultName": VAULT,
                         "ScheduleExpression": "cron(0 3 * * ? *)",
                         "ScheduleExpressionTimezone": "Asia/Tokyo",
                         "CompletionWindowMinutes": 180,
@@ -445,7 +459,7 @@ def test_ensure_recreates_selection_when_target_changes(monkeypatch):
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": VAULT},
     )
     stubber.add_response(
         "list_backup_plans",
@@ -459,14 +473,14 @@ def test_ensure_recreates_selection_when_target_changes(monkeypatch):
                 "Rules": [
                     {
                         "RuleName": "daily",
-                        "TargetBackupVaultName": "pocket-backup",
+                        "TargetBackupVaultName": VAULT,
                         "ScheduleExpression": "cron(0 3 * * ? *)",
                         "ScheduleExpressionTimezone": "Asia/Tokyo",
                         "Lifecycle": {"DeleteAfterDays": 35},
                     },
                     {
                         "RuleName": "monthly",
-                        "TargetBackupVaultName": "pocket-backup",
+                        "TargetBackupVaultName": VAULT,
                         "ScheduleExpression": "cron(0 5 1 * ? *)",
                         "ScheduleExpressionTimezone": "Asia/Tokyo",
                         "Lifecycle": {
@@ -513,6 +527,98 @@ def test_ensure_recreates_selection_when_target_changes(monkeypatch):
                 "SelectionName": DSQL_PLAN,
                 "IamRoleArn": ROLE_ARN,
                 "Resources": [new_arn],
+            },
+        },
+    )
+    with stubber:
+        backup.ensure_post_deploy_state()
+    stubber.assert_no_pending_responses()
+
+
+def test_ensure_migrates_from_legacy_shared_vault_and_role(monkeypatch):
+    """0.36 以前の account 共有 vault / ロールを指す plan・selection を移行する。
+
+    次の deploy で plan の保存先を stage 単位の vault へ更新し、selection を
+    stage 単位のロールで作り直す。旧 vault / 旧ロールは他 stage / project と
+    共有なので削除しない (削除 API を登録していない = 呼ばれていない)。
+    """
+    _ensure_role(monkeypatch)
+    _set_targets(monkeypatch, {"dsql": DSQL_ARN})
+    backup, stubber = _make_backup()
+
+    def rules(vault: str) -> list[dict]:
+        return [
+            {
+                "RuleName": "daily",
+                "TargetBackupVaultName": vault,
+                "ScheduleExpression": "cron(0 3 * * ? *)",
+                "ScheduleExpressionTimezone": "Asia/Tokyo",
+                "Lifecycle": {"DeleteAfterDays": 35},
+            },
+            {
+                "RuleName": "monthly",
+                "TargetBackupVaultName": vault,
+                "ScheduleExpression": "cron(0 5 1 * ? *)",
+                "ScheduleExpressionTimezone": "Asia/Tokyo",
+                "Lifecycle": {
+                    "DeleteAfterDays": 365,
+                    "MoveToColdStorageAfterDays": 90,
+                },
+            },
+        ]
+
+    stubber.add_response("create_backup_vault", {}, {"BackupVaultName": VAULT})
+    stubber.add_response(
+        "list_backup_plans",
+        {"BackupPlansList": [{"BackupPlanId": "plan-1", "BackupPlanName": DSQL_PLAN}]},
+    )
+    stubber.add_response(
+        "get_backup_plan",
+        {"BackupPlan": {"BackupPlanName": DSQL_PLAN, "Rules": rules(LEGACY_VAULT)}},
+        {"BackupPlanId": "plan-1"},
+    )
+    stubber.add_response(
+        "update_backup_plan",
+        {},
+        {
+            "BackupPlanId": "plan-1",
+            "BackupPlan": {"BackupPlanName": DSQL_PLAN, "Rules": rules(VAULT)},
+        },
+    )
+    stubber.add_response(
+        "list_backup_selections",
+        {
+            "BackupSelectionsList": [
+                {"SelectionId": "sel-1", "SelectionName": DSQL_PLAN}
+            ]
+        },
+        {"BackupPlanId": "plan-1"},
+    )
+    stubber.add_response(
+        "get_backup_selection",
+        {
+            "BackupSelection": {
+                "SelectionName": DSQL_PLAN,
+                "IamRoleArn": LEGACY_ROLE_ARN,
+                "Resources": [DSQL_ARN],  # 対象は同じ。ロールだけが旧名
+            }
+        },
+        {"BackupPlanId": "plan-1", "SelectionId": "sel-1"},
+    )
+    stubber.add_response(
+        "delete_backup_selection",
+        {},
+        {"BackupPlanId": "plan-1", "SelectionId": "sel-1"},
+    )
+    stubber.add_response(
+        "create_backup_selection",
+        {"SelectionId": "sel-2"},
+        {
+            "BackupPlanId": "plan-1",
+            "BackupSelection": {
+                "SelectionName": DSQL_PLAN,
+                "IamRoleArn": ROLE_ARN,
+                "Resources": [DSQL_ARN],
             },
         },
     )
@@ -571,7 +677,7 @@ def test_ensure_deletes_legacy_plan_before_provisioning(monkeypatch):
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": VAULT},
     )
     _stub_plan_create(
         stubber,
@@ -580,14 +686,14 @@ def test_ensure_deletes_legacy_plan_before_provisioning(monkeypatch):
         [
             {
                 "RuleName": "daily",
-                "TargetBackupVaultName": "pocket-backup",
+                "TargetBackupVaultName": VAULT,
                 "ScheduleExpression": "cron(0 3 * * ? *)",
                 "ScheduleExpressionTimezone": "Asia/Tokyo",
                 "Lifecycle": {"DeleteAfterDays": 35},
             },
             {
                 "RuleName": "monthly",
-                "TargetBackupVaultName": "pocket-backup",
+                "TargetBackupVaultName": VAULT,
                 "ScheduleExpression": "cron(0 5 1 * ? *)",
                 "ScheduleExpressionTimezone": "Asia/Tokyo",
                 "Lifecycle": {
@@ -670,7 +776,7 @@ def test_ensure_access_denied_warns_and_continues(monkeypatch, capsys):
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AccessDeniedException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": VAULT},
     )
     with stubber:
         backup.ensure_post_deploy_state()  # raise しない
@@ -707,10 +813,71 @@ def test_delete_removes_all_stage_plans_but_not_recovery_points():
             {"BackupPlanId": plan_id, "SelectionId": "sel-%s" % plan_id},
         )
         stubber.add_response("delete_backup_plan", {}, {"BackupPlanId": plan_id})
-    with stubber:
+    iam = _stub_role_delete(backup)
+    with stubber, iam:
         backup.delete()
     # vault / recovery point の削除 API は登録していない = 呼ばれていない
     stubber.assert_no_pending_responses()
+    # stage 所有のサービスロールは「設定」側なので消す
+    iam.assert_no_pending_responses()
+
+
+def _stub_role_delete(backup: Backup) -> Stubber:
+    iam = Stubber(backup._iam)
+    for policy in (
+        "AWSBackupServiceRolePolicyForBackup",
+        "AWSBackupServiceRolePolicyForRestores",
+    ):
+        iam.add_response(
+            "detach_role_policy",
+            {},
+            {
+                "RoleName": ROLE,
+                "PolicyArn": "arn:aws:iam::aws:policy/service-role/%s" % policy,
+            },
+        )
+    iam.add_response("delete_role", {}, {"RoleName": ROLE})
+    return iam
+
+
+def test_delete_never_touches_legacy_shared_role():
+    """0.36 以前の account 共有ロールは他 stage / project が使いうるので触らない。
+
+    stage 所有のロールが無い (= 旧版のまま destroy する) 場合も、旧名ロールの
+    削除 API は呼ばない。
+    """
+    backup, stubber = _make_backup(plans=[], cleanup_plan_names=[])
+    iam = Stubber(backup._iam)
+    iam.add_client_error(
+        "detach_role_policy",
+        service_error_code="NoSuchEntity",
+        expected_params={
+            "RoleName": ROLE,
+            "PolicyArn": (
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSBackupServiceRolePolicyForBackup"
+            ),
+        },
+    )
+    iam.add_client_error(
+        "detach_role_policy",
+        service_error_code="NoSuchEntity",
+        expected_params={
+            "RoleName": ROLE,
+            "PolicyArn": (
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSBackupServiceRolePolicyForRestores"
+            ),
+        },
+    )
+    iam.add_client_error(
+        "delete_role",
+        service_error_code="NoSuchEntity",
+        expected_params={"RoleName": ROLE},
+    )
+    with stubber, iam:
+        backup.delete()
+    iam.assert_no_pending_responses()
 
 
 def test_delete_access_denied_warns_and_continues(capsys):
@@ -720,14 +887,17 @@ def test_delete_access_denied_warns_and_continues(capsys):
         "list_backup_plans",
         service_error_code="AccessDeniedException",
     )
-    with stubber:
+    iam = Stubber(backup._iam)
+    iam.add_client_error("detach_role_policy", service_error_code="AccessDenied")
+    with stubber, iam:
         backup.delete()  # raise しない
     err = capsys.readouterr().err.replace("\n", "")
-    assert "権限" in err
+    assert "backup plan を確認する権限" in err
+    assert ROLE in err  # ロール削除も権限不足は警告に留める
 
 
 def test_list_recovery_points_filters_to_pocket_vault(monkeypatch):
-    """pocket-backup vault 内の recovery point だけを対象にする。
+    """この stage の pocket 管理 vault 内の recovery point だけを対象にする。
 
     `--vault=my-vault` で利用者の vault に取ったオンデマンド分は利用者の
     管理物とみなし、pocket からは消さない。
@@ -740,13 +910,19 @@ def test_list_recovery_points_filters_to_pocket_vault(monkeypatch):
             "RecoveryPoints": [
                 {
                     "RecoveryPointArn": RP_ARN % 1,
-                    "BackupVaultName": "pocket-backup",
+                    "BackupVaultName": VAULT,
                     "CreationDate": datetime(2026, 8, 1),
                 },
                 {
                     "RecoveryPointArn": RP_ARN % 2,
                     "BackupVaultName": "my-vault",
                     "CreationDate": datetime(2026, 8, 2),
+                },
+                # 0.36 以前の account 共有 vault に残る分も pocket の対象外
+                {
+                    "RecoveryPointArn": RP_ARN % 3,
+                    "BackupVaultName": LEGACY_VAULT,
+                    "CreationDate": datetime(2026, 7, 1),
                 },
             ]
         },
@@ -778,13 +954,12 @@ def test_delete_recovery_points_deletes_each():
             "delete_recovery_point",
             {},
             {
-                "BackupVaultName": "pocket-backup",
+                "BackupVaultName": VAULT,
                 "RecoveryPointArn": RP_ARN % i,
             },
         )
     points = [
-        {"BackupVaultName": "pocket-backup", "RecoveryPointArn": RP_ARN % i}
-        for i in (1, 2)
+        {"BackupVaultName": VAULT, "RecoveryPointArn": RP_ARN % i} for i in (1, 2)
     ]
     with stubber:
         assert backup.delete_recovery_points(points) == 2
@@ -828,7 +1003,7 @@ def test_cleanup_cli_deletes_after_confirmation(monkeypatch):
     )
     points = [
         {
-            "BackupVaultName": "pocket-backup",
+            "BackupVaultName": VAULT,
             "RecoveryPointArn": RP_ARN % 1,
             "CreationDate": datetime(2026, 8, 1),
         }

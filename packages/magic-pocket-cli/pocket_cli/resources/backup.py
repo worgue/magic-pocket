@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
 from pocket_cli.resources.aws.backup_common import (
-    BACKUP_VAULT_NAME,
+    delete_backup_role,
     ensure_backup_role,
     ensure_backup_vault,
 )
@@ -151,8 +151,10 @@ class Backup:
             ]
             if not targets:
                 return
-            ensure_backup_vault(self._backup, BACKUP_VAULT_NAME)
-            role_arn = ensure_backup_role(self._iam, self.context.permissions_boundary)
+            ensure_backup_vault(self._backup, self.context.vault_name)
+            role_arn = ensure_backup_role(
+                self._iam, self.context.role_name, self.context.permissions_boundary
+            )
             for plan, arn in targets:
                 plan_id = self._ensure_plan(plan)
                 self._ensure_selection(plan, plan_id, role_arn, [arn])
@@ -200,7 +202,7 @@ class Backup:
             rules.append(
                 {
                     "RuleName": rule.name,
-                    "TargetBackupVaultName": BACKUP_VAULT_NAME,
+                    "TargetBackupVaultName": self.context.vault_name,
                     "ScheduleExpression": rule.schedule_expression,
                     "ScheduleExpressionTimezone": self.context.timezone,
                     "Lifecycle": lifecycle,
@@ -251,8 +253,9 @@ class Backup:
     ) -> None:
         """対象 DB の ARN を指した selection を確保する。
 
-        selection には更新 API が無いため、対象 ARN が変わっていたら
-        (cluster 再作成など) 作り直す。
+        selection には更新 API が無いため、対象 ARN (cluster 再作成など) か
+        サービスロール (0.36 以前の account 共有ロールからの移行) が変わって
+        いたら作り直す。
         """
         selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
         for item in selections["BackupSelectionsList"]:
@@ -261,7 +264,11 @@ class Backup:
             detail = self._backup.get_backup_selection(
                 BackupPlanId=plan_id, SelectionId=item["SelectionId"]
             )
-            if sorted(detail["BackupSelection"].get("Resources", [])) == arns:
+            current = detail["BackupSelection"]
+            if (
+                sorted(current.get("Resources", [])) == arns
+                and current.get("IamRoleArn") == role_arn
+            ):
                 return
             self._backup.delete_backup_selection(
                 BackupPlanId=plan_id, SelectionId=item["SelectionId"]
@@ -277,7 +284,7 @@ class Backup:
         )
 
     def delete(self) -> None:
-        """backup plan / selection を削除する。
+        """backup plan / selection とサービスロールを削除する。
 
         recovery point と vault は消さない。バックアップ「設定」は stack の
         付属物だが、バックアップ「データ」は stack より長生きさせるべきで、
@@ -288,6 +295,10 @@ class Backup:
         持たない deploy role でも destroy 自体は完遂させたいので、権限エラーは
         警告に留める。
         """
+        self._delete_plans()
+        self._delete_role()
+
+    def _delete_plans(self) -> None:
         for plan_name in self.context.cleanup_plan_names:
             try:
                 plan_id = self._find_plan_id(plan_name)
@@ -305,6 +316,26 @@ class Backup:
             self._delete_plan(plan_id)
             echo.log("Deleted backup plan: %s" % plan_name)
 
+    def _delete_role(self) -> None:
+        """stage 所有のサービスロールを削除する (selection を消した後に呼ぶ)。
+
+        0.36 以前の account 共有ロール (forge-pocket-backup-role) は他 stage /
+        project が使っている可能性があるため触らない。
+        """
+        try:
+            if delete_backup_role(self._iam, self.context.role_name):
+                echo.log("Deleted backup service role: %s" % self.context.role_name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] not in (
+                "AccessDenied",
+                "AccessDeniedException",
+            ):
+                raise
+            echo.warning(
+                "backup サービスロール (%s) を削除する権限がないため、スキップ"
+                "しました。不要なら手動で削除してください。" % self.context.role_name
+            )
+
     def _delete_plan(self, plan_id: str) -> None:
         """selection → plan の順に削除する (selection が残ると plan を消せない)。"""
         selections = self._backup.list_backup_selections(BackupPlanId=plan_id)
@@ -315,7 +346,7 @@ class Backup:
         self._backup.delete_backup_plan(BackupPlanId=plan_id)
 
     def list_recovery_points(self) -> list[dict] | None:
-        """対象 DB の recovery point 一覧 (pocket-backup vault 内のもの)。
+        """対象 DB の recovery point 一覧 (pocket 管理 vault 内のもの)。
 
         現存する cluster の ARN でしか引けない (削除済み cluster の分は対象外 =
         console でしか消せない)。権限が無ければ None を返す (呼び出し側が案内を
@@ -334,8 +365,11 @@ class Backup:
                 raise
             return None
         # pocket 管理の vault 分だけを扱う (--vault で利用者の vault に取った
-        # オンデマンド分は利用者の管理物とみなし、pocket からは消さない)
-        return [p for p in points if p.get("BackupVaultName") == BACKUP_VAULT_NAME]
+        # オンデマンド分は利用者の管理物とみなし、pocket からは消さない)。0.36 以前の
+        # account 共有 vault (pocket-backup) に残る分も同じ理由で対象外
+        return [
+            p for p in points if p.get("BackupVaultName") == self.context.vault_name
+        ]
 
     def delete_recovery_points(self, points: list[dict]) -> int:
         """recovery point を削除して件数を返す。

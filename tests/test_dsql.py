@@ -43,6 +43,8 @@ def _make_dsql(endpoint_secret_name: str = "") -> tuple[Dsql, Stubber]:
     context = DsqlContext(
         region=REGION,
         tag_name=TAG_NAME,
+        backup_vault_name=BACKUP_VAULT,
+        backup_role_name=BACKUP_ROLE,
         endpoint_secret_name=endpoint_secret_name,
         endpoint_secret_store="ssm",
     )
@@ -236,7 +238,9 @@ def test_delete_unpublishes_endpoint(monkeypatch):
     assert store.deletes == [ENDPOINT_SECRET_NAME]
 
 
-ROLE_ARN = "arn:aws:iam::123456789012:role/forge-pocket-backup-role"
+BACKUP_VAULT = "dev-testprj-pocket-backup"
+BACKUP_ROLE = "dev-testprj-pocket-backup-role"
+ROLE_ARN = "arn:aws:iam::123456789012:role/%s" % BACKUP_ROLE
 BOUNDARY_ARN = "arn:aws:iam::123456789012:policy/forge-boundary"
 
 
@@ -244,7 +248,7 @@ def _iam_role_response(arn: str = ROLE_ARN) -> dict:
     return {
         "Role": {
             "Path": "/",
-            "RoleName": "forge-pocket-backup-role",
+            "RoleName": BACKUP_ROLE,
             "RoleId": "AROAEXAMPLEROLEID",
             "Arn": arn,
             "CreateDate": CREATED,
@@ -284,22 +288,20 @@ def test_start_backup_ensures_pocket_managed_vault_and_role(monkeypatch):
     backup_stub.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": BACKUP_VAULT},
     )
     backup_stub.add_response(
         "start_backup_job",
         {"BackupJobId": "job-1", "CreationDate": CREATED},
         {
-            "BackupVaultName": "pocket-backup",
+            "BackupVaultName": BACKUP_VAULT,
             "ResourceArn": ARN,
             "IamRoleArn": ROLE_ARN,
             "Lifecycle": {"DeleteAfterDays": DEFAULT_ON_DEMAND_RETENTION_DAYS},
         },
     )
     iam_stub = Stubber(dsql._iam)
-    iam_stub.add_response(
-        "get_role", _iam_role_response(), {"RoleName": "forge-pocket-backup-role"}
-    )
+    iam_stub.add_response("get_role", _iam_role_response(), {"RoleName": BACKUP_ROLE})
     with backup_stub, iam_stub:
         job_id = dsql.start_backup()
     assert job_id == "job-1"
@@ -396,11 +398,11 @@ def test_ensure_backup_vault_creates_when_missing():
     stubber = Stubber(dsql._backup)
     stubber.add_response(
         "create_backup_vault",
-        {"BackupVaultName": "pocket-backup"},
-        {"BackupVaultName": "pocket-backup"},
+        {"BackupVaultName": BACKUP_VAULT},
+        {"BackupVaultName": BACKUP_VAULT},
     )
     with stubber:
-        dsql._ensure_backup_vault("pocket-backup")
+        dsql._ensure_backup_vault(BACKUP_VAULT)
     stubber.assert_no_pending_responses()
 
 
@@ -411,10 +413,10 @@ def test_ensure_backup_vault_noop_when_exists():
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AlreadyExistsException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": BACKUP_VAULT},
     )
     with stubber:
-        dsql._ensure_backup_vault("pocket-backup")
+        dsql._ensure_backup_vault(BACKUP_VAULT)
     stubber.assert_no_pending_responses()
 
 
@@ -425,10 +427,10 @@ def test_ensure_backup_vault_raises_on_access_denied():
     stubber.add_client_error(
         "create_backup_vault",
         service_error_code="AccessDeniedException",
-        expected_params={"BackupVaultName": "pocket-backup"},
+        expected_params={"BackupVaultName": BACKUP_VAULT},
     )
     with stubber, pytest.raises(ClientError):
-        dsql._ensure_backup_vault("pocket-backup")
+        dsql._ensure_backup_vault(BACKUP_VAULT)
     stubber.assert_no_pending_responses()
 
 
@@ -438,6 +440,8 @@ def test_ensure_backup_role_creates_with_boundary(monkeypatch):
     context = DsqlContext(
         region=REGION,
         tag_name=TAG_NAME,
+        backup_vault_name=BACKUP_VAULT,
+        backup_role_name=BACKUP_ROLE,
         permissions_boundary=BOUNDARY_ARN,
     )
     dsql = Dsql(context)
@@ -445,13 +449,13 @@ def test_ensure_backup_role_creates_with_boundary(monkeypatch):
     stubber.add_client_error(
         "get_role",
         service_error_code="NoSuchEntity",
-        expected_params={"RoleName": "forge-pocket-backup-role"},
+        expected_params={"RoleName": BACKUP_ROLE},
     )
     stubber.add_response(
         "create_role",
         _iam_role_response(),
         {
-            "RoleName": "forge-pocket-backup-role",
+            "RoleName": BACKUP_ROLE,
             "AssumeRolePolicyDocument": ANY,
             "PermissionsBoundary": BOUNDARY_ARN,
         },
@@ -463,7 +467,7 @@ def test_ensure_backup_role_creates_with_boundary(monkeypatch):
         stubber.add_response(
             "attach_role_policy",
             {},
-            {"RoleName": "forge-pocket-backup-role", "PolicyArn": policy},
+            {"RoleName": BACKUP_ROLE, "PolicyArn": policy},
         )
     with stubber:
         arn = dsql._ensure_backup_role()
@@ -642,6 +646,8 @@ def _backup_context(delete_after_days: int = 365) -> DsqlContext:
     return DsqlContext(
         region=REGION,
         tag_name=TAG_NAME,
+        backup_vault_name=BACKUP_VAULT,
+        backup_role_name=BACKUP_ROLE,
         backup=BackupPlanContext(
             service="dsql",
             plan_name="test-testprj-pocket-backup-dsql",
@@ -705,7 +711,13 @@ def test_switch_to_cluster_is_idempotent():
 
 def test_start_restore_passes_deletion_protection_from_settings(monkeypatch):
     """復元先の削除保護は AWS 既定 (ON) ではなく pocket.toml の値に合わせる"""
-    context = DsqlContext(region=REGION, tag_name=TAG_NAME, deletion_protection=False)
+    context = DsqlContext(
+        region=REGION,
+        tag_name=TAG_NAME,
+        backup_vault_name=BACKUP_VAULT,
+        backup_role_name=BACKUP_ROLE,
+        deletion_protection=False,
+    )
     dsql = Dsql(context)
     monkeypatch.setattr(Dsql, "_ensure_backup_role", lambda self: ROLE_ARN)
     rp_arn = "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-1"

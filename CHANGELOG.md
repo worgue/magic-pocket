@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Changed
+- AWS Backup の vault とサービスロールを、account 共有の固定名 (`pocket-backup` /
+  `forge-pocket-backup-role`) から stage 単位の名前 (`{stage}-{project}-{namespace}-backup` /
+  `…-backup-role`) に改めました。所有者のいない共有物だったものが stage の所有物になり、
+  `pocket destroy` がサービスロールも削除するようになります (vault と recovery point は
+  従来どおり残します)。更新後の最初の deploy が plan の保存先と selection のロールを
+  自動で切り替えるため、手作業は不要です。
+  **旧 vault の recovery point は移動されず**、取得時の保持期限で失効するまで
+  `pocket backup cleanup` / destroy の件数表示の対象外になります (復元には使えます)。
+  旧 vault・旧ロールは他 stage / project と共有のため pocket からは削除しません。
+  手順は `docs/guide/configuration.md` の「0.36 以前から更新する場合」を参照してください。
+- CodeBuild のサービスロール名から、pocket の命名規約と無関係だった `forge-` prefix を
+  外しました (`forge-{prefix}codebuild-role` → `{prefix}codebuild-role`)。次のビルドで
+  新しいロールを作って CodeBuild project を付け替え、旧ロールは pocket が削除します。
+  IAM の role 名を `forge-*` で絞っている deploy role は、許可パターンの更新が必要です。
+
 ## [0.36.0](https://github.com/worgue/magic-pocket/releases/tag/0.36.0) - 2026-09-18
 
 ### Changed

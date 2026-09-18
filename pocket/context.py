@@ -749,6 +749,20 @@ class BackupRuleContext(BaseModel):
     cold_storage_after_days: int = 0  # 0 = cold storage へ移動しない (rds は常に 0)
 
 
+def _backup_vault_name(root: settings.Settings) -> str:
+    """pocket 管理の backup vault 名。e.g) dev-myprj-pocket-backup
+
+    0.36 以前は account 共有の固定名 (pocket-backup) だったが、所有者のいない
+    共有物になるため stage 単位に改めた。
+    """
+    return f"{root.resource_prefix}backup"
+
+
+def _backup_role_name(root: settings.Settings) -> str:
+    """AWS Backup サービスロール名。e.g) dev-myprj-pocket-backup-role"""
+    return f"{root.resource_prefix}backup-role"
+
+
 class BackupPlanContext(BaseModel):
     """エンジン 1 つ分の backup plan (rule 構成がエンジンごとに違うため分ける)。"""
 
@@ -799,6 +813,9 @@ class BackupContext(BaseModel):
     """
 
     region: str
+    # pocket 管理の vault / サービスロール名 (stage 単位)
+    vault_name: str
+    role_name: str
     # バックアップデータ (recovery point) の削除を pocket に許可するか
     deletable: bool = False
     # cron を解釈するタイムゾーン (全 rule 共通)
@@ -844,6 +861,8 @@ class BackupContext(BaseModel):
             cleanup_plan_names.append(f"{root.resource_prefix}backup-rds")
         return cls(
             region=root.region,
+            vault_name=_backup_vault_name(root),
+            role_name=_backup_role_name(root),
             deletable=backup.deletable if backup else False,
             timezone=backup.timezone if backup else "UTC",
             plans=plans,
@@ -856,6 +875,10 @@ class BackupContext(BaseModel):
 class DsqlContext(BaseModel):
     region: str
     tag_name: str  # Name タグで検索するための識別名
+    # オンデマンド backup / restore が使う pocket 管理の vault / サービスロール名
+    # (BackupContext と同じ stage 単位の名前)
+    backup_vault_name: str
+    backup_role_name: str
     deletion_protection: bool = False
     # [backup.dsql] が宣言されているときの参照 (未宣言なら None)。plan の
     # provisioning は Context.backup (Backup resource) の責務で、ここでは
@@ -881,6 +904,8 @@ class DsqlContext(BaseModel):
         return cls(
             region=root.region,
             tag_name=f"{resource_prefix}dsql",
+            backup_vault_name=_backup_vault_name(root),
+            backup_role_name=_backup_role_name(root),
             deletion_protection=dsql.deletion_protection,
             backup=(
                 BackupPlanContext.from_settings("dsql", root.backup.dsql, root)

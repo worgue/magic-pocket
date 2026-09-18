@@ -38,7 +38,7 @@ def backup():
 def cleanup(stage: str, yes: bool):
     """この stage のバックアップデータ (recovery point) を削除する。
 
-    [backup] deletable = true の宣言が必要。pocket 管理 vault (pocket-backup)
+    [backup] deletable = true の宣言が必要。この stage の pocket 管理 vault
     にある、現存する対象 DB (dsql / managed rds) の recovery point だけを消す。
     削除済み cluster の分は ARN で引けないため対象外 (AWS Backup コンソールから
     削除する)。plan (スケジュール) には触らない。

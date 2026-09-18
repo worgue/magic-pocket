@@ -758,7 +758,7 @@ delete_after_days = 1825   # monthly だけ 5 年に伸ばす
 cron = "0 4 ? * 7 *"       # 土曜に変更
 ```
 
-deploy が AWS Backup の vault（`pocket-backup`）・サービスロール・エンジン別の backup plan / selection（`{stage}-{project}-{namespace}-backup-dsql` / `-rds`）を冪等に provision します。plan をエンジン別に分けるのは、AWS Backup の rule が selection 全体に一律適用されるためです（rds に daily を作らない・cold storage を使わない、をエンジン単位でしか表現できません）。
+deploy が AWS Backup の vault（`{stage}-{project}-{namespace}-backup`）・サービスロール（`…-backup-role`）・エンジン別の backup plan / selection（`…-backup-dsql` / `-rds`）を冪等に provision します。いずれも他リソースと同じ stage 単位の名前で、account 内の他 stage・他 project とは共有しません。plan をエンジン別に分けるのは、AWS Backup の rule が selection 全体に一律適用されるためです（rds に daily を作らない・cold storage を使わない、をエンジン単位でしか表現できません）。
 
 !!! warning "backup 関連の宣言は厳密に検証されます"
     「書いたのに守られていない」を防ぐため、以下はすべて警告ではなく**エラー停止**します:
@@ -773,7 +773,7 @@ deploy が AWS Backup の vault（`pocket-backup`）・サービスロール・�
     PITR はローリングウィンドウ（直近 35 日を秒単位で復元）、この plan は離散スナップショット（週次・月次を長期保持）で、両者は独立に並走します。「PITR 期間が切れたら自動でスナップショットに移る」わけではありません。PITR は `[backup.rds]` の宣言と無関係に常に有効です。なお Aurora の PITR ストレージはクラスター容量まで無課金ですが、**AWS Backup のスナップショットには無料枠が無く** GB 単価で課金されます。
 
 !!! info "保存先は backup vault（S3 バケットではありません）"
-    AWS Backup の保存先は AWS 管理の **backup vault**（pocket 管理の `pocket-backup`）で、任意の S3 バケットを保存先に指定することはできません。ただし vault のライフサイクルが「即時取り出し可能な warm → cold storage → 削除」を表現するため、S3 の Standard → Glacier → 有効期限と同じ保持ポリシーを組めます。バックアップの中身をユーザー側で圧縮することはできません（スナップショットはストレージ層で増分保存され、コスト圧縮手段は実質 cold storage 移行です）。
+    AWS Backup の保存先は AWS 管理の **backup vault**（pocket が stage ごとに作る `{stage}-{project}-{namespace}-backup`）で、任意の S3 バケットを保存先に指定することはできません。ただし vault のライフサイクルが「即時取り出し可能な warm → cold storage → 削除」を表現するため、S3 の Standard → Glacier → 有効期限と同じ保持ポリシーを組めます。バックアップの中身をユーザー側で圧縮することはできません（スナップショットはストレージ層で増分保存され、コスト圧縮手段は実質 cold storage 移行です）。
 
 !!! warning "cold storage の最低保持期間"
     AWS Backup の cold storage は最低 90 日課金されます。このため `cold_storage_after_days` を使う階層では `delete_after_days` が `cold_storage_after_days + 90` 以上である必要があり、違反する設定は pocket.toml の検証で弾かれます（例: `cold_storage_after_days = 35` なら `delete_after_days` は 125 以上）。
@@ -793,9 +793,24 @@ deploy が AWS Backup の vault（`pocket-backup`）・サービスロール・�
     ```
 
 !!! warning "destroy とバックアップデータ"
-    `pocket destroy` はバックアップ**設定**（backup plan / selection）を削除しますが、バックアップ**データ**（vault と recovery point）は既定では削除しません。クラスターを消した後こそ復元が必要になりうるためです。データが残る場合は destroy が件数を表示して警告します（保持期限までは課金対象です）。
+    `pocket destroy` はバックアップ**設定**（backup plan / selection とサービスロール）を削除しますが、バックアップ**データ**（vault と recovery point）は既定では削除しません。クラスターを消した後こそ復元が必要になりうるためです。データが残る場合は destroy が件数を表示して警告します（保持期限までは課金対象です）。
 
     データも消したい場合は `[backup]` に `deletable = true` を宣言します。destroy 実行中の確認プロンプト（`[y/N]`、既定 No）で yes と答えた場合のみ削除されます。`--yes` フラグによる一括承認ではデータ削除は行いません（データ削除だけは暗黙に通しません）。destroy とは別に、`pocket backup cleanup` でデータだけを削除することもできます（[CLI リファレンス](cli.md) 参照）。
+
+!!! warning "0.36 以前から更新する場合（vault / サービスロールの改名）"
+    0.36 以前は vault（`pocket-backup`）とサービスロール（`forge-pocket-backup-role`）が account 共有の固定名でした。0.37.0 で stage 単位の名前に改めています。更新後の最初の deploy が、plan の保存先と selection のロールを新しい名前へ自動で切り替えます（手作業は不要です）。
+
+    - **旧 vault の recovery point は移動しません**（AWS Backup に移動・改名の API がありません）。取得時に付いた保持期限（lifecycle）で自動的に失効しますが、それまでは `pocket backup cleanup` や destroy の件数表示の**対象外**になります。復元（`pocket resource dsql restore <recovery-point-arn>` / `--latest`）には引き続き使えます。早く消したい場合は AWS Backup コンソールから削除してください。
+    - **旧 vault と旧ロールは pocket からは削除しません**。account 内の他 stage・他 project が使っている可能性があるためです。すべての stage を更新し、旧 vault が空になったら手動で削除できます。
+
+        ```bash
+        aws backup delete-backup-vault --backup-vault-name pocket-backup
+        aws iam detach-role-policy --role-name forge-pocket-backup-role \
+          --policy-arn arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup
+        aws iam detach-role-policy --role-name forge-pocket-backup-role \
+          --policy-arn arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores
+        aws iam delete-role --role-name forge-pocket-backup-role
+        ```
 
 !!! info "宣言を外した場合"
     `[backup.dsql]` 等を後から外しても、deploy は既存の plan（スケジュール）に触りません（snapshot は取られ続けます）。スケジュールを止めるには destroy を実行するか、AWS Backup コンソールから plan を削除してください。

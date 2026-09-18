@@ -65,7 +65,12 @@ class CodeBuildBuilder:
         self.sts = boto3.client("sts", region_name=region)
 
         self._project_name = f"{resource_prefix}codebuild"
-        self._role_name = f"forge-{resource_prefix}codebuild-role"
+        self._role_name = f"{resource_prefix}codebuild-role"
+        # 0.36 以前のロール名。forge- は開発環境由来の prefix で pocket の命名規約
+        # ({stage}-{project}-...) と無関係だったため改名した。ロールは stage の
+        # 所有物なので、新ロールへ付け替えた後に pocket が削除する (改名互換。
+        # いずれ削除予定)
+        self._legacy_role_name = f"forge-{resource_prefix}codebuild-role"
         self._source_key = f"codebuild/{self._project_name}/source.zip"
 
     def build_and_push(
@@ -85,6 +90,8 @@ class CodeBuildBuilder:
 
         role_arn = self._ensure_role(account_id)
         self._ensure_project(platform, role_arn)
+        # project の serviceRole を新ロールへ付け替えた後なので、旧名ロールは孤児
+        self._delete_role(self._legacy_role_name)
         self._upload_source(dockerfile_path)
 
         build_id = self._start_build(
@@ -101,7 +108,8 @@ class CodeBuildBuilder:
     def delete(self) -> None:
         """CodeBuildプロジェクトとIAMロールを削除"""
         self._delete_project()
-        self._delete_role()
+        self._delete_role(self._role_name)
+        self._delete_role(self._legacy_role_name)
 
     # --- IAM ロール ---
 
@@ -199,16 +207,14 @@ class CodeBuildBuilder:
         time.sleep(10)
         return role_arn
 
-    def _delete_role(self) -> None:
+    def _delete_role(self, role_name: str) -> None:
         try:
             # インラインポリシー削除
-            policies = self.iam.list_role_policies(RoleName=self._role_name)
+            policies = self.iam.list_role_policies(RoleName=role_name)
             for policy_name in policies["PolicyNames"]:
-                self.iam.delete_role_policy(
-                    RoleName=self._role_name, PolicyName=policy_name
-                )
-            self.iam.delete_role(RoleName=self._role_name)
-            print("  IAMロール削除: %s" % self._role_name)
+                self.iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
+            self.iam.delete_role(RoleName=role_name)
+            print("  IAMロール削除: %s" % role_name)
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchEntity":
                 return
@@ -355,8 +361,15 @@ class CodeBuildBuilder:
         return len(resp.get("projects", [])) > 0
 
     def role_exists(self) -> bool:
+        """現行名・旧名いずれかのロールがあるか (destroy の対象判定用)。"""
+        return any(
+            self._role_exists(name)
+            for name in (self._role_name, self._legacy_role_name)
+        )
+
+    def _role_exists(self, role_name: str) -> bool:
         try:
-            self.iam.get_role(RoleName=self._role_name)
+            self.iam.get_role(RoleName=role_name)
             return True
         except ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchEntity":

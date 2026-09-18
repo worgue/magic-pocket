@@ -15,7 +15,6 @@ from pocket.secret_store import (
 )
 from pocket.utils import echo
 from pocket_cli.resources.aws.backup_common import (
-    BACKUP_VAULT_NAME,
     ensure_backup_role,
     ensure_backup_vault,
 )
@@ -216,7 +215,7 @@ class Dsql:
         if not self.arn:
             raise ValueError("Cluster not found")
         if vault_name is None:
-            vault_name = BACKUP_VAULT_NAME
+            vault_name = self.context.backup_vault_name
             self._ensure_backup_vault(vault_name)
         if iam_role_arn is None:
             iam_role_arn = self._ensure_backup_role()
@@ -261,7 +260,11 @@ class Dsql:
         ensure_backup_vault(self._backup, name)
 
     def _ensure_backup_role(self) -> str:
-        return ensure_backup_role(self._iam, self.context.permissions_boundary)
+        return ensure_backup_role(
+            self._iam,
+            self.context.backup_role_name,
+            self.context.permissions_boundary,
+        )
 
     def latest_recovery_point(self) -> dict | None:
         """現用クラスターの最新 recovery point (完了済み) を返す。"""

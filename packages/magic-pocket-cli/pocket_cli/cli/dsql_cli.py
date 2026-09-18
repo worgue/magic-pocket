@@ -6,7 +6,6 @@ from botocore.exceptions import ClientError
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.resource_helper import require_configured
-from pocket_cli.resources.aws.backup_common import BACKUP_ROLE_NAME, BACKUP_VAULT_NAME
 from pocket_cli.resources.dsql import (
     BACKUP_TERMINAL_STATES,
     DEFAULT_ON_DEMAND_RETENTION_DAYS,
@@ -77,13 +76,13 @@ def endpoint(stage, format_):
     "--vault",
     default=None,
     help="バックアップ先の AWS Backup vault 名"
-    " (省略時: pocket 管理の '%s' を自動作成して使用)" % BACKUP_VAULT_NAME,
+    " (省略時: pocket 管理の '{stage}-{project}-...-backup' を自動作成して使用)",
 )
 @click.option(
     "--iam-role-arn",
     default=None,
     help="AWS Backup が assume するロール ARN"
-    " (省略時: pocket 管理の '%s' を自動作成して使用)" % BACKUP_ROLE_NAME,
+    " (省略時: pocket 管理の '{stage}-{project}-...-backup-role' を自動作成して使用)",
 )
 @click.option(
     "--retention-days",

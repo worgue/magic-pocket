@@ -218,7 +218,7 @@ pocket backup cleanup --stage=dev
 | `--yes`, `-y` | 確認プロンプトをスキップ |
 | `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
-削除対象は pocket 管理 vault（`pocket-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
+削除対象はこの stage の pocket 管理 vault（`{stage}-{project}-{namespace}-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
 
 ### pocket runtime-config
 
@@ -592,8 +592,8 @@ pocket resource dsql endpoint --stage=dev --format=json
 
 # オンデマンドバックアップの開始（AWS Backup。DSQL に組み込みの自動バックアップは
 # 無いため、これが唯一のバックアップ手段。--watch で完了まで待機）
-# 前提リソース（vault "pocket-backup" とサービスロール "forge-pocket-backup-role"）は
-# 初回実行時に冪等に自動作成される
+# 前提リソース（stage 単位の vault "{stage}-{project}-{namespace}-backup" と
+# サービスロール "…-backup-role"）は初回実行時に冪等に自動作成される
 pocket resource dsql backup --stage=dev
 pocket resource dsql backup --stage=dev --watch
 
