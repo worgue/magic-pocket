@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.36.0](https://github.com/worgue/magic-pocket/releases/tag/0.36.0) - 2026-09-18
+
 ### Changed
 - `pocket resource inbound ... init` は共有の receipt rule set を作成・有効化しなくなりました (KN1496)。
   receipt rule set は account/region で 1 つしか active にできない共有物のため、project 単位の
