@@ -14,10 +14,8 @@ from pocket.secret_store import (
     read_stored_value,
 )
 from pocket.utils import echo
-from pocket_cli.resources.aws.backup_common import (
-    ensure_backup_role,
-    ensure_backup_vault,
-)
+from pocket_cli.resources.aws import iam_roles
+from pocket_cli.resources.aws.backup_common import ensure_backup_vault
 from pocket_cli.resources.aws.poll import wait_until
 
 if TYPE_CHECKING:
@@ -260,10 +258,12 @@ class Dsql:
         ensure_backup_vault(self._backup, name)
 
     def _ensure_backup_role(self) -> str:
-        return ensure_backup_role(
+        return iam_roles.ensure_role(
             self._iam,
-            self.context.backup_role_name,
-            self.context.permissions_boundary,
+            iam_roles.backup_role(
+                self.context.backup_role_name,
+                permissions_boundary=self.context.permissions_boundary,
+            ),
         )
 
     def latest_recovery_point(self) -> dict | None:

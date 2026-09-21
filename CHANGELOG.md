@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Changed
+- pocket が作る IAM role (Lambda 実行 / scheduler / CodeBuild / AWS Backup) の定義を 1 か所に
+  まとめました。権限の中身は変わりませんが、テンプレートの書き方が変わるため、次回 deploy で
+  各 container stack の `LambdaRole` が更新されます (信頼ポリシーへの `Version` の明記と、
+  inline policy 名の `Fn::Sub` 除去のみ。role の作り直しは起きません)。
+- AWS Backup のサービスロールを削除する際、inline policy も列挙して削除するようにしました
+  (`iam:ListRolePolicies` は従来から deploy 権限に含まれています)。
+
 ## [0.38.0](https://github.com/worgue/magic-pocket/releases/tag/0.38.0) - 2026-09-21
 
 ### 更新時の作業 (SPA token を検証しているアプリ)

@@ -11,6 +11,7 @@ from deepdiff import DeepDiff
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from pocket.resources.base import ResourceStatus
+from pocket_cli.resources.aws import iam_roles
 
 if TYPE_CHECKING:
     from pocket.context import (
@@ -869,6 +870,21 @@ class ContainerStack(Stack):
             use_dsql=dsql_endpoint is not None,
             scheduler=(
                 self._scheduler_context.model_dump()
+                if self._scheduler_context
+                else None
+            ),
+            lambda_role=iam_roles.lambda_role(
+                self.context,
+                rds_secret_arn=rds_info.get("rds_secret_arn"),
+                rds_kms_key_id=rds_info.get("rds_kms_key_id"),
+                rds_ssm_param_arn=rds_info.get("rds_ssm_param_arn"),
+                dsql_cluster_arn=dsql_cluster_arn if dsql_endpoint else None,
+            ),
+            scheduler_role=(
+                iam_roles.scheduler_role(
+                    self._scheduler_context,
+                    permissions_boundary=self.context.permissions_boundary,
+                )
                 if self._scheduler_context
                 else None
             ),

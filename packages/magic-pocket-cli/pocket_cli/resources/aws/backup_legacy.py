@@ -14,10 +14,10 @@ from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
 
+from pocket_cli.resources.aws import iam_roles
 from pocket_cli.resources.aws.backup_common import (
     LEGACY_BACKUP_ROLE_NAME,
     LEGACY_BACKUP_VAULT_NAME,
-    delete_backup_role,
 )
 
 
@@ -121,4 +121,6 @@ class LegacyBackupCleanup:
         return True
 
     def delete_role(self) -> bool:
-        return delete_backup_role(self._iam, LEGACY_BACKUP_ROLE_NAME)
+        return iam_roles.delete_role(
+            self._iam, LEGACY_BACKUP_ROLE_NAME, iam_roles.BACKUP_ROLE_POLICIES
+        )

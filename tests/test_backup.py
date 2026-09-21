@@ -106,8 +106,8 @@ def _set_targets(monkeypatch, arns: dict[str, str | None]):
 
 def _ensure_role(monkeypatch):
     monkeypatch.setattr(
-        "pocket_cli.resources.backup.ensure_backup_role",
-        lambda iam_client, role_name, boundary: ROLE_ARN,
+        "pocket_cli.resources.aws.iam_roles.ensure_role",
+        lambda iam_client, spec: ROLE_ARN,
     )
 
 
@@ -836,6 +836,7 @@ def _stub_role_delete(backup: Backup) -> Stubber:
                 "PolicyArn": "arn:aws:iam::aws:policy/service-role/%s" % policy,
             },
         )
+    iam.add_response("list_role_policies", {"PolicyNames": []}, {"RoleName": ROLE})
     iam.add_response("delete_role", {}, {"RoleName": ROLE})
     return iam
 
@@ -871,7 +872,7 @@ def test_delete_never_touches_legacy_shared_role():
         },
     )
     iam.add_client_error(
-        "delete_role",
+        "list_role_policies",
         service_error_code="NoSuchEntity",
         expected_params={"RoleName": ROLE},
     )

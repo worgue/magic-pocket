@@ -7,11 +7,8 @@ from botocore.exceptions import ClientError
 
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
-from pocket_cli.resources.aws.backup_common import (
-    delete_backup_role,
-    ensure_backup_role,
-    ensure_backup_vault,
-)
+from pocket_cli.resources.aws import iam_roles
+from pocket_cli.resources.aws.backup_common import ensure_backup_vault
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.rds import Rds
 
@@ -152,8 +149,12 @@ class Backup:
             if not targets:
                 return
             ensure_backup_vault(self._backup, self.context.vault_name)
-            role_arn = ensure_backup_role(
-                self._iam, self.context.role_name, self.context.permissions_boundary
+            role_arn = iam_roles.ensure_role(
+                self._iam,
+                iam_roles.backup_role(
+                    self.context.role_name,
+                    permissions_boundary=self.context.permissions_boundary,
+                ),
             )
             for plan, arn in targets:
                 plan_id = self._ensure_plan(plan)
@@ -319,12 +320,16 @@ class Backup:
     def _delete_role(self) -> None:
         """stage 所有のサービスロールを削除する (selection を消した後に呼ぶ)。
 
+        ロールは「設定」側の付属物なので destroy で消す (vault と recovery point は
+        データなので残す)。復元等で再び必要になれば ensure_role が作り直す。
+
         0.36 以前の account 共有ロール (forge-pocket-backup-role) は他 stage /
         project が使っている可能性があるため触らない。
         """
         try:
-            if delete_backup_role(self._iam, self.context.role_name):
-                echo.log("Deleted backup service role: %s" % self.context.role_name)
+            iam_roles.delete_role(
+                self._iam, self.context.role_name, iam_roles.BACKUP_ROLE_POLICIES
+            )
         except ClientError as e:
             if e.response["Error"]["Code"] not in (
                 "AccessDenied",

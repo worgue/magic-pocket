@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import stat
@@ -12,6 +11,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from pocket.utils import echo
+from pocket_cli.resources.aws import iam_roles
 from pocket_cli.resources.aws.builders.dockerignore import (
     iter_source_files,
     load_dockerignore,
@@ -114,111 +114,20 @@ class CodeBuildBuilder:
     # --- IAM ロール ---
 
     def _ensure_role(self, account_id: str) -> str:
-        try:
-            resp = self.iam.get_role(RoleName=self._role_name)
-            return resp["Role"]["Arn"]  # type: ignore[return-value]
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "NoSuchEntity":
-                raise
-
-        print("  CodeBuild用IAMロールを作成: %s" % self._role_name)
-        assume_role_policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Principal": {"Service": "codebuild.amazonaws.com"},
-                        "Action": "sts:AssumeRole",
-                    }
-                ],
-            }
+        return iam_roles.ensure_role(
+            self.iam,
+            iam_roles.codebuild_role(
+                name=self._role_name,
+                region=self.region,
+                account_id=account_id,
+                state_bucket=self.state_bucket,
+                project_name=self._project_name,
+                permissions_boundary=self.permissions_boundary,
+            ),
         )
-
-        create_kwargs: dict = {
-            "RoleName": self._role_name,
-            "AssumeRolePolicyDocument": assume_role_policy,
-        }
-        if self.permissions_boundary:
-            create_kwargs["PermissionsBoundary"] = self.permissions_boundary
-
-        resp = self.iam.create_role(**create_kwargs)
-        role_arn: str = resp["Role"]["Arn"]
-
-        policy = json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "ecr:GetAuthorizationToken",
-                        ],
-                        "Resource": "*",
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "ecr:BatchCheckLayerAvailability",
-                            "ecr:GetDownloadUrlForLayer",
-                            "ecr:BatchGetImage",
-                            "ecr:PutImage",
-                            "ecr:InitiateLayerUpload",
-                            "ecr:UploadLayerPart",
-                            "ecr:CompleteLayerUpload",
-                        ],
-                        "Resource": (
-                            f"arn:aws:ecr:{self.region}:{account_id}:repository/*"
-                        ),
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "s3:GetObject",
-                            "s3:GetObjectVersion",
-                        ],
-                        "Resource": (f"arn:aws:s3:::{self.state_bucket}/codebuild/*"),
-                    },
-                    {
-                        "Effect": "Allow",
-                        "Action": [
-                            "logs:CreateLogGroup",
-                            "logs:CreateLogStream",
-                            "logs:PutLogEvents",
-                        ],
-                        "Resource": (
-                            f"arn:aws:logs:{self.region}"
-                            f":{account_id}:log-group:"
-                            f"/aws/codebuild/"
-                            f"{self._project_name}*"
-                        ),
-                    },
-                ],
-            }
-        )
-        self.iam.put_role_policy(
-            RoleName=self._role_name,
-            PolicyName="codebuild-policy",
-            PolicyDocument=policy,
-        )
-
-        # IAMロールの伝播待ち
-        print("  IAMロール伝播を待機中...")
-        time.sleep(10)
-        return role_arn
 
     def _delete_role(self, role_name: str) -> None:
-        try:
-            # インラインポリシー削除
-            policies = self.iam.list_role_policies(RoleName=role_name)
-            for policy_name in policies["PolicyNames"]:
-                self.iam.delete_role_policy(RoleName=role_name, PolicyName=policy_name)
-            self.iam.delete_role(RoleName=role_name)
-            print("  IAMロール削除: %s" % role_name)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "NoSuchEntity":
-                return
-            raise
+        iam_roles.delete_role(self.iam, role_name)
 
     # --- CodeBuild プロジェクト ---
 

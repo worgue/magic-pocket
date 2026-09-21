@@ -38,7 +38,8 @@ _CORE_ACTIONS: list[str] = [
     "iam:TagRole",
     "iam:UntagRole",
     "iam:ListRoleTags",
-    # CodeBuild ロール削除時の inline policy 列挙 (codebuild.py)
+    # API で作るロール (CodeBuild / AWS Backup) 削除時の inline policy 列挙
+    # (resources/aws/iam_roles.py の delete_role)
     "iam:ListRolePolicies",
     "logs:*",
     "sts:GetCallerIdentity",

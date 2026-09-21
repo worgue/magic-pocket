@@ -25,7 +25,8 @@ tests/test_permissions.py の per-condition テストの守備範囲。
 
 検知の限界 (false confidence を避けるため明記):
 - メソッド呼び出しの receiver を同一ファイル内でしか追跡しない。関数引数で
-  client を受け取るヘルパー (例: s3_utils) のメソッドはサービスに紐づかないが、
+  client を受け取るヘルパーは、引数名が `{service}_client` (例: iam_roles の
+  `iam_client`) なら紐づくが、それ以外 (例: s3_utils) はサービスに紐づかない。
   service prefix 自体の coverage 検証 (test_boto3_service_prefixes_covered) は
   client 生成箇所で必ず効くため、「新 service prefix の取りこぼし」は防げる。
 - メソッド名→Action 名は機械的な PascalCase 変換。IAM Action と API 名が乖離する
@@ -224,6 +225,7 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
       (別関数の同名変数 `client` 等に誤帰属させない)
     - `boto3.client("svc").method(...)` の直接チェーン
     - `client.get_paginator("operation")` は operation を method として記録
+    - 引数名 `{service}_client` の関数引数 — その関数スコープ内で有効
     """
     services: set[str] = set()
     calls: set[tuple[str, str]] = set()
@@ -291,6 +293,14 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
             ]
             for fn in functions:
                 local = {k: set(v) for k, v in bound_global.items()}
+                # client を引数で受け取るヘルパー (iam_roles.ensure_role 等) は
+                # 引数名 `{service}_client` を規約として service に紐づける
+                params = fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs
+                for arg in params:
+                    if arg.arg.endswith("_client"):
+                        local.setdefault(arg.arg, set()).add(
+                            arg.arg.removesuffix("_client").replace("_", "-")
+                        )
                 for sub in ast.walk(fn):
                     if isinstance(sub, ast.Assign):
                         svcs = _value_services(sub.value, local)
@@ -484,8 +494,8 @@ def test_regression_scheduler():
 
 
 def test_regression_iam_list_role_policies():
-    """ギャップ #7 (本検知器の初回実行で発見): CodeBuild ロール削除時の
-    inline policy 列挙 (codebuild.py)。消すと boto3 解析が検知する。"""
+    """ギャップ #7 (本検知器の初回実行で発見): ロール削除時の inline policy
+    列挙 (iam_roles.delete_role)。消すと boto3 解析が検知する。"""
     problems = find_uncovered_boto3(_allowed_without("iam:ListRolePolicies"))
     assert "action:iam:ListRolePolicies" in problems
 
