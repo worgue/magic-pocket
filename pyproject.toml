@@ -72,6 +72,11 @@ reportTypedDictNotRequiredAccess = false
 
 [tool.ruff]
 exclude = [".git", ".ruff_cache", ".venv", "frontend", "migrations", "packages/magic-pocket-cli/pocket_cli/templates"]
+[tool.ruff.format]
+# ruff 0.16 以降は Markdown 内の Python コードブロックも整形する。docs の例は
+# 紙面に合わせた書き方をしているので対象から外す (`ruff format .` で docs が変わらないように)
+exclude = ["*.md"]
+
 [tool.ruff.lint]
 # S = flake8-bandit (Python セキュリティアンチパターンの常時検出)
 select = ["E", "W", "F", "I", "C", "B", "S"]

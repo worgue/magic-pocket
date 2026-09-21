@@ -39,9 +39,13 @@ build & publish** する。
 8. **example の magic-pocket バージョンを更新する** (`example-neon` / `example-tidb` は
    PyPI 公開版 `magic-pocket[django]==X.Y.Z` を pin 参照している):
    1. 各 `example-*/pyproject.toml` の `magic-pocket[django]==X.Y.Z` を新バージョンへ更新
-   2. 各 example で `uv lock`
-   3. 4 ファイル (pyproject.toml + uv.lock × 2 example) をコミット:
-      `:arrow_up: example の magic-pocket を X.Y.Z に更新`
+   2. 各 example で `uv lock`。リリース直後は uv の index cache に新版がまだ無く、
+      「requirements are unsatisfiable」で失敗することがある。その場合は
+      `uv lock --refresh-package magic-pocket` で通る
+   3. `example-dsql/Cargo.toml` の `magic-pocket-rs` の `tag = "X.Y.Z"` を新バージョンへ更新し、
+      `cargo update -p magic-pocket-rs` で `Cargo.lock` を反映する (tag push の後に行う)
+   4. 6 ファイル (pyproject.toml + uv.lock × 2 example、example-dsql の Cargo.toml + Cargo.lock) を
+      コミット: `:arrow_up: example の magic-pocket を X.Y.Z に更新`
 
    !!! note "vendor wheel は廃止済み"
        以前は git 管理外の vendor wheel を参照していたが、gitignore + 非決定的ビルドで
