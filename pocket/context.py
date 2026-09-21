@@ -11,7 +11,7 @@ from pydantic import BaseModel, computed_field, model_validator
 from . import settings
 from .django.context import DjangoContext
 from .general_context import GeneralContext, VpcContext
-from .inbound_context import InboundContext
+from .inbound_context import InboundContext, InboundDomainContext
 from .resources.aws.secretsmanager import PocketSecretIsNotReady, SecretsManager
 from .resources.aws.ssm import SsmStore
 from .secret_store import StoredUserSecretStore
@@ -1614,6 +1614,8 @@ class Context(BaseModel):
     backup: BackupContext | None = None
     ses: SesContext | None = None
     inbound: dict[str, InboundContext] = {}
+    # 受信ドメイン → identity / DKIM / MX を持つ stack (inbound.*.domain から導出)
+    inbound_domain: dict[str, InboundDomainContext] = {}
     s3: S3Context | None = None
     cloudfront: dict[str, CloudFrontContext] = {}
     # container 名 → その container stack に配置する scheduler
@@ -1811,6 +1813,7 @@ class Context(BaseModel):
             cloudfront=cloudfront_ctx,
             scheduler=scheduler_ctx,
             inbound=inbound,
+            inbound_domain=InboundDomainContext.from_settings(s),
             project_name=s.project_name,
             stage=s.stage,
             **svc,

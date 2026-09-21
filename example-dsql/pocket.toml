@@ -36,8 +36,8 @@ timeout = 60
 sqs = { dead_letter_alert = { email = "alerts@example.com" } }
 
 # SES 受信口。domain は公開 repo では placeholder (deploy 前に実値へ書き戻す。commit しない)。
-# 初回は `pocket resource inbound --stage sandbox --name inbox init` で TXT / MX を出し
-# DNS へ登録 → 検証完了後に deploy。delivery_alert は受信処理の障害通知先 (転送先ではない)。
+# zone が同じ account にあるので、SES identity / DKIM CNAME / MX は deploy が作り、検証完了まで
+# 待つ (初期設定のコマンドは不要)。delivery_alert は受信処理の障害通知先 (転送先ではない)。
 [inbound.inbox]
 domain = "inbound.dsql.sandbox.magic-pocket.example.com"
 recipients = ["test@inbound.dsql.sandbox.magic-pocket.example.com"]

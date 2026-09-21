@@ -94,3 +94,42 @@ class InboundContext(BaseModel):
             queue_name=f"{prefix}{container}-{handler}",
             config=config,
         )
+
+
+class InboundDomainContext(BaseModel):
+    """受信ドメインの所有 (SES identity / DKIM / MX)。stage × domain で 1 つ。
+
+    同じ stage の複数 inbound が同じ domain を使えるため、受信口ではなく
+    domain を単位にする (identity と MX は domain に 1 組しか作れない)。
+    """
+
+    domain: str
+    region: str
+    stack_name: str
+    manage_dns: bool
+    hosted_zone_id_override: str | None = None
+
+    @computed_field
+    @property
+    def mx_value(self) -> str:
+        return f"10 inbound-smtp.{self.region}.amazonaws.com"
+
+    @classmethod
+    def from_settings(cls, root: Settings) -> dict[str, "InboundDomainContext"]:
+        base = re.sub("[^a-z0-9-]", "-", f"{root.slug}-{root.namespace}-inbound-domain")
+        domains = {}
+        for name in sorted(root.inbound):
+            config = root.inbound[name]
+            if config.domain in domains:
+                continue
+            digest = hashlib.sha256(
+                f"{base}-{root.region}-{config.domain}".encode()
+            ).hexdigest()[:10]
+            domains[config.domain] = cls(
+                domain=config.domain,
+                region=root.region,
+                stack_name=base[:32] + "-" + digest,
+                manage_dns=config.manage_dns,
+                hosted_zone_id_override=config.hosted_zone_id_override,
+            )
+        return domains

@@ -229,11 +229,25 @@ _INBOUND_ACTIONS = [
     "ses:DescribeActiveReceiptRuleSet",
     "ses:DescribeReceiptRuleSet",
     "ses:DescribeReceiptRule",
-    "ses:GetIdentityVerificationAttributes",
     "ses:CreateReceiptRule",
     "ses:UpdateReceiptRule",
     "ses:DeleteReceiptRule",
     "ses:SetReceiptRulePosition",
+    # 受信ドメインの stack (AWS::SES::EmailIdentity + Route53 の DKIM CNAME / MX)。
+    # スタックタグが identity へ伝播するため Tag/Untag も要る
+    "ses:GetEmailIdentity",
+    "ses:CreateEmailIdentity",
+    "ses:DeleteEmailIdentity",
+    "ses:PutEmailIdentityDkimAttributes",
+    "ses:PutEmailIdentityDkimSigningAttributes",
+    "ses:PutEmailIdentityFeedbackAttributes",
+    "ses:PutEmailIdentityMailFromAttributes",
+    "ses:PutEmailIdentityConfigurationSetAttributes",
+    "ses:TagResource",
+    "ses:UntagResource",
+    "route53:ListHostedZones",
+    "route53:ChangeResourceRecordSets",
+    "route53:GetChange",
 ]
 
 

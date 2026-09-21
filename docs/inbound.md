@@ -52,34 +52,65 @@ recipients = ["test@receive-dev.example.com"]
 ## 初期設定とdeploy
 
 ```bash
-pocket resource inbound --stage dev --name inbox init
 pocket deploy --stage dev
 pocket resource inbound --stage dev --name inbox status
 ```
 
-1. SES受信対応リージョンを選び、`init` のTXTとMXレコードをDNS管理者が登録します。
-   `init` はactiveなreceipt rule setを名前を問わずそのまま使い、ドメイン検証の申請と
-   レコードの出力だけを非対話で行います。`--format json` を付けると、レコードを
-   機械可読な形（`records` に `type` / `name` / `value`、MXは `priority` も）で出力します。
+受信ドメインのhosted zoneがdeploy先と同じaccountのRoute53にあれば、`pocket deploy` だけで
+受信できる状態になります。deployは次を行います。
 
-    receipt rule setはaccount/regionで1つしかactiveにできない共有物なので、
-    pocketは作成も有効化もしません。activeなセットが無い場合、`init` とdeployは
-    次の手順を案内して停止します。account/regionの管理者が1回だけ実行してください
-    （provisioningの仕組みがあれば、そちらで用意します）。
-
-    ```bash
-    aws ses create-receipt-rule-set --rule-set-name default-rule-set --region <region>
-    aws ses set-active-receipt-rule-set --rule-set-name default-rule-set --region <region>
-    ```
-
-    `default-rule-set` はSESコンソールが自動作成するセットと同じ名前です。
-    既に別名のセットがactiveなら、それをそのまま使うので作り直す必要はありません。
-
-2. ドメインのSES検証が完了してからdeployします。`rule_set` と `after_rule` は不要です。
+1. 受信ドメインのstackを作ります。SESのidentity（`AWS::SES::EmailIdentity`、Easy DKIM）と、
+   検証用のDKIM CNAME 3本、MX（`10 inbound-smtp.<region>.amazonaws.com`）を
+   CloudFormationで作成します。zoneはCloudFrontの独自ドメインと同じく `domain` から
+   自動で探し、`hosted_zone_id_override` で明示もできます。
+2. 受信スタックを作ります。`rule_set` と `after_rule` は不要です。
    active setの末尾に自分のルールを追加し、選択したセットをスタック出力に保存します。
    `rule_set` を明示する場合はactive setとの一致を必須とします。`after_rule` は設定項目にありません。
-3. deploy後、通知先へ届くSNS購読確認メールのリンクを開きます。
+3. 最後にSESのドメイン検証が完了するまで待ちます（通常は数分、最大10分）。
+   時間内に完了しなければdeployはエラーで終わります。他のリソースのdeployは完了しているので、
+   zoneの委任を確認してから再度deployしてください。
+4. deploy後、通知先へ届くSNS購読確認メールのリンクを開きます。
    `pocket status` とdeploy末尾で未確認の購読を表示します。
+
+受信ドメインのstackはstageとdomainの組で1つです。同じstageの複数の `[inbound.*]` が
+同じ `domain` を使う場合（`support@` と `billing@` を別のhandlerで受ける等）は1つのstackを
+共有します。stageが違えばstackも別です。
+
+pocketは既存のSES identityやDNSレコードを取り込みません。同じドメインのidentityが既にあると
+deployは削除コマンドを案内して停止し、同名のMXが既にあるとstackの作成が失敗します
+（稼働中の配送先を奪わないためです）。送信用にidentityを作成済みのドメインとは別の、
+受信専用サブドメインを使ってください。
+
+### 外部DNSを使う場合
+
+zoneが別のaccountや外部のDNSにある場合は `manage_dns = false` を明示します。
+指定がなくzoneも見つからない場合、deployはエラーで停止します（黙って手動登録に切り替えません）。
+
+```toml
+[inbound.inbox]
+domain = "receive.example.com"
+manage_dns = false
+```
+
+この場合pocketはidentityだけを作り、deployは検証完了を待ちません。登録すべきDKIM CNAMEとMXは
+deployの末尾と `pocket resource inbound ... status` に表示されるので、DNS管理者が登録します。
+検証が完了するまで受信はできません。同じ `domain` を使うinboundどうしでは
+`manage_dns` と `hosted_zone_id_override` を揃えてください。
+
+### receipt rule set
+
+receipt rule setはaccount/regionで1つしかactiveにできない共有物なので、
+pocketは作成も有効化もしません。activeなセットが無い場合、deployは
+次の手順を案内して停止します。account/regionの管理者が1回だけ実行してください
+（provisioningの仕組みがあれば、そちらで用意します）。
+
+```bash
+aws ses create-receipt-rule-set --rule-set-name default-rule-set --region <region>
+aws ses set-active-receipt-rule-set --rule-set-name default-rule-set --region <region>
+```
+
+`default-rule-set` はSESコンソールが自動作成するセットと同じ名前です。
+既に別名のセットがactiveなら、それをそのまま使うので作り直す必要はありません。
 
 既存の宛先重複・domain指定・catch-all、Stop/Bounce/Lambdaアクションは保守的に競合とします。
 別宛先向けの停止処理も複数宛先メール全体へ影響するためです。既存ルールの並べ替えは行いません。
@@ -205,7 +236,11 @@ bucket・prefix・handlerの変更は新しいinbound名への移行として行
 SNSの未配送分や原本と受信情報の照合も確認してください。通常の `pocket destroy` でも
 受信スタックを先に撤去します。宣言を消す前にこの手順を実行してください。
 
-共有rule set・SES identity・原本バケット・受信queue・両DLQは保持します。
+受信ドメインのstack（SES identity・DKIM CNAME・MX）は、そのdomainを使う最後の受信口を
+destroyしたときに一緒に削除します。inboundの `domain` を変更した場合は、
+どのinboundも使わなくなった旧domainのstackを次のdeployが削除します。
+
+共有rule set・原本バケット・受信queue・両DLQは保持します。
 保持されたqueueやバケットは同名の再作成と衝突するので、再利用時は別のinbound名・worker名を使います。
 Retainは無期限保存の指定ではなく、S3 lifecycleとSQSの保持期限は引き続き適用されます。
 

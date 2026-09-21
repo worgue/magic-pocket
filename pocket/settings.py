@@ -532,6 +532,12 @@ class Inbound(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     domain: str
+    # 受信ドメインの identity / DKIM / MX は domain ごとの stack が持つ。
+    # 同じ domain を使う inbound どうしで manage_dns / hosted_zone_id_override は
+    # 揃える (Settings.check_inbound_handlers が検証する)。
+    # false は外部 DNS 向け: identity だけを作り、登録すべきレコードは status に出す
+    manage_dns: bool = True
+    hosted_zone_id_override: str | None = None
     recipients: list[str] = Field(min_length=1)
     handler: str
     rule_set: str | None = None
@@ -1550,7 +1556,18 @@ class Settings(BaseModel):
     def check_inbound_handlers(self):
         handlers: set[str] = set()
         recipients: set[str] = set()
+        dns: dict[str, tuple[bool, str | None]] = {}
         for name, inlet in self.inbound.items():
+            if not inlet.manage_dns and inlet.hosted_zone_id_override:
+                raise ValueError(
+                    "manage_dns = false では hosted_zone_id_override を指定できません"
+                )
+            declared = (inlet.manage_dns, inlet.hosted_zone_id_override)
+            if dns.setdefault(inlet.domain, declared) != declared:
+                raise ValueError(
+                    "同じdomainのinboundは manage_dns と hosted_zone_id_override を"
+                    "揃えてください"
+                )
             if not re.fullmatch(_CONTAINER_NAME_RE, name):
                 raise ValueError("inbound名はcontainer名と同じ形式で指定してください")
             container, _, handler = self.resolve_handler(inlet.handler)

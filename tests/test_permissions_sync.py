@@ -63,6 +63,7 @@ _TEMPLATE_DIR = (
 _SERVICE_TO_IAM_PREFIX = {
     "efs": "elasticfilesystem",
     "resourcegroupstaggingapi": "tag",
+    "sesv2": "ses",
 }
 
 # AWS API 呼び出しではない boto3 client のメタメソッド
@@ -76,9 +77,6 @@ _EXCLUDED_CALLS: set[tuple[str, str]] = {
     # get_secret_value が ssm 側にも帰属する。実際は secretsmanager 側の
     # 呼び出しで secretsmanager:* によりカバー済み。
     ("ssm", "get_secret_value"),
-    # 管理者用inbound initのみ (ドメイン検証の申請)。共有rule setの作成・有効化は
-    # pocketでは行わない (KN1496)。
-    ("ses", "verify_domain_identity"),
 }
 
 # CFn リソース型 → その作成/更新/削除/タグ伝播に deploy ロールが必要とする Action。

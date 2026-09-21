@@ -6,7 +6,37 @@
 
 ## [Unreleased]
 
+### 更新時の作業 (`[inbound.*]` を使っている project)
+- 受信ドメインの SES identity と DNS を pocket が CloudFormation で持つようになりました (下記
+  Changed)。pocket は既存の identity / レコードを取り込まないため、**0.38.0 以前に受信口を
+  作った stage は、deploy の前に次を削除してください** (削除から検証完了までの数分は受信が
+  止まります)。
+    1. SES identity: `aws sesv2 delete-email-identity --email-identity <domain> --region <region>`
+    2. 手で登録した DNS レコード: `_amazonses.<domain>` の TXT と、`<domain>` の MX
+  その後 `pocket deploy` すると、受信ドメインの stack が identity / DKIM CNAME / MX を作り直し、
+  検証完了まで待ちます。受信スタック (bucket / rule / queue) はそのまま使われます。
+- zone が別 account や外部 DNS にある場合は `manage_dns = false` を指定してください
+  (指定が無く zone も見つからないと deploy はエラーで停止します)。
+
 ### Changed
+- **(破壊的変更)** `[inbound.*]` の受信ドメインを、`pocket deploy` だけで受信できる状態まで
+  持っていくようにしました (KN1537)。stage × domain ごとに「受信ドメインの stack」を作り、
+  SES identity (`AWS::SES::EmailIdentity`、Easy DKIM)・DKIM CNAME 3 本・MX を CloudFormation で
+  管理します。hosted zone は CloudFront の独自ドメインと同じく `domain` から自動で探し
+  (`hosted_zone_id_override` で明示可)、deploy の最後に SES の検証完了を最大 10 分待ちます。
+  同じ stage の複数 inbound が同じ domain を使う場合は stack を共有します。
+    - `pocket resource inbound ... init` は廃止しました。TXT (`_amazonses`) による検証も使いません。
+    - 外部 DNS 向けに `manage_dns = false` を追加しました。identity だけを作り、登録すべき
+      DKIM CNAME / MX は deploy の末尾と `inbound ... status` に表示します (検証は待ちません)。
+    - 同じドメインの identity が既にある場合は取り込まず、削除コマンドを案内して停止します。
+      同名の MX が既にある場合も stack の作成が失敗します (稼働中の配送先を奪いません)。
+    - `inbound ... destroy` は、その domain を使う最後の受信口なら受信ドメインの stack も
+      削除します。inbound の `domain` を変えた後の旧 stack は次の deploy が削除します。
+    - deploy 権限の `inbound` グループが変わります: `ses:GetIdentityVerificationAttributes` を
+      外し、`ses:GetEmailIdentity` / `ses:CreateEmailIdentity` / `ses:DeleteEmailIdentity` /
+      `ses:PutEmailIdentity*Attributes` / `ses:TagResource` / `ses:UntagResource` と
+      `route53:ListHostedZones` / `route53:ChangeResourceRecordSets` / `route53:GetChange` を
+      追加しました。権限を絞った deploy ロールは更新してください。
 - pocket が作る IAM role (Lambda 実行 / scheduler / CodeBuild / AWS Backup) の定義を 1 か所に
   まとめました。権限の中身は変わりませんが、テンプレートの書き方が変わるため、次回 deploy で
   各 container stack の `LambdaRole` が更新されます (信頼ポリシーへの `Version` の明記と、

@@ -26,6 +26,11 @@ from pocket_cli.resources.inbound import (
     check_removed_inbound,
     echo_inbound_details,
 )
+from pocket_cli.resources.inbound_domain import (
+    InboundDomain,
+    cleanup_unused_inbound_domains,
+    confirm_inbound_domains,
+)
 from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
@@ -77,6 +82,9 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     for _name, cf_ctx in context.cloudfront.items():
         if cf_ctx.waf is not None:
             resources.append(CloudFrontWaf(cf_ctx))
+    # 受信ドメイン (identity / DKIM / MX) も先に作り、DKIM 検証を他の deploy と
+    # 並行で進める (検証完了は deploy の最後に confirm_inbound_domains で待つ)
+    resources.extend(InboundDomain(ctx) for ctx in context.inbound_domain.values())
     # provisioning="command" の DB は deploy が管理しない (credential 不要)。
     # provisioning は `pocket <db> store-url` に一任し、deploy は stored-read のみ。
     if context.neon and context.neon.provisioning != "command":
@@ -221,6 +229,8 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
         if not context.container[container_name].permissions_boundary:
             raise ValueError("inbound workerにpermissions_boundaryが必要です")
         Inbound(inlet).prepare_deploy()
+    for domain_ctx in context.inbound_domain.values():
+        InboundDomain(domain_ctx).prepare_deploy()
     deploy_hash_message = deploy_hash_report(context)
     if deploy_hash_message:
         echo.info(deploy_hash_message)
@@ -231,6 +241,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     check_removed_inbound(context, state_store)
     deploy_init_resources(context, state_bucket=state_bucket)
     deploy_resources(context, state_bucket=state_bucket)
+    cleanup_unused_inbound_domains(context, state_store)
     # リリース跨ぎ移行の掃除フェーズ (旧配置の削除は deploy 成功後にしか
     # できないため、cloudfront 切替完了後のここで毎回呼ぶ。冪等)
     migrations.run_deploy_cleanup(context)
@@ -249,6 +260,8 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
         echo.success(f"url: {url}")
         if openpath:
             webbrowser.open(url + "/" + openpath)
+    # 受信ドメインの検証待ちは最後 (timeout しても他の deploy 結果は確定済み)
+    confirm_inbound_domains(context)
 
 
 @click.command()

@@ -9,14 +9,23 @@ import yaml
 from click.testing import CliRunner
 from moto import mock_aws
 from pocket_cli.cli.inbound_cli import inbound
+from pocket_cli.resources import inbound_domain
 from pocket_cli.resources.aws.cloudformation import ContainerStack
 from pocket_cli.resources.inbound import Inbound, resolve_rules
-from pocket_cli.resources.inbound_template import build_template
+from pocket_cli.resources.inbound_domain import (
+    InboundDomain,
+    cleanup_unused_inbound_domains,
+    confirm_inbound_domains,
+)
+from pocket_cli.resources.inbound_template import (
+    build_domain_template,
+    build_template,
+)
 from pydantic import ValidationError
 
 from pocket.context import Context
 from pocket.inbound import Receiver, handler, receipt_id
-from pocket.inbound_context import InboundContext
+from pocket.inbound_context import InboundContext, InboundDomainContext
 from pocket.permissions import compute_actions
 from pocket.settings import Settings
 
@@ -356,38 +365,8 @@ def test_preflight_refuses_handler_change_before_deploy(inlet):
         ),
         mock.patch.object(resource.stack, "binding", return_value=("shared", None)),
     ):
-        boto3.client("ses", region_name=inlet.region).verify_domain_identity(
-            Domain=inlet.config.domain
-        )
         with pytest.raises(ValueError, match="Handler"):
             resource.prepare_deploy()
-
-
-def test_cli_init_keeps_existing_active_set(receiving_settings, inlet):
-    ses = mock.Mock()
-    ses.describe_active_receipt_rule_set.return_value = {
-        "Metadata": {"Name": "existing"}
-    }
-    ses.get_identity_verification_attributes.return_value = {
-        "VerificationAttributes": {
-            inlet.config.domain: {"VerificationStatus": "Success"}
-        }
-    }
-    with (
-        mock.patch(
-            "pocket_cli.cli.inbound_cli.Settings.from_toml",
-            return_value=receiving_settings,
-        ),
-        mock.patch("pocket_cli.cli.inbound_cli.boto3.client", return_value=ses),
-    ):
-        result = CliRunner().invoke(
-            inbound, ["--stage", "dev", "--name", "inbox", "init"]
-        )
-    assert result.exit_code == 0, result.output
-    ses.set_active_receipt_rule_set.assert_not_called()
-    ses.create_receipt_rule_set.assert_not_called()
-    assert "active rule set: existing" in result.output
-    assert "MX receive.example.com" in result.output
 
 
 def _invoke_inbound(receiving_settings, ses, args, **kwargs):
@@ -403,62 +382,50 @@ def _invoke_inbound(receiving_settings, ses, args, **kwargs):
         )
 
 
-def test_cli_init_without_active_set_guides_and_never_creates(
-    receiving_settings, inlet
-):
-    """active setが無ければ作らずに止め、確認プロンプトも出さない (KN1496)。"""
-    ses = mock.Mock()
-    ses.describe_active_receipt_rule_set.return_value = {}
-    # 入力なしで実行する。確認プロンプトが残っていれば Abort になり案内が出ない
-    result = _invoke_inbound(receiving_settings, ses, ["init"])
-    assert result.exit_code != 0
-    assert "default-rule-set" in result.output
-    assert f"--region {inlet.region}" in result.output
-    assert "[y/N]" not in result.output
-    ses.create_receipt_rule_set.assert_not_called()
-    ses.set_active_receipt_rule_set.assert_not_called()
-    ses.verify_domain_identity.assert_not_called()
-
-
-def test_cli_init_json_outputs_dns_records(receiving_settings, inlet):
-    ses = mock.Mock()
-    # pocket-inbound 以外の名前でもそのまま使う
-    ses.describe_active_receipt_rule_set.return_value = {
-        "Metadata": {"Name": "default-rule-set"}
-    }
-    ses.get_identity_verification_attributes.return_value = {
-        "VerificationAttributes": {}
-    }
-    ses.verify_domain_identity.return_value = {"VerificationToken": "tok"}
-    result = _invoke_inbound(receiving_settings, ses, ["init", "--format", "json"])
-    assert result.exit_code == 0, result.output
-    payload = json.loads(result.output)
-    domain = inlet.config.domain
-    assert payload["active_rule_set"] == "default-rule-set"
-    assert payload["verification_status"] == "Pending"
-    assert payload["records"] == [
-        {"type": "TXT", "name": f"_amazonses.{domain}", "value": "tok"},
-        {
-            "type": "MX",
-            "name": domain,
-            "priority": 10,
-            "value": f"inbound-smtp.{inlet.region}.amazonaws.com",
-        },
-    ]
+def _inbound_mock(name, stack_status="NOEXIST"):
+    resource = mock.Mock()
+    resource.context.name = name
+    resource.context.config.domain = "receive.example.com"
+    resource.stack.cfn_status = stack_status
+    return resource
 
 
 def test_cli_destroy_respects_yes(receiving_settings, monkeypatch):
     from pocket_cli.cli import interaction
 
     monkeypatch.setattr(interaction, "_assume_yes", False)
-    resource = mock.Mock()
-    with mock.patch("pocket_cli.cli.inbound_cli.Inbound", return_value=resource):
+    resource = _inbound_mock("inbox")
+    domain = mock.Mock()
+    with (
+        mock.patch("pocket_cli.cli.inbound_cli.Inbound", return_value=resource),
+        mock.patch("pocket_cli.cli.inbound_cli.InboundDomain", return_value=domain),
+    ):
         declined = _invoke_inbound(receiving_settings, mock.Mock(), ["destroy"])
         assert declined.exit_code != 0
         resource.delete.assert_not_called()
         accepted = _invoke_inbound(receiving_settings, mock.Mock(), ["destroy", "-y"])
     assert accepted.exit_code == 0, accepted.output
     resource.delete.assert_called_once_with()
+    # このdomainを使う最後の受信口なので、domainのstackも消す
+    domain.delete.assert_called_once_with()
+
+
+def test_cli_destroy_keeps_domain_used_by_other_inbound(receiving_settings):
+    settings = Settings.model_validate(_with_second_inlet(receiving_settings))
+    target = _inbound_mock("inbox")
+    domain = mock.Mock()
+    with (
+        mock.patch(
+            "pocket_cli.cli.inbound_cli.Inbound",
+            side_effect=[target, _inbound_mock("billing", "COMPLETED")],
+        ),
+        mock.patch("pocket_cli.cli.inbound_cli.InboundDomain", return_value=domain),
+    ):
+        result = _invoke_inbound(settings, mock.Mock(), ["destroy", "-y"])
+    assert result.exit_code == 0, result.output
+    target.delete.assert_called_once_with()
+    domain.delete.assert_not_called()
+    assert "inbound.billing" in result.output
 
 
 def test_existing_position_survives_predecessor_removal(inlet):
@@ -571,3 +538,159 @@ def test_setup_notification_is_saved_without_business_processing(storage, monkey
     assert (
         s3.list_objects_v2(Bucket=config["bucket"], Prefix="metadata/")["KeyCount"] == 1
     )
+
+
+def _with_second_inlet(receiving_settings, **overrides):
+    """同じdomainを別handlerで受ける2つ目のinboundを足した設定を返す。"""
+    data = receiving_settings.model_dump(exclude_computed_fields=True)
+    data["container"]["mail"]["handlers"]["billing"] = dict(
+        data["container"]["mail"]["handlers"]["worker"], command="app.mail.billing"
+    )
+    data["inbound"]["billing"] = dict(
+        data["inbound"]["inbox"],
+        recipients=["billing@receive.example.com"],
+        handler="mail.billing",
+        **overrides,
+    )
+    return data
+
+
+def test_inbounds_on_same_domain_share_one_domain_stack(receiving_settings):
+    settings = Settings.model_validate(_with_second_inlet(receiving_settings))
+    domains = InboundDomainContext.from_settings(settings)
+    assert list(domains) == ["receive.example.com"]
+    domain = domains["receive.example.com"]
+    assert domain.stack_name.startswith("dev-receiving-")
+    assert len(domain.stack_name) <= 128
+    # stage が違えば stack も別 (sandbox と dev で共有しない)
+    settings.stage = "sandbox"
+    settings.general.stages = ["sandbox"]
+    other = InboundDomainContext.from_settings(settings)["receive.example.com"]
+    assert other.stack_name != domain.stack_name
+
+
+def test_same_domain_requires_consistent_dns_settings(receiving_settings):
+    with pytest.raises(ValidationError, match="揃えて"):
+        Settings.model_validate(
+            _with_second_inlet(receiving_settings, manage_dns=False)
+        )
+    data = receiving_settings.model_dump(exclude_computed_fields=True)
+    data["inbound"]["inbox"].update(manage_dns=False, hosted_zone_id_override="Z1")
+    with pytest.raises(ValidationError, match="hosted_zone_id_override"):
+        Settings.model_validate(data)
+
+
+def test_domain_template_owns_identity_dkim_and_mx(receiving_settings):
+    domain = InboundDomainContext.from_settings(receiving_settings)[
+        "receive.example.com"
+    ]
+    template = build_domain_template(domain, "ZONE123")
+    resources = template["Resources"]
+    assert resources["Identity"]["Type"] == "AWS::SES::EmailIdentity"
+    assert resources["Identity"]["Properties"]["EmailIdentity"] == domain.domain
+    for i in (1, 2, 3):
+        record = resources[f"DkimRecord{i}"]["Properties"]
+        assert record["Type"] == "CNAME"
+        assert record["HostedZoneId"] == "ZONE123"
+        assert record["Name"] == {"Fn::GetAtt": ["Identity", f"DkimDNSTokenName{i}"]}
+        assert record["ResourceRecords"] == [
+            {"Fn::GetAtt": ["Identity", f"DkimDNSTokenValue{i}"]}
+        ]
+    mx = resources["MxRecord"]["Properties"]
+    assert (mx["Name"], mx["Type"]) == ("receive.example.com", "MX")
+    assert mx["ResourceRecords"] == ["10 inbound-smtp.ap-northeast-1.amazonaws.com"]
+    # 外部DNS: identityだけを作り、登録すべき値はOutputsに残す
+    external = build_domain_template(domain, None)
+    assert list(external["Resources"]) == ["Identity"]
+    assert "DkimValue3" in external["Outputs"]
+    assert external["Outputs"]["MxValue"]["Value"] == domain.mx_value
+
+
+class _FakeDomain(InboundDomain):
+    """stackの状態とSESの検証状態を差し替えたInboundDomain。"""
+
+    def __init__(self, settings, *, stack_status, statuses):
+        super().__init__(
+            InboundDomainContext.from_settings(settings)["receive.example.com"]
+        )
+        self.fake_stack = mock.Mock()
+        self.fake_stack.cfn_status = stack_status
+        self.statuses = list(statuses)
+        self.calls = 0
+
+    @property
+    def stack(self):
+        return self.fake_stack
+
+    def verification_status(self):
+        self.calls += 1
+        return self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
+
+
+def test_existing_identity_is_never_adopted(receiving_settings):
+    foreign = _FakeDomain(
+        receiving_settings, stack_status="NOEXIST", statuses=["SUCCESS"]
+    )
+    with pytest.raises(ValueError, match="delete-email-identity"):
+        foreign.prepare_deploy()
+    # 自分のstackが持つidentityなら通す / identityが無ければ新規作成へ進む
+    _FakeDomain(
+        receiving_settings, stack_status="COMPLETED", statuses=["SUCCESS"]
+    ).prepare_deploy()
+    _FakeDomain(
+        receiving_settings, stack_status="NOEXIST", statuses=[None]
+    ).prepare_deploy()
+
+
+def test_deploy_waits_for_verification_and_times_out(receiving_settings, monkeypatch):
+    monkeypatch.setattr(inbound_domain.time, "sleep", lambda _: None)
+    resource = _FakeDomain(
+        receiving_settings,
+        stack_status="COMPLETED",
+        statuses=["PENDING", "PENDING", "SUCCESS"],
+    )
+    resource.wait_verified()
+    assert resource.calls == 3
+    monkeypatch.setattr(inbound_domain, "VERIFY_TIMEOUT", 0)
+    pending = _FakeDomain(
+        receiving_settings, stack_status="COMPLETED", statuses=["PENDING"]
+    )
+    with pytest.raises(ValueError, match="検証が完了しません"):
+        pending.wait_verified()
+
+
+def test_external_dns_is_reported_without_waiting(receiving_settings, capsys):
+    receiving_settings.inbound["inbox"].manage_dns = False
+    context = mock.Mock()
+    context.inbound_domain = InboundDomainContext.from_settings(receiving_settings)
+    with (
+        mock.patch.object(InboundDomain, "verification_status", return_value="PENDING"),
+        mock.patch.object(InboundDomain, "wait_verified") as wait,
+        mock.patch.object(
+            InboundDomain,
+            "dns_records",
+            return_value=[("MX", "receive.example.com", "10 inbound-smtp")],
+        ),
+    ):
+        confirm_inbound_domains(context)
+    wait.assert_not_called()
+    assert "MX receive.example.com 10 inbound-smtp" in capsys.readouterr().out
+
+
+def test_unused_domain_stack_is_deleted_after_domain_change(receiving_settings):
+    context = mock.Mock()
+    context.general.region = "ap-northeast-1"
+    context.inbound_domain = InboundDomainContext.from_settings(receiving_settings)
+    state_store = mock.Mock()
+    state_store.load.return_value = {
+        "resources": {
+            "inbound_domain": {
+                "receive.example.com": {"stack_name": "current"},
+                "old.example.com": {"stack_name": "old-domain-stack"},
+            }
+        }
+    }
+    client = mock.Mock()
+    with mock.patch.object(inbound_domain.boto3, "client", return_value=client):
+        cleanup_unused_inbound_domains(context, state_store)
+    client.delete_stack.assert_called_once_with(StackName="old-domain-stack")

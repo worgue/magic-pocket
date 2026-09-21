@@ -1,6 +1,8 @@
 """SES受信用テンプレート。受信ルールは配送経路の完成後に有効化する。"""
 
-from pocket.inbound_context import InboundContext
+from pocket.inbound_context import InboundContext, InboundDomainContext
+
+DKIM_TOKENS = (1, 2, 3)
 
 
 def sub(value: str) -> dict:
@@ -307,3 +309,61 @@ def add_alarms(resources: dict, outputs: dict, ctx: InboundContext) -> None:
             "Properties": properties,
         }
         outputs[logical + "Arn"] = {"Value": arn(logical)}
+
+
+def build_domain_template(
+    ctx: InboundDomainContext, hosted_zone_id: str | None
+) -> dict:
+    """受信ドメインの所有を1つのstackに閉じる。
+
+    Easy DKIMのtokenは Fn::GetAtt で取れるため、検証用CNAMEも同じstackで作れる。
+    hosted_zone_id が無い (manage_dns = false) ときはidentityだけを作り、
+    登録すべきレコードはOutputsから案内する。
+    """
+    resources: dict = {
+        "Identity": {
+            "Type": "AWS::SES::EmailIdentity",
+            "Properties": {
+                "EmailIdentity": ctx.domain,
+                "DkimSigningAttributes": {"NextSigningKeyLength": "RSA_2048_BIT"},
+            },
+        }
+    }
+    outputs: dict = {
+        "Domain": {"Value": ctx.domain},
+        "ManageDns": {"Value": str(ctx.manage_dns).lower()},
+        "MxValue": {"Value": ctx.mx_value},
+    }
+    for i in DKIM_TOKENS:
+        token_name = {"Fn::GetAtt": ["Identity", f"DkimDNSTokenName{i}"]}
+        token_value = {"Fn::GetAtt": ["Identity", f"DkimDNSTokenValue{i}"]}
+        outputs[f"DkimName{i}"] = {"Value": token_name}
+        outputs[f"DkimValue{i}"] = {"Value": token_value}
+        if hosted_zone_id:
+            resources[f"DkimRecord{i}"] = {
+                "Type": "AWS::Route53::RecordSet",
+                "Properties": {
+                    "HostedZoneId": hosted_zone_id,
+                    "Name": token_name,
+                    "Type": "CNAME",
+                    "TTL": "1800",
+                    "ResourceRecords": [token_value],
+                },
+            }
+    if hosted_zone_id:
+        # 同名のMXが既にあればstack作成が失敗する (= 稼働中の配送先を奪わない)
+        resources["MxRecord"] = {
+            "Type": "AWS::Route53::RecordSet",
+            "Properties": {
+                "HostedZoneId": hosted_zone_id,
+                "Name": ctx.domain,
+                "Type": "MX",
+                "TTL": "300",
+                "ResourceRecords": [ctx.mx_value],
+            },
+        }
+    return {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": resources,
+        "Outputs": outputs,
+    }

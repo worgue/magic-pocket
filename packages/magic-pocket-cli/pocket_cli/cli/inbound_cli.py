@@ -8,10 +8,11 @@ import click
 from botocore.config import Config
 
 from pocket.inbound import SETUP_NOTIFICATION, receipt_id, validate_receipt_id
-from pocket.inbound_context import InboundContext
+from pocket.inbound_context import InboundContext, InboundDomainContext
 from pocket.settings import Settings, parse_handler_ref
 from pocket_cli.cli import interaction
-from pocket_cli.resources.inbound import Inbound, no_active_rule_set_guide
+from pocket_cli.resources.inbound import Inbound
+from pocket_cli.resources.inbound_domain import InboundDomain, print_dns_records
 
 
 @click.group()
@@ -27,69 +28,27 @@ def inbound(ctx, stage, name):
     ctx.meta["settings"] = settings
 
 
-@inbound.command()
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["text", "json"]),
-    default="text",
-    help="DNSレコードの出力形式",
-)
-@click.pass_obj
-def init(resource, output_format):
-    """ドメイン検証を申請し、登録すべきDNSレコードを出力する（初回のみ）。
-
-    receipt rule setはaccount/regionで1つしかactiveにできない共有物のため、
-    project単位の道具であるpocketは作成も有効化もしない。
-    """
-    region = resource.context.region
-    ses = boto3.client("ses", region_name=region)
-    active = ses.describe_active_receipt_rule_set().get("Metadata", {}).get("Name")
-    if not active:
-        raise click.ClickException(no_active_rule_set_guide(region))
-    domain = resource.context.config.domain
-    result = ses.get_identity_verification_attributes(Identities=[domain])
-    identity = result.get("VerificationAttributes", {}).get(domain, {})
-    token = identity.get("VerificationToken")
-    if not token and identity.get("VerificationStatus") != "Success":
-        token = ses.verify_domain_identity(Domain=domain)["VerificationToken"]
-    records = []
-    if token:
-        records.append({"type": "TXT", "name": f"_amazonses.{domain}", "value": token})
-    records.append(
-        {
-            "type": "MX",
-            "name": domain,
-            "priority": 10,
-            "value": f"inbound-smtp.{region}.amazonaws.com",
-        }
-    )
-    if output_format == "json":
-        payload = {
-            "active_rule_set": active,
-            "domain": domain,
-            "region": region,
-            "verification_status": identity.get("VerificationStatus") or "Pending",
-            "records": records,
-        }
-        click.echo(json.dumps(payload, ensure_ascii=False, indent=2))
-        return
-    click.echo(f"active rule set: {active}")
-    for record in records:
-        if record["type"] == "TXT":
-            click.echo(f"TXT {record['name']} {record['value']}")
-        else:
-            click.echo(f"MX {record['name']} {record['priority']} {record['value']}")
-    click.echo("SES受信対応リージョンとMXの既存配送先を確認してDNSを登録してください。")
+def _domain_resource(settings: Settings, resource: Inbound) -> InboundDomain:
+    domains = InboundDomainContext.from_settings(settings)
+    return InboundDomain(domains[resource.context.config.domain])
 
 
 @inbound.command()
-@click.pass_obj
-def status(resource):
-    """スタック・active set・検証状態・監視先を表示する。"""
+@click.pass_context
+def status(ctx):
+    """スタック・active set・ドメインの検証状態・監視先を表示する。"""
+    resource = ctx.obj
     resource.prepare_deploy()
     click.echo(f"stack: {resource.stack.name} / {resource.status}")
     click.echo(json.dumps(resource.stack.output or {}, ensure_ascii=False, indent=2))
+    domain = _domain_resource(ctx.meta["settings"], resource)
+    click.echo(
+        f"domain: {domain.context.domain} / stack={domain.stack.name}"
+        f" ({domain.status}) / verification={domain.verification_status()}"
+    )
+    if not domain.context.manage_dns:
+        click.echo("manage_dns = false: 次のレコードをDNSに登録してください")
+        print_dns_records(domain)
     if resource.context.config.delivery_alert.eventbridge:
         click.echo(
             "EventBridge: source=aws.cloudwatch, "
@@ -108,9 +67,14 @@ def show_yaml(resource):
 @click.option(
     "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
 )
-@click.pass_obj
-def destroy(resource, yes):
-    """無効化・配送猶予・滞留解消後に自分のルールとスタックを削除する。"""
+@click.pass_context
+def destroy(ctx, yes):
+    """無効化・配送猶予・滞留解消後に自分のルールとスタックを削除する。
+
+    同じdomainを使う受信口が他に残っていなければ、domainのstack
+    (SES identity / DKIM / MX) も削除する。
+    """
+    resource = ctx.obj
     interaction.set_assume_yes(yes)
     interaction.confirm(
         "受信停止後36時間以上経過し、原本の照合・必要な退避を終えましたか？",
@@ -118,6 +82,16 @@ def destroy(resource, yes):
         abort=True,
     )
     resource.delete()
+    settings = ctx.meta["settings"]
+    domain = resource.context.config.domain
+    for name, config in settings.inbound.items():
+        if name == resource.context.name or config.domain != domain:
+            continue
+        other = Inbound(InboundContext.from_settings(name, settings))
+        if other.stack.cfn_status != "NOEXIST":
+            click.echo(f"inbound.{name} が {domain} を使用中のため、domainは残します")
+            return
+    _domain_resource(settings, resource).delete()
 
 
 @inbound.command()

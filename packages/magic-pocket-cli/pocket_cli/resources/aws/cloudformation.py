@@ -22,7 +22,7 @@ if TYPE_CHECKING:
         SchedulerContext,
     )
     from pocket.general_context import VpcContext
-    from pocket.inbound_context import InboundContext
+    from pocket.inbound_context import InboundContext, InboundDomainContext
 
 
 def _is_stack_not_exist_error(e: ClientError) -> bool:
@@ -55,7 +55,11 @@ class Stack:
 
     def __init__(
         self,
-        context: ContainerContext | VpcContext | CloudFrontContext | InboundContext,
+        context: ContainerContext
+        | VpcContext
+        | CloudFrontContext
+        | InboundContext
+        | InboundDomainContext,
     ):
         self.context = context
         self.client = self.get_client()

@@ -128,20 +128,9 @@ class Inbound(StackBackedResource):
         return self._stack
 
     def prepare_deploy(self, mediator=None):
+        # domainの検証はここで見ない。identity / DKIM / MX は InboundDomain が持ち、
+        # deployの最後に検証完了を待つ (receipt rule の作成に検証は要らない)
         self.stack.binding()
-        ses = boto3.client("ses", region_name=self.context.region)
-        domain = self.context.config.domain
-        result = ses.get_identity_verification_attributes(Identities=[domain])
-        if (
-            result.get("VerificationAttributes", {})
-            .get(domain, {})
-            .get("VerificationStatus")
-            != "Success"
-        ):
-            raise ValueError(
-                f"{domain} のSES検証が未完了です。"
-                "inbound init のDNSレコードを登録してください"
-            )
         if self.stack.output:
             for key, value in (
                 ("Handler", self.context.config.handler),

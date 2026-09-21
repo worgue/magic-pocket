@@ -93,11 +93,11 @@ SNS → SQS で `main.mail` handler (`src/bin/mail_worker.rs`) に届く。worke
 `magic_pocket_rs::inbound` が原本の版・hash と受信情報を保全した後で、件名 / From /
 実際の宛先を `mails` テーブルに登録する (受信 ID で冪等)。本文・添付は読まない。
 
-初回だけ受信ドメインの初期設定が要る (`domain` も placeholder なので実値へ書き戻す):
+受信ドメインの hosted zone は deploy 先と同じ account にあるので、初期設定は不要。deploy が
+SES identity (Easy DKIM) / DKIM CNAME / MX を受信ドメインの stack として作り、最後に SES の
+検証完了まで待つ (`domain` は placeholder なので実値へ書き戻す):
 
 ```sh
-/app/.venv/bin/pocket resource inbound --stage sandbox --name inbox init   # TXT / MX を出力
-# 出力された TXT (_amazonses.<domain>) と MX を DNS に登録し、SES の検証完了を待つ
 /app/.venv/bin/pocket deploy --stage sandbox -y
 DSQL_HOST=<endpoint> just schema-apply                                    # mails テーブル
 ```

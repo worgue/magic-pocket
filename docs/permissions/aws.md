@@ -270,7 +270,9 @@ groups = perms.action_groups()
 #  "ses": [...], "codebuild": [...], "dsql": [...], "scheduler": [...],
 #  "tag": [...]}
 
-baseline = set(groups["core"]) | set(groups["cloudfront"])  # 例: 被覆対象の group を選ぶ
+baseline = set(groups["core"]) | set(
+    groups["cloudfront"]
+)  # 例: 被覆対象の group を選ぶ
 ```
 
 - キー名は **安定 (rename しない) ことを public API として保証** しています。
@@ -324,12 +326,19 @@ CodeBuild ロールのみ別の Boundary を指定したい場合は、環境変
 
 ## メール受信の追加権限
 
-`[inbound.*]` は `inbound` グループ（SES receipt ruleの照会・作成・更新・削除・位置設定、
-active setとidentityの照会）と、`sqs_alert` グループ（SNS・CloudWatch）を要求します。
+`[inbound.*]` は `inbound` グループと、`sqs_alert` グループ（SNS・CloudWatch）を要求します。
 S3/SQS/CloudFormationは既存のcore/sqsグループを利用します。送信用 `ses` グループとは独立です。
+`inbound` グループの内容は次のとおりです。
 
-`pocket resource inbound ... init` は管理者向けの初期設定です。通常deployの権限とは別に
-`ses:VerifyDomainIdentity` を必要に応じて付与します。共有のreceipt rule setの作成・有効化
+| Action | 用途 |
+|---|---|
+| `ses:DescribeActiveReceiptRuleSet` / `ses:DescribeReceiptRuleSet` / `ses:DescribeReceiptRule` | active setと既存ルールの照会 |
+| `ses:CreateReceiptRule` / `ses:UpdateReceiptRule` / `ses:DeleteReceiptRule` / `ses:SetReceiptRulePosition` | 自分の受信ルールの作成・更新・削除 |
+| `ses:GetEmailIdentity` | ドメイン検証の状態確認、既存identityの検知 |
+| `ses:CreateEmailIdentity` / `ses:DeleteEmailIdentity` / `ses:PutEmailIdentity*Attributes` / `ses:TagResource` / `ses:UntagResource` | 受信ドメインのstack（`AWS::SES::EmailIdentity`）の作成・更新・削除 |
+| `route53:ListHostedZones` / `route53:ChangeResourceRecordSets` / `route53:GetChange` | DKIM CNAMEとMXの作成（`manage_dns = false` では使いません） |
+
+共有のreceipt rule setの作成・有効化
 （`ses:CreateReceiptRuleSet` / `ses:SetActiveReceiptRuleSet`）はpocketでは行わないため、
 pocketの実行主体には不要です。account/regionの管理者が別途実施します。
 詳しくは[メール受信](../inbound.md)を参照してください。
