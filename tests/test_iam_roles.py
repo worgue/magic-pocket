@@ -84,6 +84,22 @@ def test_container_stack_embeds_lambda_role_spec(monkeypatch, use_toml):
             permissions_boundary=container.permissions_boundary,
         ).cfn_properties
     )
+    # 既存 stack と同じ信頼ポリシーを保つ (0.38.0 以前: LambdaRole は Version なし、
+    # scheduler は Version あり)。文書が変わると CFn が deploy 権限に無い
+    # iam:UpdateAssumeRolePolicy を呼び、rollback ごと失敗する
+    assert resources["LambdaRole"]["Properties"]["AssumeRolePolicyDocument"] == {
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Principal": {"Service": "lambda.amazonaws.com"},
+                "Action": "sts:AssumeRole",
+            }
+        ]
+    }
+    scheduler_trust = resources["SchedulerExecutionRole"]["Properties"][
+        "AssumeRolePolicyDocument"
+    ]
+    assert scheduler_trust["Version"] == "2012-10-17"
 
 
 @mock_aws

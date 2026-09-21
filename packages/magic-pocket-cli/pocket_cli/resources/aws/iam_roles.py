@@ -48,19 +48,27 @@ class RoleSpec:
     # PolicyName -> PolicyDocument
     inline_policies: dict[str, dict[str, Any]] = field(default_factory=dict)
     permissions_boundary: str | None = None
+    # 信頼ポリシーに Version を書くか。CFn は AssumeRolePolicyDocument が変わると
+    # iam:UpdateAssumeRolePolicy を呼ぶが、deploy 権限には含めていない (boundary
+    # 条件を付けられず、既存 role の信頼先を書き換えられる権限のため)。不足すると
+    # rollback も同じ権限で失敗し UPDATE_ROLLBACK_FAILED になる。
+    # 既存 stack の文書と一致させる必要がある role だけ False にする
+    assume_role_policy_version: bool = True
 
     @property
     def assume_role_policy(self) -> dict[str, Any]:
-        return {
-            "Version": _POLICY_VERSION,
+        document: dict[str, Any] = {
             "Statement": [
                 {
                     "Effect": "Allow",
                     "Principal": {"Service": self.service},
                     "Action": "sts:AssumeRole",
                 }
-            ],
+            ]
         }
+        if self.assume_role_policy_version:
+            document = {"Version": _POLICY_VERSION, **document}
+        return document
 
     @property
     def cfn_properties(self) -> dict[str, Any]:
@@ -142,6 +150,8 @@ def lambda_role(
         managed_policy_arns=_lambda_managed_policies(ctx),
         inline_policies=policies,
         permissions_boundary=ctx.permissions_boundary,
+        # 0.38.0 以前の container stack は Version なしで LambdaRole を作っている
+        assume_role_policy_version=False,
     )
 
 
