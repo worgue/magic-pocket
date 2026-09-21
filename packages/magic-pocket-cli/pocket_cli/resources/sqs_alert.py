@@ -15,13 +15,16 @@ import boto3
 from pocket.context import Context
 from pocket.utils import echo
 
-SubscriptionState = Literal["Confirmed", "PendingConfirmation", "Deleted", "NotCreated"]
+SubscriptionState = Literal[
+    "Confirmed", "PendingConfirmation", "Deleted", "NotSubscribed", "NotCreated"
+]
 
 
 class DeadLetterAlertStatus(NamedTuple):
     topic_name: str
     email: str
     state: SubscriptionState
+    topic_arn: str = ""
 
 
 def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
@@ -29,7 +32,9 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
 
     topic 未作成 (deploy 前 / 削除済み) は ``NotCreated``。購読が確認済みなら
     ``Confirmed``、確認メール未対応なら ``PendingConfirmation``、unsubscribe 済みなら
-    ``Deleted``。SNS の ``SubscriptionArn`` は実 ARN のほかに特殊値
+    ``Deleted``、topic はあるが当該 email の購読が無ければ ``NotSubscribed``
+    (未確認のまま確認期限 = 3 日を過ぎた購読は SNS が自動削除する)。
+    SNS の ``SubscriptionArn`` は実 ARN のほかに特殊値
     (``PendingConfirmation`` / ``Deleted``) を取るため、実 ARN (``arn:`` 始まり) の
     ときだけ ``Confirmed`` と判定する。同一 email の購読が複数並ぶ場合
     (unsubscribe 後の再購読など) は良い方の状態を採る。
@@ -59,9 +64,11 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
         try:
             res = sns.list_subscriptions_by_topic(TopicArn=topic_arn)
         except sns.exceptions.NotFoundException:
-            statuses.append(DeadLetterAlertStatus(topic_name, email, "NotCreated"))
+            statuses.append(
+                DeadLetterAlertStatus(topic_name, email, "NotCreated", topic_arn)
+            )
             continue
-        state: SubscriptionState = "NotCreated"
+        state: SubscriptionState = "NotSubscribed"
         for sub in res["Subscriptions"]:
             if sub["Protocol"] != "email" or sub["Endpoint"] != email:
                 continue
@@ -71,9 +78,9 @@ def dead_letter_alert_statuses(context: Context) -> list[DeadLetterAlertStatus]:
                 break
             if arn == "PendingConfirmation":
                 state = "PendingConfirmation"
-            elif state == "NotCreated":
+            elif state == "NotSubscribed":
                 state = "Deleted"
-        statuses.append(DeadLetterAlertStatus(topic_name, email, state))
+        statuses.append(DeadLetterAlertStatus(topic_name, email, state, topic_arn))
     return statuses
 
 
@@ -100,10 +107,19 @@ def echo_dead_letter_alert_warnings(context: Context) -> None:
                 "notifications will NOT be delivered. Re-subscribe the email and "
                 "confirm it again."
             )
-        else:
+        elif status.state == "NotSubscribed":
             echo.warning(
                 f"DLQ alert subscription for {status.email} ({status.topic_name}) "
-                "was not found. Check the container stack deployment."
+                "was not found on the topic. An unconfirmed subscription is removed "
+                "by SNS once its confirmation expires (3 days). Alarm notifications "
+                "will NOT be delivered. Re-subscribe and confirm it: aws sns "
+                f"subscribe --topic-arn {status.topic_arn} --protocol email "
+                f"--notification-endpoint {status.email}"
+            )
+        else:
+            echo.warning(
+                f"DLQ alert topic {status.topic_name} was not found. "
+                "Check the container stack deployment."
             )
 
 

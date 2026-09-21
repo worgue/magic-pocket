@@ -1176,6 +1176,9 @@ email 購読、および DLQ の `ApproximateNumberOfMessagesVisible >= 1`（per
     初回 deploy 後に届く「AWS Notification - Subscription Confirmation」
     メールを必ず確認してください。未確認のあいだは deploy の最後と
     `pocket status` に警告が出ます。
+    確認メールのリンクは 3 日で失効し、**未確認の購読は SNS が自動削除**します
+    (`pocket status` では `NotSubscribed`)。再 deploy では作り直されないため、
+    警告に表示される `aws sns subscribe` で購読し直して確認してください。
 
 !!! warning "メールスキャナによる自動 unsubscribe"
     組織のメール経路にリンクスキャナ（サンドボックス検査等）があると、

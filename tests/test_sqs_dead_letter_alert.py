@@ -297,3 +297,24 @@ def test_resubscribed_pending_wins_over_deleted(use_toml, tmp_path):
         client_factory.return_value.list_subscriptions_by_topic.return_value = mixed
         statuses = dead_letter_alert_statuses(context)
     assert [s.state for s in statuses] == ["PendingConfirmation"]
+
+
+@mock_aws
+def test_expired_subscription_warns_resubscribe(use_toml, tmp_path):
+    """topic はあるが購読が無い (確認期限切れで自動削除) 場合は再購読を案内する"""
+    context = _context(
+        use_toml,
+        tmp_path,
+        'sqs = { dead_letter_alert = { email = "ops@example.com" } }',
+    )
+    sqs_ctx = context.container["main"].handlers["worker"].sqs
+    assert sqs_ctx and sqs_ctx.dead_letter_alert
+    sns = boto3.client("sns", region_name="ap-northeast-1")
+    topic_arn = sns.create_topic(Name=sqs_ctx.dead_letter_alert.topic_name)["TopicArn"]
+    with mock.patch("pocket.utils.echo.warning") as warning:
+        statuses = dead_letter_alert_statuses(context)
+        echo_dead_letter_alert_warnings(context)
+    assert [s.state for s in statuses] == ["NotSubscribed"]
+    message = warning.call_args[0][0]
+    assert "expires" in message
+    assert f"--topic-arn {topic_arn}" in message

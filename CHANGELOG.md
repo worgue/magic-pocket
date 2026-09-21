@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Changed
+- DLQ / inbound 配送アラートの email 購読が、topic はあるのに見つからない場合 (未確認のまま
+  確認期限の 3 日を過ぎて SNS が自動削除した場合など) は、`pocket status` に `NotSubscribed` と
+  表示し、deploy 後の警告で `aws sns subscribe` による再購読コマンドを案内するようにしました。
+  従来は topic 未作成と同じ「Check the container stack deployment」の警告で、原因が読み取れませんでした。
+
 ## [0.37.0](https://github.com/worgue/magic-pocket/releases/tag/0.37.0) - 2026-09-18
 
 ### 更新時の作業 (AWS account を複数の stage / project で共有している場合)
