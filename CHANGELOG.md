@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.38.0](https://github.com/worgue/magic-pocket/releases/tag/0.38.0) - 2026-09-21
+
 ### 更新時の作業 (SPA token を検証しているアプリ)
 - `verify_token` の戻り値が user_id の文字列から `VerifiedToken` に変わります (下記 Changed)。
   Python は `verify_token(token) == user_id` を `verified.user_id == user_id` に、Rust は
