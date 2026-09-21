@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import os
 import time
+from dataclasses import dataclass
 
 COOKIE_NAME = "pocket-spa-token"
 DEFAULT_MAX_AGE = 60 * 60 * 24 * 7  # 7日
@@ -32,8 +33,27 @@ def generate_token(
     return f"{user_id}:{expiry}:{sig}"
 
 
-def verify_token(token: str, *, secret: str | None = None) -> str | None:
-    """トークンを検証し、有効なら user_id を返す。無効なら None。"""
+@dataclass(frozen=True)
+class VerifiedToken:
+    """検証済みトークンの中身。
+
+    sliding refresh (残り寿命が短いときの再発行) の判定に使えるよう、user_id と
+    有効期限をまとめて返す。トークン形式 (``{user_id}:{expiry}:{hmac}``) は
+    実装詳細なので、利用側は文字列を split せずこちらを使う。
+    """
+
+    user_id: str
+    expires_at: int
+    """有効期限 (unix 秒)"""
+
+    @property
+    def remaining_seconds(self) -> int:
+        """残り寿命 (秒)。呼び出し時点で期限を過ぎていれば 0。"""
+        return max(0, self.expires_at - int(time.time()))
+
+
+def verify_token(token: str, *, secret: str | None = None) -> VerifiedToken | None:
+    """トークンを検証し、有効なら ``VerifiedToken`` を返す。無効・期限切れは None。"""
     if secret is None:
         secret = _get_secret()
     parts = token.split(":")
@@ -50,7 +70,7 @@ def verify_token(token: str, *, secret: str | None = None) -> str | None:
     expected = hmac.new(bytes.fromhex(secret), msg.encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
         return None
-    return user_id
+    return VerifiedToken(user_id=user_id, expires_at=expiry)
 
 
 def spa_login(
@@ -136,18 +156,20 @@ class SpaTokenCookieMiddleware:
         sliding refresh が欲しい場合は subclass で:
 
             def _should_issue(self, request):
-                if super()._should_issue(request):
-                    return True
-                token = request.COOKIES[COOKIE_NAME]
-                remaining = int(token.split(":")[1]) - time.time()
-                return remaining < self._max_age() / 2
+                verified = verify_token(request.COOKIES.get(COOKIE_NAME, ""))
+                return (
+                    verified is None
+                    or verified.user_id != str(request.user.pk)
+                    or verified.remaining_seconds < self._max_age() / 2
+                )
         """
         token = request.COOKIES.get(COOKIE_NAME)
         if token is None:
             return True
         # 失効だけでなく「別ユーザーの token」も再発行する (logout を挟まない
         # アカウント切替後に旧ユーザーの token が最長 7 日残存するのを防ぐ)
-        return verify_token(token) != str(request.user.pk)
+        verified = verify_token(token)
+        return verified is None or verified.user_id != str(request.user.pk)
 
     def _max_age(self) -> int:
         """発行時の token 寿命 (秒)。subclass で settings 等から返せる。"""

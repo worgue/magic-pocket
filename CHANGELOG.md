@@ -6,7 +6,18 @@
 
 ## [Unreleased]
 
+### 更新時の作業 (SPA token を検証しているアプリ)
+- `verify_token` の戻り値が user_id の文字列から `VerifiedToken` に変わります (下記 Changed)。
+  Python は `verify_token(token) == user_id` を `verified.user_id == user_id` に、Rust は
+  `Some(user_id)` を `Some(verified)` → `verified.user_id` に書き換えてください。
+  `SpaTokenCookieMiddleware` をそのまま使っているだけなら作業は不要です。
+
 ### Changed
+- **(破壊的変更)** SPA token の `verify_token` (Python `pocket.django.spa_auth` / Rust
+  `pocket-spa-auth`) が、有効な token に対して `VerifiedToken` (`user_id` と有効期限
+  `expires_at`) を返すようにしました。残り寿命は Python `remaining_seconds` / Rust
+  `remaining_secs()` で取れるため、sliding refresh のために token 文字列を split して
+  内部形式に依存する必要がなくなります。docs の sliding refresh 例もこれに合わせました。
 - DLQ / inbound 配送アラートの email 購読が、topic はあるのに見つからない場合 (未確認のまま
   確認期限の 3 日を過ぎて SNS が自動削除した場合など) は、`pocket status` に `NotSubscribed` と
   表示し、deploy 後の警告で `aws sns subscribe` による再購読コマンドを案内するようにしました。

@@ -6,6 +6,7 @@ from moto import mock_aws
 from pocket.context import Context
 from pocket.django.spa_auth import (
     COOKIE_NAME,
+    VerifiedToken,
     generate_token,
     spa_login,
     spa_logout,
@@ -139,8 +140,16 @@ def test_spa_token_context(use_toml):
 def test_generate_and_verify_token():
     """トークンの生成と検証"""
     token = generate_token("user42", secret=TEST_SECRET, max_age=3600)
-    result = verify_token(token, secret=TEST_SECRET)
-    assert result == "user42"
+    verified = verify_token(token, secret=TEST_SECRET)
+    assert verified is not None
+    assert verified.user_id == "user42"
+    # 生成直後なので残り寿命は max_age とほぼ等しい (秒境界の跨ぎを許容)
+    assert 3599 <= verified.remaining_seconds <= 3600
+
+
+def test_remaining_seconds_is_zero_after_expiry():
+    """期限を過ぎた VerifiedToken の残り寿命は負にならず 0"""
+    assert VerifiedToken(user_id="user42", expires_at=0).remaining_seconds == 0
 
 
 def test_verify_expired_token():
@@ -181,7 +190,9 @@ def test_shared_vector_with_rust():
         (Path(__file__).parent / "data" / "spa_auth_vectors.json").read_text()
     )
     assert COOKIE_NAME == data["cookie_name"]
-    assert verify_token(data["token"], secret=data["secret_hex"]) == data["user_id"]
+    assert verify_token(data["token"], secret=data["secret_hex"]) == VerifiedToken(
+        user_id=data["user_id"], expires_at=data["expiry"]
+    )
 
 
 def test_spa_login_sets_cookie():
@@ -202,8 +213,8 @@ def test_spa_login_sets_cookie():
     assert cookie["httponly"] is True
     assert cookie["secure"] is True
     # Cookie 値がトークンとして検証可能
-    result = verify_token(cookie["value"], secret=TEST_SECRET)
-    assert result == "user42"
+    verified = verify_token(cookie["value"], secret=TEST_SECRET)
+    assert verified is not None and verified.user_id == "user42"
 
 
 def test_spa_logout_deletes_cookie():
@@ -266,7 +277,8 @@ def test_middleware_authenticated_no_cookie_issues_token(monkeypatch):
     out = mw(req)
     assert out is resp
     assert COOKIE_NAME in resp.cookies
-    assert verify_token(resp.cookies[COOKIE_NAME]["value"]) == "42"
+    verified = verify_token(resp.cookies[COOKIE_NAME]["value"])
+    assert verified is not None and verified.user_id == "42"
 
 
 def test_middleware_authenticated_expired_cookie_reissues(monkeypatch):
@@ -282,7 +294,8 @@ def test_middleware_authenticated_expired_cookie_reissues(monkeypatch):
     assert COOKIE_NAME in resp.cookies
     new_token = resp.cookies[COOKIE_NAME]["value"]
     assert new_token != expired
-    assert verify_token(new_token) == "42"
+    verified = verify_token(new_token)
+    assert verified is not None and verified.user_id == "42"
 
 
 def test_middleware_authenticated_valid_cookie_no_change(monkeypatch):
@@ -396,7 +409,8 @@ def test_middleware_reissues_on_user_switch(monkeypatch):
     )
     mw(req)
     assert COOKIE_NAME in resp.cookies
-    assert verify_token(resp.cookies[COOKIE_NAME]["value"]) == "42"
+    verified = verify_token(resp.cookies[COOKIE_NAME]["value"])
+    assert verified is not None and verified.user_id == "42"
 
 
 def test_middleware_keeps_valid_token_for_same_user(monkeypatch):
@@ -411,3 +425,45 @@ def test_middleware_keeps_valid_token_for_same_user(monkeypatch):
     )
     mw(req)
     assert COOKIE_NAME not in resp.cookies
+
+
+def test_middleware_sliding_refresh_subclass(monkeypatch):
+    """docs の sliding refresh 例: 残り寿命が半分未満の有効 token を再発行する。"""
+    from pocket.django.spa_auth import SpaTokenCookieMiddleware
+
+    class SlidingMiddleware(SpaTokenCookieMiddleware):
+        def _should_issue(self, request):  # type: ignore
+            verified = verify_token(request.COOKIES.get(COOKIE_NAME, ""))
+            return (
+                verified is None
+                or verified.user_id != str(request.user.pk)
+                or verified.remaining_seconds < self._max_age() / 2
+            )
+
+        def _max_age(self) -> int:
+            return 300
+
+    monkeypatch.setenv("SPA_TOKEN_SECRET", TEST_SECRET)
+    user = _FakeUser(authenticated=True, pk="42")
+
+    fresh = _FakeResponse()
+    SlidingMiddleware(lambda req: fresh)(
+        _FakeRequest(
+            user=user,
+            cookies={
+                COOKIE_NAME: generate_token("42", secret=TEST_SECRET, max_age=300)
+            },
+        )
+    )
+    assert COOKIE_NAME not in fresh.cookies
+
+    aging = _FakeResponse()
+    SlidingMiddleware(lambda req: aging)(
+        _FakeRequest(
+            user=user,
+            cookies={
+                COOKIE_NAME: generate_token("42", secret=TEST_SECRET, max_age=100)
+            },
+        )
+    )
+    assert COOKIE_NAME in aging.cookies

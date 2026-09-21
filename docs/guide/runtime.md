@@ -162,21 +162,22 @@ middleware が 2 の bounce response 経路で必ず token を補填するため
 例: 残り寿命が半分を切ったら sliding refresh する subclass:
 
 ```python
-import time
 from django.conf import settings
 from pocket.django.spa_auth import (
     COOKIE_NAME,
     SpaTokenCookieMiddleware as BaseMiddleware,
+    verify_token,
 )
 
 
 class SpaTokenCookieMiddleware(BaseMiddleware):
     def _should_issue(self, request):
-        if super()._should_issue(request):
-            return True
-        token = request.COOKIES[COOKIE_NAME]
-        remaining = int(token.split(":")[1]) - time.time()
-        return remaining < self._max_age() / 2
+        verified = verify_token(request.COOKIES.get(COOKIE_NAME, ""))
+        return (
+            verified is None  # cookie 無 / 失効 / 改ざん
+            or verified.user_id != str(request.user.pk)  # 別ユーザーの token
+            or verified.remaining_seconds < self._max_age() / 2
+        )
 
     def _max_age(self):
         return settings.SPA_TOKEN_MAX_AGE
@@ -197,9 +198,11 @@ let secret = std::env::var("SPA_TOKEN_SECRET").unwrap();
 // トークン生成 (user_id に ':' を含む / secret が不正 hex の場合は Err)
 let token = generate_token("user123", &secret, 604800)?;
 
-// トークン検証
-if let Some(user_id) = verify_token(&token, &secret) {
-    println!("認証成功: {}", user_id);
+// トークン検証 (無効・期限切れは None)
+if let Some(verified) = verify_token(&token, &secret) {
+    println!("認証成功: {}", verified.user_id);
+    // 残り寿命 (秒)。半分を切ったら再発行する sliding refresh 等に使う
+    if verified.remaining_secs() < 604800 / 2 { /* 再発行 */ }
 }
 
 // Cookie 値の生成
@@ -222,7 +225,7 @@ let delete_cookie = logout_cookie_value();
 | 関数 / クラス | 引数 | 戻り値 | 説明 |
 |------|------|--------|------|
 | `generate_token(user_id)` | `user_id: str`, `secret: str\|None`, `max_age: int` | `str` | HMAC-SHA256 トークンを生成 |
-| `verify_token(token)` | `token: str`, `secret: str\|None` | `str\|None` | トークンを検証し、有効なら user_id を返す |
+| `verify_token(token)` | `token: str`, `secret: str\|None` | `VerifiedToken\|None` | トークンを検証し、有効なら `VerifiedToken` (`user_id` / `expires_at` / `remaining_seconds`) を返す |
 | `spa_login(response, user_id)` | `response`, `user_id: str`, `secret: str\|None`, `max_age: int` | — | レスポンスにトークン Cookie をセット |
 | `spa_logout(response)` | `response` | — | レスポンスからトークン Cookie を削除 |
 | `SpaTokenCookieMiddleware` | Django middleware | — | 認証済み response に token 自動補填、未認証 response から残存 cookie 削除 (詳細は上記) |

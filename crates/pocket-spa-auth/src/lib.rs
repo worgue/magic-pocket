@@ -39,11 +39,7 @@ pub fn generate_token(
         return Err(TokenError::UserIdContainsColon);
     }
     let secret = hex::decode(secret_hex).map_err(|_| TokenError::InvalidSecretHex)?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("システム時刻エラー")
-        .as_secs();
-    let expiry = now + max_age_secs;
+    let expiry = now_secs() + max_age_secs;
     let msg = format!("{user_id}:{expiry}");
     let mut mac = HmacSha256::new_from_slice(&secret).expect("HMAC キー長エラー");
     mac.update(msg.as_bytes());
@@ -51,8 +47,34 @@ pub fn generate_token(
     Ok(format!("{user_id}:{expiry}:{sig}"))
 }
 
-/// トークンを検証し、有効なら user_id を返す。無効なら None。
-pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
+/// 検証済みトークンの中身 (Python 側 pocket.django.spa_auth.VerifiedToken と対応)
+///
+/// sliding refresh (残り寿命が短いときの再発行) の判定に使えるよう、user_id と
+/// 有効期限をまとめて返す。トークン形式 (`{user_id}:{expiry}:{hmac}`) は実装詳細
+/// なので、利用側は文字列を split せずこちらを使う。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedToken {
+    pub user_id: String,
+    /// 有効期限 (unix 秒)
+    pub expires_at: u64,
+}
+
+impl VerifiedToken {
+    /// 残り寿命 (秒)。呼び出し時点で期限を過ぎていれば 0。
+    pub fn remaining_secs(&self) -> u64 {
+        self.expires_at.saturating_sub(now_secs())
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("システム時刻エラー")
+        .as_secs()
+}
+
+/// トークンを検証し、有効なら [`VerifiedToken`] を返す。無効・期限切れは None。
+pub fn verify_token(token: &str, secret_hex: &str) -> Option<VerifiedToken> {
     let parts: Vec<&str> = token.splitn(3, ':').collect();
     if parts.len() != 3 {
         return None;
@@ -61,11 +83,7 @@ pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
     let expiry_str = parts[1];
     let sig = parts[2];
     let expiry: u64 = expiry_str.parse().ok()?;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("システム時刻エラー")
-        .as_secs();
-    if now > expiry {
+    if now_secs() > expiry {
         return None;
     }
     let secret = hex::decode(secret_hex).ok()?;
@@ -76,7 +94,10 @@ pub fn verify_token(token: &str, secret_hex: &str) -> Option<String> {
     // 定数時間比較 (Python 側の hmac.compare_digest と対応)。
     // 通常の文字列比較はタイミングサイドチャネルになる
     mac.verify_slice(&sig_bytes).ok()?;
-    Some(user_id.to_string())
+    Some(VerifiedToken {
+        user_id: user_id.to_string(),
+        expires_at: expiry,
+    })
 }
 
 /// ログイン用 Cookie 値を生成する
@@ -107,8 +128,20 @@ mod tests {
     #[test]
     fn test_generate_and_verify() {
         let token = generate_token("user123", TEST_SECRET, 3600).unwrap();
-        let result = verify_token(&token, TEST_SECRET);
-        assert_eq!(result, Some("user123".to_string()));
+        let verified = verify_token(&token, TEST_SECRET).unwrap();
+        assert_eq!(verified.user_id, "user123");
+        // 生成直後なので残り寿命は max_age とほぼ等しい (秒境界の跨ぎを許容)
+        let remaining = verified.remaining_secs();
+        assert!((3599..=3600).contains(&remaining), "{remaining}");
+    }
+
+    #[test]
+    fn test_remaining_secs_saturates_at_zero() {
+        let verified = VerifiedToken {
+            user_id: "user123".to_string(),
+            expires_at: 0,
+        };
+        assert_eq!(verified.remaining_secs(), 0);
     }
 
     #[test]
@@ -172,9 +205,8 @@ mod tests {
         let token = v["token"].as_str().unwrap();
         let secret = v["secret_hex"].as_str().unwrap();
         // verify は期待 HMAC を再計算して比較するので、署名アルゴリズムの一致を含む
-        assert_eq!(
-            verify_token(token, secret).as_deref(),
-            v["user_id"].as_str()
-        );
+        let verified = verify_token(token, secret).unwrap();
+        assert_eq!(verified.user_id, v["user_id"].as_str().unwrap());
+        assert_eq!(verified.expires_at, v["expiry"].as_u64().unwrap());
     }
 }
