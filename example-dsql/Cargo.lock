@@ -2240,7 +2240,7 @@ dependencies = [
 [[package]]
 name = "magic-pocket-rs"
 version = "0.1.0"
-source = "git+https://github.com/worgue/magic-pocket.git?tag=0.38.0#d1c8f1daa20ae51fb6ac508339282409ecccc7e5"
+source = "git+https://github.com/worgue/magic-pocket.git?tag=0.39.0#395ab44da92a70c380493c035239c816b3c45244"
 dependencies = [
  "aws-config",
  "aws-sdk-cloudformation",
