@@ -25,10 +25,10 @@ tests/test_permissions.py の per-condition テストの守備範囲。
 
 検知の限界 (false confidence を避けるため明記):
 - メソッド呼び出しの receiver を同一ファイル内でしか追跡しない。関数引数で
-  client を受け取るヘルパーは、引数名が `{service}_client` (例: iam_roles の
-  `iam_client`) なら紐づくが、それ以外 (例: s3_utils) はサービスに紐づかない。
-  service prefix 自体の coverage 検証 (test_boto3_service_prefixes_covered) は
-  client 生成箇所で必ず効くため、「新 service prefix の取りこぼし」は防げる。
+  client を受け取るヘルパーは、引数の型注釈 (mypy-boto3-* の `IAMClient` 等)
+  で service に紐づける。型注釈を付け忘れた client 引数は
+  test_client_params_are_typed が検出する (AWS API メソッドを呼ぶ未注釈の
+  引数を探す)。
 - メソッド名→Action 名は機械的な PascalCase 変換。IAM Action と API 名が乖離する
   ケース (例: dsql:DbConnectAdmin) はワイルドカード宣言 (`dsql:*`) で吸収する。
 """
@@ -39,6 +39,9 @@ import ast
 import fnmatch
 import re
 from pathlib import Path
+
+import botocore.session
+from botocore import xform_name
 
 from pocket.permissions import action_groups
 
@@ -202,16 +205,65 @@ def _value_services(node: ast.AST, bound: dict[str, set[str]]) -> set[str]:
     """代入/return の右辺が表す client の service 集合を解決する。
 
     `boto3.client("svc")` 直接、または既知の束縛名の呼び出し
-    (`self.get_client()` 等) を 1 ホップ解決する。
+    (`self.get_client()` 等) を 1 ホップ解決する。`a if c else b` は両辺の和。
     """
     direct = _client_service(node)
     if direct:
         return {direct}
+    if isinstance(node, ast.IfExp):
+        return _value_services(node.body, bound) | _value_services(node.orelse, bound)
     if isinstance(node, ast.Call):
         key = _receiver_key(node.func)
         if key and key in bound:
             return set(bound[key])
     return set()
+
+
+def _boto3_type_names(tree: ast.AST) -> dict[str, str]:
+    """`from mypy_boto3_iam import IAMClient` 等の import から {名前: service}。
+
+    `import mypy_boto3_iam` の module 名自体も登録する (`mypy_boto3_iam.IAMClient`
+    の形の注釈用)。
+    """
+    names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            root = node.module.split(".")[0]
+            if root.startswith(_BOTO3_TYPES_PREFIX):
+                service = _boto3_types_service(root)
+                for alias in node.names:
+                    names[alias.asname or alias.name] = service
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root.startswith(_BOTO3_TYPES_PREFIX):
+                    names[alias.asname or root] = _boto3_types_service(root)
+    return names
+
+
+_BOTO3_TYPES_PREFIX = "mypy_boto3_"
+
+
+def _boto3_types_service(module: str) -> str:
+    """mypy_boto3_cloudfront_keyvaluestore → cloudfront-keyvaluestore"""
+    return module.removeprefix(_BOTO3_TYPES_PREFIX).replace("_", "-")
+
+
+def _annotation_services(annotation: ast.AST | None, types: dict[str, str]) -> set[str]:
+    """引数の型注釈 (`IAMClient` / `S3Client | None` / 文字列注釈) の service。"""
+    if annotation is None:
+        return set()
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        return _annotation_services(ast.parse(annotation.value, mode="eval"), types)
+    found: set[str] = set()
+    for node in ast.walk(annotation):
+        if isinstance(node, ast.Name) and node.id in types:
+            found.add(types[node.id])
+    return found
+
+
+def _params(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.arg]:
+    return fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs
 
 
 def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C901 AST 走査の網羅分岐が本質的に多い検査用ヘルパー
@@ -225,7 +277,9 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
       (別関数の同名変数 `client` 等に誤帰属させない)
     - `boto3.client("svc").method(...)` の直接チェーン
     - `client.get_paginator("operation")` は operation を method として記録
-    - 引数名 `{service}_client` の関数引数 — その関数スコープ内で有効
+    - `IAMClient` 等 (mypy-boto3-*) の型注釈が付いた関数引数 — その関数
+      スコープ内で有効。型注釈の無い client 引数は
+      test_client_params_are_typed が落とす
     """
     services: set[str] = set()
     calls: set[tuple[str, str]] = set()
@@ -291,16 +345,16 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
                 for n in ast.walk(tree)
                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
             ]
+            types = _boto3_type_names(tree)
             for fn in functions:
                 local = {k: set(v) for k, v in bound_global.items()}
                 # client を引数で受け取るヘルパー (iam_roles.ensure_role 等) は
-                # 引数名 `{service}_client` を規約として service に紐づける
-                params = fn.args.posonlyargs + fn.args.args + fn.args.kwonlyargs
-                for arg in params:
-                    if arg.arg.endswith("_client"):
-                        local.setdefault(arg.arg, set()).add(
-                            arg.arg.removesuffix("_client").replace("_", "-")
-                        )
+                # 引数の型注釈で service に紐づける
+                for arg in _params(fn):
+                    svcs = _annotation_services(arg.annotation, types)
+                    if svcs:
+                        services.update(svcs)
+                        local.setdefault(arg.arg, set()).update(svcs)
                 for sub in ast.walk(fn):
                     if isinstance(sub, ast.Assign):
                         svcs = _value_services(sub.value, local)
@@ -311,6 +365,53 @@ def collect_boto3_usage() -> tuple[set[str], set[tuple[str, str]]]:  # noqa: C90
                 scan_calls(fn, local)
 
     return services, calls
+
+
+def _boto3_operation_methods(services: set[str]) -> set[str]:
+    """services の boto3 client が持つ API メソッド名 (create_role 等)。"""
+    session = botocore.session.get_session()
+    methods: set[str] = set()
+    for service in services:
+        model = session.get_service_model(service)
+        methods.update(xform_name(op) for op in model.operation_names)
+    return methods | {"get_paginator", "get_waiter"}
+
+
+def find_untyped_client_params(roots: list[Path] | None = None) -> list[str]:
+    """型注釈の無い引数のうち、boto3 client として使われているものを返す。
+
+    `param.<AWS API メソッド>(...)` の呼び出しがあれば client とみなす
+    (メソッド名は botocore の service model から引くので、名前の規約に依存
+    しない)。こうした引数は collect_boto3_usage が追跡できず、必要 Action の
+    検知から黙って漏れる。
+    """
+    services, _calls = collect_boto3_usage()
+    operations = _boto3_operation_methods(services)
+    found: list[str] = []
+    for root in roots or _SCAN_ROOTS:
+        for path in sorted(root.rglob("*.py")):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                untyped = {
+                    arg.arg
+                    for arg in _params(fn)
+                    if arg.annotation is None and arg.arg not in ("self", "cls")
+                }
+                for node in ast.walk(fn):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id in untyped
+                        and node.func.attr in operations
+                    ):
+                        found.append(
+                            f"{path}:{fn.lineno} {fn.name}({node.func.value.id})"
+                            f".{node.func.attr}"
+                        )
+    return sorted(set(found))
 
 
 def collect_template_resource_types() -> set[str]:
@@ -425,6 +526,40 @@ def test_template_actions_covered():
     assert not problems, "\n".join(problems.values())
 
 
+def test_client_params_are_typed():
+    """boto3 client を受け取る引数には mypy-boto3-* の型注釈を付ける。
+
+    型注釈が無いと collect_boto3_usage がその引数経由の呼び出しを追跡できず、
+    必要 Action が検知から漏れる。
+    例: `def ensure_role(iam_client: IAMClient, ...)` (import は TYPE_CHECKING 内。
+    新しい service なら pyproject.toml の boto3-stubs-lite の extras に足す)
+    client でない引数が API と同名のメソッドを持つ場合 (jinja2 の
+    `Environment.get_template` 等) も、その本来の型を注釈すれば対象外になる。
+    """
+    untyped = find_untyped_client_params()
+    assert not untyped, "型注釈の無い client 引数:\n" + "\n".join(untyped)
+
+
+def test_untyped_client_param_detector(tmp_path):
+    """未注釈の client 引数を検出し、注釈付き・client 以外の型は対象外にする。"""
+    (tmp_path / "helpers.py").write_text(
+        "from mypy_boto3_iam import IAMClient\n"
+        "from jinja2 import Environment\n"
+        "def untyped(client, name):\n"
+        "    client.create_role(RoleName=name)\n"
+        "def typed(client: IAMClient, name):\n"
+        "    client.create_role(RoleName=name)\n"
+        "def paginated(ec2):\n"
+        "    ec2.get_paginator('describe_nat_gateways')\n"
+        "def not_a_client(env: Environment):\n"
+        "    env.get_template('x')\n"
+    )
+    assert find_untyped_client_params([tmp_path]) == [
+        f"{tmp_path / 'helpers.py'}:3 untyped(client).create_role",
+        f"{tmp_path / 'helpers.py'}:7 paginated(ec2).get_paginator",
+    ]
+
+
 def test_analyzer_tracks_known_callsites():
     """AST 解析器が既知の代表的呼び出しを実際に捕捉していることの自己検証。
 
@@ -442,6 +577,8 @@ def test_analyzer_tracks_known_callsites():
     assert ("dsql", "list_clusters") in calls
     # self.x = boto3.client パターン + resourcegroupstaggingapi
     assert ("resourcegroupstaggingapi", "tag_resources") in calls
+    # 型注釈付きの client 引数 (iam_roles.py)
+    assert ("iam", "create_role") in calls
 
 
 # ---------------------------------------------------------------------------

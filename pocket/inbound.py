@@ -9,10 +9,14 @@ from dataclasses import dataclass
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+
 
 SETUP_NOTIFICATION = "AMAZON_SES_SETUP_NOTIFICATION"
 
@@ -43,7 +47,9 @@ class ReceivedMail:
 class Receiver:
     """POCKET_INBOUNDから受信口を選び、1件ずつ保存する。"""
 
-    def __init__(self, name: str, *, config: dict | None = None, s3=None):
+    def __init__(
+        self, name: str, *, config: dict | None = None, s3: "S3Client | None" = None
+    ):
         self.config = (
             config
             if config is not None

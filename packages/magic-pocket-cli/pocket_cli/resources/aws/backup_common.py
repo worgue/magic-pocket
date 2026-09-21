@@ -10,9 +10,15 @@ import すると循環になる)。
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from botocore.exceptions import ClientError
 
 from pocket.utils import echo
+
+if TYPE_CHECKING:
+    from mypy_boto3_backup import BackupClient
+
 
 # pocket 管理のバックアップ前提リソース。AWS Backup の Default vault /
 # AWSBackupDefaultServiceRole は console 初回操作で作られるもので、API しか
@@ -28,7 +34,7 @@ LEGACY_BACKUP_VAULT_NAME = "pocket-backup"
 LEGACY_BACKUP_ROLE_NAME = "forge-pocket-backup-role"
 
 
-def ensure_backup_vault(backup_client, name: str) -> None:
+def ensure_backup_vault(backup_client: BackupClient, name: str) -> None:
     """pocket 管理の vault を冪等に確保する。
 
     describe → 無ければ create の順は不可。vault が 1 つも無いアカウントでは

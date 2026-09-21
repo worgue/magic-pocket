@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
 from botocore.exceptions import ClientError
 
 from pocket.utils import echo
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+    from mypy_boto3_s3.literals import BucketLocationConstraintType
+    from mypy_boto3_s3.type_defs import ObjectIdentifierTypeDef
+
 
 # 削除直後の同名 bucket は S3 の削除伝播が終わるまで CreateBucket が
 # OperationAborted で拒否される (AWS docs では最大 1 時間程度、実測 20 分前後)。
@@ -13,7 +20,7 @@ CREATE_BUCKET_RETRY_INTERVAL = 30
 CREATE_BUCKET_RETRY_TIMEOUT = 3600
 
 
-def bucket_exists(client, bucket_name: str) -> bool:
+def bucket_exists(client: S3Client, bucket_name: str) -> bool:
     """バケットの存在確認。404以外のエラーはClientErrorとして再送出"""
     try:
         client.head_bucket(Bucket=bucket_name)
@@ -25,7 +32,7 @@ def bucket_exists(client, bucket_name: str) -> bool:
 
 
 def create_bucket(
-    client,
+    client: S3Client,
     bucket_name: str,
     region: str,
     *,
@@ -62,17 +69,19 @@ def create_bucket(
         time.sleep(retry_interval)
 
 
-def _create_bucket_once(client, bucket_name: str, region: str):
+def _create_bucket_once(client: S3Client, bucket_name: str, region: str):
     if region == "us-east-1":
         client.create_bucket(Bucket=bucket_name)
     else:
+        # stubs は既知 region の Literal だけを許すが、region は設定値 (str)
+        location: BucketLocationConstraintType = region  # type: ignore
         client.create_bucket(
             Bucket=bucket_name,
-            CreateBucketConfiguration={"LocationConstraint": region},
+            CreateBucketConfiguration={"LocationConstraint": location},
         )
 
 
-def empty_bucket(client, bucket_name: str):
+def empty_bucket(client: S3Client, bucket_name: str):
     """バケット内の全オブジェクト（バージョン含む）を削除"""
     # 通常オブジェクトの削除
     paginator = client.get_paginator("list_objects_v2")
@@ -80,7 +89,9 @@ def empty_bucket(client, bucket_name: str):
         objects = page.get("Contents", [])
         if not objects:
             continue
-        delete_keys = [{"Key": obj["Key"]} for obj in objects]
+        delete_keys: list[ObjectIdentifierTypeDef] = [
+            {"Key": obj["Key"]} for obj in objects
+        ]
         client.delete_objects(Bucket=bucket_name, Delete={"Objects": delete_keys})
 
     # バージョニングが有効な場合のバージョン・DeleteMarker削除
@@ -97,7 +108,7 @@ def empty_bucket(client, bucket_name: str):
             client.delete_objects(Bucket=bucket_name, Delete={"Objects": delete_keys})
 
 
-def delete_bucket_with_contents(client, bucket_name: str):
+def delete_bucket_with_contents(client: S3Client, bucket_name: str):
     """バケットを中身ごと削除（存在しなければ no-op）"""
     if not bucket_exists(client, bucket_name):
         return

@@ -53,7 +53,7 @@ def init():
         echo.warning("`settings.py` and `.env` file will be updated with it.")
 
 
-def _update_dotenv(jinja2_env):
+def _update_dotenv(jinja2_env: Environment):
     dotenv_path = Path(".env")
     dotenv_content = jinja2_env.get_template(name="init/django-dotenv.env").render(
         secret_key=get_random_secret_key()

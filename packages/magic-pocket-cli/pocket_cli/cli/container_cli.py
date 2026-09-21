@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import webbrowser
+from typing import TYPE_CHECKING
 
 import boto3
 import click
@@ -15,6 +16,9 @@ from pocket_cli.cli.destroy_cli import (
 )
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.container import Container
+
+if TYPE_CHECKING:
+    from mypy_boto3_lambda import LambdaClient
 
 
 @click.group()
@@ -244,7 +248,7 @@ def _resolve_lambda_target_handlers(c_ctx, handler_name: str | None) -> list[str
     return list(handlers.keys())
 
 
-def _fetch_lambda_env(client, function_name: str) -> dict[str, str]:
+def _fetch_lambda_env(client: LambdaClient, function_name: str) -> dict[str, str]:
     """Lambda の現状 Environment.Variables を取得する。"""
     try:
         config = client.get_function_configuration(FunctionName=function_name)

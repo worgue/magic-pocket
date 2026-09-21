@@ -9,6 +9,7 @@ Addresses は CFn template 上は常に空。実際の CIDR 一覧はこの CLI 
 from __future__ import annotations
 
 import urllib.request
+from typing import TYPE_CHECKING
 
 import boto3
 import click
@@ -16,6 +17,9 @@ import click
 from pocket.context import CloudFrontContext, Context
 from pocket.utils import echo
 from pocket_cli.resources.aws.cloudformation import CloudFrontWafStack
+
+if TYPE_CHECKING:
+    from mypy_boto3_wafv2 import WAFV2Client
 
 
 @click.group()
@@ -67,17 +71,21 @@ def _get_ip_set_meta(cf_ctx: CloudFrontContext) -> tuple[str, str]:
     return name, set_id
 
 
-def _wafv2_client():
+def _wafv2_client() -> WAFV2Client:
     # Scope=CLOUDFRONT は us-east-1 でしか操作できない
     return boto3.client("wafv2", region_name="us-east-1")
 
 
-def _fetch_ip_set(client, set_name: str, set_id: str) -> tuple[list[str], str]:
+def _fetch_ip_set(
+    client: WAFV2Client, set_name: str, set_id: str
+) -> tuple[list[str], str]:
     res = client.get_ip_set(Name=set_name, Scope="CLOUDFRONT", Id=set_id)
     return list(res["IPSet"]["Addresses"]), res["LockToken"]
 
 
-def _write_ip_set(client, set_name: str, set_id: str, addresses: list[str], lock: str):
+def _write_ip_set(
+    client: WAFV2Client, set_name: str, set_id: str, addresses: list[str], lock: str
+):
     client.update_ip_set(
         Name=set_name,
         Scope="CLOUDFRONT",

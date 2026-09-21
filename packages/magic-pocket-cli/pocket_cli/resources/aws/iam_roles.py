@@ -24,6 +24,8 @@ from botocore.exceptions import ClientError
 from pocket.utils import echo
 
 if TYPE_CHECKING:
+    from mypy_boto3_iam import IAMClient
+
     from pocket.context import ContainerContext, SchedulerContext
     from pocket.inbound_context import InboundContext
 
@@ -338,7 +340,7 @@ def backup_role(name: str, *, permissions_boundary: str | None) -> RoleSpec:
     )
 
 
-def ensure_role(iam_client, spec: RoleSpec) -> str:
+def ensure_role(iam_client: IAMClient, spec: RoleSpec) -> str:
     """role を冪等に ensure して ARN を返す。
 
     既存 role はそのまま返す (policy の差分更新はしない)。新規作成時は
@@ -371,7 +373,7 @@ def ensure_role(iam_client, spec: RoleSpec) -> str:
 
 
 def delete_role(
-    iam_client, role_name: str, managed_policy_arns: list[str] | None = None
+    iam_client: IAMClient, role_name: str, managed_policy_arns: list[str] | None = None
 ) -> bool:
     """role を付属の policy ごと削除する (無ければ False)。
 

@@ -9,6 +9,8 @@ from pocket_cli.resources.aws.cloudformation import VpcStack
 from pocket_cli.resources.aws.efs import Efs
 
 if TYPE_CHECKING:
+    from mypy_boto3_ec2 import EC2Client
+
     from pocket.general_context import VpcContext
 
 
@@ -127,10 +129,15 @@ class Vpc:
         if not self.stack.yaml_synced:
             self.stack.update()
 
-    def _owned_network_interfaces(self, resources, ids, ec2, filters) -> set[str]:
+    def _owned_network_interfaces(
+        self, resources, ids, ec2: EC2Client, filters
+    ) -> set[str]:
         """NAT / EFS の API から、スタックが管理する ENI の ID を解決する。"""
         owned_enis = set(ids)
-        for page in ec2.get_paginator("describe_nat_gateways").paginate(Filter=filters):
+        # DescribeNatGateways の引数は botocore の model で Filter (単数形)。
+        # mypy-boto3-ec2 の型は Filters と食い違っているため型チェックを外す
+        paginator = ec2.get_paginator("describe_nat_gateways")
+        for page in paginator.paginate(Filter=filters):  # type: ignore
             for nat in page["NatGateways"]:
                 if nat["NatGatewayId"] in ids:
                     owned_enis.update(

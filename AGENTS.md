@@ -67,6 +67,8 @@ uv run pyright
   count = result[0]
   ```
 
+- **boto3 client を引数で受け取るとき**: `mypy-boto3-*` の client 型を注釈する (`def ensure_role(iam_client: IAMClient, ...)`、import は `if TYPE_CHECKING:` 内)。deploy 権限の同期テスト (`tests/test_permissions_sync.py`) が型注釈で呼び出しを追跡しており、注釈の無い client 引数はテストで落ちる。新しい service は `pyproject.toml` の `boto3-stubs-lite` の extras に足す
+
 ### Pythonの制約事項
 
 - except Exception は絶対に使用してはいけません。他にも曖昧な例外キャッチは避け、特定の例外をキャッチしてください。出来ない場合、raiseでプログラムが止まって構いません。

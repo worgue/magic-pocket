@@ -7,9 +7,14 @@ S3 の削除伝播が終わるまで CreateBucket が OperationAborted を返す
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.resources.aws import s3_utils
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
 
 
 class _FakeClient:
@@ -27,6 +32,9 @@ class _FakeClient:
             )
         return {}
 
+    def as_s3(self) -> S3Client:
+        return self  # type: ignore
+
 
 def test_retries_operation_aborted_until_success(monkeypatch):
     sleeps: list[float] = []
@@ -34,7 +42,7 @@ def test_retries_operation_aborted_until_success(monkeypatch):
     client = _FakeClient(failures=2)
 
     s3_utils.create_bucket(
-        client, "b", "ap-northeast-1", retry_interval=7, retry_timeout=3600
+        client.as_s3(), "b", "ap-northeast-1", retry_interval=7, retry_timeout=3600
     )
 
     assert len(client.calls) == 3
@@ -51,7 +59,7 @@ def test_other_client_error_is_raised_immediately(monkeypatch):
     client = _FakeClient(failures=1, code="BucketAlreadyExists")
 
     with pytest.raises(ClientError):
-        s3_utils.create_bucket(client, "b", "ap-northeast-1")
+        s3_utils.create_bucket(client.as_s3(), "b", "ap-northeast-1")
     assert len(client.calls) == 1
 
 
@@ -67,7 +75,7 @@ def test_gives_up_after_timeout_with_guidance(monkeypatch):
 
     with pytest.raises(RuntimeError, match="削除の伝播"):
         s3_utils.create_bucket(
-            client, "b", "us-east-1", retry_interval=30, retry_timeout=120
+            client.as_s3(), "b", "us-east-1", retry_interval=30, retry_timeout=120
         )
     # 0s, 30s, 60s, 90s, 120s(超過) → 5 回試行
     assert len(client.calls) == 5

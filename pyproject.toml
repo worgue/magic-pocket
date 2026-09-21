@@ -56,11 +56,19 @@ dev = [
     "pyright>=1.1.408",
     "psycopg[binary]>=3.1.0",
     "django-storages>=1.14.2,!=1.14.3",
+    # boto3 client を引数で受け取る関数の型注釈用 (tests/test_permissions_sync.py の
+    # test_client_params_are_typed が注釈を必須にする)。lite 版は boto3.client() を
+    # Any のまま返すので、注釈していない既存コードは型チェックの対象にならない。
+    # 新しい service の client を注釈するときは extras に足す
+    "boto3-stubs-lite[backup,ec2,iam,lambda,s3,wafv2]>=1.43.98",
 ]
 
 [tool.pyright]
 include = ["pocket", "packages/magic-pocket-cli/pocket_cli", "tests"]
 exclude = ["packages/magic-pocket-cli/pocket_cli/templates"]
+# mypy-boto3-* は AWS レスポンスのほぼ全フィールドを NotRequired にしており、
+# resp["Role"]["Arn"] のような通常の参照まで全て報告されるため無効化する
+reportTypedDictNotRequiredAccess = false
 
 [tool.ruff]
 exclude = [".git", ".ruff_cache", ".venv", "frontend", "migrations", "packages/magic-pocket-cli/pocket_cli/templates"]
