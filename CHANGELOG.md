@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.39.0](https://github.com/worgue/magic-pocket/releases/tag/0.39.0) - 2026-09-21
+
 ### 更新時の作業 (`[inbound.*]` を使っている project)
 - 受信ドメインの SES identity と DNS を pocket が CloudFormation で持つようになりました (下記
   Changed)。pocket は既存の identity / レコードを取り込まないため、**0.38.0 以前に受信口を
@@ -44,6 +46,11 @@
   要りません)。
 - AWS Backup のサービスロールを削除する際、inline policy も列挙して削除するようにしました
   (`iam:ListRolePolicies` は従来から deploy 権限に含まれています)。
+
+### Fixed
+- `pocket resource container yaml` / `yaml-diff` が DB (rds / dsql) と scheduler の設定を含めずに
+  テンプレートを組み立てていたため、deploy 済みの stack と比べると実際には無い差分が出ていました。
+  deploy と同じ内容で表示するようにしました。
 
 ## [0.38.0](https://github.com/worgue/magic-pocket/releases/tag/0.38.0) - 2026-09-21
 
