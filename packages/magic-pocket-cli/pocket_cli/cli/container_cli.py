@@ -35,7 +35,14 @@ def get_container_resource(stage, container_name: str | None = None):
         name = resolve_container_name(context, container_name)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
-    return Container(context.container[name])
+    # deploy と同じ context を渡す。省くと yaml / yaml-diff のテンプレートから
+    # DB 接続の env・policy や scheduler が抜け、deployed との差分が偽になる
+    return Container(
+        context.container[name],
+        rds_context=context.rds,
+        dsql_context=context.dsql,
+        scheduler_context=context.scheduler.get(name),
+    )
 
 
 _container_option = click.option(
