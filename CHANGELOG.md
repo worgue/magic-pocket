@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+## [0.39.1](https://github.com/worgue/magic-pocket/releases/tag/0.39.1) - 2026-09-22
+
+### Fixed
+- `[inbound.*]` の受信 container に `permissions_boundary` を必須にしていたため、Permissions
+  Boundary を持たない account (`POCKET_PERMISSIONS_BOUNDARY_ARN` / `FORGE_PERMISSIONS_BOUNDARY_ARN`
+  も未設定) では deploy の事前チェックで止まっていたのを修正しました。他の機能と同じく「指定が
+  あれば付ける」任意項目になります。受信した原本・metadata の削除禁止は実行 role の明示 Deny で
+  担保しており、Boundary の有無には依存しません
+
 ## [0.39.0](https://github.com/worgue/magic-pocket/releases/tag/0.39.0) - 2026-09-21
 
 ### 更新時の作業 (`[inbound.*]` を使っている project)
