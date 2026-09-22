@@ -4,7 +4,6 @@ import webbrowser
 import click
 
 from pocket.context import Context, deploy_hash_report
-from pocket.settings import parse_handler_ref
 from pocket.utils import echo
 from pocket_cli import migrations
 from pocket_cli.cli import interaction
@@ -225,9 +224,6 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     # DEPLOY_HASH の解決結果を deploy 時に 1 回可視化する (env 伝播漏れで
     # 黙って git short hash に落ちる footgun の早期発見用)。
     for inlet in context.inbound.values():
-        container_name, _ = parse_handler_ref(inlet.config.handler)
-        if not context.container[container_name].permissions_boundary:
-            raise ValueError("inbound workerにpermissions_boundaryが必要です")
         Inbound(inlet).prepare_deploy()
     for domain_ctx in context.inbound_domain.values():
         InboundDomain(domain_ctx).prepare_deploy()

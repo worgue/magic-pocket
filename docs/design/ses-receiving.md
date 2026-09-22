@@ -223,8 +223,10 @@ SESのbucket/topic policyはservice principalに対してSourceAccountと当該r
 を根拠にテンプレートを生成します。
 
 初版はSES用の新規IAM roleを作らずresource policyを使用します。
-worker / 通知handler等のroleを作る場合は既存のpermissions_boundary設定を必須にし、
-forge環境では `FORGE_PERMISSIONS_BOUNDARY_ARN` を使用します。
+worker / 通知handler等のroleには既存のpermissions_boundary設定があれば付け、
+受信containerで未設定ならforge環境の `FORGE_PERMISSIONS_BOUNDARY_ARN` を使用します。
+Boundaryは任意です (当初は必須でしたが、Boundaryを持たないaccountでdeployできないため
+0.39.1で任意化 = KN1556)。原本・metadataの削除禁止はworker roleの明示Denyで担保します。
 現状のpocketはcontainer単位で実行roleを共有するため、メールアクセスを他handlerから
 分離するには上の例のように専用containerを使います。
 

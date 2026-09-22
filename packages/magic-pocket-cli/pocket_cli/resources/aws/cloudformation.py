@@ -843,8 +843,6 @@ class ContainerStack(Stack):
 
     @property
     def yaml(self) -> str:
-        if self.context.inbound and not self.context.permissions_boundary:
-            raise ValueError("inbound workerにpermissions_boundaryが必要です")
         rds_info = self._resolve_rds()
         dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
         context_dump = self.context.model_dump()

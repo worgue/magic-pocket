@@ -442,16 +442,16 @@ def test_existing_position_survives_predecessor_removal(inlet):
 
 
 @mock_aws
-def test_runtime_context_does_not_require_deploy_boundary(
-    receiving_settings, monkeypatch
-):
+def test_inbound_container_without_boundary(receiving_settings, monkeypatch):
+    # boundary は任意。原本 / metadata の削除禁止は worker role の Deny で担保する
     monkeypatch.delenv("FORGE_PERMISSIONS_BOUNDARY_ARN", raising=False)
     monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
     receiving_settings.container["mail"].permissions_boundary = None
     context = Context.from_settings(receiving_settings)
     assert context.inbound["inbox"].config.handler == "mail.worker"
-    with pytest.raises(ValueError, match="permissions_boundary"):
-        _ = ContainerStack(context.container["mail"]).yaml
+    yaml = ContainerStack(context.container["mail"]).yaml
+    assert "PermissionsBoundary" not in yaml
+    assert "s3:DeleteObjectVersion" in yaml
 
 
 def test_disabled_alert_keeps_stage_inherited_email(receiving_settings):

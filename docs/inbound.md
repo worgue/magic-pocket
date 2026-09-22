@@ -32,8 +32,10 @@ timeout = 120
 `handler = "mail.worker"` は既存のCloudFront・schedulerと同じ参照形式で、
 `container.mail.handlers.worker` を指します。同じcontainerのLambdaは実行roleを共有します。
 メールへのアクセスを分離したい場合は専用containerにします。
-boundaryは既存の `POCKET_PERMISSIONS_BOUNDARY_ARN` または設定ファイルを使い、
-受信containerで未設定の場合は `FORGE_PERMISSIONS_BOUNDARY_ARN` を使います。
+`permissions_boundary` は他の機能と同じく任意です。既存の `POCKET_PERMISSIONS_BOUNDARY_ARN`
+または設定ファイルを使い、受信containerで未設定の場合は `FORGE_PERMISSIONS_BOUNDARY_ARN` を使います。
+どれも無ければBoundaryなしで実行roleを作ります。原本・受信情報の削除禁止は
+実行roleの明示Denyで担保しているため、Boundaryの有無に依存しません。
 
 `retention_days` は必須で14日以上です。原本・受信情報・取り込みデータ・添付用prefixに
 同じ保持期間を設定します。省略時のprefixは `raw/`、`metadata/`、`imports/`、`attachments/`。
