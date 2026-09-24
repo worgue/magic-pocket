@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.40.0](https://github.com/worgue/magic-pocket/releases/tag/0.40.0) - 2026-09-24
+
 ### Added
 - `[<stage>.rds]` に master password のローテーション窓を宣言する `rotation_schedule`（UTC の
   `cron(...)` / `rate(...)`）と `rotation_duration` を追加しました。AWS 既定の窓は UTC の 1 日全体で、
