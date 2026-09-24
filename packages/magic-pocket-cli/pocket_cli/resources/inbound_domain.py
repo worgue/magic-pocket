@@ -16,6 +16,7 @@ from pocket_cli.resources.inbound_template import DKIM_TOKENS, build_domain_temp
 
 VERIFY_TIMEOUT = 600
 VERIFY_INTERVAL = 15
+STATUS_COMMAND = "pocket resource inbound --stage <stage> --name <name> status"
 
 
 class InboundDomainStack(Stack):
@@ -106,18 +107,20 @@ class InboundDomain(StackBackedResource):
         records.append(("MX", self.context.domain, output["MxValue"]))
         return records
 
-    def wait_verified(self):
-        """DKIM検証の完了を待つ。同じaccountのzoneなら数分で終わる。"""
-        deadline = time.monotonic() + VERIFY_TIMEOUT
+    def wait_verified(self) -> int:
+        """DKIM検証の完了を待ち、待った秒数を返す。同じaccountのzoneなら数分で終わる。"""
+        started = time.monotonic()
+        deadline = started + VERIFY_TIMEOUT
         while True:
             status = self.verification_status()
             if status == "SUCCESS":
-                return
+                return round(time.monotonic() - started)
             if time.monotonic() >= deadline:
                 raise ValueError(
                     f"{self.context.domain} のSES検証が完了しません"
                     f"（status={status}）。zoneの委任を確認し、"
-                    "検証後に再度deployしてください。検証完了までは受信できません"
+                    "検証後に再度deployしてください。検証完了までは受信できません。"
+                    f"状態は {STATUS_COMMAND} で確認できます"
                 )
             echo.log(
                 "Waiting for SES verification of %s... (status=%s)"
@@ -135,15 +138,26 @@ def confirm_inbound_domains(context):
     for domain_ctx in context.inbound_domain.values():
         resource = InboundDomain(domain_ctx)
         if domain_ctx.manage_dns:
-            resource.wait_verified()
+            waited = resource.wait_verified()
+            echo.info(
+                f"inbound domain {domain_ctx.domain}: verification=SUCCESS"
+                f" (waited {waited}s)"
+            )
             continue
         status = resource.verification_status()
-        if status != "SUCCESS":
-            echo.warning(
-                f"{domain_ctx.domain} のSES検証が未完了です (status={status})。"
-                "次のレコードをDNSに登録してください。検証完了までは受信できません"
+        if status == "SUCCESS":
+            echo.info(
+                f"inbound domain {domain_ctx.domain}: verification=SUCCESS"
+                " (manage_dns = false)"
             )
-            print_dns_records(resource)
+            continue
+        echo.warning(
+            f"inbound domain {domain_ctx.domain}: verification={status}"
+            " (manage_dns = false のため待たない)。"
+            "次のレコードをDNSに登録してください。検証完了までは受信できません。"
+            f"状態は {STATUS_COMMAND} で確認できます"
+        )
+        print_dns_records(resource)
 
 
 def cleanup_unused_inbound_domains(context, state_store):

@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Changed
+- deploy の最後に、受信ドメインごとの SES 検証結果を 1 行出すようにしました
+  (例: `inbound domain mail.example.com: verification=SUCCESS (waited 95s)`)。既に検証済みでも
+  `waited 0s` と出るため、待ったのか・既に済んでいたのかをログだけで判別できます。
+  `manage_dns = false` で未検証の場合と待ち時間切れの場合は、状態と
+  `pocket resource inbound ... status` での確認方法を表示します
+
 ## [0.39.1](https://github.com/worgue/magic-pocket/releases/tag/0.39.1) - 2026-09-22
 
 ### Fixed

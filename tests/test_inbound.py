@@ -649,7 +649,7 @@ def test_deploy_waits_for_verification_and_times_out(receiving_settings, monkeyp
         stack_status="COMPLETED",
         statuses=["PENDING", "PENDING", "SUCCESS"],
     )
-    resource.wait_verified()
+    assert resource.wait_verified() >= 0
     assert resource.calls == 3
     monkeypatch.setattr(inbound_domain, "VERIFY_TIMEOUT", 0)
     pending = _FakeDomain(
@@ -674,7 +674,21 @@ def test_external_dns_is_reported_without_waiting(receiving_settings, capsys):
     ):
         confirm_inbound_domains(context)
     wait.assert_not_called()
-    assert "MX receive.example.com 10 inbound-smtp" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    out = " ".join((captured.out + captured.err).split())
+    assert "MX receive.example.com 10 inbound-smtp" in out
+    assert "verification=PENDING" in out
+    assert "inbound --stage <stage> --name <name> status" in out
+
+
+def test_verification_result_is_logged_per_domain(receiving_settings, capsys):
+    context = mock.Mock()
+    context.inbound_domain = InboundDomainContext.from_settings(receiving_settings)
+    with mock.patch.object(InboundDomain, "wait_verified", return_value=95):
+        confirm_inbound_domains(context)
+    out = " ".join(capsys.readouterr().err.split())
+    assert "inbound domain receive.example.com: verification=SUCCESS" in out
+    assert "(waited 95s)" in out
 
 
 def test_unused_domain_stack_is_deleted_after_domain_change(receiving_settings):

@@ -68,7 +68,7 @@ pocket resource inbound --stage dev --name inbox status
 2. 受信スタックを作ります。`rule_set` と `after_rule` は不要です。
    active setの末尾に自分のルールを追加し、選択したセットをスタック出力に保存します。
    `rule_set` を明示する場合はactive setとの一致を必須とします。`after_rule` は設定項目にありません。
-3. 最後にSESのドメイン検証が完了するまで待ちます（通常は数分、最大10分）。
+3. 最後にSESのドメイン検証が完了するまで待ちます（通常は数分、最大10分）。結果はドメインごとに `inbound domain <domain>: verification=SUCCESS (waited 95s)` の形で1行出ます。
    時間内に完了しなければdeployはエラーで終わります。他のリソースのdeployは完了しているので、
    zoneの委任を確認してから再度deployしてください。
 4. deploy後、通知先へ届くSNS購読確認メールのリンクを開きます。
