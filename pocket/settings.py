@@ -808,6 +808,10 @@ class RdsBackup(BaseModel):
     retention_days: Annotated[int, Field(ge=1, le=35)] = 35
 
 
+# 自動ローテーションする (= rotation_schedule が意味を持つ) password_strategy
+ROTATING_PASSWORD_STRATEGIES = frozenset({"aws-managed"})
+
+
 class Rds(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -829,6 +833,18 @@ class Rds(BaseModel):
     #                  しない。RDS Proxy 無しでローテーション時ダウンタイムを避けたい
     #                  環境向け。
     password_strategy: Literal["aws-managed", "static"] = "aws-managed"  # noqa: S105 戦略名であって secret 値ではない
+    # aws-managed のローテーション窓 (Secrets Manager の RotationRules)。式は UTC で
+    # 解釈される (Secrets Manager にタイムゾーン指定は無い)。未指定なら pocket は
+    # 窓に触れず AWS 既定 (7 日周期・UTC の 1 日全体) のまま。宣言すると deploy
+    # のたびに差分を検出して RotateImmediately=False で当てる (cluster 再作成や
+    # snapshot 復元で secret が作り直されても窓が既定へ戻らない)
+    rotation_schedule: Annotated[str, Field(pattern=r"^(cron|rate)\(.+\)$")] | None = (
+        None
+    )
+    # 窓の長さ ("4h" 等、1〜24 時間)。未指定なら AWS 既定 (次の窓の終わりまで)
+    rotation_duration: (
+        Annotated[str, Field(pattern=r"^([1-9]|1[0-9]|2[0-4])h$")] | None
+    ) = None
     # managed = false (既存参照モード) 用フィールド
     secret_arn: str | None = None
     security_group_id: str | None = None
@@ -846,9 +862,24 @@ class Rds(BaseModel):
             "snapshot_identifier": self.snapshot_identifier is not None,
             "database": self.database is not None,
             "backup (非デフォルト)": self.backup != RdsBackup(),
+            "rotation_schedule": self.rotation_schedule is not None,
+            "rotation_duration": self.rotation_duration is not None,
         }
         has_managed_custom = any(managed_fields.values())
 
+        if self.rotation_duration is not None and self.rotation_schedule is None:
+            raise ValueError(
+                "rotation_duration は rotation_schedule と併せて指定します。"
+            )
+        if (
+            self.managed
+            and self.rotation_schedule is not None
+            and self.password_strategy not in ROTATING_PASSWORD_STRATEGIES
+        ):
+            raise ValueError(
+                'rotation_schedule は password_strategy = "aws-managed" でのみ'
+                "使用できます。static はローテーションしません。"
+            )
         if self.managed and has_unmanaged:
             set_fields = [k for k, v in unmanaged_fields.items() if v is not None]
             raise ValueError(

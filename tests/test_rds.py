@@ -3,6 +3,7 @@ import os
 
 import boto3
 import pytest
+from botocore.client import BaseClient
 from moto import mock_aws
 from pocket_cli.resources.rds import Rds
 from pydantic import ValidationError
@@ -938,3 +939,103 @@ def test_rds_backup_retention_drift_converges(use_toml):
     after = Rds(context.rds)
     assert (after.cluster or {})["BackupRetentionPeriod"] == 21
     assert after.status == "COMPLETED"
+
+
+def test_rds_rotation_window_defaults_to_none():
+    """未宣言なら pocket は窓に触れない (AWS 既定のまま)"""
+    settings = Settings.model_validate(_rds_settings_data())
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.rotation_schedule is None
+    assert context.rds.rotation_duration is None
+
+
+def test_rds_rotation_window_propagates_to_context():
+    settings = Settings.model_validate(
+        _rds_settings_data(
+            {"rotation_schedule": "cron(0 15 ? * TUE *)", "rotation_duration": "4h"}
+        )
+    )
+    context = Context.from_settings(settings)
+    assert context.rds is not None
+    assert context.rds.rotation_schedule == "cron(0 15 ? * TUE *)"
+    assert context.rds.rotation_duration == "4h"
+
+
+@pytest.mark.parametrize(
+    "rds_extra",
+    [
+        {"rotation_schedule": "0 15 ? * TUE *"},  # cron(...) で包んでいない
+        {"rotation_schedule": "cron(0 15 ? * TUE *)", "rotation_duration": "4"},
+        {"rotation_schedule": "cron(0 15 ? * TUE *)", "rotation_duration": "25h"},
+        {"rotation_duration": "4h"},  # schedule 無しの duration
+    ],
+)
+def test_rds_rotation_window_rejects_invalid(rds_extra):
+    with pytest.raises(ValidationError):
+        Settings.model_validate(_rds_settings_data(rds_extra))
+
+
+def test_rds_rotation_window_rejected_with_static():
+    """static はローテーションしないので窓の宣言はエラー"""
+    with pytest.raises(ValidationError, match="rotation_schedule"):
+        RdsSettings.model_validate(
+            {"password_strategy": "static", "rotation_schedule": "rate(7 days)"}
+        )
+
+
+def test_rds_rotation_window_rejected_when_unmanaged():
+    with pytest.raises(ValidationError, match="rotation_schedule"):
+        RdsSettings.model_validate(
+            {
+                "managed": False,
+                "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:1:secret:x",
+                "security_group_id": "sg-123",
+                "rotation_schedule": "rate(7 days)",
+            }
+        )
+
+
+@mock_aws
+def test_rds_create_applies_rotation_window_without_rotating(use_toml, monkeypatch):
+    """create で managed secret に窓を当てる。RotateImmediately=False は必須"""
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+    context.rds.rotation_schedule = "cron(0 15 ? * TUE *)"
+    context.rds.rotation_duration = "4h"
+
+    # moto は ScheduleExpression / Duration を保存しないため、この 2 API だけ
+    # 横取りして「当てた RotationRules が describe で返る」状態を再現する
+    calls: list[dict] = []
+    rules: dict = {"AutomaticallyAfterDays": 7}
+    original = BaseClient.__dict__["_make_api_call"]
+
+    def fake_api_call(self, operation_name, api_params):
+        if operation_name == "RotateSecret":
+            calls.append(api_params)
+            rules.clear()
+            rules.update(api_params["RotationRules"])
+            return {"ARN": api_params["SecretId"]}
+        if operation_name == "DescribeSecret":
+            return {"ARN": api_params["SecretId"], "RotationRules": dict(rules)}
+        return original(self, operation_name, api_params)
+
+    monkeypatch.setattr(BaseClient, "_make_api_call", fake_api_call)
+
+    rds = _create_vpc_and_cluster(context)
+    assert len(calls) == 1
+    assert calls[0]["SecretId"] == rds.master_user_secret_arn
+    assert calls[0]["RotateImmediately"] is False
+    assert calls[0]["RotationRules"] == {
+        "ScheduleExpression": "cron(0 15 ? * TUE *)",
+        "Duration": "4h",
+    }
+    assert Rds(context.rds).status == "COMPLETED"
+
+    # 宣言を変えると REQUIRE_UPDATE になり、update() で当て直す
+    context.rds.rotation_schedule = "cron(0 16 ? * WED *)"
+    assert Rds(context.rds).status == "REQUIRE_UPDATE"
+    Rds(context.rds).update()
+    assert len(calls) == 2
+    assert Rds(context.rds).status == "COMPLETED"

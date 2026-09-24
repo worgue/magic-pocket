@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Added
+- `[<stage>.rds]` に master password のローテーション窓を宣言する `rotation_schedule`（UTC の
+  `cron(...)` / `rate(...)`）と `rotation_duration` を追加しました。AWS 既定の窓は UTC の 1 日全体で、
+  JST では営業時間を必ず含みます。宣言すると deploy で managed secret の窓を差分検出し、
+  `RotateImmediately=False` で当てます（cluster の作り直しや snapshot 復元で secret が作り直されても
+  窓が既定に戻りません）。未宣言なら従来どおり窓に触れません。`password_strategy = "static"` との
+  併用はエラーです
+- deploy 権限の `[rds]` グループに `secretsmanager:DescribeSecret` / `secretsmanager:RotateSecret`
+  を追加しました（上記の窓の検出と適用用）
+
 ### Changed
 - deploy の最後に、受信ドメインごとの SES 検証結果を 1 行出すようにしました
   (例: `inbound domain mail.example.com: verification=SUCCESS (waited 95s)`)。既に検証済みでも

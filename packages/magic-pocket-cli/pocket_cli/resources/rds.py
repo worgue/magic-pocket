@@ -190,6 +190,8 @@ class Rds:
                 return "REQUIRE_UPDATE"
             if not self._password_state_matches():
                 return "REQUIRE_UPDATE"
+            if not self._rotation_matches():
+                return "REQUIRE_UPDATE"
             return "COMPLETED"
         if cluster_status in (
             "failed",
@@ -257,6 +259,52 @@ class Rds:
             return False  # aws-managed → static の移行が必要
         # クラスタは static。望む store に認証情報が在るか
         return self._store_has_credential(self.context.secret_store)
+
+    def _desired_rotation_rules(self) -> dict | None:
+        """宣言されたローテーション窓 (RotationRules)。未宣言なら None。
+
+        static との併用は settings の検証で弾いているため、ここでは見ない。
+        """
+        if self.context.rotation_schedule is None:
+            return None
+        rules = {"ScheduleExpression": self.context.rotation_schedule}
+        if self.context.rotation_duration is not None:
+            rules["Duration"] = self.context.rotation_duration
+        return rules
+
+    def _rotation_matches(self) -> bool:
+        """managed secret の窓が宣言と一致するか。
+
+        未宣言のとき、および managed secret がまだ無い (password 移行待ち) ときは
+        一致扱いにする (後者は移行後の update() で当てる)。
+        """
+        desired = self._desired_rotation_rules()
+        arn = self.master_user_secret_arn
+        if desired is None or arn is None:
+            return True
+        actual = self._sm_client.describe_secret(SecretId=arn).get("RotationRules", {})
+        return all(actual.get(key) == value for key, value in desired.items())
+
+    def _apply_rotation(self) -> None:
+        """宣言された窓を managed secret に当てる (差分があるときだけ)。
+
+        RotateImmediately の既定は true で、付け忘れるとその deploy の瞬間に
+        ローテーションが走るため必ず False を渡す。
+        """
+        if self._rotation_matches():
+            return
+        desired = self._desired_rotation_rules()
+        arn = self.master_user_secret_arn
+        if desired is None or arn is None:
+            return
+        echo.log(
+            "Setting master password rotation window (UTC): %s"
+            % " / ".join(desired.values())
+        )
+        self._sm_client.rotate_secret(
+            SecretId=arn, RotationRules=desired, RotateImmediately=False
+        )
+        echo.success("Master password rotation window updated.")
 
     def _get_vpc_stack(self) -> VpcStack:
         if not self.context.vpc:
@@ -512,6 +560,11 @@ class Rds:
                 raise RuntimeError("password must be set for static credentials")
             self._store_static_credentials(password)
 
+        # 8. aws-managed: 宣言された rotation 窓を当てる。新規作成 / snapshot 復元で
+        # managed secret が作り直されると窓は AWS 既定に戻るため、ここで必ず当てる
+        self.clear_cache()
+        self._apply_rotation()
+
         echo.success("Aurora cluster is now available.")
 
     def _store_static_credentials(self, password: str) -> None:
@@ -590,6 +643,9 @@ class Rds:
             if modify_kwargs:
                 self._wait_cluster_available(timeout=600)
             self._migrate_password()
+        # password 移行で managed secret が新しくできた場合もここで窓を当てる
+        self.clear_cache()
+        self._apply_rotation()
 
     def _migrate_password(self) -> None:
         """クラスタを望む password_strategy / secret_store に合わせて移行する。"""

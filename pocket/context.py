@@ -938,6 +938,9 @@ class RdsContext(BaseModel):
     security_group_name: str = ""
     slug: str = ""
     password_strategy: str = "aws-managed"  # noqa: S105 戦略名/保存先種別であって secret 値ではない
+    # aws-managed のローテーション窓 (UTC)。None なら pocket は窓に触れない
+    rotation_schedule: str | None = None
+    rotation_duration: str | None = None
     # password_strategy = "static" 用: pocket が生成・保存する認証情報の名前
     # (secret_store=sm なら Secrets Manager の secret 名、ssm なら SSM パラメータ名)
     credentials_secret_name: str = ""
@@ -984,6 +987,8 @@ class RdsContext(BaseModel):
             security_group_name=f"{resource_prefix}aurora-rds",
             slug=root.slug,
             password_strategy=rds.password_strategy,
+            rotation_schedule=rds.rotation_schedule,
+            rotation_duration=rds.rotation_duration,
             credentials_secret_name=f"{resource_prefix}aurora-credentials",
             secret_store=secret_store,
         )

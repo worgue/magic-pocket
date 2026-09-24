@@ -55,6 +55,7 @@
 | `rds:*` | Aurora Serverless v2 クラスターの管理 |
 | `ec2:*SecurityGroup*` | DB 用セキュリティグループの管理 |
 | `ssm:GetParameter`, `ssm:PutParameter`, `ssm:DeleteParameter` | static master password の SSM パラメータ管理（`secrets.store` の設定とは独立に必要） |
+| `secretsmanager:DescribeSecret`, `secretsmanager:RotateSecret` | managed secret のローテーション窓（`rotation_schedule`）の差分検出と適用（`secrets.store` の設定とは独立に必要） |
 
 ### EFS（`[container.main.vpc.efs]` 使用時）
 

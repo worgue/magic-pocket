@@ -84,12 +84,16 @@ _VPC_ACTIONS: list[str] = ["ec2:*"]
 # [rds] が設定されている時。
 # ssm:* は static master password の SSM パラメータ管理用
 # (secrets.store とは独立に rds.py が直接 SSM を読み書きする)
+# secretsmanager の 2 つは managed secret のローテーション窓 (rotation_schedule)
+# の差分検出と適用用 (同じく secrets.store とは独立)
 _RDS_ACTIONS: list[str] = [
     "rds:*",
     "ec2:*SecurityGroup*",
     "ssm:GetParameter",
     "ssm:PutParameter",
     "ssm:DeleteParameter",
+    "secretsmanager:DescribeSecret",
+    "secretsmanager:RotateSecret",
 ]
 
 # いずれかの container に vpc.efs が設定されている時

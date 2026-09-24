@@ -588,6 +588,8 @@ dockerfile_path = "pocket.Dockerfile"
 | `snapshot_identifier` | str \| None | None | 初回作成時に復元する snapshot の ID / ARN。`managed = true` のみ |
 | `backup.retention_days` | int | `35` | 自動バックアップ（PITR）の保持日数（1〜35）。`managed = true` のみ |
 | `database` | str \| None | None | DB 名の上書き。未指定なら `{stage}_{project}`（他リソース名と同じ順序）。`managed = true` のみ |
+| `rotation_schedule` | str \| None | None | master password のローテーション窓（`cron(...)` / `rate(...)`、**UTC**）。未指定なら AWS 既定のまま。`password_strategy = "aws-managed"` のみ（[下記](#rotation-window)） |
+| `rotation_duration` | str \| None | None | 窓の長さ（`"1h"`〜`"24h"`）。`rotation_schedule` と併せて指定 |
 | `secret_arn` | str \| None | None | 既存 RDS の Secrets Manager ARN。`managed = false` 時必須 |
 | `security_group_id` | str \| None | None | 既存 RDS の SG ID。`managed = false` 時必須 |
 
@@ -624,6 +626,22 @@ dockerfile_path = "pocket.Dockerfile"
     min_capacity = 1.0
     max_capacity = 8.0
     ```
+
+### ローテーション窓 {#rotation-window}
+
+AWS 既定の窓は「7 日周期・**UTC の 1 日全体**」で、ローテーションはその日のどこかで起きます。JST では 09:00〜翌 08:59 にあたり、**営業時間を必ず含みます**。上の自己修復があっても、古い版の稼働中や DB backend を自前で組んでいる場合はローテーションの瞬間に認証エラーになりうるため、影響の小さい時間帯へ窓を寄せることを推奨します。
+
+```toml
+[prod.rds]
+rotation_schedule = "cron(0 15 ? * TUE *)"   # UTC。火 15:00 UTC = 水 00:00 JST
+rotation_duration = "4h"                     # 15:00〜19:00 UTC の間に実行
+```
+
+- 式は **UTC** で解釈されます（Secrets Manager にタイムゾーン指定はありません）。書式は [Secrets Manager のスケジュール式](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotate-secrets_schedule.html) に従います。
+- 宣言すると deploy のたびに managed secret の窓と比べ、差分があるときだけ `RotateSecret`（`RotateImmediately=False`）で当てます。deploy の瞬間にローテーションが走ることはありません。
+- クラスタの作り直しや snapshot からの復元で managed secret が作り直されても、次の deploy で宣言どおりに戻ります（手動で `rotate-secret` を当てた窓は、secret の作り直しで既定に戻ります）。
+- 宣言を外しても pocket は窓を既定へ戻しません（未宣言 = 窓に触れない）。
+- `password_strategy = "static"` はローテーションしないため、宣言するとエラーになります。
 
 ### snapshot からの復元
 
