@@ -67,6 +67,19 @@ uv add --dev magic-pocket-cli
     `magic-pocket` で CLI が動作します (`pocket django` サブコマンドのみ
     `magic-pocket[django]` が必要)。
 
+!!! tip "CLI を `uv tool install` で入れる / 更新する場合"
+    project の dev 依存ではなく tool として入れる場合 (CI での pin 等) は、
+    Django プロジェクトなら **`--with` で `[django]` extra 付きの runtime を同じ版で指定**してください。
+    `magic-pocket-cli` だけを入れると Django が入らず、`pocket django deploy` が
+    「django が必要です」で止まります。
+
+    ```bash
+    uv tool install "magic-pocket-cli==X.Y.Z" --with "magic-pocket[django]==X.Y.Z"
+    ```
+
+    版を上げるときも同じ形で、両方の版を揃えて入れ直します
+    (runtime 側は project の `uv.lock` の版と揃えるのが安全です)。
+
 !!! note "psycopgについて"
     macで開発している場合、`uv add "psycopg[binary]"` が必要になることがあります。
 
