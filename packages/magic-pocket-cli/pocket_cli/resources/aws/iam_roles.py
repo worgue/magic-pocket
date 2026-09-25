@@ -26,7 +26,12 @@ from pocket.utils import echo
 if TYPE_CHECKING:
     from mypy_boto3_iam import IAMClient
 
-    from pocket.context import ContainerContext, SchedulerContext
+    from pocket.context import (
+        ContainerContext,
+        DsqlContext,
+        RdsContext,
+        SchedulerContext,
+    )
     from pocket.inbound_context import InboundContext
 
 # IAM ロールの伝播待ち (作成直後に使うと AssumeRole / PassRole が失敗する)
@@ -107,29 +112,24 @@ def _sub(value: str) -> dict[str, str]:
 def lambda_role(
     ctx: ContainerContext,
     *,
-    rds_secret_arn: str | None = None,
-    rds_kms_key_id: str | None = None,
-    rds_ssm_param_arn: str | None = None,
-    dsql_cluster_arn: str | None = None,
+    rds: RdsContext | None = None,
+    dsql: DsqlContext | None = None,
 ) -> RoleSpec:
     """container の Lambda 実行 role (全 handler 共通)。
 
-    rds_* / dsql_cluster_arn は ContainerStack が deploy 時に AWS から解決した値。
+    DB の権限は pocket.toml から決まる値 (識別子・タグ) だけで組み立て、deploy 時に
+    AWS から解決した ARN には依存しない。role を DB より先に作れるようにするため
+    (RDS の managed secret や DSQL cluster の ARN は作成時に AWS が乱数で決める)。
     """
     prefix = ctx.resource_prefix
     policies: dict[str, dict[str, Any]] = {}
     for inlet in ctx.inbound.values():
         policies[f"inbound-{inlet.name}"] = _inbound_policy(inlet)
     policies.update(_secrets_policies(ctx))
-    policies.update(
-        _database_policies(
-            prefix,
-            rds_secret_arn=rds_secret_arn,
-            rds_kms_key_id=rds_kms_key_id,
-            rds_ssm_param_arn=rds_ssm_param_arn,
-            dsql_cluster_arn=dsql_cluster_arn,
-        )
-    )
+    if rds:
+        policies.update(_rds_policies(prefix, rds))
+    if dsql:
+        policies[f"{prefix}access-dsql"] = _dsql_policy(dsql)
     policies[f"{prefix}access-cloudformation"] = _policy(
         _allow(
             ["cloudformation:DescribeStacks"],
@@ -220,29 +220,83 @@ def _secrets_policies(ctx: ContainerContext) -> dict[str, dict[str, Any]]:
     return policies
 
 
-def _database_policies(
-    prefix: str,
-    *,
-    rds_secret_arn: str | None,
-    rds_kms_key_id: str | None,
-    rds_ssm_param_arn: str | None,
-    dsql_cluster_arn: str | None,
-) -> dict[str, dict[str, Any]]:
-    policies: dict[str, dict[str, Any]] = {}
-    if rds_secret_arn:
-        statements = [_allow(["secretsmanager:GetSecretValue"], [rds_secret_arn])]
-        if rds_kms_key_id:
-            statements.append(_allow(["kms:Decrypt"], [rds_kms_key_id]))
-        policies[f"{prefix}access-rds-secret"] = _policy(*statements)
-    if rds_ssm_param_arn:
-        policies[f"{prefix}access-rds-ssm"] = _policy(
-            _allow(["ssm:GetParameter"], [_sub(rds_ssm_param_arn)])
+def _rds_policies(prefix: str, rds: RdsContext) -> dict[str, dict[str, Any]]:
+    """RDS の認証情報を読む権限。
+
+    secret はどれも既定の aws/secretsmanager key で暗号化されている (pocket は
+    KMS key を指定しない) ため、kms:Decrypt は要らない。
+    """
+    if not rds.managed:
+        if not rds.secret_arn:
+            return {}
+        return {
+            f"{prefix}access-rds-secret": _policy(
+                _allow(["secretsmanager:GetSecretValue"], [rds.secret_arn])
+            )
+        }
+    strategy, store = rds.password_strategy, rds.secret_store
+    if strategy == "static":
+        name = rds.credentials_secret_name
+        if store == "ssm":
+            return {
+                f"{prefix}access-rds-ssm": _policy(
+                    _allow(
+                        ["ssm:GetParameter"],
+                        [
+                            _sub(
+                                "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}"
+                                f":parameter/{name}"
+                            )
+                        ],
+                    )
+                )
+            }
+        # Secrets Manager は secret 名の後ろに "-" + 6 文字の乱数を付けて ARN にする
+        resource = _sub(
+            f"arn:${{AWS::Partition}}:secretsmanager:{rds.region}:${{AWS::AccountId}}"
+            f":secret:{name}-??????"
         )
-    if dsql_cluster_arn:
-        policies[f"{prefix}access-dsql"] = _policy(
-            _allow(["dsql:DbConnectAdmin"], [dsql_cluster_arn])
+        return {
+            f"{prefix}access-rds-secret": _policy(
+                _allow(["secretsmanager:GetSecretValue"], [resource])
+            )
+        }
+    # aws-managed: RDS が作る secret (rds!cluster-<uuid>) には元の cluster の ARN が
+    # aws: タグで付く。aws: タグは利用者が付けられないので、別の secret が名乗る
+    # ことはない
+    resource = _sub(
+        f"arn:${{AWS::Partition}}:secretsmanager:{rds.region}:${{AWS::AccountId}}"
+        ":secret:rds!cluster-*"
+    )
+    cluster_arn = _sub(
+        f"arn:${{AWS::Partition}}:rds:{rds.region}:${{AWS::AccountId}}"
+        f":cluster:{rds.cluster_identifier}"
+    )
+    return {
+        f"{prefix}access-rds-secret": _policy(
+            {
+                **_allow(["secretsmanager:GetSecretValue"], [resource]),
+                "Condition": {
+                    "StringEquals": {
+                        "aws:ResourceTag/aws:rds:primaryDBClusterArn": cluster_arn
+                    }
+                },
+            }
         )
-    return policies
+    }
+
+
+def _dsql_policy(dsql: DsqlContext) -> dict[str, Any]:
+    """DSQL に admin で接続する権限。cluster は pocket が付ける Name タグで絞る。"""
+    resource = _sub(
+        f"arn:${{AWS::Partition}}:dsql:{dsql.region}:${{AWS::AccountId}}:cluster/*"
+    )
+    return _policy(
+        {
+            **_allow(["dsql:DbConnectAdmin"], [resource]),
+            "Condition": {"StringEquals": {"aws:ResourceTag/Name": dsql.tag_name}},
+        }
+    )
 
 
 def scheduler_role(

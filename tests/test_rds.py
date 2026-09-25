@@ -360,7 +360,6 @@ def test_rds_master_user_secret_properties(use_toml):
     rds.create()
 
     assert rds.master_user_secret_arn is not None
-    assert rds.master_user_secret_kms_key_id is not None
     assert rds.endpoint is not None
     assert rds.port is not None
     assert rds.database_name == context.rds.database_name
@@ -531,7 +530,6 @@ def test_rds_static_password_creates_pocket_secret(use_toml):
 
     # AWS マネージドの MasterUserSecret ではなく pocket 所有 secret を指す
     assert rds.master_user_secret_arn is not None
-    assert rds.master_user_secret_kms_key_id is None
     assert "MasterUserSecret" not in (rds.cluster or {})
 
     sm = boto3.client("secretsmanager", region_name=context.rds.region)

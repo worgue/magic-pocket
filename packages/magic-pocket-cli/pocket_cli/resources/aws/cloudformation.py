@@ -761,9 +761,7 @@ class ContainerStack(Stack):
                 "rds_security_group_id": self._rds_context.security_group_id,
                 "rds_secret_store": "sm",
                 "rds_secret_arn": self._rds_context.secret_arn,
-                "rds_kms_key_id": None,
                 "rds_ssm_param_name": None,
-                "rds_ssm_param_arn": None,
                 "rds_endpoint": None,
                 "rds_port": None,
                 "rds_dbname": None,
@@ -784,30 +782,23 @@ class ContainerStack(Stack):
                 **base,
                 "rds_secret_store": "ssm",
                 "rds_secret_arn": None,
-                "rds_kms_key_id": None,
                 "rds_ssm_param_name": ssm_param_name,
-                "rds_ssm_param_arn": (
-                    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/"
-                    + ssm_param_name
-                ),
             }
         return {
             **base,
             "rds_secret_store": "sm",
             "rds_secret_arn": rds.master_user_secret_arn,
-            "rds_kms_key_id": rds.master_user_secret_kms_key_id,
             "rds_ssm_param_name": None,
-            "rds_ssm_param_arn": None,
         }
 
-    def _resolve_dsql(self) -> tuple[str | None, str | None, str | None]:
-        """DSQL のエンドポイント、リージョン、ARN を動的に取得"""
+    def _resolve_dsql(self) -> tuple[str | None, str | None]:
+        """DSQL のエンドポイントとリージョンを動的に取得"""
         if self._dsql_context is None:
-            return None, None, None
+            return None, None
         from pocket_cli.resources.dsql import Dsql
 
         dsql = Dsql(self._dsql_context)
-        return dsql.endpoint, self._dsql_context.region, dsql.arn
+        return dsql.endpoint, self._dsql_context.region
 
     @property
     def name(self):
@@ -844,7 +835,7 @@ class ContainerStack(Stack):
     @property
     def yaml(self) -> str:
         rds_info = self._resolve_rds()
-        dsql_endpoint, dsql_region, dsql_cluster_arn = self._resolve_dsql()
+        dsql_endpoint, dsql_region = self._resolve_dsql()
         context_dump = self.context.model_dump()
 
         # 外部 VPC: zones を動的取得
@@ -859,16 +850,13 @@ class ContainerStack(Stack):
             rds_security_group_id=rds_info.get("rds_security_group_id"),
             rds_secret_store=rds_info.get("rds_secret_store"),
             rds_secret_arn=rds_info.get("rds_secret_arn"),
-            rds_kms_key_id=rds_info.get("rds_kms_key_id"),
             rds_ssm_param_name=rds_info.get("rds_ssm_param_name"),
-            rds_ssm_param_arn=rds_info.get("rds_ssm_param_arn"),
             rds_endpoint=rds_info.get("rds_endpoint"),
             rds_port=rds_info.get("rds_port"),
             rds_dbname=rds_info.get("rds_dbname"),
             use_rds=bool(rds_info),
             dsql_endpoint=dsql_endpoint,
             dsql_region=dsql_region,
-            dsql_cluster_arn=dsql_cluster_arn,
             use_dsql=dsql_endpoint is not None,
             scheduler=(
                 self._scheduler_context.model_dump()
@@ -876,11 +864,7 @@ class ContainerStack(Stack):
                 else None
             ),
             lambda_role=iam_roles.lambda_role(
-                self.context,
-                rds_secret_arn=rds_info.get("rds_secret_arn"),
-                rds_kms_key_id=rds_info.get("rds_kms_key_id"),
-                rds_ssm_param_arn=rds_info.get("rds_ssm_param_arn"),
-                dsql_cluster_arn=dsql_cluster_arn if dsql_endpoint else None,
+                self.context, rds=self._rds_context, dsql=self._dsql_context
             ),
             scheduler_role=(
                 iam_roles.scheduler_role(

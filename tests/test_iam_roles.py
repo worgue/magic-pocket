@@ -7,7 +7,8 @@ import yaml as pyyaml
 from moto import mock_aws
 from pocket_cli.resources.aws import iam_roles
 
-from pocket.context import Context
+from pocket import settings
+from pocket.context import ContainerContext, Context, DsqlContext
 
 REGION = "ap-southeast-1"
 BOUNDARY = "arn:aws:iam::123456789012:policy/test-boundary"
@@ -157,3 +158,100 @@ def test_delete_role_returns_false_when_absent():
         iam_roles.delete_role(iam, "missing-role", iam_roles.BACKUP_ROLE_POLICIES)
         is False
     )
+
+
+def _rds_context(use_toml):
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds
+    return context.container["main"], context.rds
+
+
+def _statements(spec: iam_roles.RoleSpec, policy_suffix: str) -> list[dict]:
+    names = [n for n in spec.inline_policies if n.endswith(policy_suffix)]
+    assert len(names) == 1, spec.inline_policies.keys()
+    return spec.inline_policies[names[0]]["Statement"]
+
+
+def test_lambda_role_rds_aws_managed_uses_cluster_tag(use_toml):
+    """RDS が作る secret は乱数入り ARN のため、元 cluster の aws: タグで絞る。"""
+    container, rds = _rds_context(use_toml)
+    spec = iam_roles.lambda_role(container, rds=rds)
+
+    [statement] = _statements(spec, "access-rds-secret")
+    assert statement["Action"] == ["secretsmanager:GetSecretValue"]
+    assert statement["Resource"] == [
+        {
+            "Fn::Sub": "arn:${AWS::Partition}:secretsmanager:ap-northeast-1"
+            ":${AWS::AccountId}:secret:rds!cluster-*"
+        }
+    ]
+    assert statement["Condition"] == {
+        "StringEquals": {
+            "aws:ResourceTag/aws:rds:primaryDBClusterArn": {
+                "Fn::Sub": "arn:${AWS::Partition}:rds:ap-northeast-1"
+                f":${{AWS::AccountId}}:cluster:{rds.cluster_identifier}"
+            }
+        }
+    }
+    # 既定の aws/secretsmanager key で暗号化されるため KMS の付与は不要
+    assert "kms" not in json.dumps(spec.inline_policies)
+
+
+def test_lambda_role_rds_static_sm_uses_secret_name(use_toml):
+    container, rds = _rds_context(use_toml)
+    rds.password_strategy = "static"
+    spec = iam_roles.lambda_role(container, rds=rds)
+
+    [statement] = _statements(spec, "access-rds-secret")
+    assert statement["Resource"] == [
+        {
+            "Fn::Sub": "arn:${AWS::Partition}:secretsmanager:ap-northeast-1"
+            f":${{AWS::AccountId}}:secret:{rds.credentials_secret_name}-??????"
+        }
+    ]
+    assert "Condition" not in statement
+
+
+def test_lambda_role_rds_static_ssm_uses_parameter(use_toml):
+    container, rds = _rds_context(use_toml)
+    rds.password_strategy = "static"
+    rds.secret_store = "ssm"
+    spec = iam_roles.lambda_role(container, rds=rds)
+
+    [statement] = _statements(spec, "access-rds-ssm")
+    assert statement["Action"] == ["ssm:GetParameter"]
+    assert not [n for n in spec.inline_policies if n.endswith("access-rds-secret")]
+
+
+def test_lambda_role_rds_external_uses_configured_arn(use_toml):
+    container, rds = _rds_context(use_toml)
+    rds.managed = False
+    rds.secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x"
+    spec = iam_roles.lambda_role(container, rds=rds)
+
+    [statement] = _statements(spec, "access-rds-secret")
+    assert statement["Resource"] == [rds.secret_arn]
+
+
+def test_lambda_role_dsql_uses_name_tag(base_settings):
+    """DSQL cluster の ARN も乱数入りのため、pocket が付ける Name タグで絞る。"""
+    base_settings.dsql = settings.Dsql()
+    base_settings.container["main"] = settings.Container(dockerfile_path="Dockerfile")
+    dsql = DsqlContext.from_settings(base_settings.dsql, base_settings)
+    container = ContainerContext.from_settings(
+        "main", base_settings.container["main"], base_settings
+    )
+    spec = iam_roles.lambda_role(container, dsql=dsql)
+
+    [statement] = _statements(spec, "access-dsql")
+    assert statement["Action"] == ["dsql:DbConnectAdmin"]
+    assert statement["Resource"] == [
+        {
+            "Fn::Sub": f"arn:${{AWS::Partition}}:dsql:{dsql.region}"
+            ":${AWS::AccountId}:cluster/*"
+        }
+    ]
+    assert statement["Condition"] == {
+        "StringEquals": {"aws:ResourceTag/Name": dsql.tag_name}
+    }

@@ -138,16 +138,6 @@ class Rds:
         return None
 
     @property
-    def master_user_secret_kms_key_id(self) -> str | None:
-        # static は既定の aws/secretsmanager キーで暗号化するため、
-        # secretsmanager:GetSecretValue のみで復号でき KMS の明示付与は不要。
-        if self.context.password_strategy == "static":  # noqa: S105 戦略名/保存先種別であって secret 値ではない
-            return None
-        if self.cluster and "MasterUserSecret" in self.cluster:
-            return self.cluster["MasterUserSecret"].get("KmsKeyId")
-        return None
-
-    @property
     def endpoint(self) -> str | None:
         if self.cluster:
             return self.cluster.get("Endpoint")

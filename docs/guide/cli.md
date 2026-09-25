@@ -657,7 +657,7 @@ pocket resource dsql destroy --stage=dev
     さらに AWS Backup は指定時刻ちょうどではなく start window 内で開始するため、**一覧に出ない = 実行されなかった、ではありません**。定期実行の確認は時間に余裕を持って行ってください。
 
 !!! warning "復元後は deploy が必要です"
-    復元は常に**新しいクラスター**を作成します（AWS Backup は既存クラスターを上書きしません）。`restore` は Name タグの付け替えと SSM の endpoint 更新まで行いますが、**Lambda の `POCKET_DSQL_ENDPOINT` と `dsql:DbConnectAdmin` の対象 ARN は CloudFormation 管理**のため、`pocket deploy` を実行するまでアプリは旧クラスターに書き込み続けます。
+    復元は常に**新しいクラスター**を作成します（AWS Backup は既存クラスターを上書きしません）。`restore` は Name タグの付け替えと SSM の endpoint 更新まで行います。Lambda の `dsql:DbConnectAdmin` は Name タグで対象を絞っているため付け替えと同時に新クラスターへ移りますが、**Lambda の `POCKET_DSQL_ENDPOINT` は CloudFormation 管理**のため、`pocket deploy` を実行するまでアプリは旧クラスターに書き込み続けます。
 
     旧クラスターは削除しません（復元結果が期待どおりでなかったときの戻り先）。Name タグを `<tag_name>-replaced-<identifier>` へ退避するだけなので、**明示的に削除するまで課金され続けます**。
 

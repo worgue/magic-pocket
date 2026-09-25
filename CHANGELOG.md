@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### Changed
+- Lambda 実行 role の DB 権限を、deploy 時に AWS から取得した ARN ではなく pocket.toml から決まる
+  値だけで書くようにしました。RDS の managed secret は `secret:rds!cluster-*` を RDS が付ける
+  `aws:rds:primaryDBClusterArn` タグ（元 cluster の ARN）で、DSQL は `cluster/*` を pocket が付ける
+  `Name` タグで絞ります。`password_strategy = "static"` の secret は名前で指定します。どちらも
+  作成時に AWS が乱数を含む ARN を決めるため、これまでは DB を作るまで role の policy が
+  決まりませんでした。あわせて、既定の `aws/secretsmanager` key で暗号化される secret には不要だった
+  `kms:Decrypt` を外しました。次回 deploy で inline policy が書き換わります（権限の範囲は同じです）
+
 ## [0.40.0](https://github.com/worgue/magic-pocket/releases/tag/0.40.0) - 2026-09-24
 
 ### Added
