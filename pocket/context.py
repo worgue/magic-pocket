@@ -516,6 +516,8 @@ class ContainerContext(BaseModel):
     use_efs: bool = False
     permissions_boundary: str | None = None
     iam: ContainerIamContext = ContainerIamContext()
+    # [iam] external_roles。role を作らず既存 role を名前で参照する
+    external_roles: bool = False
     efs_local_mount_path: str = ""
     build: BuildContext = BuildContext()
 
@@ -635,6 +637,7 @@ class ContainerContext(BaseModel):
                 managed_policy_arns=c.iam.managed_policy_arns,
                 inline_policies=c.iam.inline_policies,
             ),
+            external_roles=root.iam.external_roles,
             efs_local_mount_path=efs_local_mount_path,
             build=BuildContext.from_settings(c.build),
         )
@@ -832,6 +835,8 @@ class BackupContext(BaseModel):
     # AWS Backup サービスロールを ensure する際に付与する boundary
     # (sandbox アカウント等、ロール作成に boundary が必須の環境用)
     permissions_boundary: str | None = None
+    # [iam] external_roles。サービスロールを作らず既存 role を名前で参照する
+    external_roles: bool = False
 
     @property
     def declared(self) -> bool:
@@ -869,6 +874,7 @@ class BackupContext(BaseModel):
             cleanup_plan_names=cleanup_plan_names + legacy_plan_names,
             legacy_plan_names=legacy_plan_names,
             permissions_boundary=_permissions_boundary(root),
+            external_roles=root.iam.external_roles,
         )
 
 
@@ -892,6 +898,8 @@ class DsqlContext(BaseModel):
     # AWS Backup サービスロールを ensure する際に付与する boundary
     # (sandbox アカウント等、ロール作成に boundary が必須の環境用)
     permissions_boundary: str | None = None
+    # [iam] external_roles。サービスロールを作らず既存 role を名前で参照する
+    external_roles: bool = False
 
     @classmethod
     def from_settings(cls, dsql: settings.Dsql, root: settings.Settings) -> DsqlContext:
@@ -917,6 +925,7 @@ class DsqlContext(BaseModel):
             ),
             endpoint_secret_store=secrets.store,
             permissions_boundary=_permissions_boundary(root),
+            external_roles=root.iam.external_roles,
         )
 
 
@@ -1072,9 +1081,10 @@ class SchedulerContext(BaseModel):
     schedules: list[ScheduleEntryContext] = []
     role_name: str
     invoked_function_arns: list[str] = []
-    # sqs_scheduler entry が SendMessage する queue の CFN logical name
-    # (例: "SqsmanagementSqsQueue")。scheduler role の policy Resource に使う
-    sqs_queue_logical_names: list[str] = []
+    # sqs_scheduler entry が SendMessage する queue の ARN (${AWS::AccountId} を
+    # 含む Fn::Sub 形式)。scheduler role の policy Resource に使う。queue 名から
+    # 組み立てるのは、role を stack の外で事前に作れるようにするため
+    sqs_queue_arns: list[str] = []
 
     @computed_field
     @property
@@ -1121,14 +1131,23 @@ class SchedulerContext(BaseModel):
             for _key, entry, h_key in entries
             if isinstance(entry, settings.SqsScheduleEntry)
         }
-        sqs_queue_logical_names = sorted(
-            f"{h.capitalize()}SqsQueue" for h in sqs_handlers
+        sqs_queue_arns = sorted(
+            f"arn:aws:sqs:{root.region}:${{AWS::AccountId}}:{sqs.name}"
+            for h in sqs_handlers
+            if h in container_ctx.handlers
+            and (sqs := container_ctx.handlers[h].sqs) is not None
         )
         return cls(
             schedules=schedules,
-            role_name=f"{resource_prefix}{container_name}-scheduler",
+            # external_roles では CFn が持つ既存 role と名前が衝突しないよう
+            # 別名にする (切替時に CFn が旧 role を消す間も新 role が使える)
+            role_name=(
+                f"{resource_prefix}{container_name}-scheduler-role"
+                if root.iam.external_roles
+                else f"{resource_prefix}{container_name}-scheduler"
+            ),
             invoked_function_arns=invoked_function_arns,
-            sqs_queue_logical_names=sqs_queue_logical_names,
+            sqs_queue_arns=sqs_queue_arns,
         )
 
 
@@ -1625,6 +1644,8 @@ class Context(BaseModel):
     cloudfront: dict[str, CloudFrontContext] = {}
     # container 名 → その container stack に配置する scheduler
     scheduler: dict[str, SchedulerContext] = {}
+    # [iam] external_roles。pocket は IAM role を作らず既存 role を参照する
+    external_roles: bool = False
     project_name: str
     stage: str
 
@@ -1819,6 +1840,7 @@ class Context(BaseModel):
             scheduler=scheduler_ctx,
             inbound=inbound,
             inbound_domain=InboundDomainContext.from_settings(s),
+            external_roles=s.iam.external_roles,
             project_name=s.project_name,
             stage=s.stage,
             **svc,

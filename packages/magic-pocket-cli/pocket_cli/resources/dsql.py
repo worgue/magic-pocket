@@ -263,6 +263,7 @@ class Dsql:
             iam_roles.backup_role(
                 self.context.backup_role_name,
                 permissions_boundary=self.context.permissions_boundary,
+                external=self.context.external_roles,
             ),
         )
 

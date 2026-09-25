@@ -833,6 +833,27 @@ class ContainerStack(Stack):
         return count
 
     @property
+    def lambda_role(self) -> iam_roles.RoleSpec:
+        return iam_roles.lambda_role(
+            self.context, rds=self._rds_context, dsql=self._dsql_context
+        )
+
+    @property
+    def scheduler_role(self) -> iam_roles.RoleSpec | None:
+        if not (self._scheduler_context and self._scheduler_context.has_schedules):
+            return None
+        return iam_roles.scheduler_role(
+            self._scheduler_context,
+            permissions_boundary=self.context.permissions_boundary,
+            external=self.context.external_roles,
+        )
+
+    @property
+    def role_specs(self) -> list[iam_roles.RoleSpec]:
+        """この stack の Lambda が使う role (external_roles では事前作成が要る)。"""
+        return [r for r in (self.lambda_role, self.scheduler_role) if r]
+
+    @property
     def yaml(self) -> str:
         rds_info = self._resolve_rds()
         dsql_endpoint, dsql_region = self._resolve_dsql()
@@ -863,17 +884,8 @@ class ContainerStack(Stack):
                 if self._scheduler_context
                 else None
             ),
-            lambda_role=iam_roles.lambda_role(
-                self.context, rds=self._rds_context, dsql=self._dsql_context
-            ),
-            scheduler_role=(
-                iam_roles.scheduler_role(
-                    self._scheduler_context,
-                    permissions_boundary=self.context.permissions_boundary,
-                )
-                if self._scheduler_context
-                else None
-            ),
+            lambda_role=self.lambda_role,
+            scheduler_role=self.scheduler_role,
         )
 
 

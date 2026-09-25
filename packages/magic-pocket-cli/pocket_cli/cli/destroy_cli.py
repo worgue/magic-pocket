@@ -45,6 +45,7 @@ def _create_codebuild_builder(context: Context) -> CodeBuildBuilder | None:
         resource_prefix=resource_prefix,
         state_bucket=f"{resource_prefix}state",
         permissions_boundary=permissions_boundary,
+        external_roles=context.external_roles,
     )
 
 

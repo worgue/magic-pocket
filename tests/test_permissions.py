@@ -452,6 +452,7 @@ def test_action_groups_public_keys_stable():
         "backup",
         "scheduler",
         "tag",
+        "external_roles",
     }
     # core は常時付与群。代表的な Action を含む
     assert "cloudformation:*" in groups["core"]
@@ -459,6 +460,34 @@ def test_action_groups_public_keys_stable():
     # 二層ずれの再発防止対象だった Action も group 経由で参照できる
     assert "route53:ListHostedZones" in groups["cloudfront"]
     assert "cloudfront-keyvaluestore:*" in groups["cloudfront"]
+
+
+def test_external_roles_drops_iam_write():
+    """[iam] external_roles: role を作らないので IAM の書き込みを外し、検査用の
+    読み取りを足す。PassRole / GetRole は残る。"""
+    settings = _build_settings(
+        awscontainer={"dockerfile_path": "Dockerfile", "handlers": {}},
+        iam={"external_roles": True},
+    )
+    actions = compute_actions(settings)
+    for write in ("iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy"):
+        assert write not in actions
+    for read in (
+        "iam:GetRole",
+        "iam:PassRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+    ):
+        assert read in actions
+
+
+def test_managed_roles_keep_iam_write():
+    settings = _build_settings(
+        awscontainer={"dockerfile_path": "Dockerfile", "handlers": {}}
+    )
+    actions = compute_actions(settings)
+    assert "iam:CreateRole" in actions
+    assert "iam:GetRolePolicy" not in actions
 
 
 def test_action_groups_returns_copies():

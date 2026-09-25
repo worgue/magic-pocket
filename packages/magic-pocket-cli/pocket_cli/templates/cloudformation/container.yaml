@@ -2,6 +2,9 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: lambda configuration for webapp
 
 Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  # {% if not lambda_role.external %}
   LambdaRole:
     # This role must be created before the lambda function.
     # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
@@ -10,6 +13,7 @@ Resources:
     # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
     Type: AWS::IAM::Role
     Properties: {{ lambda_role.cfn_properties | tojson }}
+  # {% endif %}
 
   # {% if vpc %}
   LambdaSecurityGroup:
@@ -41,8 +45,7 @@ Resources:
       # {% if handler.reserved_concurrency %}
       ReservedConcurrentExecutions: "{{ handler.reserved_concurrency }}"
       # {% endif %}
-      Role:
-        Fn::GetAtt: LambdaRole.Arn
+      Role: {{ lambda_role.cfn_arn("LambdaRole") | tojson }}
       Code:
         ImageUri:
           Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ ecr_name }}:{{ stage }}"
@@ -358,10 +361,12 @@ Resources:
   # {% endfor %}
 
   # {% if scheduler and scheduler.has_schedules %}
+  # {% if not scheduler_role.external %}
   SchedulerExecutionRole:
     # 中身は pocket_cli/resources/aws/iam_roles.py の scheduler_role
     Type: AWS::IAM::Role
     Properties: {{ scheduler_role.cfn_properties | tojson }}
+  # {% endif %}
 
   # {% for entry in scheduler.schedules %}
   "{{ entry.yaml_key }}Schedule":
@@ -372,7 +377,9 @@ Resources:
       # {% else %}
       - "{{ entry.handler|capitalize }}LambdaFunction"
       # {% endif %}
+      # {% if not scheduler_role.external %}
       - SchedulerExecutionRole
+      # {% endif %}
     Properties:
       Name: "{{ entry.name }}"
       ScheduleExpression: "{{ entry.schedule_expression }}"
@@ -387,8 +394,7 @@ Resources:
         Arn:
           Fn::GetAtt: "{{ entry.handler|capitalize }}LambdaFunction.Arn"
         # {% endif %}
-        RoleArn:
-          Fn::GetAtt: SchedulerExecutionRole.Arn
+        RoleArn: {{ scheduler_role.cfn_arn("SchedulerExecutionRole") | tojson }}
         Input: {{ entry.input_json|tojson }}
   # {% endfor %}
   # {% endif %}

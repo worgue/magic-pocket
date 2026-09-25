@@ -70,7 +70,8 @@ def test_scheduler_invoked_function_arns(use_toml):
     assert any("worker" in arn for arn in arns)
     # sqs_scheduler の handler は Lambda を直接 invoke しないので含まれない
     assert not any("sqsworker" in arn for arn in arns)
-    assert scheduler.sqs_queue_logical_names == ["SqsworkerSqsQueue"]
+    [queue_arn] = scheduler.sqs_queue_arns
+    assert queue_arn.endswith(":${AWS::AccountId}:dev-testprj-pocket-main-sqsworker")
 
 
 def test_lambda_schedule_entry_requires_cron_or_rate():
@@ -279,7 +280,8 @@ def test_sqs_only_scheduler_omits_lambda_invoke_policy(use_toml, tmp_path):
     context = Context.from_toml(stage="dev")
     assert context.scheduler
     assert context.scheduler["main"].invoked_function_arns == []
-    assert context.scheduler["main"].sqs_queue_logical_names == ["SqsworkerSqsQueue"]
+    [queue_arn] = context.scheduler["main"].sqs_queue_arns
+    assert queue_arn.endswith(":${AWS::AccountId}:dev-testprj-pocket-main-sqsworker")
     from pocket_cli.resources.aws.cloudformation import ContainerStack
 
     assert context.container["main"]

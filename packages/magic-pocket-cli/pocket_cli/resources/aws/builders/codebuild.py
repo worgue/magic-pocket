@@ -50,6 +50,7 @@ class CodeBuildBuilder:
         state_bucket: str,
         compute_type: str = "BUILD_GENERAL1_MEDIUM",
         permissions_boundary: str | None = None,
+        external_roles: bool = False,
     ) -> None:
         self.region = region
         self.resource_prefix = resource_prefix
@@ -58,6 +59,8 @@ class CodeBuildBuilder:
         self.permissions_boundary = (
             os.environ.get("CODEBUILD_PERMISSIONS_BOUNDARY") or permissions_boundary
         )
+        # [iam] external_roles。role は利用者が事前に作り、pocket は作成も削除もしない
+        self.external_roles = external_roles
 
         self.codebuild = boto3.client("codebuild", region_name=region)
         self.iam = boto3.client("iam", region_name=region)
@@ -91,7 +94,8 @@ class CodeBuildBuilder:
         role_arn = self._ensure_role(account_id)
         self._ensure_project(platform, role_arn)
         # project の serviceRole を新ロールへ付け替えた後なので、旧名ロールは孤児
-        self._delete_role(self._legacy_role_name)
+        if not self.external_roles:
+            self._delete_role(self._legacy_role_name)
         self._upload_source(dockerfile_path)
 
         build_id = self._start_build(
@@ -106,25 +110,28 @@ class CodeBuildBuilder:
         print("CodeBuild ビルド完了")
 
     def delete(self) -> None:
-        """CodeBuildプロジェクトとIAMロールを削除"""
+        """CodeBuildプロジェクトとIAMロールを削除 (external_roles の role は残す)"""
         self._delete_project()
+        if self.external_roles:
+            return
         self._delete_role(self._role_name)
         self._delete_role(self._legacy_role_name)
 
     # --- IAM ロール ---
 
-    def _ensure_role(self, account_id: str) -> str:
-        return iam_roles.ensure_role(
-            self.iam,
-            iam_roles.codebuild_role(
-                name=self._role_name,
-                region=self.region,
-                account_id=account_id,
-                state_bucket=self.state_bucket,
-                project_name=self._project_name,
-                permissions_boundary=self.permissions_boundary,
-            ),
+    def role_spec(self, account_id: str) -> iam_roles.RoleSpec:
+        return iam_roles.codebuild_role(
+            name=self._role_name,
+            region=self.region,
+            account_id=account_id,
+            state_bucket=self.state_bucket,
+            project_name=self._project_name,
+            permissions_boundary=self.permissions_boundary,
+            external=self.external_roles,
         )
+
+    def _ensure_role(self, account_id: str) -> str:
+        return iam_roles.ensure_role(self.iam, self.role_spec(account_id))
 
     def _delete_role(self, role_name: str) -> None:
         iam_roles.delete_role(self.iam, role_name)

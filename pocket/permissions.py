@@ -142,6 +142,30 @@ _BACKUP_ACTIONS: list[str] = [
     "kms:RetireGrant",
 ]
 
+# [iam] external_roles = true の時。pocket は role を作らず、deploy 前に既存 role
+# を検査する (GetRole / PassRole は core に含まれる)。代わりに core の IAM 書き込み
+# (_IAM_ROLE_WRITE_ACTIONS) を外す
+_EXTERNAL_ROLES_ACTIONS: list[str] = [
+    "iam:GetRolePolicy",
+    "iam:ListAttachedRolePolicies",
+]
+
+# external_roles では不要になる core の IAM 系 (role の作成・更新・削除)
+_IAM_ROLE_WRITE_ACTIONS: frozenset[str] = frozenset(
+    {
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:ListRoleTags",
+        "iam:ListRolePolicies",
+    }
+)
+
 # [scheduler] が設定されている時 (CFn が AWS::Scheduler::Schedule を作成)
 _SCHEDULER_ACTIONS: list[str] = ["scheduler:*"]
 
@@ -285,6 +309,7 @@ def action_groups() -> dict[str, list[str]]:
         "backup": list(_BACKUP_ACTIONS),
         "scheduler": list(_SCHEDULER_ACTIONS),
         "tag": list(_TAG_ACTIONS),
+        "external_roles": list(_EXTERNAL_ROLES_ACTIONS),
     }
 
 
@@ -314,7 +339,10 @@ def compute_actions(settings: Settings) -> list[str]:
         ("backup", _uses_backup(settings)),
         ("scheduler", _has_scheduler(settings)),
         ("tag", _uses_external_vpc(settings)),
+        ("external_roles", settings.iam.external_roles),
     ]
+    # external_roles: role は利用者が事前に作るため IAM の書き込みは要らない
+    excluded = _IAM_ROLE_WRITE_ACTIONS if settings.iam.external_roles else frozenset()
 
     seen: set[str] = set()
     deduped: list[str] = []
@@ -322,6 +350,8 @@ def compute_actions(settings: Settings) -> list[str]:
         if not condition:
             continue
         for action in groups[name]:
+            if action in excluded:
+                continue
             if action not in seen:
                 seen.add(action)
                 deduped.append(action)

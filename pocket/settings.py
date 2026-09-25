@@ -1398,6 +1398,21 @@ class CloudFront(BaseModel):
         return self
 
 
+class Iam(BaseModel):
+    """[iam] — pocket が作る IAM role の扱い (project 共通。stage 上書き可)。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    external_roles: bool = False
+    """true なら pocket は IAM role を作らず、既存の role を名前で参照する。
+
+    role (Lambda 実行 / scheduler / CodeBuild / AWS Backup) は利用者が事前に作る。
+    必要な role 名と policy は `pocket permissions roles` が出力し、deploy は
+    実際の role がそれと一致するかを検査して、足りなければ変更前に止まる。
+    deploy 権限から IAM の書き込み (CreateRole / PutRolePolicy 等) を外せる。
+    """
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1417,6 +1432,7 @@ class Settings(BaseModel):
     s3: S3 | None = None
     cloudfront: dict[str, CloudFront] = {}
     scheduler: Scheduler | None = None
+    iam: Iam = Iam()
 
     @property
     def project_name(self):

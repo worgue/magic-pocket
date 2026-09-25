@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### Added
+- `[iam] external_roles = true` で、pocket が IAM role を作らず、事前に作られた role を名前で参照する
+  モードを追加しました。deploy 権限（CI や開発者のキー）から IAM の書き込みを外したい組織向けです。
+  対象は Lambda 実行 / scheduler / CodeBuild / AWS Backup の 4 種の role です。
+  - `pocket permissions roles --stage <stage>` が、必要な role の名前・信頼ポリシー・managed policy・
+    inline policy を JSON で出力します。CloudFormation の変数は展開済みで、`CreateRole` /
+    `PutRolePolicy` にそのまま渡せます。出力は pocket.toml と account / region だけで決まるため、
+    DB を作る前に最終形の role を用意できます
+  - deploy は何かを変更する前に、実際の role が出力と一致するかを検査し、足りない policy を示して
+    止まります。出力に無い policy が付いていても構いません
+  - `pocket permissions list` は、このモードでは IAM の書き込み（`iam:CreateRole` など）を出さず、
+    検査用の `iam:GetRolePolicy` / `iam:ListAttachedRolePolicies` を足します。`action_groups()` に
+    `external_roles` グループが増えます
+  - 既存の stage を切り替える手順は docs の「AWS 権限 > IAM role を事前に作る」を参照してください。
+    Lambda 実行 role と scheduler role は別の名前になり、切り替えの deploy で CloudFormation が古い
+    role を削除するため、その deploy だけは IAM の書き込み権限が残った状態で実行します
+
 ### Changed
 - Lambda 実行 role の DB 権限を、deploy 時に AWS から取得した ARN ではなく pocket.toml から決まる
   値だけで書くようにしました。RDS の managed secret は `secret:rds!cluster-*` を RDS が付ける
@@ -14,6 +31,9 @@
   作成時に AWS が乱数を含む ARN を決めるため、これまでは DB を作るまで role の policy が
   決まりませんでした。あわせて、既定の `aws/secretsmanager` key で暗号化される secret には不要だった
   `kms:Decrypt` を外しました。次回 deploy で inline policy が書き換わります（権限の範囲は同じです）
+- scheduler role の `sqs:SendMessage` の対象を、`Fn::GetAtt` ではなく queue 名から組み立てた ARN で
+  書くようにしました（同じく role を stack の外で作れるようにするため）。次回 deploy で inline policy
+  が書き換わります（権限の範囲は同じです）
 
 ## [0.40.0](https://github.com/worgue/magic-pocket/releases/tag/0.40.0) - 2026-09-24
 

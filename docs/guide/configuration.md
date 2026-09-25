@@ -15,6 +15,7 @@
 [container.main]      # Lambda設定（全ステージ共通）
 [cloudfront]        # CloudFront設定（全ステージ共通）
 [scheduler]         # EventBridge Scheduler 設定（全ステージ共通）
+[iam]               # IAM role を pocket が作るか（全ステージ共通）
 
 [dev.container.main]  # dev ステージ固有のLambda設定
 [prod.s3]            # prod ステージ固有のS3設定
@@ -2493,3 +2494,18 @@ manage = "send_monthly_invoice"
 ### wsgi handler のウォームアップは非対応
 
 `wsgi_handler` は API Gateway proxy event 形式を期待するため、scheduler が渡す任意 input dict では呼び出せません。Lambda のコールドスタートを抑えたい場合は **Provisioned Concurrency** を利用してください（reserved_concurrency や warmup の handler を別途書くより堅牢です）。
+
+## iam
+
+pocket が IAM role を作るかどうかを設定します。
+
+```toml
+[iam]
+external_roles = true
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `external_roles` | bool | `false` | `true` なら pocket は IAM role（Lambda 実行 / scheduler / CodeBuild / AWS Backup）を作らず、事前に作られた role を名前で参照します。deploy 権限から IAM の書き込みを外せます |
+
+必要な role は `pocket permissions roles` が JSON で出力し、deploy は実際の role がそれと一致するかを最初に検査します。使い方と既存 stage からの切り替え手順は [AWS 権限の「IAM role を事前に作る」](../permissions/aws.md#external-roles) を参照してください。

@@ -370,7 +370,8 @@ def test_scheduler_entries_split_per_container():
     assert sc.role_name == "dev-testprj-pocket-v2-scheduler"
     # template 内の論理参照用に handler はローカル key になる
     assert sc.schedules[0].handler == "worker"
-    assert sc.sqs_queue_logical_names == ["WorkerSqsQueue"]
+    [queue_arn] = sc.sqs_queue_arns
+    assert queue_arn.endswith(":${AWS::AccountId}:dev-testprj-pocket-v2-worker")
 
 
 def test_resolve_container_name_env_and_fallback(monkeypatch):

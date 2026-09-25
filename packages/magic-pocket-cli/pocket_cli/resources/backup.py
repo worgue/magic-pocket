@@ -154,6 +154,7 @@ class Backup:
                 iam_roles.backup_role(
                     self.context.role_name,
                     permissions_boundary=self.context.permissions_boundary,
+                    external=self.context.external_roles,
                 ),
             )
             for plan, arn in targets:
@@ -324,8 +325,11 @@ class Backup:
         データなので残す)。復元等で再び必要になれば ensure_role が作り直す。
 
         0.36 以前の account 共有ロール (forge-pocket-backup-role) は他 stage /
-        project が使っている可能性があるため触らない。
+        project が使っている可能性があるため触らない。external_roles の role は
+        利用者の持ち物なので消さない。
         """
+        if self.context.external_roles:
+            return
         try:
             iam_roles.delete_role(
                 self._iam, self.context.role_name, iam_roles.BACKUP_ROLE_POLICIES

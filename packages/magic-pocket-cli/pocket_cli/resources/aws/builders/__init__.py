@@ -27,6 +27,7 @@ def create_builder(
     resource_prefix: str,
     state_bucket: str,
     permissions_boundary: str | None = None,
+    external_roles: bool = False,
 ) -> Builder:
     backend = build_context.backend
 
@@ -44,6 +45,7 @@ def create_builder(
             state_bucket=state_bucket,
             compute_type=build_context.compute_type,
             permissions_boundary=permissions_boundary,
+            external_roles=external_roles,
         )
 
     if backend == "depot":

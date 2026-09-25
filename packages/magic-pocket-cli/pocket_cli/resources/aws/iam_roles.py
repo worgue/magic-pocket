@@ -8,13 +8,19 @@ service・managed policy・inline policy・boundary) で表す。作成経路は
 - API: CodeBuild role / AWS Backup role。stack を持たないリソースから
   ensure_role / delete_role で作る
 
-inline policy の Resource には CFn の Fn::Sub / Fn::GetAtt が入りうる
-(CFn 経路の role のみ)。
+inline policy の Resource には CFn の Fn::Sub が入りうる (CFn 経路の role のみ)。
+Fn::GetAtt は使わない (role を stack の外で事前に作れるよう、値はどれも
+pocket.toml と account / region だけで決まる)。
+
+[iam] external_roles = true のときは pocket は role を作らない。RoleSpec は
+「利用者が事前に作るべき role」の定義になり、`pocket permissions roles` が
+それを出力し、deploy は verify_role で実際の role と突き合わせる。
 """
 
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -59,6 +65,25 @@ class RoleSpec:
     # rollback も同じ権限で失敗し UPDATE_ROLLBACK_FAILED になる。
     # 既存 stack の文書と一致させる必要がある role だけ False にする
     assume_role_policy_version: bool = True
+    # [iam] external_roles。pocket は作らず、利用者が事前に作った role を使う
+    external: bool = False
+
+    def cfn_arn(self, logical_id: str) -> dict[str, Any]:
+        """テンプレートからこの role の ARN を参照する式。"""
+        if self.external:
+            return _sub(
+                f"arn:${{AWS::Partition}}:iam::${{AWS::AccountId}}:role/{self.name}"
+            )
+        return {"Fn::GetAtt": f"{logical_id}.Arn"}
+
+    def resolved_inline_policies(
+        self, *, region: str, account_id: str
+    ) -> dict[str, dict[str, Any]]:
+        """Fn::Sub を展開した inline policy (IAM に直接書ける形)。"""
+        return {
+            name: resolve_intrinsics(doc, region=region, account_id=account_id)
+            for name, doc in self.inline_policies.items()
+        }
 
     @property
     def assume_role_policy(self) -> dict[str, Any]:
@@ -144,6 +169,16 @@ def lambda_role(
     for policy_name, doc in ctx.iam.inline_policies.items():
         policies[f"{prefix}{policy_name}"] = doc
 
+    if ctx.external_roles:
+        # CFn が持つ既存 role (下の名前) と衝突しないよう別名にする。切替時は
+        # CFn が旧 role を消す間も、事前に作った新 role で Lambda が動き続ける
+        return RoleSpec(
+            name=f"{prefix}{ctx.name}-lambda-role",
+            service="lambda.amazonaws.com",
+            managed_policy_arns=_lambda_managed_policies(ctx),
+            inline_policies=policies,
+            external=True,
+        )
     return RoleSpec(
         name=f"lambda-{ctx.slug}-{ctx.name}-{ctx.namespace}",
         service="lambda.amazonaws.com",
@@ -300,7 +335,10 @@ def _dsql_policy(dsql: DsqlContext) -> dict[str, Any]:
 
 
 def scheduler_role(
-    scheduler: SchedulerContext, *, permissions_boundary: str | None
+    scheduler: SchedulerContext,
+    *,
+    permissions_boundary: str | None,
+    external: bool = False,
 ) -> RoleSpec:
     """EventBridge Scheduler が handler を起動する role (container 単位)。"""
     statements: list[dict[str, Any]] = []
@@ -311,15 +349,9 @@ def scheduler_role(
                 [_sub(arn) for arn in scheduler.invoked_function_arns],
             )
         )
-    if scheduler.sqs_queue_logical_names:
+    if scheduler.sqs_queue_arns:
         statements.append(
-            _allow(
-                ["sqs:SendMessage"],
-                [
-                    {"Fn::GetAtt": f"{name}.Arn"}
-                    for name in scheduler.sqs_queue_logical_names
-                ],
-            )
+            _allow(["sqs:SendMessage"], [_sub(arn) for arn in scheduler.sqs_queue_arns])
         )
     return RoleSpec(
         name=scheduler.role_name,
@@ -328,6 +360,7 @@ def scheduler_role(
         # boundary 強制 account (iam:CreateRole が boundary 付きのみ許可) では
         # Lambda role と同様に boundary が無いと作成できない
         permissions_boundary=permissions_boundary,
+        external=external,
     )
 
 
@@ -342,6 +375,7 @@ def codebuild_role(
     state_bucket: str,
     project_name: str,
     permissions_boundary: str | None,
+    external: bool = False,
 ) -> RoleSpec:
     """CodeBuild で image を build して ECR へ push する role。"""
     return RoleSpec(
@@ -387,10 +421,13 @@ def codebuild_role(
             )
         },
         permissions_boundary=permissions_boundary,
+        external=external,
     )
 
 
-def backup_role(name: str, *, permissions_boundary: str | None) -> RoleSpec:
+def backup_role(
+    name: str, *, permissions_boundary: str | None, external: bool = False
+) -> RoleSpec:
     """AWS Backup のサービスロール (stage 単位)。
 
     AWSBackupDefaultServiceRole は console 初回操作で作られるもので、API しか
@@ -401,6 +438,7 @@ def backup_role(name: str, *, permissions_boundary: str | None) -> RoleSpec:
         service="backup.amazonaws.com",
         managed_policy_arns=BACKUP_ROLE_POLICIES,
         permissions_boundary=permissions_boundary,
+        external=external,
     )
 
 
@@ -408,8 +446,10 @@ def ensure_role(iam_client: IAMClient, spec: RoleSpec) -> str:
     """role を冪等に ensure して ARN を返す。
 
     既存 role はそのまま返す (policy の差分更新はしない)。新規作成時は
-    伝播待ちをしてから返す。
+    伝播待ちをしてから返す。external の role は作らず、検査して ARN を返す。
     """
+    if spec.external:
+        return verify_role(iam_client, spec)
     try:
         return iam_client.get_role(RoleName=spec.name)["Role"]["Arn"]
     except ClientError as e:
@@ -462,3 +502,153 @@ def delete_role(
         raise
     echo.log("Deleted IAM role: %s" % role_name)
     return True
+
+
+# --- external_roles ---
+
+
+class RoleMismatchError(Exception):
+    """external_roles の role が無い、または pocket が必要とする policy と違う。"""
+
+
+_SUB_VARIABLE = re.compile(r"\$\{([^}]+)\}")
+
+
+def resolve_intrinsics(value: Any, *, region: str, account_id: str) -> Any:
+    """policy 文書中の Fn::Sub を展開する。他の組み込み関数は扱わない。"""
+    if isinstance(value, dict):
+        if set(value) == {"Fn::Sub"}:
+            return _SUB_VARIABLE.sub(
+                lambda m: _pseudo_parameter(m.group(1), region, account_id),
+                value["Fn::Sub"],
+            )
+        return {
+            k: resolve_intrinsics(v, region=region, account_id=account_id)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            resolve_intrinsics(v, region=region, account_id=account_id) for v in value
+        ]
+    return value
+
+
+def _pseudo_parameter(name: str, region: str, account_id: str) -> str:
+    values = {
+        "AWS::Region": region,
+        "AWS::AccountId": account_id,
+        "AWS::Partition": "aws",
+    }
+    if name not in values:
+        raise ValueError("展開できない Fn::Sub の変数です: ${%s}" % name)
+    return values[name]
+
+
+def verify_role(
+    iam_client: IAMClient, spec: RoleSpec, *, region: str | None = None
+) -> str:
+    """external の role が spec どおりかを検査し、ARN を返す。
+
+    pocket が必要とする信頼先・managed policy・inline policy がすべて揃って
+    いるかを見る。利用者が足した policy は許容する。inline policy は同名の
+    文書が一致すること (`pocket permissions roles` の出力をそのまま使う前提)。
+    region は inline policy が ${AWS::Region} を含む場合に要る。
+    """
+    role = _get_external_role(iam_client, spec.name)
+    account_id = role["Arn"].split(":")[4]
+    problems: list[str] = []
+    if not _trusts_service(role.get("AssumeRolePolicyDocument", {}), spec.service):
+        problems.append("信頼ポリシーが %s を許可していません" % spec.service)
+    problems += _managed_policy_problems(iam_client, spec)
+    problems += _inline_policy_problems(
+        iam_client,
+        spec,
+        spec.resolved_inline_policies(region=region or "", account_id=account_id),
+    )
+    if problems:
+        raise RoleMismatchError(
+            "IAM role %s が pocket の必要とする権限と一致しません:\n%s\n"
+            "`pocket permissions roles` の出力どおりに更新してから再実行してください。"
+            % (spec.name, "\n".join("  - " + p for p in problems))
+        )
+    return role["Arn"]
+
+
+def _get_external_role(iam_client: IAMClient, name: str) -> dict[str, Any]:
+    try:
+        return dict(iam_client.get_role(RoleName=name)["Role"])
+    except ClientError as e:
+        if e.response["Error"]["Code"] != "NoSuchEntity":
+            raise
+        raise RoleMismatchError(
+            "IAM role %s がありません。[iam] external_roles = true では pocket は"
+            " role を作りません。`pocket permissions roles` の出力どおりに作成して"
+            "から再実行してください。" % name
+        ) from e
+
+
+def _managed_policy_problems(iam_client: IAMClient, spec: RoleSpec) -> list[str]:
+    paginator = iam_client.get_paginator("list_attached_role_policies")
+    attached = {
+        policy["PolicyArn"]
+        for page in paginator.paginate(RoleName=spec.name)
+        for policy in page["AttachedPolicies"]
+    }
+    return [
+        "managed policy %s が付いていません" % arn
+        for arn in spec.managed_policy_arns
+        if arn not in attached
+    ]
+
+
+def _inline_policy_problems(
+    iam_client: IAMClient, spec: RoleSpec, expected: dict[str, dict[str, Any]]
+) -> list[str]:
+    problems: list[str] = []
+    for name, document in expected.items():
+        try:
+            actual = iam_client.get_role_policy(RoleName=spec.name, PolicyName=name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "NoSuchEntity":
+                raise
+            problems.append("inline policy %s がありません" % name)
+            continue
+        if _normalize_policy(actual["PolicyDocument"]) != _normalize_policy(document):
+            problems.append("inline policy %s の内容が違います" % name)
+    return problems
+
+
+def _normalize_policy(value: Any) -> Any:
+    """意味の同じ policy 文書を同じ値にそろえる。
+
+    IAM を扱う道具 (Terraform 等) は要素 1 つの list を値そのものに変えたり、
+    list を並べ替えたりする。IAM の評価ではどれも同じ意味になるため、比較では
+    区別しない。
+    """
+    if isinstance(value, dict):
+        return {k: _normalize_policy(v) for k, v in value.items()}
+    if isinstance(value, list):
+        items = [_normalize_policy(v) for v in value]
+        if len(items) == 1:
+            return items[0]
+        return sorted(items, key=lambda v: json.dumps(v, sort_keys=True))
+    return value
+
+
+def _trusts_service(document: dict[str, Any], service: str) -> bool:
+    statements = document.get("Statement", [])
+    if isinstance(statements, dict):
+        statements = [statements]
+    for statement in statements:
+        if statement.get("Effect") != "Allow":
+            continue
+        principal = statement.get("Principal", {})
+        services = principal.get("Service", []) if isinstance(principal, dict) else []
+        if isinstance(services, str):
+            services = [services]
+        actions = statement.get("Action", [])
+        if isinstance(actions, str):
+            actions = [actions]
+        if service in services and "sts:AssumeRole" in actions:
+            return True
+    return False

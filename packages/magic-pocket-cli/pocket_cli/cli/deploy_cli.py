@@ -12,6 +12,7 @@ from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.builders.context_check import (
     resummarize_world_read_warnings,
 )
+from pocket_cli.resources.aws.stage_roles import verify_stage_roles
 from pocket_cli.resources.aws.state import StateStore, create_state_store
 from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
@@ -230,6 +231,8 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     deploy_hash_message = deploy_hash_report(context)
     if deploy_hash_message:
         echo.info(deploy_hash_message)
+    # [iam] external_roles: 事前に作られた role を、何かを変更する前に検査する
+    verify_stage_roles(context)
     # CodeBuildがソースアップロードにstate bucketを必要とするため、先に作成
     state_store = _create_state_store(context)
     state_store.ensure_bucket()
