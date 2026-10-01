@@ -124,6 +124,19 @@ def test_deploy_hash_cf_function_rendering(use_toml):
         "viewer-response",
     ]
     assert "ResponseHeadersPolicyId" not in behavior
+    # 外した hash は header に載せ、CachePolicy でキャッシュキーに含める
+    # (URI は hash を外した後の値がキーになるため)
+    assert "request.headers['x-pocket-deploy-hash'] = { value: segment };" in yaml
+    assert "delete request.headers['x-pocket-deploy-hash'];" in yaml
+    assert behavior["CachePolicyId"] == {"Ref": "DeployHashCachePolicyStatic"}
+    policy = yaml_lib.safe_load(yaml)["Resources"]["DeployHashCachePolicyStatic"]
+    key_params = policy["Properties"]["CachePolicyConfig"][
+        "ParametersInCacheKeyAndForwardedToOrigin"
+    ]
+    assert key_params["HeadersConfig"] == {
+        "HeaderBehavior": "whitelist",
+        "Headers": ["x-pocket-deploy-hash"],
+    }
 
 
 def test_deploy_hash_cf_function_keeps_custom_hash(use_toml):
@@ -175,6 +188,7 @@ def test_content_hash_no_deploy_hash_function(use_toml):
     stack = CloudFrontStack(cf)
     yaml = stack.yaml
     assert "DeployHashStripFunction" not in yaml
+    assert "DeployHashCachePolicy" not in yaml
     # content_hash も cache-control は viewer-response Function で付ける
     assert "AWS::CloudFront::ResponseHeadersPolicy" not in yaml
     assert "CacheControlFunction" in yaml

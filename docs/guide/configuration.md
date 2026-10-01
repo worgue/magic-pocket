@@ -2257,7 +2257,7 @@ routes = [
 1. pocket がデプロイ時に `git rev-parse --short HEAD` で hash を取得（`DEPLOY_HASH` 環境変数があればそちらを優先）
 2. Lambda 環境変数 `DEPLOY_HASH` に自動注入（deploy_hash route の有無に関係なく、全 container に常に注入されます。下記参照）
 3. CloudFront Function が自動生成され、`/static/{hash}/foo.js` → `/static/foo.js` に変換してオリジンに転送
-4. CloudFront のキャッシュキーはフル URL (hash 込み) なので、デプロイごとにキャッシュが自然に更新される
+4. Function は外した hash をリクエストヘッダ `x-pocket-deploy-hash` に載せ、route 専用の CachePolicy がそれをキャッシュキーに含める。hash が変われば別のキャッシュになるので、デプロイごとにキャッシュが自然に更新される
 5. `versioned_max_age`（デフォルト 1 年）の長期キャッシュ（`cache-control: public, max-age=..., immutable`）が**成功応答（2xx / 304）にだけ**付与される。403 / 404 などのエラー応答には付かないため、エラーがブラウザに長期保存されることはない（`content_hash` も同じ）
 
 !!! info "hash の判定"
@@ -2266,6 +2266,9 @@ routes = [
     - `STATIC_URL` は hash が route の prefix の直後に来る形（`static/{DEPLOY_HASH}/`）にしてください。
     - `DEPLOY_HASH` を git hash の形でない値（`v1.2.3` など）で上書きした場合は、その値だけを追加で外します。この場合、旧い値の URL は deploy 後に 403 になります。
     - route 直下に、名前が 16 進 7〜40 桁だけのディレクトリを置かないでください（hash と区別できません）。
+
+!!! warning "同じ名前のまま中身を変えるファイル"
+    `pocket django deploy` は Lambda を更新した後に static を upload します。その間（通常は数十秒〜数分）に新しい hash の URL で読まれたファイルは、upload 前の内容が新しい hash のキャッシュに入り、ブラウザにも `versioned_max_age` の間残ります。同じ名前のまま中身が変わるファイルでこれを避けたい場合は、先に `pocket django deploystatic --stage <stage>` で static を upload してから deploy してください。
 
 Django 側は settings.py に以下を書くだけです:
 

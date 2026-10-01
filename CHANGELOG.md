@@ -48,12 +48,19 @@
     を ResponseHeadersPolicy で付けていたため、403 / 404 にも付き、ブラウザがエラーを 1 年間・
     再検証なしで保存していました。viewer-response の CloudFront Function で、成功応答
     （2xx / 304）にだけ付けるようにしました
+- `versioning = "deploy_hash"` の route で、deploy して hash が変わっても CloudFront の edge
+  キャッシュが切り替わらず、同じ名前のまま中身が変わったファイルが最大 24 時間古い内容で返り、
+  それがブラウザに新しい hash の URL で残りうる問題を修正しました。CloudFront のキャッシュキーは
+  hash を外した後の URI になるため、すべての hash の URL が 1 つのキャッシュを共有していました。
+  外した hash をリクエストヘッダ `x-pocket-deploy-hash` に載せ、route 専用の CachePolicy
+  （Managed-CachingOptimized と同じ TTL・圧縮設定）でキャッシュキーに含めるようにしました
 
-  次回 deploy で CloudFront の stack が更新されます（ResponseHeadersPolicy を削除し、Function を
-  追加します）。**すでに 403 を保存してしまったブラウザは、この修正では直りません**（キャッシュの
-  消去が必要です。次の deploy で hash が変われば、新しい URL は正しく読めます）。hash を外す対象は
-  route の prefix の直後のセグメントだけになったため、`STATIC_URL` を `static/{DEPLOY_HASH}/` 以外の
-  形（hash が prefix の直後に来ない形）にしている場合は、docs の「hash の判定」を確認してください。
+  次回 deploy で CloudFront の stack が更新されます（ResponseHeadersPolicy を削除し、Function と
+  CachePolicy を追加します）。**すでに 403 を保存してしまったブラウザは、この修正では直りません**
+  （キャッシュの消去が必要です。次の deploy で hash が変われば、新しい URL は正しく読めます）。
+  hash を外す対象は route の prefix の直後のセグメントだけになったため、`STATIC_URL` を
+  `static/{DEPLOY_HASH}/` 以外の形（hash が prefix の直後に来ない形）にしている場合は、docs の
+  「hash の判定」を確認してください。
 
 ## [0.40.0](https://github.com/worgue/magic-pocket/releases/tag/0.40.0) - 2026-09-24
 

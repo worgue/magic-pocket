@@ -440,6 +440,8 @@ class CloudFrontKeysStack(Stack):
 
 # deploy_hash route の URL で hash とみなすセグメントの形 (git の short / full hash)。
 DEPLOY_HASH_PATTERN = "[0-9a-f]{7,40}"
+# strip Function が URI から外した hash を載せるリクエストヘッダ (キャッシュキー用)。
+DEPLOY_HASH_HEADER = "x-pocket-deploy-hash"
 
 
 class CloudFrontStack(Stack):
@@ -643,6 +645,11 @@ class CloudFrontStack(Stack):
 
         `DEPLOY_HASH` を git hash の形でない値で上書きしている場合だけ、その値も外す
         (この場合は deploy のたびに Function が更新される)。
+
+        CloudFront のキャッシュキーは viewer-request で書き換えた後の URI になるため、
+        外した hash は `DEPLOY_HASH_HEADER` に載せ、テンプレート側の CachePolicy で
+        キャッシュキーに含める。こうしないと全 hash の URL が 1 つの edge キャッシュを
+        共有し、deploy しても中身の変わったファイルが古いまま返る。
         """
         codes: dict[str, str] = {}
         deploy_hash = self.context.deploy_hash
@@ -661,6 +668,7 @@ class CloudFrontStack(Stack):
                 continue
             code = template.render(
                 prefix=route.path_pattern.rstrip("*").rstrip("/") + "/",
+                hash_header=DEPLOY_HASH_HEADER,
                 segment_condition=segment_condition,
             )
             code = self._inject_viewer_preludes(code)
@@ -770,6 +778,7 @@ class CloudFrontStack(Stack):
             function_codes=function_codes,
             deploy_hash_function_codes=deploy_hash_function_codes,
             cache_control_function_codes=cache_control_function_codes,
+            deploy_hash_header=DEPLOY_HASH_HEADER,
             api_host_function_code=api_host_function_code,
             host_redirect_function_code=host_redirect_function_code,
             basic_auth_function_code=basic_auth_function_code,

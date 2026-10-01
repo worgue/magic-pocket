@@ -95,6 +95,7 @@ RESOURCE_TYPE_ACTIONS: dict[str, list[str]] = {
         "acm:DescribeCertificate",
         "acm:DeleteCertificate",
     ],
+    "AWS::CloudFront::CachePolicy": ["cloudfront:*"],
     "AWS::CloudFront::Distribution": ["cloudfront:*"],
     "AWS::CloudFront::Function": ["cloudfront:*"],
     "AWS::CloudFront::KeyGroup": ["cloudfront:*"],

@@ -64,6 +64,29 @@ Resources:
         Runtime: cloudfront-js-2.0
   # {% endif %}
   # {% if route.is_deploy_hash %}
+  # Managed-CachingOptimized と同じ設定に、strip Function が載せる hash の header を
+  # キャッシュキーとして足したもの。URI は hash を外した後の値がキーになるため、
+  # これが無いと deploy で hash が変わっても同じ edge キャッシュを読み続ける。
+  DeployHashCachePolicy{{ route.yaml_key }}:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: "{{ slug }}-{{ route.name }}-deploy-hash"
+        Comment: "CachingOptimized + deploy hash in cache key for {{ route.name }}"
+        MinTTL: 1
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - "{{ deploy_hash_header }}"
   DeployHashStripFunction{{ route.yaml_key }}:
     Type: AWS::CloudFront::Function
     Properties:
@@ -150,6 +173,7 @@ Resources:
       - CacheControlFunction{{ route.yaml_key }}
       # {% endif %}
       # {% if route.is_deploy_hash %}
+      - DeployHashCachePolicy{{ route.yaml_key }}
       - DeployHashStripFunction{{ route.yaml_key }}
       # {% endif %}
       # {% endfor %}
@@ -257,7 +281,12 @@ Resources:
         # {% if extra_s3_routes or extra_lambda_routes or managed_asset_files %}
         CacheBehaviors:
           # {% for route in extra_s3_routes %}
+          # {% if route.is_deploy_hash %}
+          - CachePolicyId:
+              Ref: DeployHashCachePolicy{{ route.yaml_key }}
+          # {% else %}
           - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          # {% endif %}
             TargetOriginId: "{{ resource_prefix }}{{ route.name }}"
             ViewerProtocolPolicy: "redirect-to-https"
             PathPattern: "{{ route.path_pattern }}"
