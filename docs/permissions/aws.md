@@ -423,8 +423,16 @@ permissions_boundary = "arn:aws:iam::123456789012:policy/MyBoundaryPolicy"
 
 - **Lambda 実行ロール** — CloudFormation で作成されるロールに `PermissionsBoundary` が設定されます
 - **CodeBuild ロール** — `build.backend = "codebuild"` 使用時、ビルド用ロールにも同じ Boundary が適用されます
+- **AWS Backup / DSQL のサービスロール** — `[backup.*]` などで pocket が API から直接作るロールにも同じ Boundary が適用されます
 
+`pocket.toml` に書く代わりに、環境変数 `POCKET_PERMISSIONS_BOUNDARY_ARN` でも指定できます（環境変数が優先されます）。
 CodeBuild ロールのみ別の Boundary を指定したい場合は、環境変数 `CODEBUILD_PERMISSIONS_BOUNDARY` で上書きできます。
+
+!!! warning "deploy を実行するすべての環境に Boundary を渡してください"
+    deploy 権限が「Boundary 付きのロール作成だけ」を許している account では、Boundary の指定が無い deploy は
+    `iam:CreateRole` の `AccessDenied` で止まります。既存ロールの更新だけの deploy は通るため、pocket の更新で
+    新しいロールが増えたとき（例: 0.37.0 の stage 単位の backup サービスロール）に初めて表に出ます。
+    環境変数で渡している場合は、手元だけでなく CI の deploy job にも同じ環境変数を設定してください。
 
 
 ## メール受信の追加権限

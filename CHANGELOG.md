@@ -139,6 +139,11 @@
    旧 vault に recovery point が残っている間は vault を残し、すべて失効する日付を案内します
    (`--delete-recovery-points` でデータごと削除できます)。
 
+この版以降の最初の deploy は、stage 単位の backup サービスロールを**新規に作成**します。deploy 権限が
+Permissions Boundary 付きのロール作成だけを許している account では、deploy を実行する環境 (CI の
+deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_boundary` の設定が無いと
+`iam:CreateRole` の `AccessDenied` で止まります。
+
 ### Added
 - `pocket cleanup-deprecated` を追加しました。旧バージョンが残した account 単位の共有リソースを、
   どの stage からも参照されていないことを検査した上で削除します (`--dry-run` / `-y` 対応)。
