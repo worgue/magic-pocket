@@ -162,8 +162,10 @@ def test_redirect_prelude_returns_valid_yaml_for_all_function_kinds():
         k
         for k, v in doc["Resources"].items()
         if v["Type"] == "AWS::CloudFront::Function"
+        and not k.startswith("CacheControlFunction")
     }
     # 全 viewer-request Function に prelude が入る
+    # (CacheControlFunction は viewer-response なので対象外)
     for name in funcs:
         fc = doc["Resources"][name]["Properties"]["FunctionCode"]
         body = fc["Fn::Sub"][0] if isinstance(fc, dict) else fc

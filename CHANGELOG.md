@@ -35,6 +35,26 @@
   書くようにしました（同じく role を stack の外で作れるようにするため）。次回 deploy で inline policy
   が書き換わります（権限の範囲は同じです）
 
+### Fixed
+- `versioning = "deploy_hash"` の route で、deploy のたびに数分間、新しい hash の static URL が
+  403 になり、その 403 がブラウザに長期間残る問題を修正しました (KN1670)。原因は 2 つでした。
+  - hash を外す CloudFront Function が**現在の hash だけ**を外していたため、Lambda が新しい hash の
+    URL を出し始めてから Function が切り替わるまでの間（container が複数あると長くなります）と、
+    旧 hash の HTML を開いたままの端末で、存在しないキーを読んでいました。route の prefix 直下の
+    セグメントが git hash の形（小文字 16 進 7〜40 桁）なら、値を問わず外すようにしました。
+    Function は deploy ごとに変わらなくなります。`DEPLOY_HASH` を git hash の形でない値で
+    上書きしている場合は、従来どおりその値を外します
+  - `versioning` route（`content_hash` を含む）の `cache-control: public, max-age=..., immutable`
+    を ResponseHeadersPolicy で付けていたため、403 / 404 にも付き、ブラウザがエラーを 1 年間・
+    再検証なしで保存していました。viewer-response の CloudFront Function で、成功応答
+    （2xx / 304）にだけ付けるようにしました
+
+  次回 deploy で CloudFront の stack が更新されます（ResponseHeadersPolicy を削除し、Function を
+  追加します）。**すでに 403 を保存してしまったブラウザは、この修正では直りません**（キャッシュの
+  消去が必要です。次の deploy で hash が変われば、新しい URL は正しく読めます）。hash を外す対象は
+  route の prefix の直後のセグメントだけになったため、`STATIC_URL` を `static/{DEPLOY_HASH}/` 以外の
+  形（hash が prefix の直後に来ない形）にしている場合は、docs の「hash の判定」を確認してください。
+
 ## [0.40.0](https://github.com/worgue/magic-pocket/releases/tag/0.40.0) - 2026-09-24
 
 ### Added

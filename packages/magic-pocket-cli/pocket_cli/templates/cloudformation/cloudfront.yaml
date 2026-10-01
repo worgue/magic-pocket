@@ -50,16 +50,18 @@ Resources:
         # {% endif %}
   # {% endif %}
   # {% if route.versioning %}
-  ResponseHeadersPolicy{{ route.yaml_key }}:
-    Type: AWS::CloudFront::ResponseHeadersPolicy
+  # cache-control は成功応答だけに付ける。ResponseHeadersPolicy はステータスを問わず
+  # 付けるため、403 にも immutable が付いてブラウザに残る (KN1670)。
+  CacheControlFunction{{ route.yaml_key }}:
+    Type: AWS::CloudFront::Function
     Properties:
-      ResponseHeadersPolicyConfig:
-        Name: "{{ slug }}-{{ route.name }}-headers"
-        CustomHeadersConfig:
-          Items:
-            - Header: "cache-control"
-              Value: "public, max-age={{ route.versioned_max_age }}, immutable"
-              Override: true
+      Name: "{{ slug }}-{{ route.name }}-cache-control"
+      AutoPublish: true
+      FunctionCode: |
+        {{ cache_control_function_codes[route.yaml_key] }}
+      FunctionConfig:
+        Comment: "Set cache-control on successful responses for {{ route.name }}"
+        Runtime: cloudfront-js-2.0
   # {% endif %}
   # {% if route.is_deploy_hash %}
   DeployHashStripFunction{{ route.yaml_key }}:
@@ -145,7 +147,7 @@ Resources:
       - UrlFallbackFunction{{ route.yaml_key }}
       # {% endif %}
       # {% if route.versioning %}
-      - ResponseHeadersPolicy{{ route.yaml_key }}
+      - CacheControlFunction{{ route.yaml_key }}
       # {% endif %}
       # {% if route.is_deploy_hash %}
       - DeployHashStripFunction{{ route.yaml_key }}
@@ -230,20 +232,22 @@ Resources:
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
           TargetOriginId: "{{ resource_prefix }}{{ default_route.name }}"
           ViewerProtocolPolicy: "redirect-to-https"
-          # {% if default_route.is_spa %}
+          # {% if default_route.is_spa or default_route.versioning or basic_auth or has_redirect_from %}
           FunctionAssociations:
+            # {% if default_route.is_spa %}
             - EventType: viewer-request
               FunctionARN:
                 Fn::GetAtt: UrlFallbackFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
-          # {% elif basic_auth or has_redirect_from %}
-          FunctionAssociations:
+            # {% elif basic_auth or has_redirect_from %}
             - EventType: viewer-request
               FunctionARN:
                 Fn::GetAtt: {{ bare_viewer_fn }}.FunctionMetadata.FunctionARN
-          # {% endif %}
-          # {% if default_route.versioning %}
-          ResponseHeadersPolicyId:
-            Ref: ResponseHeadersPolicy{{ default_route.yaml_key }}
+            # {% endif %}
+            # {% if default_route.versioning %}
+            - EventType: viewer-response
+              FunctionARN:
+                Fn::GetAtt: CacheControlFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
+            # {% endif %}
           # {% endif %}
           # {% if default_route.signed and signing_key %}
           TrustedKeyGroups:
@@ -257,27 +261,26 @@ Resources:
             TargetOriginId: "{{ resource_prefix }}{{ route.name }}"
             ViewerProtocolPolicy: "redirect-to-https"
             PathPattern: "{{ route.path_pattern }}"
-            # {% if route.is_spa %}
+            # {% if route.is_spa or route.versioning or basic_auth or has_redirect_from %}
             FunctionAssociations:
+              # {% if route.is_spa %}
               - EventType: viewer-request
                 FunctionARN:
                   Fn::GetAtt: UrlFallbackFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
-            # {% endif %}
-            # {% if route.is_deploy_hash %}
-            FunctionAssociations:
+              # {% elif route.is_deploy_hash %}
               - EventType: viewer-request
                 FunctionARN:
                   Fn::GetAtt: DeployHashStripFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
-            # {% endif %}
-            # {% if not route.is_spa and not route.is_deploy_hash and (basic_auth or has_redirect_from) %}
-            FunctionAssociations:
+              # {% elif basic_auth or has_redirect_from %}
               - EventType: viewer-request
                 FunctionARN:
                   Fn::GetAtt: {{ bare_viewer_fn }}.FunctionMetadata.FunctionARN
-            # {% endif %}
-            # {% if route.versioning %}
-            ResponseHeadersPolicyId:
-              Ref: ResponseHeadersPolicy{{ route.yaml_key }}
+              # {% endif %}
+              # {% if route.versioning %}
+              - EventType: viewer-response
+                FunctionARN:
+                  Fn::GetAtt: CacheControlFunction{{ route.yaml_key }}.FunctionMetadata.FunctionARN
+              # {% endif %}
             # {% endif %}
             # {% if route.signed and signing_key %}
             TrustedKeyGroups:

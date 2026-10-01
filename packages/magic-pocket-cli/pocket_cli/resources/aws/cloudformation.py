@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import re
 import time
 from functools import cached_property
 from typing import TYPE_CHECKING, Any
@@ -436,6 +438,10 @@ class CloudFrontKeysStack(Stack):
         )
 
 
+# deploy_hash route の URL で hash とみなすセグメントの形 (git の short / full hash)。
+DEPLOY_HASH_PATTERN = "[0-9a-f]{7,40}"
+
+
 class CloudFrontStack(Stack):
     context: CloudFrontContext
     template_filename = "cloudfront"
@@ -627,22 +633,58 @@ class CloudFrontStack(Stack):
         return self._reindent(code, 8)
 
     def _build_deploy_hash_function_codes(self) -> dict[str, str]:
-        """deploy_hash route 用の hash prefix strip Function コードを生成する"""
+        """deploy_hash route 用の hash prefix strip Function コードを生成する
+
+        route の prefix 直下の 1 セグメントが git hash の形 (`DEPLOY_HASH_PATTERN`)
+        なら、値を問わず外す。現在の hash だけを外すと、Lambda (新 hash の URL を出す)
+        とこの Function の切り替えがずれる間、および旧 hash の HTML を開いたままの
+        端末で、存在しないキーを読んで 403 になる (KN1670)。S3 のキーは hash に依存
+        しないので、どの hash の URL でも同じオブジェクトを返せる。
+
+        `DEPLOY_HASH` を git hash の形でない値で上書きしている場合だけ、その値も外す
+        (この場合は deploy のたびに Function が更新される)。
+        """
         codes: dict[str, str] = {}
         deploy_hash = self.context.deploy_hash
         if not deploy_hash:
             return codes
+        segment_condition = "/^%s$/.test(segment)" % DEPLOY_HASH_PATTERN
+        if not re.fullmatch(DEPLOY_HASH_PATTERN, deploy_hash):
+            segment_condition += " || segment === %s" % json.dumps(deploy_hash)
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_deploy_hash_strip.js")
         for route in self.context.routes:
             if not route.is_deploy_hash:
                 continue
-            code = (
-                "function handler(event) {\n"
-                "    var request = event.request;\n"
-                '    request.uri = request.uri.replace("/%s/", "/");\n'
-                "    return request;\n"
-                "}" % deploy_hash
+            code = template.render(
+                prefix=route.path_pattern.rstrip("*").rstrip("/") + "/",
+                segment_condition=segment_condition,
             )
             code = self._inject_viewer_preludes(code)
+            codes[route.yaml_key] = self._reindent(code, 8)
+        return codes
+
+    def _build_cache_control_function_codes(self) -> dict[str, str]:
+        """versioning route の cache-control を付ける viewer-response Function コード。
+
+        ResponseHeadersPolicy はステータスを問わずヘッダを付けるため、存在しない
+        キーへの 403 にも immutable が付き、ブラウザがエラーを max-age の間保存して
+        しまう (KN1670)。
+        成功応答 (2xx / 304) だけに付ける。
+        """
+        env = Environment(
+            loader=PackageLoader("pocket_cli"),
+            autoescape=select_autoescape(),
+        )
+        template = env.get_template("cloudformation/cf_function_cache_control.js")
+        codes: dict[str, str] = {}
+        for route in self.context.routes:
+            if not route.versioning:
+                continue
+            code = template.render(max_age=route.versioned_max_age)
             codes[route.yaml_key] = self._reindent(code, 8)
         return codes
 
@@ -704,6 +746,7 @@ class CloudFrontStack(Stack):
         waf_acl_arn = self._resolve_waf_arn()
         function_codes = self._build_function_codes()
         deploy_hash_function_codes = self._build_deploy_hash_function_codes()
+        cache_control_function_codes = self._build_cache_control_function_codes()
         api_host_function_code = ""
         if self.context.has_lambda_route:
             api_host_function_code = self._generate_api_host_function()
@@ -726,6 +769,7 @@ class CloudFrontStack(Stack):
             waf_acl_arn=waf_acl_arn,
             function_codes=function_codes,
             deploy_hash_function_codes=deploy_hash_function_codes,
+            cache_control_function_codes=cache_control_function_codes,
             api_host_function_code=api_host_function_code,
             host_redirect_function_code=host_redirect_function_code,
             basic_auth_function_code=basic_auth_function_code,

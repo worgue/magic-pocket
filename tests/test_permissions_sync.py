@@ -101,7 +101,6 @@ RESOURCE_TYPE_ACTIONS: dict[str, list[str]] = {
     "AWS::CloudFront::KeyValueStore": ["cloudfront:*"],
     "AWS::CloudFront::OriginAccessControl": ["cloudfront:*"],
     "AWS::CloudFront::PublicKey": ["cloudfront:*"],
-    "AWS::CloudFront::ResponseHeadersPolicy": ["cloudfront:*"],
     "AWS::EC2::EIP": ["ec2:*"],
     "AWS::EC2::InternetGateway": ["ec2:*"],
     "AWS::EC2::NatGateway": ["ec2:*"],

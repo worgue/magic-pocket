@@ -2,7 +2,9 @@ import os
 from unittest.mock import patch
 
 import pytest
+import yaml as yaml_lib
 from moto import mock_aws
+from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 
 from pocket.context import Context
 from pocket.settings import CloudFront, Route
@@ -100,20 +102,40 @@ def test_deploy_hash_cf_function_rendering(use_toml):
     with patch.dict(os.environ, {"DEPLOY_HASH": "abc1234"}):
         use_toml("tests/data/toml/cloudfront_deploy_hash.toml")
         context = Context.from_toml(stage="dev")
-    from pocket_cli.resources.aws.cloudformation import CloudFrontStack
-
     cf = context.cloudfront["web"]
     stack = CloudFrontStack(cf)
     stack._resolve_acm_arn = lambda: None
     yaml = stack.yaml
     assert "DeployHashStripFunctionStatic" in yaml
     assert "deploy-hash-strip" in yaml
-    assert "abc1234" in yaml
-    assert 'request.uri.replace("/abc1234/", "/")' in yaml
-    # ResponseHeadersPolicy も存在する
-    assert "ResponseHeadersPolicyStatic" in yaml
-    # versioned ルートの cache-control は public / immutable 付き
-    assert 'Value: "public, max-age=31536000, immutable"' in yaml
+    # git hash の形なら値を問わず外すので、現在の hash は Function に埋め込まない
+    # (deploy のたびに Function が変わらない = 切り替えの窓が無い。KN1670)
+    assert "abc1234" not in yaml
+    assert "var prefix = '/static/';" in yaml
+    assert "if (/^[0-9a-f]{7,40}$/.test(segment)) {" in yaml
+    # cache-control は viewer-response Function が成功応答だけに付ける
+    assert "AWS::CloudFront::ResponseHeadersPolicy" not in yaml
+    assert "CacheControlFunctionStatic" in yaml
+    assert "'public, max-age=31536000, immutable'" in yaml
+    assert "(status >= 200 && status < 300) || status === 304" in yaml
+    behavior = _static_behavior(yaml)
+    assert [a["EventType"] for a in behavior["FunctionAssociations"]] == [
+        "viewer-request",
+        "viewer-response",
+    ]
+    assert "ResponseHeadersPolicyId" not in behavior
+
+
+def test_deploy_hash_cf_function_keeps_custom_hash(use_toml):
+    """DEPLOY_HASH を git hash の形でない値で上書きした場合は、その値も外すこと"""
+    with patch.dict(os.environ, {"DEPLOY_HASH": "v1.2.3"}):
+        use_toml("tests/data/toml/cloudfront_deploy_hash.toml")
+        context = Context.from_toml(stage="dev")
+    stack = CloudFrontStack(context.cloudfront["web"])
+    stack._resolve_acm_arn = lambda: None
+    assert (
+        'if (/^[0-9a-f]{7,40}$/.test(segment) || segment === "v1.2.3") {' in stack.yaml
+    )
 
 
 def test_deploy_hash_storage_backend():
@@ -149,11 +171,18 @@ def test_content_hash_no_deploy_hash_function(use_toml):
     """content_hash route では DeployHashStripFunction は生成されないこと"""
     use_toml("tests/data/toml/cloudfront_spa_build.toml")
     context = Context.from_toml(stage="dev")
-    from pocket_cli.resources.aws.cloudformation import CloudFrontStack
-
     cf = context.cloudfront["web"]
     stack = CloudFrontStack(cf)
     yaml = stack.yaml
     assert "DeployHashStripFunction" not in yaml
-    # content_hash の ResponseHeadersPolicy はある
-    assert "ResponseHeadersPolicy" in yaml
+    # content_hash も cache-control は viewer-response Function で付ける
+    assert "AWS::CloudFront::ResponseHeadersPolicy" not in yaml
+    assert "CacheControlFunction" in yaml
+
+
+def _static_behavior(yaml: str) -> dict:
+    template = yaml_lib.safe_load(yaml)
+    config = template["Resources"]["CloudFrontDistribution"]["Properties"][
+        "DistributionConfig"
+    ]
+    return next(b for b in config["CacheBehaviors"] if b["PathPattern"] == "/static/*")
