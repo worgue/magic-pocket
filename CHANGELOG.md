@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.41.0](https://github.com/worgue/magic-pocket/releases/tag/0.41.0) - 2026-10-01
+
 ### Added
 - `[iam] external_roles = true` で、pocket が IAM role を作らず、事前に作られた role を名前で参照する
   モードを追加しました。deploy 権限（CI や開発者のキー）から IAM の書き込みを外したい組織向けです。
