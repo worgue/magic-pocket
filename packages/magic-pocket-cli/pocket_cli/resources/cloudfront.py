@@ -279,9 +279,18 @@ class CloudFront:
             "managed_assets: %d ファイルをアップロードしました" % len(uploaded_keys)
         )
 
-    def upload(self, *, skip_build: bool = False):
+    def upload(
+        self, *, skip_build: bool = False, routes: list[RouteContext] | None = None
+    ):
+        """uploadable な route を build して S3 へ同期する。
+
+        routes を渡すとその route だけを対象にする (deploy が versioning route を
+        Lambda 更新より先に upload するため)。
+        """
+        if routes is None:
+            routes = self.context.uploadable_routes
         changed_routes: list[RouteContext] = []
-        for route in self.context.uploadable_routes:
+        for route in routes:
             if route.build_cmd and not skip_build:
                 echo.info("ビルド実行: %s" % route.build_cmd)
                 try:

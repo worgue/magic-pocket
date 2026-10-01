@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+### Changed
+- `pocket django deploy` / `promote` が、static を Lambda の更新より**先に** upload するように
+  なりました (KN1676)。これまでは Lambda の更新の後だったため、その間に新しい URL で読まれた
+  ファイルは upload 前の内容（新規ファイルなら 403）が返り、`versioning` route ではそれが
+  ブラウザに `versioned_max_age` の間残りえました。`pocket deploy` が upload する `versioning`
+  route（`build` / `upload_dir`）も同じ順序になります。
+  - 「deploystatic?」の確認は image の build の後、Lambda の更新の前に出ます。collectstatic が
+    失敗した場合、Lambda は更新されません
+  - 初回 deploy（bucket や CloudFront が未作成）と、SPA など `versioning` の無い route は
+    従来どおり Lambda の更新の後に upload します
+  - `publish = "command"` の場合は deploy が static を扱わないので、`pocket django deploystatic`
+    を deploy より先に実行してください
+
 ### Fixed
 - `is_default = true` の S3 route に `versioning = "deploy_hash"` を付けても、hash を外す
   CloudFront Function が DefaultCacheBehavior に付かず、`/<hash>/...` の URL が 403 になっていた

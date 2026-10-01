@@ -74,11 +74,14 @@ def test_flag_is_threaded_to_post_deploy(command_name, monkeypatch):
     """CLI から渡した --skip-migrate が _django_post_deploy まで届くこと。"""
     seen: dict[str, object] = {}
 
-    def fake_post_deploy(stage, *, yes, openpath, skip_migrate=False):
+    def fake_post_deploy(
+        stage, *, yes, openpath, skip_migrate=False, static_handled=False
+    ):
         seen["skip_migrate"] = skip_migrate
 
     monkeypatch.setattr(django_cli, "_django_post_deploy", fake_post_deploy)
-    monkeypatch.setattr(django_cli.click.Context, "invoke", lambda self, *a, **k: None)
+    monkeypatch.setattr(django_cli, "run_deploy", lambda *a, **k: None)
+    monkeypatch.setattr(django_cli, "run_promote", lambda *a, **k: None)
 
     command = django_cli.django.commands[command_name]
     callback = command.callback

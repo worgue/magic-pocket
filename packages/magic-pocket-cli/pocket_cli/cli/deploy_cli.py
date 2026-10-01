@@ -1,5 +1,6 @@
 import inspect
 import webbrowser
+from collections.abc import Callable
 
 import click
 
@@ -113,15 +114,53 @@ def deploy_init_resources(context: Context, *, state_bucket: str = ""):
         resource.deploy_init()
 
 
-def deploy_frontend(context: Context, *, skip_build: bool = False):
+def deploy_frontend(
+    context: Context,
+    *,
+    skip_build: bool = False,
+    exclude: frozenset[tuple[str, str]] = frozenset(),
+):
+    """uploadable な route を upload する。
+
+    exclude は upload 済みの (cloudfront, route) で、対象から外す。
+    """
     for _name, cf_ctx in context.cloudfront.items():
-        cf = CloudFront(cf_ctx)
-        if not cf_ctx.uploadable_routes:
+        routes = [
+            r for r in cf_ctx.uploadable_routes if (cf_ctx.name, r.name) not in exclude
+        ]
+        if not routes:
             continue
+        cf = CloudFront(cf_ctx)
         if cf.status == "NOEXIST":
             echo.warning("CloudFront '%s' が未作成です。スキップします。" % cf_ctx.name)
             continue
-        cf.upload(skip_build=skip_build)
+        cf.upload(skip_build=skip_build, routes=routes)
+
+
+def deploy_versioned_frontend(context: Context) -> frozenset[tuple[str, str]]:
+    """versioning route を Lambda 更新より先に upload する。
+
+    Lambda が新しい版の URL を出し始めた後に upload すると、その間に読まれた
+    ファイルは upload 前の内容 (新規ファイルなら 403) が新しい URL のキャッシュに入り、
+    ブラウザに versioned_max_age の間残る (KN1676)。versioning route の URL は版ごとに
+    変わるので、先に upload しても稼働中の版の表示は壊れない。
+
+    SPA など versioning の無い route は対象外 (HTML が Lambda より先に切り替わる)。
+    CloudFront が未作成 (初回 deploy) の場合は upload せず、deploy_frontend に任せる。
+    戻り値は upload した (cloudfront, route) で、deploy_frontend の exclude に渡す。
+    """
+    uploaded: set[tuple[str, str]] = set()
+    for _name, cf_ctx in context.cloudfront.items():
+        routes = [r for r in cf_ctx.uploadable_routes if r.versioning]
+        if not routes:
+            continue
+        cf = CloudFront(cf_ctx)
+        if cf.status == "NOEXIST":
+            continue
+        echo.log("versioning route を Lambda 更新より先に upload します...")
+        cf.upload(routes=routes)
+        uploaded.update((cf_ctx.name, r.name) for r in routes)
+    return frozenset(uploaded)
 
 
 def upload_managed_assets(context: Context):
@@ -216,11 +255,20 @@ def build_image(context: Context, *, tag: str) -> list[str]:
     return targets
 
 
-def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
+def _deploy_pipeline(
+    context: Context,
+    *,
+    openpath=None,
+    skip_frontend=False,
+    before_lambda_update: Callable[[], None] | None = None,
+):
     """deploy / promote 共通のパイプライン本体。
 
     promote 時は各 container の promote_commit_hash が設定済みで、
     deploy_init 内の image build が retag に置き換わる以外は deploy と同一。
+
+    before_lambda_update は image build の後・Lambda 更新 (deploy_resources) の前に
+    呼ばれる。`pocket django deploy` が static を先に upload するのに使う。
     """
     # DEPLOY_HASH の解決結果を deploy 時に 1 回可視化する (env 伝播漏れで
     # 黙って git short hash に落ちる footgun の早期発見用)。
@@ -239,6 +287,12 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     state_bucket = state_store.bucket_name
     check_removed_inbound(context, state_store)
     deploy_init_resources(context, state_bucket=state_bucket)
+    # static は Lambda が新しい版の URL を出し始める前に upload する (KN1676)
+    uploaded_routes: frozenset[tuple[str, str]] = frozenset()
+    if not skip_frontend:
+        uploaded_routes = deploy_versioned_frontend(context)
+    if before_lambda_update is not None:
+        before_lambda_update()
     deploy_resources(context, state_bucket=state_bucket)
     cleanup_unused_inbound_domains(context, state_store)
     # リリース跨ぎ移行の掃除フェーズ (旧配置の削除は deploy 成功後にしか
@@ -246,7 +300,7 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
     migrations.run_deploy_cleanup(context)
     upload_managed_assets(context)
     if not skip_frontend:
-        deploy_frontend(context)
+        deploy_frontend(context, exclude=uploaded_routes)
     # build 時の other-read 警告はログに埋もれて気付けないため最後に再掲する
     resummarize_world_read_warnings()
     # DLQ アラートの email 購読が未確認のままだと通知が届かないため、
@@ -272,12 +326,29 @@ def _deploy_pipeline(context: Context, *, openpath=None, skip_frontend=False):
 )
 @removed_skip_check_existing
 def deploy(stage: str, openpath, skip_frontend, yes):
+    run_deploy(stage, openpath=openpath, skip_frontend=skip_frontend, yes=yes)
+
+
+def run_deploy(
+    stage: str,
+    *,
+    openpath=None,
+    skip_frontend: bool = False,
+    yes: bool = False,
+    before_lambda_update: Callable[[], None] | None = None,
+):
+    """`pocket deploy` の本体。`pocket django deploy` からも呼ばれる。"""
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
     interaction.set_assume_yes(yes)
     check_aws_credentials()
     context = Context.from_toml(stage=stage)
-    _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
+    _deploy_pipeline(
+        context,
+        openpath=openpath,
+        skip_frontend=skip_frontend,
+        before_lambda_update=before_lambda_update,
+    )
 
 
 @click.command()
@@ -295,6 +366,21 @@ def promote(stage: str, commit_hash, openpath, skip_frontend, yes):
     `pocket build` で push した image に :<stage> タグを移し、
     インフラ/Lambda を更新する。image build は行わない (build once の昇格)。
     """
+    run_promote(
+        stage, commit_hash, openpath=openpath, skip_frontend=skip_frontend, yes=yes
+    )
+
+
+def run_promote(
+    stage: str,
+    commit_hash: str,
+    *,
+    openpath=None,
+    skip_frontend: bool = False,
+    yes: bool = False,
+    before_lambda_update: Callable[[], None] | None = None,
+):
+    """`pocket promote` の本体。`pocket django promote` からも呼ばれる。"""
     from pocket_cli.cli.aws_auth import check_aws_credentials
 
     interaction.set_assume_yes(yes)
@@ -304,7 +390,12 @@ def promote(stage: str, commit_hash, openpath, skip_frontend, yes):
         raise click.ClickException("container がこの stage に設定されていません。")
     for c_ctx in context.container.values():
         c_ctx.promote_commit_hash = commit_hash
-    _deploy_pipeline(context, openpath=openpath, skip_frontend=skip_frontend)
+    _deploy_pipeline(
+        context,
+        openpath=openpath,
+        skip_frontend=skip_frontend,
+        before_lambda_update=before_lambda_update,
+    )
 
 
 def _get_deploy_url(context: Context) -> str | None:

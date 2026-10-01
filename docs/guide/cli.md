@@ -294,7 +294,7 @@ pocket django deploy --stage=dev
 
 !!! note "`pocket deploy` との違い"
     `pocket deploy` はインフラのデプロイのみ行います。
-    `pocket django deploy` はインフラデプロイに加え、ローカルでの `collectstatic` + S3アップロード、Lambda上での `migrate` も対話形式で実行します。
+    `pocket django deploy` はインフラデプロイに加え、ローカルでの `collectstatic` + S3アップロード、Lambda上での `migrate` も対話形式で実行します。static の upload は Lambda の更新より先に行います（初回 deploy を除く）。
 
 !!! tip "DB に繋がらない状態でデプロイしたいとき"
     `migrate` は Lambda 経由で実際に DB へ接続するため、DB が停止・制限中だと

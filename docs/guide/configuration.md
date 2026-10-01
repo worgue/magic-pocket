@@ -2267,22 +2267,12 @@ routes = [
     - `DEPLOY_HASH` を git hash の形でない値（`v1.2.3` など）で上書きした場合は、その値だけを追加で外します。この場合、旧い値の URL は deploy 後に 403 になります。
     - route 直下に、名前が 16 進 7〜40 桁だけのディレクトリを置かないでください（hash と区別できません）。
 
-!!! warning "同じ名前のまま中身を変えるファイル"
-    `pocket django deploy` は Lambda を更新した後に static を upload します。その間（通常は数十秒〜数分）に新しい hash の URL で読まれたファイルは、upload 前の内容が新しい hash のキャッシュに入り、ブラウザにも `versioned_max_age` の間残ります。同じ名前のまま中身が変わるファイルでこれを避けたい場合は、先に `pocket django deploystatic --stage <stage>` で static を upload してから deploy してください。
+!!! info "upload の順序"
+    `pocket django deploy` / `promote` は、image の build の後・Lambda の更新の前に static を upload します（pocket が upload する `versioning` route も同じです）。Lambda が新しい hash の URL を出し始める時点で、S3 には新しい内容が揃っています。逆の順序だと、その間に読まれたファイルは upload 前の内容が新しい hash のキャッシュに入り、ブラウザにも `versioned_max_age` の間残ります。
 
-Django 側は settings.py に以下を書くだけです:
-
-```python
-DEPLOY_HASH = os.environ.get("DEPLOY_HASH", "dev")
-STATIC_URL = f"static/{DEPLOY_HASH}/"
-
-from pocket.django.utils import get_storages
-STORAGES = get_storages()
-```
-
-`get_storages()` は deploy_hash route を検出し、Lambda 上では自動的に `StaticFilesStorage` を選択します（`STATIC_URL` のパスがそのまま `{% static %}` タグの出力になります）。`deploystatic` 時は S3 backend が使われるため、アップロードは正常に動作します。
-
-S3 へのアップロードは hash prefix なし（`/static/foo.js`）のまま行います。`collectstatic` は通常の `StaticFilesStorage` で OK です（`manifest = true` は不要）。
+    - 初回 deploy（bucket や CloudFront が未作成）だけは、従来どおり Lambda の更新の後に upload します。
+    - upload から Lambda の更新までの間、稼働中の版（旧 hash の URL）でまだキャッシュされていないファイルは、新しい内容で返ります。旧 hash の URL は deploy が終われば使われなくなります。
+    - `publish = "command"` で static を deploy から切り離している場合は、同じ理由で `pocket django deploystatic` を deploy より先に実行してください。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 

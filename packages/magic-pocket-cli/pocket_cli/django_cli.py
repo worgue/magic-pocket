@@ -16,8 +16,10 @@ from pocket.django.utils import get_storages, resolve_django_container
 from pocket.utils import echo
 from pocket_cli.cli import interaction
 from pocket_cli.cli.build_cli import build
+from pocket_cli.cli.deploy_cli import run_deploy, run_promote
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
 from pocket_cli.resources.container import Container
+from pocket_cli.resources.s3 import S3
 
 
 @click.group()
@@ -92,22 +94,64 @@ def _update_dotenv(jinja2_env: Environment):
 )
 @removed_skip_check_existing
 def deploy(stage: str, openpath, yes, skip_migrate):
-    from pocket_cli.cli.deploy_cli import deploy as pocket_deploy
-
     # pocket deploy を実行（インフラ + SPA フロントエンド）
-    ctx = click.Context(pocket_deploy)
-    ctx.invoke(
-        pocket_deploy,
-        stage=stage,
+    static_handled: list[bool] = []
+    run_deploy(
+        stage,
         openpath=None,
         skip_frontend=False,
         yes=yes,
+        before_lambda_update=lambda: static_handled.append(
+            _deploystatic_before_lambda_update(stage)
+        ),
     )
-    _django_post_deploy(stage, yes=yes, openpath=openpath, skip_migrate=skip_migrate)
+    _django_post_deploy(
+        stage,
+        yes=yes,
+        openpath=openpath,
+        skip_migrate=skip_migrate,
+        static_handled=any(static_handled),
+    )
 
 
-def _django_post_deploy(stage: str, *, yes: bool, openpath, skip_migrate: bool = False):
+def _deploystatic_before_lambda_update(stage: str) -> bool:
+    """static を Lambda 更新より先に upload する。deploystatic を済ませたら True。
+
+    Lambda が新しい版の URL を出し始めた後に upload すると、その間に読まれた
+    ファイルは upload 前の内容が新しい URL のキャッシュに入り、ブラウザに長期間残る
+    (KN1676)。collectstatic の失敗も Lambda を更新する前に分かる。
+
+    bucket が未作成 (初回 deploy) の場合と、staticfiles が S3 でない場合は False を
+    返し、従来どおり deploy 後の `_django_post_deploy` に任せる。確認に No と
+    答えた場合も True を返す (deploy 後にもう一度聞かない)。
+    """
+    context = Context.from_toml(stage=stage)
+    if _staticfiles_publish_mode(context) == "command":
+        return False
+    c = resolve_django_container(context)
+    storage = c.django.storages.get("staticfiles") if c and c.django else None
+    if not storage or storage.store != "s3":
+        return False
+    if not context.s3 or not S3(context.s3).exists():
+        return False
+    if interaction.confirm("deploystatic?", default=True):
+        collectstatic_locally(stage, link=_staticfiles_link(context))
+        upload_collected_staticfiles(stage)
+    return True
+
+
+def _django_post_deploy(
+    stage: str,
+    *,
+    yes: bool,
+    openpath,
+    skip_migrate: bool = False,
+    static_handled: bool = False,
+):
     """deploy / promote 共通の Django 固有後処理 (collectstatic + migrate + URL)。
+
+    static_handled=True は、Lambda 更新の前に deploystatic を済ませた
+    (`_deploystatic_before_lambda_update`) ことを表し、ここでは繰り返さない。
 
     skip_migrate=True なら migrate は確認ごと省く。`-y` は「聞かれたことに全部
     yes」の意味を保ちたいので、非対話で migrate を外す手段はフラグ側に置く
@@ -116,7 +160,9 @@ def _django_post_deploy(stage: str, *, yes: bool, openpath, skip_migrate: bool =
     if yes:
         interaction.set_assume_yes(True)
     context = Context.from_toml(stage=stage)
-    if _staticfiles_publish_mode(context) == "command":
+    if static_handled:
+        pass
+    elif _staticfiles_publish_mode(context) == "command":
         echo.info(
             'staticfiles is publish = "command": skipping deploystatic. '
             "Publish with `pocket django deploystatic --stage %s`." % stage
@@ -163,18 +209,24 @@ def promote(stage: str, commit_hash, openpath, yes, skip_migrate):
     を更新する。image build は行わない (build once の昇格)。静的アセットは deploy 時
     と同様にローカルでビルドして upload する。
     """
-    from pocket_cli.cli.deploy_cli import promote as pocket_promote
-
-    ctx = click.Context(pocket_promote)
-    ctx.invoke(
-        pocket_promote,
-        stage=stage,
-        commit_hash=commit_hash,
+    static_handled: list[bool] = []
+    run_promote(
+        stage,
+        commit_hash,
         openpath=None,
         skip_frontend=False,
         yes=yes,
+        before_lambda_update=lambda: static_handled.append(
+            _deploystatic_before_lambda_update(stage)
+        ),
     )
-    _django_post_deploy(stage, yes=yes, openpath=openpath, skip_migrate=skip_migrate)
+    _django_post_deploy(
+        stage,
+        yes=yes,
+        openpath=openpath,
+        skip_migrate=skip_migrate,
+        static_handled=any(static_handled),
+    )
 
 
 # 旧コマンドは同じ Click command の別名として維持する。
