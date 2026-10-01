@@ -6,7 +6,7 @@ import yaml as yaml_lib
 from moto import mock_aws
 from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 
-from pocket.context import Context
+from pocket.context import CloudFrontContext, Context, RouteContext
 from pocket.settings import CloudFront, Route
 
 
@@ -192,6 +192,54 @@ def test_content_hash_no_deploy_hash_function(use_toml):
     # content_hash も cache-control は viewer-response Function で付ける
     assert "AWS::CloudFront::ResponseHeadersPolicy" not in yaml
     assert "CacheControlFunction" in yaml
+
+
+def test_deploy_hash_default_route_gets_strip_function():
+    """is_default の route が deploy_hash でも、hash を外す Function と
+    CachePolicy が DefaultCacheBehavior に付くこと (KN1677)"""
+    cf = CloudFrontContext(
+        name="web",
+        region="ap-northeast-1",
+        stage="dev",
+        slug="dev-testprj-web",
+        resource_prefix="dev-testprj-",
+        bucket_name="dev-testprj-bucket",
+        s3_region="ap-northeast-1",
+        routes=[
+            RouteContext(
+                is_default=True, versioning="deploy_hash", origin_path="/assets"
+            )
+        ],
+        deploy_hash="abc1234",
+    )
+    stack = CloudFrontStack(cf)
+    stack._resolve_acm_arn = lambda: None
+    template = yaml_lib.safe_load(stack.yaml)
+    key = cf.routes[0].yaml_key
+    behavior = template["Resources"]["CloudFrontDistribution"]["Properties"][
+        "DistributionConfig"
+    ]["DefaultCacheBehavior"]
+    assert behavior["CachePolicyId"] == {"Ref": "DeployHashCachePolicy" + key}
+    assert behavior["FunctionAssociations"] == [
+        {
+            "EventType": "viewer-request",
+            "FunctionARN": {
+                "Fn::GetAtt": "DeployHashStripFunction%s.FunctionMetadata.FunctionARN"
+                % key
+            },
+        },
+        {
+            "EventType": "viewer-response",
+            "FunctionARN": {
+                "Fn::GetAtt": "CacheControlFunction%s.FunctionMetadata.FunctionARN"
+                % key
+            },
+        },
+    ]
+    code = template["Resources"]["DeployHashStripFunction" + key]["Properties"][
+        "FunctionCode"
+    ]
+    assert "var prefix = '/';" in code
 
 
 def _static_behavior(yaml: str) -> dict:

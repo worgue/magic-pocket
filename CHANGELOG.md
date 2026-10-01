@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- `is_default = true` の S3 route に `versioning = "deploy_hash"` を付けても、hash を外す
+  CloudFront Function が DefaultCacheBehavior に付かず、`/<hash>/...` の URL が 403 になっていた
+  のを修正しました。`path_pattern` 付きの route と同じく、Function と専用の CachePolicy を付けます
+
 ## [0.41.0](https://github.com/worgue/magic-pocket/releases/tag/0.41.0) - 2026-10-01
 
 ### Added

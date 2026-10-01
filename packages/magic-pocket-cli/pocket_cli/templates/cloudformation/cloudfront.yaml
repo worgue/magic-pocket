@@ -253,7 +253,12 @@ Resources:
             - DELETE
         # {% else %}
         DefaultCacheBehavior:
+          # {% if default_route.is_deploy_hash %}
+          CachePolicyId:
+            Ref: DeployHashCachePolicy{{ default_route.yaml_key }}
+          # {% else %}
           CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          # {% endif %}
           TargetOriginId: "{{ resource_prefix }}{{ default_route.name }}"
           ViewerProtocolPolicy: "redirect-to-https"
           # {% if default_route.is_spa or default_route.versioning or basic_auth or has_redirect_from %}
@@ -262,6 +267,10 @@ Resources:
             - EventType: viewer-request
               FunctionARN:
                 Fn::GetAtt: UrlFallbackFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
+            # {% elif default_route.is_deploy_hash %}
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt: DeployHashStripFunction{{ default_route.yaml_key }}.FunctionMetadata.FunctionARN
             # {% elif basic_auth or has_redirect_from %}
             - EventType: viewer-request
               FunctionARN:
