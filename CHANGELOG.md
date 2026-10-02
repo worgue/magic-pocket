@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.42.0](https://github.com/worgue/magic-pocket/releases/tag/0.42.0) - 2026-10-02
+
 ### Added
 - `versioning = "deploy_hash"` の route を使う staticfiles で、`STATIC_URL` が
   `<route の prefix>{DEPLOY_HASH}/`（例: `static/{DEPLOY_HASH}/`）の形でなければエラーにする
