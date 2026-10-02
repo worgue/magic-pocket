@@ -391,8 +391,22 @@ def collectstatic_locally(stage: str, *, link: bool = False):
         args.append("--link")
     cmd = _build_python_command(args)
     project_dir = _get_project_dir(stage)
-    run(cmd, check=True, cwd=project_dir)  # noqa: S603 shell=False + 制御された引数
+    run(cmd, check=True, cwd=project_dir, env=_collectstatic_env(stage))  # noqa: S603 shell=False + 制御された引数
     clear_staticfiles_override_env()
+
+
+def _collectstatic_env(stage: str) -> dict[str, str]:
+    """collectstatic の subprocess に渡す環境変数。
+
+    Lambda に注入するのと同じ DEPLOY_HASH を渡し、settings.py の STATIC_URL を
+    deploy 後と同じ値にする。pocket が登録する system check (STATIC_URL の形の
+    検査、KN1688) が Lambda の更新前の collectstatic で効くようにするため。
+    """
+    env = dict(os.environ)
+    c = resolve_django_container(Context.from_toml(stage=stage))
+    if c and c.envs.get("DEPLOY_HASH"):
+        env["DEPLOY_HASH"] = c.envs["DEPLOY_HASH"]
+    return env
 
 
 @django.command()

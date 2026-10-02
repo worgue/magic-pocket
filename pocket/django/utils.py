@@ -10,6 +10,7 @@ from ..context import Context
 from ..general_context import GeneralContext
 from ..runtime import get_context
 from ..utils import echo
+from .checks import register_deploy_hash_static_check
 from .db_url import parse_database_url_credentials
 
 
@@ -178,6 +179,10 @@ def get_storages(*, stage: str | None = None) -> dict:
     django_context = _resolve_storage_django_context(general_context, context)
     storages = {}
     for key, storage in django_context.storages.items():
+        if key == "staticfiles" and storage.deploy_hash_prefix:
+            # STATIC_URL は settings.py で get_storages() の後に確定しうるので、
+            # ここでは検査せず system check として登録する
+            register_deploy_hash_static_check(storage.deploy_hash_prefix)
         if key == "staticfiles" and os.environ.get(
             "POCKET_STATICFILES_BACKEND_OVERRIDE"
         ):

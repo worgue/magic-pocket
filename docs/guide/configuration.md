@@ -2263,7 +2263,7 @@ routes = [
 !!! info "hash の判定"
     Function は、route の prefix 直下の 1 セグメント（`/static/*` なら `/static/` の直後）が git hash の形（小文字 16 進 7〜40 桁）なら、**値を問わず**外します。S3 のキーは hash に依存しないため、deploy の途中（Lambda と CloudFront の切り替えがずれる間）や、旧 hash の HTML を開いたままの端末からのリクエストも、同じオブジェクトを返せます。
 
-    - `STATIC_URL` は hash が route の prefix の直後に来る形（`static/{DEPLOY_HASH}/`）にしてください。
+    - `STATIC_URL` は hash が route の prefix の直後に来る形（`static/{DEPLOY_HASH}/`）にしてください。形が違うと（`static/v2/{DEPLOY_HASH}/` や hash を含まない `static/`）、Django の system check がエラー `pocket.E001` を出します。`collectstatic` / `runserver` / `check` で実行され、`pocket django deploy` は Lambda の更新前の collectstatic で止まります（`DEPLOY_HASH` 未設定のローカル開発では検査しません）。
     - `DEPLOY_HASH` を git hash の形でない値（`v1.2.3` など）で上書きした場合は、その値だけを追加で外します。この場合、旧い値の URL は deploy 後に 403 になります。
     - route 直下に、名前が 16 進 7〜40 桁だけのディレクトリを置かないでください（hash と区別できません）。
 

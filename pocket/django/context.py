@@ -22,6 +22,8 @@ class DjangoStorageContext(BaseModel):
     distribution: str | None = None
     route: str | None = None
     deploy_hash: bool = False
+    # deploy_hash route の prefix (`/static/*` → `/static/`)。STATIC_URL の検査用
+    deploy_hash_prefix: str | None = None
     publish: settings.PublishMode = "deploy"
     link: bool = False
 
@@ -80,12 +82,17 @@ class DjangoStorageContext(BaseModel):
                     )
         # route の versioning が deploy_hash かどうかを判定
         is_deploy_hash = False
+        deploy_hash_prefix = None
         if storage.distribution and storage.route and cloudfront_distributions:
             cf = cloudfront_distributions.get(storage.distribution)
             if cf:
                 for r in cf.routes:
                     if r.ref == storage.route and r.versioning == "deploy_hash":
                         is_deploy_hash = True
+                        # CloudFront Function と同じ規則で prefix を取る
+                        deploy_hash_prefix = (
+                            r.path_pattern.rstrip("*").rstrip("/") + "/"
+                        )
                         break
         return cls(
             store=storage.store,
@@ -96,6 +103,7 @@ class DjangoStorageContext(BaseModel):
             distribution=storage.distribution,
             route=storage.route,
             deploy_hash=is_deploy_hash,
+            deploy_hash_prefix=deploy_hash_prefix,
             publish=storage.publish,
             link=storage.link,
         )

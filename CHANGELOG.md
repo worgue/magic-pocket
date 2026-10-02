@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### Added
+- `versioning = "deploy_hash"` の route を使う staticfiles で、`STATIC_URL` が
+  `<route の prefix>{DEPLOY_HASH}/`（例: `static/{DEPLOY_HASH}/`）の形でなければエラーにする
+  Django system check（`pocket.E001`）を追加しました (KN1688)。0.41.0 から hash を外すのは
+  route の prefix 直下の 1 セグメントだけなので、`static/v2/{DEPLOY_HASH}/` のような形では
+  static がすべて 403 になっていました
+  - `get_storages()` が登録し、`collectstatic` / `runserver` / `check` で実行されます
+  - `pocket django deploy` / `promote` / `deploystatic` は、collectstatic に Lambda と同じ
+    `DEPLOY_HASH` を渡すようになりました。形が合わなければ Lambda の更新前に止まります
+    （初回 deploy は Lambda の更新後の collectstatic で止まります）
+  - `DEPLOY_HASH` が未設定（ローカル開発で `dev` 等に落ちる）のときは検査しません
+
 ## [0.41.1](https://github.com/worgue/magic-pocket/releases/tag/0.41.1) - 2026-10-02
 
 ### Changed

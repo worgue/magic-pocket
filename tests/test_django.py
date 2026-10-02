@@ -390,3 +390,21 @@ def test_get_databases_silent_without_query_params(monkeypatch, capsys):
     monkeypatch.setenv("DATABASE_URL", "postgres://u:p@h/db")
     get_databases(stage="dev")
     assert capsys.readouterr().err == ""
+
+
+def test_collectstatic_locally_passes_deploy_hash(use_toml, monkeypatch, tmp_path):
+    """collectstatic に Lambda と同じ DEPLOY_HASH (git HEAD 由来) を渡す
+    (STATIC_URL の形の検査 = KN1688 を Lambda 更新前の collectstatic で効かせる)"""
+    monkeypatch.delenv("DEPLOY_HASH", raising=False)
+    monkeypatch.setattr("pocket.context._get_deploy_hash", lambda: "abc1234")
+    use_toml("tests/data/toml/django_deploy_hash.toml")
+    envs = []
+    monkeypatch.setattr(
+        "pocket_cli.django_cli.get_deploystatic_local_storage",
+        lambda stage: {"BACKEND": "x", "OPTIONS": {"location": str(tmp_path)}},
+    )
+    monkeypatch.setattr(
+        "pocket_cli.django_cli.run", lambda cmd, **kw: envs.append(kw["env"])
+    )
+    collectstatic_locally("dev")
+    assert envs[0]["DEPLOY_HASH"] == "abc1234"
