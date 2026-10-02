@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.41.1](https://github.com/worgue/magic-pocket/releases/tag/0.41.1) - 2026-10-02
+
 ### Changed
 - `pocket django deploy` / `promote` が、static を Lambda の更新より**先に** upload するように
   なりました (KN1676)。これまでは Lambda の更新の後だったため、その間に新しい URL で読まれた
