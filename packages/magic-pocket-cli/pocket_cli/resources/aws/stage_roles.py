@@ -40,7 +40,8 @@ def stage_role_specs(context: Context, *, account_id: str) -> list[iam_roles.Rol
 
 
 def verify_stage_roles(context: Context) -> None:
-    """external_roles の role がすべて揃っているかを deploy の変更前に検査する。"""
+    """external_roles の role がすべて存在し pocket の service を信頼しているかを
+    deploy の変更前に検査する (policy の中身は見ない)。"""
     if not context.external_roles or not context.general:
         return
     region = context.general.region
@@ -49,7 +50,7 @@ def verify_stage_roles(context: Context) -> None:
     ]
     iam = boto3.client("iam", region_name=region)
     for spec in stage_role_specs(context, account_id=account_id):
-        iam_roles.verify_role(iam, spec, region=region)
+        iam_roles.verify_role(iam, spec)
 
 
 def _codebuild_builder(context: Context) -> CodeBuildBuilder | None:

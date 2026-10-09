@@ -1407,8 +1407,9 @@ class Iam(BaseModel):
     """true なら pocket は IAM role を作らず、既存の role を名前で参照する。
 
     role (Lambda 実行 / scheduler / CodeBuild / AWS Backup) は利用者が事前に作る。
-    必要な role 名と policy は `pocket permissions roles` が出力し、deploy は
-    実際の role がそれと一致するかを検査して、足りなければ変更前に止まる。
+    必要な role 名と policy は `pocket permissions roles` が出力する。deploy は
+    role が存在し pocket の service を信頼しているかだけを変更前に検査し、
+    policy の中身は見ない (充足は role の持ち主の責任)。
     deploy 権限から IAM の書き込み (CreateRole / PutRolePolicy 等) を外せる。
     """
 

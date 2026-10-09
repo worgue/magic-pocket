@@ -269,7 +269,7 @@ groups = perms.action_groups()
 # {"core": [...], "ssm": [...], "secretsmanager": [...], "cloudfront": [...],
 #  "waf": [...], "vpc": [...], "rds": [...], "efs": [...], "sqs": [...],
 #  "ses": [...], "codebuild": [...], "dsql": [...], "scheduler": [...],
-#  "tag": [...], "external_roles": [...]}
+#  "tag": [...], "external_roles": []}
 
 baseline = set(groups["core"]) | set(
     groups["cloudfront"]
@@ -327,11 +327,14 @@ external_roles = true
 
 1. `pocket permissions roles --stage <stage>` で、その stage に必要な role の定義を出力する
 2. 出力どおりに role を作る（または更新する）
-3. `pocket deploy` する。deploy は何かを変更する前に、実際の role が出力と一致するかを検査する
+3. `pocket deploy` する。deploy は何かを変更する前に、role が存在し pocket の service を信頼しているかを検査する
 
-`pocket.toml` を変えて role の policy が変わったとき（`[container.*.iam]` の変更、`[rds]` / `[dsql]` /
-`[scheduler]` の追加など）は、2 をやり直してから deploy します。やり直さずに deploy すると、
-検査が足りない policy を示して止まります（stack などは変更されません）。
+出力は「pocket が必要とする権限の仕様」です。role の policy をどう組むか（出力をそのまま使う、
+組織の標準セットに含める、など）は role の持ち主が決め、必要な権限が足りていることも持ち主が
+保証します。pocket は policy の中身を検査しません。`pocket.toml` を変えて必要な権限が増えたとき
+（`[container.*.iam]` の変更、`[rds]` / `[dsql]` / `[scheduler]` の追加など）は、1 の出力を見て
+role を更新してから deploy してください。更新せずに deploy すると、deploy は通りますが Lambda などが
+実行時に `AccessDenied` になります。
 
 ### `pocket permissions roles` の出力
 
@@ -359,7 +362,8 @@ pocket permissions roles --stage=prod --account-id=123456789012  # sts を呼ば
 ```
 
 - `assume_role_policy` は `CreateRole` の `AssumeRolePolicyDocument`、`inline_policies` の各項目は
-  `PutRolePolicy` の `PolicyName` / `PolicyDocument` にそのまま渡せます（CloudFormation の変数は展開済み）
+  `PutRolePolicy` の `PolicyName` / `PolicyDocument` にそのまま渡せます（CloudFormation の変数は展開済み）。
+  出力どおりに作るのが最も簡単ですが、同じ権限を含む別の policy で組んでも構いません
 - 出力は `pocket.toml` と account / region だけで決まり、AWS 上のリソースの状態には依存しません。
   DB（RDS / DSQL）をまだ作っていない stage でも、最終形の role を先に作れます。DB の権限は、
   作成時に AWS が乱数で決める ARN ではなく、タグ（RDS の secret に付く
@@ -382,18 +386,18 @@ deploy の最初に、各 role について次を確認します。1 つでも�
 
 - role が存在する
 - 信頼ポリシーが出力の service（`lambda.amazonaws.com` 等）に `sts:AssumeRole` を許可している
-- 出力の managed policy がすべて付いている
-- 出力の inline policy が、同じ名前・同じ内容で付いている
 
-出力に無い policy が付いていても構いません（組織として足した policy は許容します）。
+policy の中身（managed / inline）は検査しません。pocket の版更新で policy の文面が変わるたびに
+role の更新を求めると、IAM を別に管理する組織では deploy が止まり続けるためです。権限の充足は
+role の持ち主の責任で、足りなければ実行時の `AccessDenied` として現れます。
 
 ### deploy 権限の違い
 
 `pocket permissions list` は、`external_roles = true` の stage では IAM の書き込み
 （`iam:CreateRole` / `DeleteRole` / `PutRolePolicy` / `DeleteRolePolicy` / `AttachRolePolicy` /
-`DetachRolePolicy` / `TagRole` / `UntagRole` / `ListRoleTags` / `ListRolePolicies`）を出さず、
-検査用の `iam:GetRolePolicy` / `iam:ListAttachedRolePolicies` を足します。`iam:GetRole` と
-`iam:PassRole` は残ります（`PassRole` は上の role に絞って構いません）。
+`DetachRolePolicy` / `TagRole` / `UntagRole` / `ListRoleTags` / `ListRolePolicies`）を出しません。
+`iam:GetRole` と `iam:PassRole` は残ります（`PassRole` は上の role に絞って構いません）。
+検査は role の存在と信頼ポリシーだけなので、policy を読む権限は要りません。
 
 `pocket destroy` は external の role を削除しません（role の持ち主は利用者です）。
 
@@ -402,10 +406,10 @@ deploy の最初に、各 role について次を確認します。1 つでも�
 Lambda 実行 role と scheduler role は、pocket が作ったもの（CloudFormation の管理下）とは
 **別の名前**になります。切り替えの deploy で、CloudFormation が参照先を新しい role に替えてから
 古い role を削除するため、途中で Lambda が止まることはありません。CodeBuild と AWS Backup の
-role は名前が同じなので、pocket が作った role をそのまま引き継げます（出力どおりに更新してください）。
+role は名前が同じなので、pocket が作った role をそのまま引き継げます。
 
 1. `pocket.toml` に `[iam] external_roles = true` を書く
-2. `pocket permissions roles` の出力どおりに role を作る・更新する
+2. `pocket permissions roles` の出力を参考に role を作る
 3. `pocket deploy` する。**この deploy は IAM の書き込み権限が残った状態で実行してください**。
    CloudFormation が古い role を削除する際に `iam:DeleteRole` などを使います
 4. deploy 権限を `pocket permissions list` の新しい出力に絞る

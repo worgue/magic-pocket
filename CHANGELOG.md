@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+### Changed
+- `[iam] external_roles = true` の deploy 前検査を、role の存在と信頼ポリシー（pocket の service に
+  `sts:AssumeRole` を許可しているか）だけにしました。0.41.0 では managed policy と inline policy が
+  `pocket permissions roles` の出力と一致することも検査していましたが、IAM を別に管理する組織では
+  role の policy は組織の標準で組まれるため、文面一致を求めると pocket の版更新のたびに全 project の
+  deploy が止まります。権限の充足は role の持ち主の責任とし、`pocket permissions roles` の出力は
+  「pocket が必要とする権限の仕様」として使います
+  - `pocket permissions list` は `external_roles = true` の stage で `iam:GetRolePolicy` /
+    `iam:ListAttachedRolePolicies` を出さなくなりました。`action_groups()` の `external_roles`
+    グループは空になります（キーは残ります）
+
 ## [0.42.0](https://github.com/worgue/magic-pocket/releases/tag/0.42.0) - 2026-10-02
 
 ### Added

@@ -463,8 +463,8 @@ def test_action_groups_public_keys_stable():
 
 
 def test_external_roles_drops_iam_write():
-    """[iam] external_roles: role を作らないので IAM の書き込みを外し、検査用の
-    読み取りを足す。PassRole / GetRole は残る。"""
+    """[iam] external_roles: role を作らないので IAM の書き込みを外す。検査は
+    存在と信頼先だけなので policy の読み取りは要らず、PassRole / GetRole だけ残る。"""
     settings = _build_settings(
         awscontainer={"dockerfile_path": "Dockerfile", "handlers": {}},
         iam={"external_roles": True},
@@ -472,13 +472,12 @@ def test_external_roles_drops_iam_write():
     actions = compute_actions(settings)
     for write in ("iam:CreateRole", "iam:PutRolePolicy", "iam:AttachRolePolicy"):
         assert write not in actions
-    for read in (
-        "iam:GetRole",
-        "iam:PassRole",
-        "iam:GetRolePolicy",
-        "iam:ListAttachedRolePolicies",
-    ):
+    for read in ("iam:GetRole", "iam:PassRole"):
         assert read in actions
+    for unused in ("iam:GetRolePolicy", "iam:ListAttachedRolePolicies"):
+        assert unused not in actions
+    # group のキーは public API として残す (0.41.0 では照合用 action が入っていた)
+    assert action_groups()["external_roles"] == []
 
 
 def test_managed_roles_keep_iam_write():

@@ -92,55 +92,36 @@ def test_resolve_intrinsics_rejects_unknown_variable():
         )
 
 
-def _create_role(iam, spec: iam_roles.RoleSpec, *, skip_inline: str | None = None):
-    """`pocket permissions roles` の出力どおりに role を作る (host 側の作業の模擬)。"""
+def _create_role(iam, spec: iam_roles.RoleSpec, *, service: str | None = None):
+    """role の持ち主が自分の流儀で作った role の模擬。policy は pocket の出力と
+    無関係 (組織の標準セット)。信頼先だけが pocket の求めるものと一致する。"""
+    trust = iam_roles.RoleSpec(name="x", service=service or spec.service)
     iam.create_role(
         RoleName=spec.name,
-        AssumeRolePolicyDocument=json.dumps(spec.assume_role_policy),
+        AssumeRolePolicyDocument=json.dumps(trust.assume_role_policy),
     )
-    for arn in spec.managed_policy_arns:
-        iam.attach_role_policy(RoleName=spec.name, PolicyArn=arn)
-    policies = spec.resolved_inline_policies(region=REGION, account_id=ACCOUNT_ID)
-    for name, document in policies.items():
-        if name != skip_inline:
-            iam.put_role_policy(
-                RoleName=spec.name,
-                PolicyName=name,
-                PolicyDocument=json.dumps(document),
-            )
+    iam.put_role_policy(
+        RoleName=spec.name,
+        PolicyName="org-standard",
+        PolicyDocument=json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
+            }
+        ),
+    )
 
 
-def _custom_spec(iam) -> iam_roles.RoleSpec:
-    """moto は既定で AWS managed policy を持たないため customer managed を使う。"""
-    document = json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "*"}
-            ],
-        }
-    )
-    arn = iam.create_policy(PolicyName="managed-a", PolicyDocument=document)["Policy"][
-        "Arn"
-    ]
+def _spec() -> iam_roles.RoleSpec:
     return iam_roles.RoleSpec(
         name="prod-testprj-pocket-main-lambda-role",
         service="lambda.amazonaws.com",
-        managed_policy_arns=[arn],
+        managed_policy_arns=["arn:aws:iam::aws:policy/AmazonS3FullAccess"],
         inline_policies={
             "access": {
                 "Version": "2012-10-17",
                 "Statement": [
-                    {
-                        "Effect": "Allow",
-                        "Action": ["ssm:GetParameter"],
-                        "Resource": [
-                            {
-                                "Fn::Sub": "arn:aws:ssm:${AWS::Region}"
-                                ":${AWS::AccountId}:parameter/x"
-                            }
-                        ],
-                    }
+                    {"Effect": "Allow", "Action": ["ssm:GetParameter"], "Resource": "*"}
                 ],
             }
         },
@@ -149,95 +130,33 @@ def _custom_spec(iam) -> iam_roles.RoleSpec:
 
 
 @mock_aws
-def test_verify_role_accepts_matching_role_with_extra_policies():
+def test_verify_role_checks_existence_and_trust_only():
+    """policy の中身は検査しない。pocket の出力と違う policy でも、存在して
+    service を信頼していれば通る。"""
     iam = boto3.client("iam", region_name=REGION)
-    spec = _custom_spec(iam)
+    spec = _spec()
     _create_role(iam, spec)
-    # 利用者が足した policy は許容する
-    iam.put_role_policy(
-        RoleName=spec.name,
-        PolicyName="extra",
-        PolicyDocument=json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Allow", "Action": "s3:*", "Resource": "*"}],
-            }
-        ),
-    )
-    arn = iam_roles.verify_role(iam, spec, region=REGION)
+    arn = iam_roles.verify_role(iam, spec)
     assert arn == f"arn:aws:iam::{ACCOUNT_ID}:role/{spec.name}"
 
 
 @mock_aws
 def test_verify_role_reports_missing_role():
     iam = boto3.client("iam", region_name=REGION)
-    spec = _custom_spec(iam)
     with pytest.raises(iam_roles.RoleMismatchError, match="がありません"):
-        iam_roles.verify_role(iam, spec, region=REGION)
+        iam_roles.verify_role(iam, _spec())
 
 
 @mock_aws
-def test_verify_role_reports_each_problem():
+def test_verify_role_reports_wrong_trust():
     iam = boto3.client("iam", region_name=REGION)
-    spec = _custom_spec(iam)
-    _create_role(iam, spec, skip_inline="access")
-    iam.detach_role_policy(RoleName=spec.name, PolicyArn=spec.managed_policy_arns[0])
-    iam.update_assume_role_policy(
-        RoleName=spec.name,
-        PolicyDocument=json.dumps(
-            iam_roles.RoleSpec(name="x", service="ec2.amazonaws.com").assume_role_policy
-        ),
-    )
-    with pytest.raises(iam_roles.RoleMismatchError) as e:
-        iam_roles.verify_role(iam, spec, region=REGION)
-    message = str(e.value)
-    assert "lambda.amazonaws.com を許可していません" in message
-    assert "managed policy" in message
-    assert "inline policy access がありません" in message
-
-
-@mock_aws
-def test_verify_role_detects_changed_inline_policy():
-    iam = boto3.client("iam", region_name=REGION)
-    spec = _custom_spec(iam)
-    _create_role(iam, spec)
-    iam.put_role_policy(
-        RoleName=spec.name,
-        PolicyName="access",
-        PolicyDocument=json.dumps(
-            {
-                "Version": "2012-10-17",
-                "Statement": [{"Effect": "Allow", "Action": "ssm:*", "Resource": "*"}],
-            }
-        ),
-    )
-    with pytest.raises(iam_roles.RoleMismatchError, match="access の内容が違います"):
-        iam_roles.verify_role(iam, spec, region=REGION)
-
-
-@mock_aws
-def test_verify_role_ignores_equivalent_formatting():
-    """要素 1 つの list を値にした形・並べ替えた形は同じ policy とみなす。"""
-    iam = boto3.client("iam", region_name=REGION)
-    spec = _custom_spec(iam)
-    _create_role(iam, spec, skip_inline="access")
-    iam.put_role_policy(
-        RoleName=spec.name,
-        PolicyName="access",
-        PolicyDocument=json.dumps(
-            {
-                "Statement": [
-                    {
-                        "Resource": f"arn:aws:ssm:{REGION}:{ACCOUNT_ID}:parameter/x",
-                        "Action": "ssm:GetParameter",
-                        "Effect": "Allow",
-                    }
-                ],
-                "Version": "2012-10-17",
-            }
-        ),
-    )
-    iam_roles.verify_role(iam, spec, region=REGION)
+    spec = _spec()
+    _create_role(iam, spec, service="ec2.amazonaws.com")
+    with pytest.raises(
+        iam_roles.RoleMismatchError,
+        match="lambda.amazonaws.com に sts:AssumeRole を許可していません",
+    ):
+        iam_roles.verify_role(iam, spec)
 
 
 @mock_aws
@@ -253,7 +172,7 @@ def test_ensure_role_does_not_create_external_role():
 
 @mock_aws
 def test_permissions_roles_output_matches_verification(monkeypatch, use_toml, tmp_path):
-    """`pocket permissions roles` の出力どおりに作れば deploy 前の検査が通る。"""
+    """`pocket permissions roles` の名前と信頼先で作れば deploy 前の検査が通る。"""
     monkeypatch.delenv("POCKET_PERMISSIONS_BOUNDARY_ARN", raising=False)
     toml = tmp_path / "pocket.toml"
     toml.write_text(
@@ -274,22 +193,13 @@ def test_permissions_roles_output_matches_verification(monkeypatch, use_toml, tm
     context = Context.from_toml(stage="prod")
     with pytest.raises(iam_roles.RoleMismatchError):
         verify_stage_roles(context)
+    # 信頼ポリシーだけ出力に合わせ、policy は付けない (持ち主の責任なので検査しない)
     iam = boto3.client("iam", region_name=REGION)
     for role in output["roles"]:
         iam.create_role(
             RoleName=role["name"],
             AssumeRolePolicyDocument=json.dumps(role["assume_role_policy"]),
         )
-        for name, document in role["inline_policies"].items():
-            iam.put_role_policy(
-                RoleName=role["name"],
-                PolicyName=name,
-                PolicyDocument=json.dumps(document),
-            )
-    # moto は AWS managed policy を持たないため、managed policy は検査対象から外す
-    monkeypatch.setattr(
-        iam_roles, "_managed_policy_problems", lambda iam_client, spec: []
-    )
     verify_stage_roles(context)
 
 

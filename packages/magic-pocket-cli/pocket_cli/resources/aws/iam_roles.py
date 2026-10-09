@@ -14,7 +14,9 @@ pocket.toml と account / region だけで決まる)。
 
 [iam] external_roles = true のときは pocket は role を作らない。RoleSpec は
 「利用者が事前に作るべき role」の定義になり、`pocket permissions roles` が
-それを出力し、deploy は verify_role で実際の role と突き合わせる。
+それを出力する。deploy は verify_role で role の存在と信頼先だけを確認し、
+policy の中身は見ない (充足は role の持ち主の責任。pocket の版更新で policy の
+文面が変わるたびに role の更新を強いない)。
 """
 
 from __future__ import annotations
@@ -508,7 +510,7 @@ def delete_role(
 
 
 class RoleMismatchError(Exception):
-    """external_roles の role が無い、または pocket が必要とする policy と違う。"""
+    """external_roles の role が無い、または pocket の service を信頼していない。"""
 
 
 _SUB_VARIABLE = re.compile(r"\$\{([^}]+)\}")
@@ -544,32 +546,21 @@ def _pseudo_parameter(name: str, region: str, account_id: str) -> str:
     return values[name]
 
 
-def verify_role(
-    iam_client: IAMClient, spec: RoleSpec, *, region: str | None = None
-) -> str:
-    """external の role が spec どおりかを検査し、ARN を返す。
+def verify_role(iam_client: IAMClient, spec: RoleSpec) -> str:
+    """external の role の存在と pocket の service への信頼を検査し、ARN を返す。
 
-    pocket が必要とする信頼先・managed policy・inline policy がすべて揃って
-    いるかを見る。利用者が足した policy は許容する。inline policy は同名の
-    文書が一致すること (`pocket permissions roles` の出力をそのまま使う前提)。
-    region は inline policy が ${AWS::Region} を含む場合に要る。
+    policy (managed / inline) の中身は検査しない。role の持ち主は組織の流儀
+    (標準の許可セット・命名・boundary) で policy を組むため、pocket の出力との
+    文面一致を求めると、pocket の版更新で文面が変わるたびに全 project の deploy
+    が止まる。必要な権限は `pocket permissions roles` が示し、充足は持ち主が
+    保証する。
     """
     role = _get_external_role(iam_client, spec.name)
-    account_id = role["Arn"].split(":")[4]
-    problems: list[str] = []
     if not _trusts_service(role.get("AssumeRolePolicyDocument", {}), spec.service):
-        problems.append("信頼ポリシーが %s を許可していません" % spec.service)
-    problems += _managed_policy_problems(iam_client, spec)
-    problems += _inline_policy_problems(
-        iam_client,
-        spec,
-        spec.resolved_inline_policies(region=region or "", account_id=account_id),
-    )
-    if problems:
         raise RoleMismatchError(
-            "IAM role %s が pocket の必要とする権限と一致しません:\n%s\n"
-            "`pocket permissions roles` の出力どおりに更新してから再実行してください。"
-            % (spec.name, "\n".join("  - " + p for p in problems))
+            "IAM role %s の信頼ポリシーが %s に sts:AssumeRole を許可していません。"
+            "`pocket permissions roles` の assume_role_policy を参考に信頼ポリシーを"
+            "直してから再実行してください。" % (spec.name, spec.service)
         )
     return role["Arn"]
 
@@ -585,54 +576,6 @@ def _get_external_role(iam_client: IAMClient, name: str) -> dict[str, Any]:
             " role を作りません。`pocket permissions roles` の出力どおりに作成して"
             "から再実行してください。" % name
         ) from e
-
-
-def _managed_policy_problems(iam_client: IAMClient, spec: RoleSpec) -> list[str]:
-    paginator = iam_client.get_paginator("list_attached_role_policies")
-    attached = {
-        policy["PolicyArn"]
-        for page in paginator.paginate(RoleName=spec.name)
-        for policy in page["AttachedPolicies"]
-    }
-    return [
-        "managed policy %s が付いていません" % arn
-        for arn in spec.managed_policy_arns
-        if arn not in attached
-    ]
-
-
-def _inline_policy_problems(
-    iam_client: IAMClient, spec: RoleSpec, expected: dict[str, dict[str, Any]]
-) -> list[str]:
-    problems: list[str] = []
-    for name, document in expected.items():
-        try:
-            actual = iam_client.get_role_policy(RoleName=spec.name, PolicyName=name)
-        except ClientError as e:
-            if e.response["Error"]["Code"] != "NoSuchEntity":
-                raise
-            problems.append("inline policy %s がありません" % name)
-            continue
-        if _normalize_policy(actual["PolicyDocument"]) != _normalize_policy(document):
-            problems.append("inline policy %s の内容が違います" % name)
-    return problems
-
-
-def _normalize_policy(value: Any) -> Any:
-    """意味の同じ policy 文書を同じ値にそろえる。
-
-    IAM を扱う道具 (Terraform 等) は要素 1 つの list を値そのものに変えたり、
-    list を並べ替えたりする。IAM の評価ではどれも同じ意味になるため、比較では
-    区別しない。
-    """
-    if isinstance(value, dict):
-        return {k: _normalize_policy(v) for k, v in value.items()}
-    if isinstance(value, list):
-        items = [_normalize_policy(v) for v in value]
-        if len(items) == 1:
-            return items[0]
-        return sorted(items, key=lambda v: json.dumps(v, sort_keys=True))
-    return value
 
 
 def _trusts_service(document: dict[str, Any], service: str) -> bool:

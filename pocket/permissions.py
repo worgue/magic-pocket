@@ -142,13 +142,12 @@ _BACKUP_ACTIONS: list[str] = [
     "kms:RetireGrant",
 ]
 
-# [iam] external_roles = true の時。pocket は role を作らず、deploy 前に既存 role
-# を検査する (GetRole / PassRole は core に含まれる)。代わりに core の IAM 書き込み
-# (_IAM_ROLE_WRITE_ACTIONS) を外す
-_EXTERNAL_ROLES_ACTIONS: list[str] = [
-    "iam:GetRolePolicy",
-    "iam:ListAttachedRolePolicies",
-]
+# [iam] external_roles = true の時。pocket は role を作らず、deploy 前に既存 role の
+# 存在と信頼先を検査する (GetRole / PassRole は core に含まれる)。追加の action は
+# 無く、代わりに core の IAM 書き込み (_IAM_ROLE_WRITE_ACTIONS) を外す。group は
+# action_groups() のキー名を安定させるため空のまま残す (0.41.0 では policy 照合用の
+# GetRolePolicy / ListAttachedRolePolicies が入っていた)
+_EXTERNAL_ROLES_ACTIONS: list[str] = []
 
 # external_roles では不要になる core の IAM 系 (role の作成・更新・削除)
 _IAM_ROLE_WRITE_ACTIONS: frozenset[str] = frozenset(
