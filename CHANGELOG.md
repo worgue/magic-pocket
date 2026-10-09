@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.43.0](https://github.com/worgue/magic-pocket/releases/tag/0.43.0) - 2026-10-09
+
 ### Changed
 - `[iam] external_roles = true` の deploy 前検査を、role の存在と信頼ポリシー（pocket の service に
   `sts:AssumeRole` を許可しているか）だけにしました。0.41.0 では managed policy と inline policy が
