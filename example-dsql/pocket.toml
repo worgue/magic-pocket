@@ -81,3 +81,12 @@ routes = [
     # adapter-static の fallback (200.html) と揃える。
     { path_pattern = "", is_default = true, type = "s3", is_spa = true, upload_dir = "frontend/build", spa_fallback_html = "200.html", origin_path = "/spa" },
 ]
+
+# IAM role は pocket が作らず、組織側の IAM 管理が種別単位で事前に作ったものを使う
+# (0.44.0 external_roles)。role 名は `pocket permissions role-names --stage sandbox` =
+# `sandbox-pocket-example-dsql-<namespace>-{lambda,scheduler,codebuild,backup}-role`。
+# namespace は role 名だけに効き、SQS / store / S3 の名前は変わらない。
+# namespace の実値は公開 repo では placeholder (deploy 前に domain と同様に書き戻す。commit しない)。
+[sandbox.iam]
+external_roles = true
+namespace = "myorg"
