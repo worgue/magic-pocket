@@ -9,15 +9,17 @@ updates:
     groups:
       python:
         update-types: [minor, patch]
-  - package-ecosystem: cargo
+  - package-ecosystem: cargo # Rust (pocket-rs)。group を patch / minor で分割する
     directory: /
     schedule:
       interval: weekly
       day: monday
     open-pull-requests-limit: 10
     groups:
-      rust:
-        update-types: [minor, patch]
+      rust-patch: # auto-merge 対象 (従来どおり束ねる)
+        update-types: [patch]
+      rust-minor: # auto-merge されず人手 (0.x minor = breaking。組織標準「cargo は minor も人手」)
+        update-types: [minor]
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -6,24 +6,31 @@ permissions:
   pull-requests: write
 
 jobs:
-  # patch / minor だけを auto-merge 対象として判定するゲート。
+  # auto-merge 可否 (patch / minor か) の判定。テスト実行のゲートではない。
+  # cargo は patch のみ (0.x minor は cargo 的に breaking。組織標準「cargo は minor も人手」)。
   # group 更新は group 内の最大 semver 変更が update-type になるため、
   # major が混ざった group はここを通らず人手レビューに回る。
+  # job の if は PR の作成者で見る (actor で見ると base 取り込み後に job ごと skip され、
+  # just test が走らない。KN1617)。自動マージは actor が Dependabot の run だけ。
   meta:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
-      automerge: ${{ steps.meta.outputs.update-type == 'version-update:semver-patch' || steps.meta.outputs.update-type == 'version-update:semver-minor' }}
+      automerge: >-
+        ${{ github.actor == 'dependabot[bot]'
+        && (steps.meta.outputs.update-type == 'version-update:semver-patch'
+        || (steps.meta.outputs.update-type == 'version-update:semver-minor'
+        && steps.meta.outputs.package-ecosystem != 'cargo')) }}
     steps:
       - uses: dependabot/fetch-metadata@v3
+        if: github.actor == 'dependabot[bot]'
         id: meta
 
-  # patch/minor のみ: just test (pytest + cargo test) を回し green なら squash merge。
+  # 全 Dependabot PR で just test (pytest + cargo test) を回す (job の if でゲートしない —
+  # skip の緑は「未検証」を成功に見せる)。merge だけ automerge 判定で分岐する。
   # branch protection に依存せず workflow 内で検証する。
-  # major は人手レビューする。
   test-and-merge:
     needs: meta
-    if: needs.meta.outputs.automerge == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -33,16 +40,31 @@ jobs:
       - uses: extractions/setup-just@v4
       - run: uv sync --all-groups
       - run: just test
-      # --- App token でマージ (GITHUB_TOKEN だと後続 workflow を起動しないため) ---
+      # --- 以下 merge は patch/minor (cargo は patch のみ) のときだけ ---
+      # App token でマージ (GITHUB_TOKEN だと後続 workflow を起動しないため)。
       # app-id は直書き (Dependabot トリガの run では Actions vars が見えない。App ID は公開情報)。
       # private-key は Dependabot secret (Actions secret も Dependabot run では見えない)。
       - uses: actions/create-github-app-token@v3
+        if: needs.meta.outputs.automerge == 'true'
         id: app-token
         with:
           app-id: "3993238" # auto-merge 用 GitHub App
           private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
       - name: Squash merge (tests passed)
-        run: gh pr merge --squash "$PR_URL"
+        if: needs.meta.outputs.automerge == 'true'
+        # 同時に開いた PR が並行で merge されると base が動いた直後の merge を GitHub が
+        # 「Base branch was modified. Review and try the merge again.」で一時的に拒否する
+        # (KN1689: security update 4 件同時で 1 件が open のまま 17 時間滞留)。
+        # workflow は pull_request でしか走らず自動では再試行されないので、ここで待って
+        # 再試行する。lock が本当に競合したときは再試行でも失敗し、Dependabot の rebase で
+        # workflow が走り直す (従来どおり)
+        run: |
+          for i in 1 2 3 4 5; do
+            gh pr merge --squash "$PR_URL" && exit 0
+            echo "merge failed (attempt $i); retrying in 20s" >&2
+            sleep 20
+          done
+          exit 1
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
