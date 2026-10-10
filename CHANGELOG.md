@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+### Added
+- `[iam] namespace` で、`external_roles` の role 名の namespace だけを上書きできるようにしました
+  （既定は `[general] namespace`。SQS / secret store / S3 など他のリソース名は変わりません）。
+  IAM を組織で一括管理する場合に、pocket.toml を読まずに role 名を決められます
+- `pocket permissions role-names --stage <stage>` が、external_roles で事前に作る role の名前を種別ごと
+  （`lambda` / `scheduler` / `codebuild` / `backup`）に JSON で出力します。AWS には問い合わせません。
+  規則 `{stage}-{project}-{namespace}-{kind}-role` は互換を保つ公開仕様で、Python からは
+  `pocket.permissions.external_role_names(settings)` で得られます
+
+### Changed
+- `[iam] external_roles = true` の role を container 単位から**種別単位**に変えました。Lambda 実行 role は
+  `{prefix}lambda-role`、scheduler role は `{prefix}scheduler-role` を全 container で共用します
+  （0.41.0〜0.43.0 の `{prefix}{container}-lambda-role` / `-scheduler-role` から改名）。
+  `pocket permissions roles` は共用 role を 1 つにまとめ、複数 container の権限は managed policy の
+  和集合・同名 inline policy の Statement の和集合として出します
+
 ## [0.43.0](https://github.com/worgue/magic-pocket/releases/tag/0.43.0) - 2026-10-09
 
 ### Changed

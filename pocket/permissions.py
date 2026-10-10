@@ -312,6 +312,24 @@ def action_groups() -> dict[str, list[str]]:
     }
 
 
+# [iam] external_roles で利用者が作る role の種別 (名前は {prefix}{kind}-role)
+EXTERNAL_ROLE_KINDS: tuple[str, ...] = ("lambda", "scheduler", "codebuild", "backup")
+
+
+def external_role_names(settings: Settings) -> dict[str, str]:
+    """[iam] external_roles で利用者が事前に作る role の名前を種別ごとに返す。
+
+    公開 API (`pocket permissions role-names` の実体)。IAM を別に管理する側が、
+    pocket を deploy 時に呼ばずに自前の計算で同じ名前を作れるよう、規則は
+    `{stage}-{project}-{namespace}-{kind}-role` (namespace は [iam] namespace、
+    無ければ [general] namespace) に固定し、互換を保つ。構成で使わない種別
+    (schedule の無い stage の scheduler 等) も常に含める (使わない role を先に
+    作っておいて構わない)。
+    """
+    prefix = settings.external_role_prefix
+    return {kind: f"{prefix}{kind}-role" for kind in EXTERNAL_ROLE_KINDS}
+
+
 def compute_actions(settings: Settings) -> list[str]:
     """settings から必要な AWS Action 一覧を算出する。
 

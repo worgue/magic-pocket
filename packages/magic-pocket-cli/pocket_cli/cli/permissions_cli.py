@@ -5,6 +5,8 @@
   作る際の inline policy 生成に使用することを想定。
 - `roles`: pocket の Lambda / scheduler / CodeBuild / AWS Backup が使う IAM role
   の定義を出力する。`[iam] external_roles = true` で role を事前に作る用途。
+- `role-names`: external_roles で事前に作る role の名前だけを種別ごとに返す
+  (AWS 不要。IAM 管理側が自前の命名計算と突き合わせる契約テスト用)。
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import boto3
 import click
 
 from pocket.context import Context
-from pocket.permissions import compute_actions
+from pocket.permissions import compute_actions, external_role_names
 from pocket.settings import Settings
 from pocket_cli.resources.aws.stage_roles import stage_role_specs
 
@@ -94,3 +96,16 @@ def roles(stage: str, account_id: str | None):
         ],
     }
     click.echo(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+@permissions.command("role-names")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+def role_names(stage: str):
+    """[iam] external_roles で事前に作る role の名前を種別ごとに JSON で出力する。
+
+    AWS には問い合わせない。規則は `{stage}-{project}-{namespace}-{kind}-role`
+    (namespace は [iam] namespace、無ければ [general] namespace) で、互換を保つ
+    公開仕様。使わない種別も常に出す。
+    """
+    settings = Settings.from_toml(stage=stage)
+    click.echo(json.dumps(external_role_names(settings), indent=2))

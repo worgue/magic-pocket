@@ -20,7 +20,10 @@ if TYPE_CHECKING:
 
 def stage_role_specs(context: Context, *, account_id: str) -> list[iam_roles.RoleSpec]:
     """stage の deploy / backup で使う role を定義順 (container → CodeBuild →
-    AWS Backup) で返す。AWS への問い合わせはしない。"""
+    AWS Backup) で返す。AWS への問い合わせはしない。
+
+    external_roles では role は種別単位なので、container ごとの Lambda / scheduler
+    の定義を同名で 1 つにまとめる (権限は和集合)。"""
     specs: list[iam_roles.RoleSpec] = []
     for name in sorted(context.container):
         stack = ContainerStack(
@@ -36,7 +39,7 @@ def stage_role_specs(context: Context, *, account_id: str) -> list[iam_roles.Rol
     backup = _backup_role(context)
     if backup:
         specs.append(backup)
-    return specs
+    return iam_roles.merge_role_specs(specs)
 
 
 def verify_stage_roles(context: Context) -> None:
@@ -68,6 +71,7 @@ def _codebuild_builder(context: Context) -> CodeBuildBuilder | None:
         compute_type=first.build.compute_type,
         permissions_boundary=first.permissions_boundary,
         external_roles=context.external_roles,
+        external_role_prefix=context.external_role_prefix,
     )
 
 

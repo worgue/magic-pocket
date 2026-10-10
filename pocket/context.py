@@ -518,6 +518,8 @@ class ContainerContext(BaseModel):
     iam: ContainerIamContext = ContainerIamContext()
     # [iam] external_roles。role を作らず既存 role を名前で参照する
     external_roles: bool = False
+    # external_roles の role 名の prefix ({stage}-{project}-{iam.namespace}-)
+    external_role_prefix: str = ""
     efs_local_mount_path: str = ""
     build: BuildContext = BuildContext()
 
@@ -638,6 +640,7 @@ class ContainerContext(BaseModel):
                 inline_policies=c.iam.inline_policies,
             ),
             external_roles=root.iam.external_roles,
+            external_role_prefix=root.external_role_prefix,
             efs_local_mount_path=efs_local_mount_path,
             build=BuildContext.from_settings(c.build),
         )
@@ -762,7 +765,12 @@ def _backup_vault_name(root: settings.Settings) -> str:
 
 
 def _backup_role_name(root: settings.Settings) -> str:
-    """AWS Backup サービスロール名。e.g) dev-myprj-pocket-backup-role"""
+    """AWS Backup サービスロール名。e.g) dev-myprj-pocket-backup-role
+
+    external_roles では利用者が作る種別単位の role ({external_role_prefix}backup-role)。
+    """
+    if root.iam.external_roles:
+        return f"{root.external_role_prefix}backup-role"
     return f"{root.resource_prefix}backup-role"
 
 
@@ -1139,10 +1147,11 @@ class SchedulerContext(BaseModel):
         )
         return cls(
             schedules=schedules,
-            # external_roles では CFn が持つ既存 role と名前が衝突しないよう
-            # 別名にする (切替時に CFn が旧 role を消す間も新 role が使える)
+            # external_roles では種別単位の role (全 container 共用) を使う。CFn が
+            # 持つ既存 role と名前が違うので、切替時に CFn が旧 role を消す間も新 role
+            # が使える
             role_name=(
-                f"{resource_prefix}{container_name}-scheduler-role"
+                f"{root.external_role_prefix}scheduler-role"
                 if root.iam.external_roles
                 else f"{resource_prefix}{container_name}-scheduler"
             ),
@@ -1646,6 +1655,8 @@ class Context(BaseModel):
     scheduler: dict[str, SchedulerContext] = {}
     # [iam] external_roles。pocket は IAM role を作らず既存 role を参照する
     external_roles: bool = False
+    # external_roles の role 名の prefix ({stage}-{project}-{iam.namespace}-)
+    external_role_prefix: str = ""
     project_name: str
     stage: str
 
@@ -1841,6 +1852,7 @@ class Context(BaseModel):
             inbound=inbound,
             inbound_domain=InboundDomainContext.from_settings(s),
             external_roles=s.iam.external_roles,
+            external_role_prefix=s.external_role_prefix,
             project_name=s.project_name,
             stage=s.stage,
             **svc,

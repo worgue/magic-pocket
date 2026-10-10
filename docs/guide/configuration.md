@@ -2502,10 +2502,12 @@ pocket が IAM role を作るかどうかを設定します。
 ```toml
 [iam]
 external_roles = true
+namespace = "platform"   # 任意
 ```
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `external_roles` | bool | `false` | `true` なら pocket は IAM role（Lambda 実行 / scheduler / CodeBuild / AWS Backup）を作らず、事前に作られた role を名前で参照します。deploy 権限から IAM の書き込みを外せます |
+| `external_roles` | bool | `false` | `true` なら pocket は IAM role（Lambda 実行 / scheduler / CodeBuild / AWS Backup の種別ごとに 1 つ）を作らず、事前に作られた role を名前で参照します。deploy 権限から IAM の書き込みを外せます |
+| `namespace` | string | `[general] namespace` | external の role 名 `{stage}-{project}-{namespace}-{kind}-role` の namespace だけを上書きします。他のリソース名は変わりません |
 
-必要な role と権限は `pocket permissions roles` が JSON で出力します。deploy は role が存在し pocket の service を信頼しているかだけを最初に検査し、policy の中身は見ません（充足は role の持ち主の責任）。使い方と既存 stage からの切り替え手順は [AWS 権限の「IAM role を事前に作る」](../permissions/aws.md#external-roles) を参照してください。
+必要な role と権限は `pocket permissions roles` が JSON で、名前だけは `pocket permissions role-names` が出力します。deploy は role が存在し pocket の service を信頼しているかだけを最初に検査し、policy の中身は見ません（充足は role の持ち主の責任）。使い方と既存 stage からの切り替え手順は [AWS 権限の「IAM role を事前に作る」](../permissions/aws.md#external-roles) を参照してください。

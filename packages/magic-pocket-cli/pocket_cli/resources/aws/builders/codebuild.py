@@ -51,6 +51,7 @@ class CodeBuildBuilder:
         compute_type: str = "BUILD_GENERAL1_MEDIUM",
         permissions_boundary: str | None = None,
         external_roles: bool = False,
+        external_role_prefix: str | None = None,
     ) -> None:
         self.region = region
         self.resource_prefix = resource_prefix
@@ -68,7 +69,13 @@ class CodeBuildBuilder:
         self.sts = boto3.client("sts", region_name=region)
 
         self._project_name = f"{resource_prefix}codebuild"
-        self._role_name = f"{resource_prefix}codebuild-role"
+        # external_roles では利用者が作る種別単位の role ({external_role_prefix}
+        # codebuild-role。[iam] namespace で pocket 自身の role と名前を分けられる)
+        self._role_name = (
+            f"{external_role_prefix}codebuild-role"
+            if external_roles and external_role_prefix
+            else f"{resource_prefix}codebuild-role"
+        )
         # 0.36 以前のロール名。forge- は開発環境由来の prefix で pocket の命名規約
         # ({stage}-{project}-...) と無関係だったため改名した。ロールは stage の
         # 所有物なので、新ロールへ付け替えた後に pocket が削除する (改名互換。

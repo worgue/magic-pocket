@@ -1406,11 +1406,24 @@ class Iam(BaseModel):
     external_roles: bool = False
     """true なら pocket は IAM role を作らず、既存の role を名前で参照する。
 
+    role は種別ごとに 1 つ (Lambda 実行 / scheduler / CodeBuild / AWS Backup) で、
+    名前は `{stage}-{project}-{namespace}-{kind}-role`。`pocket permissions
+    role-names` が返す。
+
     role (Lambda 実行 / scheduler / CodeBuild / AWS Backup) は利用者が事前に作る。
     必要な role 名と policy は `pocket permissions roles` が出力する。deploy は
     role が存在し pocket の service を信頼しているかだけを変更前に検査し、
     policy の中身は見ない (充足は role の持ち主の責任)。
     deploy 権限から IAM の書き込み (CreateRole / PutRolePolicy 等) を外せる。
+    """
+
+    namespace: str | None = None
+    """external_roles の role 名に使う namespace。既定は [general] namespace。
+
+    role 名だけに効く (SQS / store / S3 など他のリソース名は変えない)。role を
+    組織の IAM 管理で作る場合に、pocket.toml を読まずに名前を決められるよう
+    組織側の固定値 (例: "platform") を置く。pocket 自身が作る同種の role
+    ({prefix}codebuild-role / {prefix}backup-role) との名前の衝突も避けられる。
     """
 
 
@@ -1474,6 +1487,16 @@ class Settings(BaseModel):
         Container / Dsql / Rds / CloudFront が同一計算を重複させていた。
         """
         return self.prefix_template.format(**self.format_vars)
+
+    @property
+    def external_role_prefix(self) -> str:
+        """[iam] external_roles の role 名の prefix。e.g) dev-myprj-platform-
+
+        resource_prefix と同じ形で、namespace だけ [iam] namespace で上書きできる。
+        """
+        return self.prefix_template.format(
+            **{**self.format_vars, "namespace": self.iam.namespace or self.namespace}
+        )
 
     @model_validator(mode="before")
     @classmethod

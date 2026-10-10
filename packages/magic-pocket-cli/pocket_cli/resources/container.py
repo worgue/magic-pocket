@@ -65,6 +65,7 @@ class Container:
             state_bucket=self._state_bucket,
             permissions_boundary=self.context.permissions_boundary,
             external_roles=self.context.external_roles,
+            external_role_prefix=self.context.external_role_prefix,
         )
 
     @property

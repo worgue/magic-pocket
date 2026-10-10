@@ -321,6 +321,7 @@ pocket にはそれを参照させます。
 ```toml
 [iam]
 external_roles = true
+namespace = "platform"   # 任意。role 名の namespace だけを上書きする（既定は [general] namespace）
 ```
 
 ### 流れ
@@ -369,16 +370,42 @@ pocket permissions roles --stage=prod --account-id=123456789012  # sts を呼ば
   作成時に AWS が乱数で決める ARN ではなく、タグ（RDS の secret に付く
   `aws:rds:primaryDBClusterArn`、DSQL cluster の `Name`）で対象を絞っています
 
-role は stage の構成に応じて次のものが出ます。
+role は **種別ごとに 1 つ**（全 container で共用）で、stage の構成に応じて次のものが出ます。
 
 | role | 名前 | 出る条件 |
 |---|---|---|
-| Lambda 実行 | `{prefix}{container}-lambda-role` | container ごと |
-| scheduler | `{prefix}{container}-scheduler-role` | その container に schedule があるとき |
+| Lambda 実行 | `{prefix}lambda-role` | container があるとき（複数 container の権限は 1 つの role にまとめて出す） |
+| scheduler | `{prefix}scheduler-role` | schedule があるとき |
 | CodeBuild | `{prefix}codebuild-role` | `build.backend = "codebuild"`（既定）の container があるとき |
 | AWS Backup | `{prefix}backup-role` | `[dsql]` があるとき、または `[backup.rds]` を宣言したとき |
 
-`{prefix}` は `{stage}-{project}-{namespace}-`（例: `prod-myprj-pocket-`）です。
+`{prefix}` は `{stage}-{project}-{namespace}-` で、`namespace` は `[iam] namespace`（無ければ
+`[general] namespace`）です。`[iam] namespace` は role 名だけに効き、SQS / secret store / S3 など
+他のリソース名は変えません。IAM を組織で一括管理する場合に、pocket.toml を読まずに名前を
+決められるよう組織側の固定値（例: `platform`）を置く用途です。pocket 自身が作る同種の role
+（`{resource_prefix}codebuild-role` / `-backup-role`）との名前の衝突も避けられます。
+
+#### 命名規則は公開仕様（`pocket permissions role-names`）
+
+```bash
+pocket permissions role-names --stage=prod
+```
+
+```json
+{
+  "lambda": "prod-myprj-platform-lambda-role",
+  "scheduler": "prod-myprj-platform-scheduler-role",
+  "codebuild": "prod-myprj-platform-codebuild-role",
+  "backup": "prod-myprj-platform-backup-role"
+}
+```
+
+AWS には問い合わせず、pocket.toml だけで決まります。構成で使わない種別も常に出します（使わない
+role を先に作っておいて構いません）。規則 `{stage}-{project}-{namespace}-{kind}-role` と
+4 つの種別名（`lambda` / `scheduler` / `codebuild` / `backup`）は**互換を保つ公開仕様**です。
+IAM 管理側が自前の計算で role を作る場合は、固定の pocket.toml に対してこのコマンドの出力と
+一致することを CI で確認する（契約テスト）ことを推奨します。Python からは
+`pocket.permissions.external_role_names(settings)` で同じ値を得られます。
 
 ### deploy の検査
 
@@ -406,7 +433,10 @@ role の持ち主の責任で、足りなければ実行時の `AccessDenied` �
 Lambda 実行 role と scheduler role は、pocket が作ったもの（CloudFormation の管理下）とは
 **別の名前**になります。切り替えの deploy で、CloudFormation が参照先を新しい role に替えてから
 古い role を削除するため、途中で Lambda が止まることはありません。CodeBuild と AWS Backup の
-role は名前が同じなので、pocket が作った role をそのまま引き継げます。
+role は、`[iam] namespace` を指定しなければ名前が同じなので、pocket が作った role をそのまま
+引き継げます。`[iam] namespace` を指定した場合は別名になり、pocket が作った旧 role
+（`{resource_prefix}codebuild-role` / `{resource_prefix}backup-role`）は残るので、切り替え後に
+削除してください（pocket は external の role を一切削除しません）。
 
 1. `pocket.toml` に `[iam] external_roles = true` を書く
 2. `pocket permissions roles` の出力を参考に role を作る

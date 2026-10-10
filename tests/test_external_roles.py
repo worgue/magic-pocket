@@ -15,6 +15,7 @@ from pocket_cli.resources.aws.stage_roles import stage_role_specs, verify_stage_
 
 from pocket import settings
 from pocket.context import Context
+from pocket.permissions import external_role_names
 from pocket.settings import Settings
 
 REGION = "ap-southeast-1"
@@ -35,12 +36,13 @@ def _stack(context: Context) -> ContainerStack:
 
 
 def test_external_role_names_differ_from_managed(use_toml):
-    """CFn が持つ既存 role と衝突しないよう、external では別名になる。"""
+    """external の role は種別単位 ({prefix}{kind}-role) で、CFn が持つ既存 role と
+    衝突しない。"""
     managed = _stack(_context(use_toml, external=False))
     external = _stack(_context(use_toml))
     assert [r.name for r in external.role_specs] == [
-        "prod-testprj-pocket-main-lambda-role",
-        "prod-testprj-pocket-main-scheduler-role",
+        "prod-testprj-pocket-lambda-role",
+        "prod-testprj-pocket-scheduler-role",
     ]
     managed_names = {r.name for r in managed.role_specs}
     assert managed_names.isdisjoint(r.name for r in external.role_specs)
@@ -62,7 +64,7 @@ def test_template_references_external_roles_by_arn(monkeypatch, use_toml):
     for function in functions:
         assert function["Properties"]["Role"] == {
             "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}"
-            ":role/prod-testprj-pocket-main-lambda-role"
+            ":role/prod-testprj-pocket-lambda-role"
         }
     schedules = [
         r for r in resources.values() if r["Type"] == "AWS::Scheduler::Schedule"
@@ -72,7 +74,7 @@ def test_template_references_external_roles_by_arn(monkeypatch, use_toml):
         assert "SchedulerExecutionRole" not in schedule.get("DependsOn", [])
         assert schedule["Properties"]["Target"]["RoleArn"] == {
             "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}"
-            ":role/prod-testprj-pocket-main-scheduler-role"
+            ":role/prod-testprj-pocket-scheduler-role"
         }
 
 
@@ -185,8 +187,8 @@ def test_permissions_roles_output_matches_verification(monkeypatch, use_toml, tm
     output = json.loads(result.output)
     assert output["external_roles"] is True
     assert [r["name"] for r in output["roles"]] == [
-        "prod-testprj-pocket-main-lambda-role",
-        "prod-testprj-pocket-main-scheduler-role",
+        "prod-testprj-pocket-lambda-role",
+        "prod-testprj-pocket-scheduler-role",
         "prod-testprj-pocket-codebuild-role",
     ]
 
@@ -216,3 +218,101 @@ def test_stage_role_specs_includes_backup_role_for_dsql(base_settings):
     assert spec.name == "test-testprj-pocket-backup-role"
     assert spec.service == "backup.amazonaws.com"
     assert spec.external
+
+
+def test_iam_namespace_changes_only_role_names(base_settings):
+    """[iam] namespace は external の role 名だけに効き、他のリソース名は変えない。"""
+    base_settings.dsql = settings.Dsql()
+    base_settings.iam.external_roles = True
+    base_settings.iam.namespace = "platform"
+    assert base_settings.external_role_prefix == "test-testprj-platform-"
+    assert base_settings.resource_prefix == "test-testprj-pocket-"
+    context = Context.from_settings(base_settings)
+    [spec] = stage_role_specs(context, account_id=ACCOUNT_ID)
+    assert spec.name == "test-testprj-platform-backup-role"
+    assert all(
+        c.resource_prefix == "test-testprj-pocket-" for c in context.container.values()
+    )
+    assert context.dsql is not None
+    assert context.dsql.backup_role_name == "test-testprj-platform-backup-role"
+
+
+def test_iam_namespace_does_not_affect_managed_roles(base_settings):
+    """external_roles でなければ [iam] namespace は role 名に影響しない。"""
+    base_settings.dsql = settings.Dsql()
+    base_settings.iam.namespace = "platform"
+    context = Context.from_settings(base_settings)
+    assert context.dsql is not None
+    assert context.dsql.backup_role_name == "test-testprj-pocket-backup-role"
+
+
+def test_external_role_names_lists_all_kinds(base_settings):
+    """公開 API: 構成で使わない種別も含めて 4 種を固定の規則で返す。"""
+    base_settings.iam.external_roles = True
+    base_settings.iam.namespace = "platform"
+    assert external_role_names(base_settings) == {
+        "lambda": "test-testprj-platform-lambda-role",
+        "scheduler": "test-testprj-platform-scheduler-role",
+        "codebuild": "test-testprj-platform-codebuild-role",
+        "backup": "test-testprj-platform-backup-role",
+    }
+
+
+def test_permissions_role_names_cli(use_toml, tmp_path):
+    toml = tmp_path / "pocket.toml"
+    toml.write_text(
+        Path("tests/data/toml/scheduler.toml").read_text()
+        + '\n[iam]\nexternal_roles = true\nnamespace = "platform"\n'
+    )
+    use_toml(str(toml))
+    result = CliRunner().invoke(permissions, ["role-names", "--stage", "prod"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "lambda": "prod-testprj-platform-lambda-role",
+        "scheduler": "prod-testprj-platform-scheduler-role",
+        "codebuild": "prod-testprj-platform-codebuild-role",
+        "backup": "prod-testprj-platform-backup-role",
+    }
+
+
+def _lambda_spec(
+    name: str, policy: str, action: str, *, managed: str
+) -> iam_roles.RoleSpec:
+    return iam_roles.RoleSpec(
+        name=name,
+        service="lambda.amazonaws.com",
+        managed_policy_arns=[managed],
+        inline_policies={
+            policy: {
+                "Version": "2012-10-17",
+                "Statement": [{"Effect": "Allow", "Action": action, "Resource": "*"}],
+            }
+        },
+        external=True,
+    )
+
+
+def test_merge_role_specs_unions_policies():
+    """同名の RoleSpec (container ごとの Lambda role) は 1 つにまとめ、managed policy は
+    和集合、同名の inline policy は Statement の和集合にする。"""
+    a = _lambda_spec("r", "access", "ssm:GetParameter", managed="arn:a")
+    b = _lambda_spec("r", "access", "s3:GetObject", managed="arn:b")
+    c = _lambda_spec("r", "other", "sqs:SendMessage", managed="arn:a")
+    other = iam_roles.RoleSpec(name="s", service="scheduler.amazonaws.com")
+    merged = iam_roles.merge_role_specs([a, b, other, c])
+    assert [m.name for m in merged] == ["r", "s"]
+    role = merged[0]
+    assert role.managed_policy_arns == ["arn:a", "arn:b"]
+    assert set(role.inline_policies) == {"access", "other"}
+    actions = [s["Action"] for s in role.inline_policies["access"]["Statement"]]
+    assert actions == ["ssm:GetParameter", "s3:GetObject"]
+    # 同じ Statement は重複させない
+    again = iam_roles.merge_role_specs([a, a])
+    assert len(again[0].inline_policies["access"]["Statement"]) == 1
+
+
+def test_merge_role_specs_rejects_service_conflict():
+    a = iam_roles.RoleSpec(name="r", service="lambda.amazonaws.com")
+    b = iam_roles.RoleSpec(name="r", service="scheduler.amazonaws.com")
+    with pytest.raises(ValueError, match="両方"):
+        iam_roles.merge_role_specs([a, b])

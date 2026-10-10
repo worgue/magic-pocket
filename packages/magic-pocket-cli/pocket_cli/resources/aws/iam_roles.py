@@ -172,10 +172,11 @@ def lambda_role(
         policies[f"{prefix}{policy_name}"] = doc
 
     if ctx.external_roles:
-        # CFn が持つ既存 role (下の名前) と衝突しないよう別名にする。切替時は
-        # CFn が旧 role を消す間も、事前に作った新 role で Lambda が動き続ける
+        # 種別単位の role (全 container 共用。stage_role_specs が merge_role_specs で
+        # container 分をまとめる)。CFn が持つ既存 role (下の名前) とは名前が違うので、
+        # 切替時は CFn が旧 role を消す間も、事前に作った新 role で Lambda が動き続ける
         return RoleSpec(
-            name=f"{prefix}{ctx.name}-lambda-role",
+            name=f"{ctx.external_role_prefix}lambda-role",
             service="lambda.amazonaws.com",
             managed_policy_arns=_lambda_managed_policies(ctx),
             inline_policies=policies,
@@ -507,6 +508,55 @@ def delete_role(
 
 
 # --- external_roles ---
+
+
+def merge_role_specs(specs: list[RoleSpec]) -> list[RoleSpec]:
+    """同名の RoleSpec を 1 つにまとめる (external_roles の種別単位 role 向け)。
+
+    container ごとに組んだ Lambda / scheduler の RoleSpec は external では同じ名前に
+    なるので、managed policy は和集合、同名の inline policy は Statement の和集合に
+    する (共用 role は全 container の権限を必要とする)。順序は初出順を保つ。
+    """
+    merged: dict[str, RoleSpec] = {}
+    for spec in specs:
+        base = merged.get(spec.name)
+        if base is None:
+            merged[spec.name] = spec
+            continue
+        if base.service != spec.service:
+            raise ValueError(
+                "role %s を %s と %s の両方が使おうとしています"
+                % (spec.name, base.service, spec.service)
+            )
+        managed = list(base.managed_policy_arns)
+        managed += [a for a in spec.managed_policy_arns if a not in managed]
+        inline = dict(base.inline_policies)
+        for name, doc in spec.inline_policies.items():
+            inline[name] = _merge_policy(inline[name], doc) if name in inline else doc
+        merged[spec.name] = RoleSpec(
+            name=base.name,
+            service=base.service,
+            managed_policy_arns=managed,
+            inline_policies=inline,
+            permissions_boundary=base.permissions_boundary,
+            assume_role_policy_version=base.assume_role_policy_version,
+            external=base.external,
+        )
+    return list(merged.values())
+
+
+def _merge_policy(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
+    """2 つの policy 文書の Statement を重複なしで連結する。"""
+    statements: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for doc in (a, b):
+        raw = doc.get("Statement", [])
+        for statement in [raw] if isinstance(raw, dict) else raw:
+            key = json.dumps(statement, sort_keys=True)
+            if key not in seen:
+                seen.add(key)
+                statements.append(statement)
+    return {"Version": a.get("Version", _POLICY_VERSION), "Statement": statements}
 
 
 class RoleMismatchError(Exception):
