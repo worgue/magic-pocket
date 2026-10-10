@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.44.0](https://github.com/worgue/magic-pocket/releases/tag/0.44.0) - 2026-10-10
+
 ### Added
 - `[iam] namespace` で、`external_roles` の role 名の namespace だけを上書きできるようにしました
   （既定は `[general] namespace`。SQS / secret store / S3 など他のリソース名は変わりません）。
