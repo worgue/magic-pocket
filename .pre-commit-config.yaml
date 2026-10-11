@@ -37,6 +37,28 @@ repos:
         stages: [pre-push]
   - repo: local
     hooks:
+      # Rust の整形ゲート (rustfmt 既定設定)。数秒なので pre-commit 側
+      - id: cargo-fmt
+        name: cargo fmt --check
+        entry: >-
+          bash -c 'command -v cargo >/dev/null ||
+          { echo "SKIP - cargo が無いため cargo fmt --check は走っていません。開発環境で cargo fmt --all を回してください"; exit 0; };
+          cargo fmt --all -- --check'
+        language: system
+        types: [rust]
+        pass_filenames: false
+      # Rust の型 + lint ゲート。clippy は check のみでリンクしないので push 待ちが短い。
+      # .rs を触った push だけ走る (types: [rust])
+      - id: clippy
+        name: clippy
+        entry: >-
+          bash -c 'command -v cargo >/dev/null ||
+          { echo "SKIP - cargo が無いため clippy は走っていません。開発環境で just test を回してください"; exit 0; };
+          cargo clippy --workspace --all-targets -- -D warnings'
+        language: system
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
       - id: pyright
         name: pyright
         entry: uv run pyright

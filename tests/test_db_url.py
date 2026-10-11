@@ -142,7 +142,7 @@ def test_run_get_url_propagates_live_failure(base_settings, monkeypatch):
     """live 算出の失敗は握らず自然に伝播すること。
 
     以前は except Exception で「解決できませんでした」に丸め from None で
-    traceback も破棄していた (AGENTS.md の方針違反 + 原因情報の喪失)。
+    traceback も破棄していた (AGENTS_COMMON.md の方針違反 + 原因情報の喪失)。
     """
     sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
     monkeypatch.setattr("boto3.client", lambda *a, **k: _FakeAws(None))
