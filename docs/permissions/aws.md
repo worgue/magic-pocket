@@ -418,6 +418,20 @@ policy の中身（managed / inline）は検査しません。pocket の版更�
 role の更新を求めると、IAM を別に管理する組織では deploy が止まり続けるためです。権限の充足は
 role の持ち主の責任で、足りなければ実行時の `AccessDenied` として現れます。
 
+!!! tip "deploy 前に権限の充足を確かめたい場合"
+    `iam:SimulatePrincipalPolicy` で role に必要な action（例: scheduler role の `sqs:SendMessage`）を
+    事前に試せます。組織が `aws:RequestedRegion` で region を制限する Deny を持つ場合、
+    `--context-entries` で `aws:RequestedRegion` を与えないと、実際には許可される action が
+    `explicitDeny` に見えます（偽陽性）。
+
+    ```bash
+    aws iam simulate-principal-policy \
+      --policy-source-arn arn:aws:iam::<account>:role/<prefix>scheduler-role \
+      --action-names sqs:SendMessage \
+      --resource-arns arn:aws:sqs:<region>:<account>:<queue> \
+      --context-entries ContextKeyName=aws:RequestedRegion,ContextKeyValues=<region>,ContextKeyType=string
+    ```
+
 ### deploy 権限の違い
 
 `pocket permissions list` は、`external_roles = true` の stage では IAM の書き込み

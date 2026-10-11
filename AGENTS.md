@@ -12,6 +12,20 @@
 - すべてのファイルは改行（LF）で終わる
 - 行末の空白は削除する
 
+## 公開リポジトリに書いてよい語彙
+
+このリポジトリは公開されている。tracked ファイル (docs / コード / テスト / example の
+`pocket.toml` / workflow のコメントを含む) に、**法人名・個人名・社内ツール名・内部 URL /
+ARN・実ドメイン・メールアドレス**を書かないこと。pre-push の gitleaks (scan-leaks) が
+denylist で検出して push を止める (全履歴スキャンなので、過去 commit に混ぜた場合は
+commit の書き直しが要る)。
+
+- docs / tests の例に組織名や namespace が要るときは `platform` / `myorg` のような中立語を使う
+- example の `pocket.toml` で実値が要る項目 (domain / email / `[iam] namespace` 等) は
+  placeholder で commit し、deploy 前に書き戻す (書き戻しは commit しない)
+- `git add` はパスを明示する (`-A` で書き戻し済みの実値を巻き込んだ事故あり)
+- GitHub の organization 名を含む URL (`github.com/<org>/magic-pocket` 等) は許容されている
+
 ## Python
 
 ### コード品質
