@@ -825,6 +825,8 @@ deploy が AWS Backup の vault（`{stage}-{project}-{namespace}-backup`）・�
 !!! info "宣言を外した場合"
     `[backup.dsql]` 等を後から外しても、deploy は既存の plan（スケジュール）に触りません（snapshot は取られ続けます）。スケジュールを止めるには destroy を実行するか、AWS Backup コンソールから plan を削除してください。
 
+    0.36 以前に作られた plan を宣言から外したまま残していると、その plan は旧 vault / 旧ロールを参照し続けるため（deploy が触らないので 0.37.0 以上に上げても切り替わりません）、`pocket cleanup-deprecated` が「参照が残っている」として中止します。その場合は先に plan と selection を手で削除してから再実行してください。
+
 !!! info "権限が足りない場合"
     deploy role に `backup:*`（[権限リファレンス](../permissions/aws.md) 参照）が無い場合、deploy は失敗せず警告を出して定期バックアップの provisioning をスキップします。警告が出たら権限を付与してください。
 

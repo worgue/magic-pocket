@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Documentation
+- 宣言から外したまま残した 0.36 以前の backup plan は旧 vault を参照し続け、`pocket cleanup-deprecated` が
+  中止する旨と対処（plan / selection を手で削除してから再実行）を設定ガイドに追記しました
+
 ## [0.44.0](https://github.com/worgue/magic-pocket/releases/tag/0.44.0) - 2026-10-10
 
 ### Added
