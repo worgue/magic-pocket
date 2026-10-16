@@ -14,7 +14,7 @@
   `enable_ip_set = false` の必須条件に `action = "block"` の `rate_limits` も数えるようにしたので、
   「IP allowlist 無し + レートリミットだけ」の WebACL も宣言できます
 - `pocket waf ratelimit list --name <cf> --stage <stage>` が、deploy 済みの rate rule ごとにレート超過として
-  追跡中の IP（WAF の managed keys）を表示します
+  追跡中の IP（WAF の managed keys）を表示します。WAF 側の反映は数分〜十数分遅れます
 
 ### Changed
 - `allow_rules` / `rate_limits` の `path` に使える文字を RFC 3986 の path 文字（`"` と `\` を除く）に
