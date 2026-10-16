@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Changed
+- 0.29.0 の multi-container 移行で deploy が削除する旧形式の container stack（`{slug}-container`）について、
+  削除の完了を待つようにしました（最大 5 分）。CloudFormation 側の一過性エラーで `DELETE_FAILED` に
+  なった場合は、失敗したリソースと理由、再実行コマンドを表示します（deploy 自体は成功のまま終わります）。
+  従来は削除を開始するだけで終わっていたため、失敗に気付けませんでした。`DELETE_FAILED` のまま残った
+  旧 stack は次回 deploy でも理由付きで再検出し、削除を再実行できます
+
 ### Documentation
 - 宣言から外したまま残した 0.36 以前の backup plan は旧 vault を参照し続け、`pocket cleanup-deprecated` が
   中止する旨と対処（plan / selection を手で削除してから再実行）を設定ガイドに追記しました

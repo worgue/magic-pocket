@@ -60,7 +60,7 @@ dev = [
     # test_client_params_are_typed が注釈を必須にする)。lite 版は boto3.client() を
     # Any のまま返すので、注釈していない既存コードは型チェックの対象にならない。
     # 新しい service の client を注釈するときは extras に足す
-    "boto3-stubs-lite[backup,ec2,iam,lambda,s3,wafv2]>=1.43.98",
+    "boto3-stubs-lite[backup,cloudformation,ec2,iam,lambda,s3,wafv2]>=1.43.98",
 ]
 
 [tool.pyright]

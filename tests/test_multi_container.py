@@ -431,9 +431,130 @@ def test_cleanup_legacy_container_resources_deletes_old_stack_and_repo():
 
     fake_cfn.describe_stacks.assert_called_once_with(StackName="dev-testprj-container")
     fake_cfn.delete_stack.assert_called_once_with(StackName="dev-testprj-container")
+    # 削除完了を待つ (完了を待たないと DELETE_FAILED に気付けない、KN1799)
+    fake_cfn.get_waiter.assert_called_once_with("stack_delete_complete")
+    fake_cfn.get_waiter.return_value.wait.assert_called_once()
     fake_ecr.delete_repository.assert_called_once_with(
         repositoryName="dev-testprj-pocket-lambda", force=True
     )
+
+
+def _legacy_stack_cfn(status: str) -> mock.MagicMock:
+    fake_cfn = mock.MagicMock()
+
+    class _ClientError(Exception):
+        pass
+
+    fake_cfn.exceptions.ClientError = _ClientError
+    fake_cfn.describe_stacks.return_value = {"Stacks": [{"StackStatus": status}]}
+    fake_cfn.get_paginator.return_value.paginate.return_value = [
+        {
+            "StackResourceSummaries": [
+                {
+                    "LogicalResourceId": "WsgiApiGatewayManagedOverrides",
+                    "ResourceType": "AWS::ApiGatewayV2::ApiGatewayManagedOverrides",
+                    "ResourceStatus": "DELETE_FAILED",
+                    "ResourceStatusReason": "Internal Failure",
+                },
+                {
+                    "LogicalResourceId": "WsgiFunction",
+                    "ResourceType": "AWS::Lambda::Function",
+                    "ResourceStatus": "DELETE_COMPLETE",
+                },
+            ]
+        }
+    ]
+    return fake_cfn
+
+
+def _run_legacy_cleanup(fake_cfn: mock.MagicMock) -> list[str]:
+    """旧 stack の cleanup を -y で回し、echo に出た文言を返す。"""
+    from pocket_cli.cli import interaction
+    from pocket_cli.migrations import (
+        _cleanup_legacy_container_resources as cleanup_legacy_container_resources,
+    )
+
+    context = Context.from_settings(
+        settings.Settings.model_validate(_two_container_data())
+    )
+    fake_ecr = mock.MagicMock()
+
+    class _NotFound(Exception):
+        pass
+
+    fake_ecr.exceptions.RepositoryNotFoundException = _NotFound
+    fake_ecr.describe_repositories.side_effect = _NotFound()
+
+    def _client(service, region_name=None):
+        return {"cloudformation": fake_cfn, "ecr": fake_ecr}[service]
+
+    messages: list[str] = []
+    with (
+        mock.patch("pocket_cli.migrations.boto3.client", _client),
+        mock.patch("pocket_cli.migrations.echo.warning", side_effect=messages.append),
+        mock.patch("pocket_cli.migrations.echo.danger", side_effect=messages.append),
+        mock.patch("pocket_cli.migrations.echo.success", side_effect=messages.append),
+    ):
+        interaction.set_assume_yes(True)
+        try:
+            cleanup_legacy_container_resources(context)
+        finally:
+            interaction.set_assume_yes(False)
+    return messages
+
+
+def test_cleanup_legacy_stack_delete_failed_is_reported():
+    """削除が DELETE_FAILED に落ちたら、失敗リソースと理由を添えて警告する (KN1799)。"""
+    from botocore.exceptions import WaiterError
+
+    fake_cfn = _legacy_stack_cfn("CREATE_COMPLETE")
+    fake_cfn.get_waiter.return_value.wait.side_effect = WaiterError(
+        name="StackDeleteComplete",
+        reason="Waiter encountered a terminal failure state",
+        last_response={},
+    )
+
+    messages = _run_legacy_cleanup(fake_cfn)
+
+    fake_cfn.delete_stack.assert_called_once_with(StackName="dev-testprj-container")
+    failed = [m for m in messages if "DELETE_FAILED" in m]
+    assert len(failed) == 1
+    assert "WsgiApiGatewayManagedOverrides" in failed[0]
+    assert "Internal Failure" in failed[0]
+    assert "WsgiFunction" not in failed[0]
+    assert "delete-stack --stack-name dev-testprj-container" in failed[0]
+    assert not any("削除しました" in m for m in messages)
+
+
+def test_cleanup_legacy_stack_delete_timeout_does_not_fail_deploy():
+    """上限時間を超えたら deploy を止めず、確認コマンドを添えて警告する。"""
+    from botocore.exceptions import WaiterError
+
+    fake_cfn = _legacy_stack_cfn("CREATE_COMPLETE")
+    fake_cfn.get_waiter.return_value.wait.side_effect = WaiterError(
+        name="StackDeleteComplete", reason="Max attempts exceeded", last_response={}
+    )
+
+    messages = _run_legacy_cleanup(fake_cfn)
+
+    timeout = [m for m in messages if "終わりませんでした" in m]
+    assert len(timeout) == 1
+    assert "describe-stacks --stack-name dev-testprj-container" in timeout[0]
+    assert not any("DELETE_FAILED" in m for m in messages)
+
+
+def test_cleanup_legacy_stack_redetects_delete_failed_with_reason():
+    """前回 DELETE_FAILED のまま残った旧 stack は、理由付きで再検出して再削除する。"""
+    fake_cfn = _legacy_stack_cfn("DELETE_FAILED")
+
+    messages = _run_legacy_cleanup(fake_cfn)
+
+    redetected = [m for m in messages if "前回の削除に失敗" in m]
+    assert len(redetected) == 1
+    assert "WsgiApiGatewayManagedOverrides" in redetected[0]
+    assert "Internal Failure" in redetected[0]
+    fake_cfn.delete_stack.assert_called_once_with(StackName="dev-testprj-container")
+    assert any("削除しました" in m for m in messages)
 
 
 def test_cleanup_legacy_noop_when_absent():

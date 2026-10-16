@@ -30,11 +30,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 import boto3
+from botocore.exceptions import WaiterError
 
 from pocket.utils import echo
 from pocket_cli.cli import interaction
 
 if TYPE_CHECKING:
+    from mypy_boto3_cloudformation import CloudFormationClient
+
     from pocket.context import Context
 
 
@@ -141,16 +144,88 @@ def legacy_ecr_repo_name(context: Context) -> str:
     return f"{resource_prefix}lambda"
 
 
-def legacy_container_stack_exists(context: Context) -> bool:
-    """旧命名の container stack が (削除済み以外の状態で) 存在するか。"""
+def legacy_container_stack_status(context: Context) -> str | None:
+    """旧命名の container stack の StackStatus。削除済み / 無ければ None。"""
     if not context.general:
-        return False
+        return None
     cfn = boto3.client("cloudformation", region_name=context.general.region)
     try:
-        cfn.describe_stacks(StackName=legacy_container_stack_name(context))
+        response = cfn.describe_stacks(StackName=legacy_container_stack_name(context))
     except cfn.exceptions.ClientError:
-        return False
-    return True
+        return None
+    return response["Stacks"][0]["StackStatus"]
+
+
+def legacy_container_stack_exists(context: Context) -> bool:
+    """旧命名の container stack が (削除済み以外の状態で) 存在するか。"""
+    return legacy_container_stack_status(context) is not None
+
+
+# 旧 stack の削除完了を待つ上限 (秒)。Lambda / API Gateway / scheduler / SQS の
+# 削除は通常数分で終わる。超えたら deploy を止めずに警告して先へ進む
+LEGACY_STACK_DELETE_TIMEOUT = 300
+
+
+def _legacy_stack_failure_reasons(cfn: CloudFormationClient, stack_name: str) -> str:
+    """DELETE_FAILED の stack から失敗したリソースと理由だけを取り出す。"""
+    lines: list[str] = []
+    for page in cfn.get_paginator("list_stack_resources").paginate(
+        StackName=stack_name
+    ):
+        for resource in page["StackResourceSummaries"]:
+            if resource["ResourceStatus"].endswith("FAILED"):
+                lines.append(
+                    "  - %s (%s): %s"
+                    % (
+                        resource["LogicalResourceId"],
+                        resource["ResourceType"],
+                        resource.get("ResourceStatusReason", "理由なし"),
+                    )
+                )
+    return "\n".join(lines) if lines else "  (失敗したリソースの情報なし)"
+
+
+def _delete_legacy_container_stack(cfn: CloudFormationClient, stack_name: str):
+    """旧 stack を削除し、完了まで待つ。失敗しても deploy は止めない。
+
+    完了を待たずに success で終えると、CloudFormation 側の一過性エラーで
+    DELETE_FAILED に落ちた stack に誰も気付けない (kikiwake prod、KN1799)。
+    失敗は理由付きで警告し、次回 deploy の再検出 (= 再プロンプト) に委ねる。
+    """
+    cfn.delete_stack(StackName=stack_name)
+    echo.log(
+        "旧 stack の削除を開始しました (最大 %d 秒待ちます)。"
+        % LEGACY_STACK_DELETE_TIMEOUT
+    )
+    delay = 10
+    try:
+        cfn.get_waiter("stack_delete_complete").wait(
+            StackName=stack_name,
+            WaiterConfig={
+                "Delay": delay,
+                "MaxAttempts": LEGACY_STACK_DELETE_TIMEOUT // delay,
+            },
+        )
+    except WaiterError as error:
+        if error.kwargs.get("reason") == "Max attempts exceeded":
+            echo.warning(
+                "旧 stack '%s' の削除が %d 秒以内に終わりませんでした。deploy は"
+                "このまま続けます。完了したか後で確認してください:\n"
+                "  aws cloudformation describe-stacks --stack-name %s"
+                % (stack_name, LEGACY_STACK_DELETE_TIMEOUT, stack_name)
+            )
+            return
+        echo.danger(
+            "旧 stack '%s' の削除が失敗しました (DELETE_FAILED)。deploy 自体は"
+            "成功していますが、旧 stack の scheduler / SQS が残っている可能性が"
+            "あります。失敗したリソース:\n%s\n"
+            "CloudFormation の一過性エラーなら次回 deploy の再プロンプト、または"
+            "次で再実行すると消えることがあります:\n"
+            "  aws cloudformation delete-stack --stack-name %s"
+            % (stack_name, _legacy_stack_failure_reasons(cfn, stack_name), stack_name)
+        )
+        return
+    echo.success("旧 stack '%s' を削除しました。" % stack_name)
 
 
 def legacy_ecr_repo_exists(context: Context) -> bool:
@@ -182,19 +257,30 @@ def _cleanup_legacy_container_resources(context: Context):
         return
     region = context.general.region
     legacy_stack_name = legacy_container_stack_name(context)
-    if legacy_container_stack_exists(context):
+    legacy_status = legacy_container_stack_status(context)
+    if legacy_status is not None:
         cfn = boto3.client("cloudformation", region_name=region)
-        echo.warning(
-            "旧形式の container stack '%s' が残っています (0.29.0 の "
-            "multi-container 化で stack 名が {slug}-container-{name} に"
-            "変わりました)。旧 stack の scheduler / SQS が動き続けるため、"
-            "削除を推奨します。" % legacy_stack_name
-        )
+        if legacy_status == "DELETE_FAILED":
+            echo.warning(
+                "旧形式の container stack '%s' が前回の削除に失敗したまま"
+                "残っています (DELETE_FAILED)。失敗したリソース:\n%s\n"
+                "一過性のエラーなら削除の再実行で消えます。"
+                % (
+                    legacy_stack_name,
+                    _legacy_stack_failure_reasons(cfn, legacy_stack_name),
+                )
+            )
+        else:
+            echo.warning(
+                "旧形式の container stack '%s' が残っています (0.29.0 の "
+                "multi-container 化で stack 名が {slug}-container-{name} に"
+                "変わりました)。旧 stack の scheduler / SQS が動き続けるため、"
+                "削除を推奨します。" % legacy_stack_name
+            )
         if interaction.confirm(
             "旧 stack '%s' を削除しますか？" % legacy_stack_name, default=True
         ):
-            cfn.delete_stack(StackName=legacy_stack_name)
-            echo.log("旧 stack の削除を開始しました (完了待ちはしません)。")
+            _delete_legacy_container_stack(cfn, legacy_stack_name)
     if not legacy_ecr_repo_exists(context):
         return
     legacy_repo = legacy_ecr_repo_name(context)
