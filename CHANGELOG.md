@@ -6,7 +6,21 @@
 
 ## [Unreleased]
 
+### Added
+- `[cloudfront.<name>.waf]` に `rate_limits` を追加しました。送信元 IP ごとのレートリミット
+  （AWS WAF の rate-based rule）を `{ limit, window_sec, path, action }` の配列で宣言すると、
+  WebACL の**全ルールの先頭**に付きます。`allow_rules` の秘密ヘッダを持つ呼び手や IP allowlist 済みの
+  IP も超過すれば止まります（`block` は 429 を返し、`count` は記録だけします）。
+  `enable_ip_set = false` の必須条件に `action = "block"` の `rate_limits` も数えるようにしたので、
+  「IP allowlist 無し + レートリミットだけ」の WebACL も宣言できます
+- `pocket waf ratelimit list --name <cf> --stage <stage>` が、deploy 済みの rate rule ごとにレート超過として
+  追跡中の IP（WAF の managed keys）を表示します
+
 ### Changed
+- `allow_rules` / `rate_limits` の `path` に使える文字を RFC 3986 の path 文字（`"` と `\` を除く）に
+  制限しました。CloudFormation template への埋め込みを安全にするためで、通常の URL path には影響しません
+- WAF の CloudFormation template のコメントを更新したため、`[cloudfront.<name>.waf]` を使っている既存の
+  stack は次回 deploy で一度 update されます（ルールの内容は変わりません）
 - 0.29.0 の multi-container 移行で deploy が削除する旧形式の container stack（`{slug}-container`）について、
   削除の完了を待つようにしました（最大 5 分）。CloudFormation 側の一過性エラーで `DELETE_FAILED` に
   なった場合は、失敗したリソースと理由、再実行コマンドを表示します（deploy 自体は成功のまま終わります）。

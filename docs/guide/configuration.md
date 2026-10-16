@@ -1793,7 +1793,8 @@ managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
 |-----------|------|----------|------|
 | `enable_ip_set` | bool | `true` | IPSet + IP allow rule を生成して IP allowlist で運用 |
 | `managed_rule_groups` | list[str] | `[]` | AWS managed rule group 名のリスト |
-| `allow_rules` | list | `[]` | 他ルールより先に評価される allow（下記 [allow_rules](#allow_rules) 参照） |
+| `allow_rules` | list | `[]` | IPSet / managed rules より先に評価される allow（下記 [allow_rules](#allow_rules) 参照） |
+| `rate_limits` | list | `[]` | 全ルールの先頭で評価される送信元 IP ごとのレートリミット（下記 [rate_limits](#rate_limits) 参照） |
 
 `[cloudfront.<name>.waf]` block を書くと us-east-1 に `AWS::WAFv2::WebACL` が
 CFn で作成され、CloudFront distribution の `WebACLId` に attach されます。
@@ -1824,9 +1825,10 @@ managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
 - `DefaultAction = Allow` で、managed rules にマッチした怪しいリクエスト
   のみ block される (「許可ベース + 攻撃シグネチャだけ弾く」構成)
 
-`enable_ip_set = false` でかつ `managed_rule_groups` も空、という構成は
-WebACL が何もしない pass-through 状態になるので、settings の validator が
-エラーで reject します。
+`enable_ip_set = false` でかつ `managed_rule_groups` も `action = "block"` の
+`rate_limits` も無い構成は、WebACL が何も遮断しない pass-through 状態になるので、
+settings の validator がエラーで reject します（`rate_limits` だけの WebACL は
+[rate_limits](#rate_limits) を参照）。
 
 #### IP リテラルは toml に書かない
 
@@ -1928,6 +1930,80 @@ curl -H "x-pocket-waf-allow: $SECRET" https://example.com/api/smoke/health
     `cloudformation:GetTemplate` / `wafv2:GetWebACL` が可能な principal からは
     値が見える点は `enable_origin_verify` の origin custom header と同じ
     exposure class です。
+
+#### rate_limits
+
+送信元 IP ごとのレートリミット（AWS WAF の rate-based rule）を宣言します。
+`window_sec` 秒あたり `limit` 回を超えた送信元 IP に、超過している間 `action` を
+適用します。
+
+```toml
+[prod.cloudfront.web.waf]
+enable_ip_set = false
+rate_limits = [
+    # 認証系だけ厳しく (先に書いたものから評価される)
+    { limit = 30, window_sec = 300, path = "/api/auth/*" },
+    # 全体: 5 分 1,000 回超で 429
+    { limit = 1000, window_sec = 300 },
+    # 観測だけ (止めずに CloudWatch メトリクスに記録)
+    { limit = 100, window_sec = 60, path = "/api/*", action = "count" },
+]
+```
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `limit` | int | 必須 | 窓あたりの上限回数。10 以上 |
+| `window_sec` | int | `300` | 集計の窓（秒）。`60` / `120` / `300` / `600` のいずれか |
+| `action` | str | `"block"` | `block` = 429 を返す / `count` = 止めずにメトリクスに記録するだけ |
+| `path` | str \| None | `None` | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致。省略で全リクエスト |
+
+- **全ルールの先頭で評価されます**。`allow_rules` の秘密ヘッダを持つ呼び手や
+  IP allowlist 済みの IP も、超過すれば止まります。漏れた秘密ヘッダや侵害された
+  内部経路からの大量引き抜きに、送信元 IP ごとの速度の上限を付けるためです。
+  CI の E2E テストや負荷試験が上限を超えると CI 側が 429 で落ちるので、上限は
+  実態に合わせて決めてください（まず `count` で入れて CloudWatch のルール別
+  メトリクスを見てから `block` に切り替えるのが安全です）
+- **宣言順 = 評価順**です。各ルールは「自分まで到達したリクエスト」だけを数えます。
+  先のルールで 429 になったリクエストは、後のルールの集計にも `allow_rules` にも
+  届きません。狭い path のルールを先に書いてください
+- `block` は **429** を返します（WAF の既定の 403 だと IP allowlist 外の拒否と
+  区別できないため）。CloudFront の手前で止まるので Lambda は呼ばれません
+- 集計キーは送信元 IP 固定です。CloudFront 配下では WAF が見る IP が viewer の
+  IP なので、X-Forwarded-For の設定は不要です
+- `enable_ip_set = false` で `managed_rule_groups` が無い場合、`action = "block"` の
+  ルールが 1 つ以上必要です（`count` だけでは何も遮断しないため）
+- 1 つの WebACL に宣言できるのは **10 件まで**（AWS WAF の quota）
+- rate_limits も `allow_rules` と同じく deploy のたびに一覧が表示されます
+
+!!! note "AWS WAF の rate-based rule の性質"
+    - 制限は厳密ではありません。超過を検知してブロックが始まるまで、また収まって
+      解除されるまで、それぞれ数分の遅れがあります
+    - ルールの設定を変える（deploy する）とカウントがリセットされます
+    - 多数の IP に分散したアクセスには効きません（IP ごとの集計のため）。1 リクエストで
+      大量のデータが返る API の数回の呼び出しも止められません
+    - 料金はルール 1 件につき月 1 USD です（WebACL 自体は月 5 USD + リクエスト課金）
+
+#### CLI: `pocket waf ratelimit list`
+
+deploy 済みの WebACL から rate rule を読み、ルールごとに **レート超過として
+追跡中の IP**（WAF の managed keys）を表示します。`action = "block"` のルール
+なら 429 で止めている IP、`count` なら止めずに数えているだけの IP です。
+
+```bash
+pocket waf ratelimit list --name web --stage prod
+```
+
+```
+ratelimit-0: 30 req / 300 秒, path=/api/auth/*, action=block
+  203.0.113.45/32
+ratelimit-1: 1000 req / 300 秒, path=(全リクエスト), action=block
+  (レート超過として追跡中の IP はありません)
+```
+
+「429 が出る」という問い合わせでその IP が制限中かを確かめる、NAT 越しの拠点や
+正規のクローラが相乗りで引っかかっていないかを見る、`count` のまま「block に
+したら今どの IP が止まるか」を確かめる、といった用途です。表示は pocket.toml では
+なく deploy 済みのルール定義に従います（deploy していない変更は反映されません）。
 
 #### 必要な IAM 権限
 

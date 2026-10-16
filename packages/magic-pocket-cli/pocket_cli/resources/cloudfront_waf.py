@@ -8,7 +8,19 @@ from pocket_cli.resources.aws.cloudformation import CloudFrontWafStack
 from pocket_cli.resources.aws.stack_backed import StackBackedResource
 
 if TYPE_CHECKING:
-    from pocket.context import CloudFrontContext
+    from pocket.context import CloudFrontContext, CloudFrontWafRateLimitContext
+
+
+def format_rate_limit(name: str, rule: CloudFrontWafRateLimitContext) -> str:
+    """rate rule を 1 行で表す (deploy 表示と `pocket waf ratelimit list` 共通)。"""
+    path = rule.path or "(全リクエスト)"
+    return "%s: %d req / %d 秒, path=%s, action=%s" % (
+        name,
+        rule.limit,
+        rule.window_sec,
+        path,
+        rule.action,
+    )
 
 
 class CloudFrontWaf(StackBackedResource):
@@ -55,6 +67,7 @@ class CloudFrontWaf(StackBackedResource):
     def create(self, mediator: Mediator | None = None):  # type: ignore[override]
         echo.log("WAF (IPSet + WebACL) を作成中 (us-east-1)...")
         self._ensure_allow_secrets(mediator)
+        self._echo_rate_limits()
         self._echo_allow_rules()
         self._create_stack()
         if self.context.waf is None:
@@ -71,6 +84,7 @@ class CloudFrontWaf(StackBackedResource):
 
     def update(self, mediator: Mediator | None = None):  # type: ignore[override]
         self._ensure_allow_secrets(mediator)
+        self._echo_rate_limits()
         self._echo_allow_rules()
         self._update_stack()
 
@@ -121,6 +135,18 @@ class CloudFrontWaf(StackBackedResource):
             if isinstance(value, str):
                 values[key] = value
         self._allow_secret_values = values
+
+    def _echo_rate_limits(self):
+        """rate_limits は全ルールの先頭で効くので、deploy のたびに一覧を可視化する。"""
+        waf = self.context.waf
+        if not waf or not waf.rate_limits:
+            return
+        echo.info(
+            "WAF rate_limits (%d 件、全ルールの先頭で評価。超過した送信元 IP は"
+            " allow_rules / allowlist 済みでも対象):" % len(waf.rate_limits)
+        )
+        for i, rule in enumerate(waf.rate_limits):
+            echo.info("  %s" % format_rate_limit("ratelimit-%d" % i, rule))
 
     def _echo_allow_rules(self):
         """allow_rules は WAF を弱める宣言なので、deploy のたびに一覧を可視化する。"""

@@ -13,8 +13,14 @@ Description: WAFv2 IPSet + WebACL for CloudFront (us-east-1)
 #   - DefaultAction = Allow
 #   - IPSet / ip-allow Rule は出力しない
 #   - managed_rule_groups (必須) で「許可ベース + 怪しいリクエストのみ block」
+# - waf.rate_limits:
+#   - 全ルールの先頭 (priority 0..r-1) で評価される rate-based rule。超過していない
+#     送信元には何もせず次へ進む。先頭に置くのは、allow_rules の秘密ヘッダ持ちや
+#     allowlist 済み IP からの異常な頻度のアクセスも止めるため (KN1870)
+#   - block は CustomResponse 429 (allowlist 外の 403 と区別するため)
+#   - 集計キーは送信元 IP 固定 (CloudFront 配下では viewer IP)
 # - waf.allow_rules:
-#   - IPSet / managed rules より先 (priority 0..n-1) に評価される allow
+#   - IPSet / managed rules より先 (priority r..r+n-1) に評価される allow
 #   - header rule の SearchString は managed secret 値の焼き込み
 #     (enable_origin_verify の OriginCustomHeaders と同じ exposure class)
 
@@ -50,9 +56,42 @@ Resources:
         CloudWatchMetricsEnabled: true
         MetricName: "{{ slug }}-waf"
       Rules:
+        # {% for rule in waf.rate_limits %}
+        - Name: "ratelimit-{{ loop.index0 }}"
+          Priority: {{ loop.index0 }}
+          Action:
+            # {% if rule.action == "block" %}
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+            # {% else %}
+            Count: {}
+            # {% endif %}
+          Statement:
+            RateBasedStatement:
+              Limit: {{ rule.limit }}
+              EvaluationWindowSec: {{ rule.window_sec }}
+              AggregateKeyType: IP
+              # {% if rule.path %}
+              ScopeDownStatement:
+                ByteMatchStatement:
+                  FieldToMatch:
+                    UriPath: {}
+                  PositionalConstraint: "{{ rule.path_positional_constraint }}"
+                  SearchString: "{{ rule.path_search_string }}"
+                  TextTransformations:
+                    - Priority: 0
+                      Type: NONE
+              # {% endif %}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "{{ slug }}-waf-ratelimit-{{ loop.index0 }}"
+        # {% endfor %}
+        # {% set rate_offset = waf.rate_limits|length %}
         # {% for rule in waf.allow_rules %}
         - Name: "allow-{{ loop.index0 }}"
-          Priority: {{ loop.index0 }}
+          Priority: {{ rate_offset + loop.index0 }}
           Action:
             Allow: {}
           Statement:
@@ -101,7 +140,7 @@ Resources:
             CloudWatchMetricsEnabled: true
             MetricName: "{{ slug }}-waf-allow-{{ loop.index0 }}"
         # {% endfor %}
-        # {% set priority_offset = waf.allow_rules|length %}
+        # {% set priority_offset = rate_offset + waf.allow_rules|length %}
         # {% if waf.enable_ip_set %}
         - Name: ip-allow
           Priority: {{ priority_offset }}

@@ -1,4 +1,6 @@
-"""`pocket waf ip ...` — IPSet を CFN を介さず直接更新する CLI。
+"""`pocket waf ip ...` / `pocket waf ratelimit ...` — WAF の運用 CLI。
+
+`pocket waf ip ...` は IPSet を CFN を介さず直接更新する。
 
 WebACL / IPSet 自体は CFn (CloudFrontWafStack) が us-east-1 に作成し、
 Addresses は CFn template 上は常に空。実際の CIDR 一覧はこの CLI が
@@ -14,9 +16,10 @@ from typing import TYPE_CHECKING
 import boto3
 import click
 
-from pocket.context import CloudFrontContext, Context
+from pocket.context import CloudFrontContext, CloudFrontWafRateLimitContext, Context
 from pocket.utils import echo
 from pocket_cli.resources.aws.cloudformation import CloudFrontWafStack
+from pocket_cli.resources.cloudfront_waf import format_rate_limit
 
 if TYPE_CHECKING:
     from mypy_boto3_wafv2 import WAFV2Client
@@ -32,7 +35,12 @@ def ip():
     pass
 
 
-def _get_cf_context(stage: str, name: str) -> CloudFrontContext:
+@waf.group()
+def ratelimit():
+    """rate_limits (rate-based rule) の運用。"""
+
+
+def _get_waf_cf_context(stage: str, name: str) -> CloudFrontContext:
     context = Context.from_toml(stage=stage)
     if not context.cloudfront:
         raise click.ClickException("cloudfront is not configured for this stage")
@@ -43,7 +51,12 @@ def _get_cf_context(stage: str, name: str) -> CloudFrontContext:
         raise click.ClickException(
             "cloudfront '%s' has no [cloudfront.%s.waf] block" % (name, name)
         )
-    if not cf_ctx.waf.enable_ip_set:
+    return cf_ctx
+
+
+def _get_cf_context(stage: str, name: str) -> CloudFrontContext:
+    cf_ctx = _get_waf_cf_context(stage, name)
+    if cf_ctx.waf is None or not cf_ctx.waf.enable_ip_set:
         raise click.ClickException(
             "cloudfront '%s' is configured with [cloudfront.%s.waf]"
             " enable_ip_set = false, so there is no IPSet to operate on."
@@ -188,3 +201,103 @@ def ip_clear(stage, name, yes):
         )
     _write_ip_set(client, set_name, set_id, [], lock)
     echo.success("IPSet を全削除しました (deny-all 状態)。")
+
+
+# --- ratelimit ------------------------------------------------------------------
+
+RATE_LIMIT_RULE_PREFIX = "ratelimit-"
+
+
+def _get_web_acl_meta(cf_ctx: CloudFrontContext) -> tuple[str, str]:
+    """CFn stack output の WebACLArn から WebACL の (Name, Id) を取得する。
+
+    ARN は `arn:aws:wafv2:us-east-1:<acct>:global/webacl/<name>/<id>`。
+    """
+    stack = CloudFrontWafStack(cf_ctx)
+    output = stack.output
+    if not output:
+        raise click.ClickException(
+            "WAF stack '%s' が見つかりません。先に `pocket deploy` を実行してください。"
+            % stack.name
+        )
+    arn = output.get("WebACLArn")
+    if not arn:
+        raise click.ClickException(
+            "WAF stack output に WebACLArn がありません: %s" % stack.name
+        )
+    acl_name, acl_id = arn.rsplit("/", 2)[-2:]
+    return acl_name, acl_id
+
+
+def _deployed_rate_limit_rules(
+    client: WAFV2Client, acl_name: str, acl_id: str
+) -> list[tuple[str, CloudFrontWafRateLimitContext]]:
+    """deploy 済み WebACL から rate rule を読む (ローカルの宣言ではなく実態を見る)。
+
+    pocket.toml を変えて deploy していない間や並べ替えの直後に、別の rule の
+    IP を誤った説明で表示しないため。
+    """
+    acl = client.get_web_acl(Name=acl_name, Scope="CLOUDFRONT", Id=acl_id)["WebACL"]
+    rules: list[tuple[str, CloudFrontWafRateLimitContext]] = []
+    for rule in sorted(acl.get("Rules", []), key=lambda r: r["Priority"]):
+        if not rule["Name"].startswith(RATE_LIMIT_RULE_PREFIX):
+            continue
+        statement = rule["Statement"].get("RateBasedStatement")
+        if statement is None:
+            continue
+        path = None
+        scope_down = statement.get("ScopeDownStatement", {}).get("ByteMatchStatement")
+        if scope_down is not None:
+            search = scope_down["SearchString"]
+            text = search.decode() if isinstance(search, bytes) else str(search)
+            if scope_down.get("PositionalConstraint") == "STARTS_WITH":
+                text += "*"
+            path = text
+        action = "block" if "Block" in rule.get("Action", {}) else "count"
+        rules.append(
+            (
+                rule["Name"],
+                CloudFrontWafRateLimitContext(
+                    limit=statement["Limit"],
+                    window_sec=statement.get("EvaluationWindowSec", 300),
+                    action=action,
+                    path=path,
+                ),
+            )
+        )
+    return rules
+
+
+@ratelimit.command("list")
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option("--name", required=True, help="CloudFront name (pocket.toml の key)")
+def ratelimit_list(stage, name):
+    """deploy 済みの rate rule ごとに、レート超過として追跡中の IP を表示する。
+
+    WAF が「超過中」として扱っている IP の一覧 (managed keys) で、action が
+    block なら 429 で止めている IP、count なら止めずに数えているだけの IP。
+    超過の検知と解除には数分の遅れがある。
+    """
+    cf_ctx = _get_waf_cf_context(stage, name)
+    acl_name, acl_id = _get_web_acl_meta(cf_ctx)
+    client = _wafv2_client()
+    rules = _deployed_rate_limit_rules(client, acl_name, acl_id)
+    if not rules:
+        echo.warning(
+            "WebACL '%s' に rate rule がありません。[cloudfront.%s.waf] の"
+            " rate_limits を宣言して deploy してください。" % (acl_name, name)
+        )
+        return
+    for rule_name, rule in rules:
+        keys = client.get_rate_based_statement_managed_keys(
+            Scope="CLOUDFRONT", WebACLName=acl_name, WebACLId=acl_id, RuleName=rule_name
+        )
+        addresses = list(keys.get("ManagedKeysIPV4", {}).get("Addresses", [])) + list(
+            keys.get("ManagedKeysIPV6", {}).get("Addresses", [])
+        )
+        echo.info(format_rate_limit(rule_name, rule))
+        if not addresses:
+            click.echo("  (レート超過として追跡中の IP はありません)")
+            continue
+        for address in addresses:
+            click.echo("  %s" % address)

@@ -1180,6 +1180,32 @@ class Route(BaseModel):
         return self
 
 
+# WAF の path 一致 (allow_rules / rate_limits の path) に許す文字。RFC 3986 の
+# pchar + "/" から、CFn template の YAML 文字列に素で埋め込めない '"' と '\\' を
+# 除いたもの。末尾の '*' (prefix 一致) は別に扱う
+_WAF_PATH_SAFE_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789/-._~!$&'()+,;=:@%"
+)
+
+
+def validate_waf_path(path: str, field: str) -> str:
+    """WAF の path 宣言を検証する。'/' 始まり、'*' は末尾のみ、安全な文字だけ。"""
+    if not path.startswith("/"):
+        raise ValueError("%s: path は '/' で始めてください: %s" % (field, path))
+    if "*" in path[:-1]:
+        raise ValueError(
+            "%s: path の '*' は末尾 (prefix 一致) のみ使用できます: %s" % (field, path)
+        )
+    body = path[:-1] if path.endswith("*") else path
+    bad = sorted({c for c in body if c not in _WAF_PATH_SAFE_CHARS})
+    if bad:
+        raise ValueError(
+            "%s: path に使えない文字が含まれています %s: %s"
+            % (field, "".join(bad), path)
+        )
+    return path
+
+
 class CloudFrontWafAllowRule(BaseModel):
     """WAF の他ルールより先に評価される allow ルールの宣言。
 
@@ -1206,15 +1232,49 @@ class CloudFrontWafAllowRule(BaseModel):
                 "allow_rules: path か header の少なくとも一方を指定してください。"
             )
         if self.path is not None:
-            if not self.path.startswith("/"):
-                raise ValueError(
-                    "allow_rules: path は '/' で始めてください: %s" % self.path
-                )
-            if "*" in self.path[:-1]:
-                raise ValueError(
-                    "allow_rules: path の '*' は末尾 (prefix 一致) のみ"
-                    "使用できます: %s" % self.path
-                )
+            validate_waf_path(self.path, "allow_rules")
+        return self
+
+
+# AWS WAF の rate-based rule が受け付ける集計窓 (秒)
+WAF_RATE_LIMIT_WINDOWS = (60, 120, 300, 600)
+# AWS WAF の quota: WebACL あたりの rate-based rule 数
+WAF_RATE_LIMIT_MAX_RULES = 10
+
+
+class CloudFrontWafRateLimit(BaseModel):
+    """WAF の rate-based rule (送信元 IP ごとのレートリミット) の宣言。
+
+    `window_sec` 秒あたり `limit` 回を超えた送信元 IP に、超過している間
+    `action` を適用する。**他のどのルールよりも先に評価される**ので、
+    allow_rules の秘密ヘッダを持つ呼び手や IP allowlist 済みの IP も対象になる
+    (漏れた秘密ヘッダや侵害された内部経路からの大量引き抜きの速度に上限を
+    付けるため)。
+
+    - `block`: 429 を返す (allowlist 外の 403 と区別できるように)
+    - `count`: 止めずに CloudWatch メトリクスに記録するだけ (閾値の観測用)
+    - `path`: allow_rules と同じ prefix 一致。省略で全リクエストを数える
+
+    集計キーは送信元 IP 固定。CloudFront 配下では WAF が見る IP が viewer の
+    IP なので、X-Forwarded-For の設定は不要。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(ge=10, le=2_000_000_000)
+    window_sec: int = 300
+    action: Literal["block", "count"] = "block"
+    path: str | None = None
+
+    @model_validator(mode="after")
+    def check_rule(self):
+        if self.window_sec not in WAF_RATE_LIMIT_WINDOWS:
+            raise ValueError(
+                "rate_limits: window_sec は %s のいずれかにしてください: %d"
+                % (" / ".join(str(w) for w in WAF_RATE_LIMIT_WINDOWS), self.window_sec)
+            )
+        if self.path is not None:
+            validate_waf_path(self.path, "rate_limits")
         return self
 
 
@@ -1239,15 +1299,29 @@ class CloudFrontWaf(BaseModel):
     managed_rule_groups: list[str] = []
     # IPSet / managed rules より先に評価される allow (match しなければ従来どおり)
     allow_rules: list[CloudFrontWafAllowRule] = []
+    # 全ルールの先頭で評価される rate-based rule (宣言順 = 評価順)
+    rate_limits: list[CloudFrontWafRateLimit] = []
 
     @model_validator(mode="after")
     def _must_have_some_rule(self):
-        if not self.enable_ip_set and not self.managed_rule_groups:
+        if len(self.rate_limits) > WAF_RATE_LIMIT_MAX_RULES:
+            raise ValueError(
+                "[cloudfront.<name>.waf]: rate_limits は %d 件までです"
+                " (AWS WAF の WebACL あたりの rate-based rule 数の上限): %d 件"
+                % (WAF_RATE_LIMIT_MAX_RULES, len(self.rate_limits))
+            )
+        blocking_rate_limits = [r for r in self.rate_limits if r.action == "block"]
+        if (
+            not self.enable_ip_set
+            and not self.managed_rule_groups
+            and not blocking_rate_limits
+        ):
             raise ValueError(
                 "[cloudfront.<name>.waf]: enable_ip_set = false の場合は"
-                " managed_rule_groups を 1 つ以上指定してください。"
-                " どちらも無効だと WebACL が何もしない pass-through 状態に"
-                " なり、WAF を attach する意味がありません。"
+                ' managed_rule_groups か action = "block" の rate_limits を'
+                " 1 つ以上指定してください。どれも無いと WebACL が何も遮断しない"
+                " pass-through 状態になり、WAF を attach する意味がありません"
+                ' (action = "count" の rate_limits は観測だけで遮断しません)。'
             )
         return self
 

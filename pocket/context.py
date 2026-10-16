@@ -1309,9 +1309,10 @@ class RouteContext(BaseModel):
 WAF_ALLOW_HEADER_NAME = "x-pocket-waf-allow"
 
 
-class CloudFrontWafAllowRuleContext(BaseModel):
+class _CloudFrontWafPathMatch(BaseModel):
+    """WAF ルールの path 一致 (allow_rules / rate_limits 共通)。"""
+
     path: str | None = None
-    header: str | None = None
 
     # 末尾 '*' は prefix 一致、それ以外は完全一致 (settings で検証済み)
     @computed_field
@@ -1329,10 +1330,21 @@ class CloudFrontWafAllowRuleContext(BaseModel):
         return self.path[:-1] if self.path.endswith("*") else self.path
 
 
+class CloudFrontWafAllowRuleContext(_CloudFrontWafPathMatch):
+    header: str | None = None
+
+
+class CloudFrontWafRateLimitContext(_CloudFrontWafPathMatch):
+    limit: int
+    window_sec: int
+    action: str
+
+
 class CloudFrontWafContext(BaseModel):
     enable_ip_set: bool = True
     managed_rule_groups: list[str] = []
     allow_rules: list[CloudFrontWafAllowRuleContext] = []
+    rate_limits: list[CloudFrontWafRateLimitContext] = []
 
     @computed_field
     @property
@@ -1504,6 +1516,15 @@ class CloudFrontContext(BaseModel):
                             path=rule.path, header=rule.header
                         )
                         for rule in cf.waf.allow_rules
+                    ],
+                    rate_limits=[
+                        CloudFrontWafRateLimitContext(
+                            limit=rule.limit,
+                            window_sec=rule.window_sec,
+                            action=rule.action,
+                            path=rule.path,
+                        )
+                        for rule in cf.waf.rate_limits
                     ],
                 )
                 if cf.waf is not None

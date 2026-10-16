@@ -40,7 +40,7 @@
 
 | 権限 | 用途 |
 |------|------|
-| `wafv2:*` | us-east-1 の WebACL / IPSet の管理。`pocket deploy` で CFn 経由作成、`pocket waf ip ...` CLI で IPSet の中身を side-channel 更新 |
+| `wafv2:*` | us-east-1 の WebACL / IPSet の管理。`pocket deploy` で CFn 経由作成、`pocket waf ip ...` CLI で IPSet の中身を side-channel 更新、`pocket waf ratelimit list` で WebACL と rate rule の追跡中 IP を参照 |
 
 ### VPC（`[container.main.vpc]` 使用時）
 

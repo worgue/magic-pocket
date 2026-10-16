@@ -757,7 +757,7 @@ pocket resource cloudfront-keys yaml --stage=dev --name=media
 
 ### cloudfront_waf
 
-CloudFront にアタッチする WAFv2 (IP allowlist) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。
+CloudFront にアタッチする WAFv2 (IP allowlist / レートリミット) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。IPSet の中身の更新は `pocket waf ip ...`、レート超過として追跡中の IP の表示は `pocket waf ratelimit list` で行います（[設定ガイドの waf](configuration.md#waf) 参照）。
 
 ```bash
 # 状態確認

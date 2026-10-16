@@ -534,3 +534,344 @@ def test_waf_ip_add_self_uses_checkip_then_update_ip_set(monkeypatch):
         Addresses=["198.51.100.7/32"],
         LockToken="tok",
     )
+
+
+# ---------------------------------------------------------------------------
+# rate_limits (KN1870)
+# ---------------------------------------------------------------------------
+
+
+def test_waf_rate_limit_accepts_minimal_and_full():
+    waf = CloudFrontWaf.model_validate({"rate_limits": [{"limit": 1000}]})
+    rule = waf.rate_limits[0]
+    assert (rule.limit, rule.window_sec, rule.action, rule.path) == (
+        1000,
+        300,
+        "block",
+        None,
+    )
+    waf = CloudFrontWaf.model_validate(
+        {
+            "rate_limits": [
+                {
+                    "limit": 30,
+                    "window_sec": 60,
+                    "action": "count",
+                    "path": "/api/auth/*",
+                }
+            ]
+        }
+    )
+    assert waf.rate_limits[0].path == "/api/auth/*"
+
+
+@pytest.mark.parametrize(
+    "rule, message",
+    [
+        ({"limit": 9}, "greater than or equal to 10"),
+        ({"limit": 100, "window_sec": 90}, "window_sec は 60 / 120 / 300 / 600"),
+        ({"limit": 100, "action": "captcha"}, "action"),
+        ({"limit": 100, "path": "api/*"}, "path は '/' で始めて"),
+        ({"limit": 100, "path": "/api/*/x"}, "'*' は末尾"),
+        ({"limit": 100, "path": '/api/"x'}, "使えない文字"),
+        ({"limit": 100, "unknown": 1}, "unknown"),
+    ],
+)
+def test_waf_rate_limit_rejects_invalid(rule, message):
+    with pytest.raises(ValidationError, match=message):
+        CloudFrontWaf.model_validate({"rate_limits": [rule]})
+
+
+def test_waf_allow_rule_path_rejects_unsafe_chars():
+    """allow_rules の path も同じ文字種制限 (YAML への素の埋め込みを守る)。"""
+    from pocket.settings import CloudFrontWafAllowRule
+
+    with pytest.raises(ValidationError, match="使えない文字"):
+        CloudFrontWafAllowRule.model_validate({"path": "/api/back\\slash"})
+    CloudFrontWafAllowRule.model_validate(
+        {"path": "/api/v1/items-(a)_b.c~!$&'+,;=:@%*"}
+    )
+
+
+def test_waf_rate_limits_only_is_valid_without_ip_set():
+    """IP allowlist 無し + block の rate_limits だけの WebACL を宣言できる。"""
+    waf = CloudFrontWaf.model_validate(
+        {"enable_ip_set": False, "rate_limits": [{"limit": 1000}]}
+    )
+    assert waf.managed_rule_groups == []
+
+
+def test_waf_count_only_rate_limits_rejected_without_other_blocking_rule():
+    """count だけでは何も遮断しないので pass-through として拒否する。"""
+    with pytest.raises(ValidationError, match='action = "block"'):
+        CloudFrontWaf.model_validate(
+            {
+                "enable_ip_set": False,
+                "rate_limits": [{"limit": 1000, "action": "count"}],
+            }
+        )
+    # managed rules があれば count だけでもよい
+    CloudFrontWaf.model_validate(
+        {
+            "enable_ip_set": False,
+            "managed_rule_groups": ["AWSManagedRulesCommonRuleSet"],
+            "rate_limits": [{"limit": 1000, "action": "count"}],
+        }
+    )
+
+
+def test_waf_rate_limits_capped_at_aws_quota():
+    with pytest.raises(ValidationError, match="10 件まで"):
+        CloudFrontWaf.model_validate({"rate_limits": [{"limit": 100}] * 11})
+
+
+def test_context_maps_rate_limits():
+    from pocket.context import Context
+    from pocket.settings import Settings
+
+    data = _root_settings_dict(
+        waf={
+            "enable_ip_set": False,
+            "rate_limits": [
+                {"limit": 1000},
+                {"limit": 30, "window_sec": 60, "action": "count", "path": "/a/*"},
+            ],
+        }
+    )
+    context = Context.from_settings(Settings.model_validate(data))
+    waf_ctx = context.cloudfront["web"].waf
+    assert waf_ctx is not None
+    assert [r.limit for r in waf_ctx.rate_limits] == [1000, 30]
+    assert waf_ctx.rate_limits[1].action == "count"
+    assert waf_ctx.rate_limits[1].path_positional_constraint == "STARTS_WITH"
+    assert waf_ctx.rate_limits[1].path_search_string == "/a/"
+
+
+def _waf_ctx_with_rate_limits(**kwargs) -> CloudFrontWafContext:
+    from pocket.context import (
+        CloudFrontWafAllowRuleContext,
+        CloudFrontWafRateLimitContext,
+    )
+
+    return CloudFrontWafContext(
+        rate_limits=[
+            CloudFrontWafRateLimitContext(
+                limit=30, window_sec=60, action="block", path="/api/auth/*"
+            ),
+            CloudFrontWafRateLimitContext(limit=1000, window_sec=300, action="count"),
+        ],
+        allow_rules=[CloudFrontWafAllowRuleContext(path="/api/health")],
+        managed_rule_groups=["AWSManagedRulesCommonRuleSet"],
+        **kwargs,
+    )
+
+
+def _render_rules(ctx: CloudFrontContext) -> dict:
+    import yaml as pyyaml
+
+    with mock.patch("boto3.client"):
+        rendered = CloudFrontWafStack(ctx).yaml
+    rules = pyyaml.safe_load(rendered)["Resources"]["WebACL"]["Properties"]["Rules"]
+    return {r["Name"]: r for r in rules}
+
+
+def test_waf_stack_yaml_rate_limits_precede_everything():
+    """rate rule が priority 0.. を取り、allow / ip-allow / managed は後ろへずれる。"""
+    by_name = _render_rules(_make_cf_context(waf=_waf_ctx_with_rate_limits()))
+    assert by_name["ratelimit-0"]["Priority"] == 0
+    assert by_name["ratelimit-1"]["Priority"] == 1
+    assert by_name["allow-0"]["Priority"] == 2
+    assert by_name["ip-allow"]["Priority"] == 3
+    assert by_name["managed-0-AWSManagedRulesCommonRuleSet"]["Priority"] == 4
+    # block は 429 の CustomResponse、path は ScopeDown の prefix 一致
+    rule0 = by_name["ratelimit-0"]
+    assert rule0["Action"] == {"Block": {"CustomResponse": {"ResponseCode": 429}}}
+    stmt0 = rule0["Statement"]["RateBasedStatement"]
+    assert (
+        stmt0["Limit"],
+        stmt0["EvaluationWindowSec"],
+        stmt0["AggregateKeyType"],
+    ) == (
+        30,
+        60,
+        "IP",
+    )
+    scope = stmt0["ScopeDownStatement"]["ByteMatchStatement"]
+    assert scope["FieldToMatch"] == {"UriPath": {}}
+    assert scope["PositionalConstraint"] == "STARTS_WITH"
+    assert scope["SearchString"] == "/api/auth/"
+    # count は Count、path 無しは ScopeDown 無し
+    rule1 = by_name["ratelimit-1"]
+    assert rule1["Action"] == {"Count": {}}
+    assert "ScopeDownStatement" not in rule1["Statement"]["RateBasedStatement"]
+    assert rule1["VisibilityConfig"]["MetricName"] == "dev-testprj-web-waf-ratelimit-1"
+
+
+def test_waf_stack_yaml_rate_limits_without_ip_set():
+    """enable_ip_set=false + rate_limits のみでは rule が rate だけになる。"""
+    from pocket.context import CloudFrontWafRateLimitContext
+
+    ctx = _make_cf_context(
+        waf=CloudFrontWafContext(
+            enable_ip_set=False,
+            rate_limits=[
+                CloudFrontWafRateLimitContext(
+                    limit=1000, window_sec=300, action="block"
+                )
+            ],
+        )
+    )
+    by_name = _render_rules(ctx)
+    assert list(by_name) == ["ratelimit-0"]
+
+
+@pytest.mark.parametrize("path", ["/api/v1/items-(a)_b.c~!$&'+,;=:@%", "/x/*", "/"])
+def test_waf_stack_yaml_path_round_trips_through_yaml(path):
+    """許可した文字種の path が YAML を経由しても値が変わらない。"""
+    from pocket.context import CloudFrontWafRateLimitContext
+
+    ctx = _make_cf_context(
+        waf=CloudFrontWafContext(
+            rate_limits=[
+                CloudFrontWafRateLimitContext(
+                    limit=10, window_sec=60, action="block", path=path
+                )
+            ]
+        )
+    )
+    scope = _render_rules(ctx)["ratelimit-0"]["Statement"]["RateBasedStatement"][
+        "ScopeDownStatement"
+    ]["ByteMatchStatement"]
+    expected = path[:-1] if path.endswith("*") else path
+    assert scope["SearchString"] == expected
+
+
+def test_waf_stack_yaml_without_rate_limits_is_unchanged():
+    """rate_limits 未宣言なら rule も priority も従来どおり (既存 deploy に差分なし)"""
+    by_name = _render_rules(_make_cf_context(waf=_waf_ctx_with_allow_rules()))
+    assert not any(n.startswith("ratelimit-") for n in by_name)
+    assert by_name["allow-0"]["Priority"] == 0
+    assert by_name["ip-allow"]["Priority"] == 2
+
+
+def test_waf_resource_echoes_rate_limits():
+    from pocket_cli.resources.cloudfront_waf import CloudFrontWaf as WafResource
+
+    ctx = _make_cf_context(waf=_waf_ctx_with_rate_limits())
+    with mock.patch("boto3.client"):
+        resource = WafResource(ctx)
+    lines: list[str] = []
+    with mock.patch(
+        "pocket_cli.resources.cloudfront_waf.echo.info", side_effect=lines.append
+    ):
+        resource._echo_rate_limits()
+    assert any("全ルールの先頭で評価" in line for line in lines)
+    assert "  ratelimit-0: 30 req / 60 秒, path=/api/auth/*, action=block" in lines
+    assert (
+        "  ratelimit-1: 1000 req / 300 秒, path=(全リクエスト), action=count" in lines
+    )
+
+
+def test_waf_ratelimit_cli_registered():
+    from click.testing import CliRunner
+    from pocket_cli.cli.waf_cli import waf
+
+    result = CliRunner().invoke(waf, ["ratelimit", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "list" in result.output
+
+
+def test_waf_ratelimit_list_reads_deployed_rules_and_managed_keys(monkeypatch):
+    """deploy 済み WebACL の rate rule を読み、rule ごとに managed keys を表示する。"""
+    from click.testing import CliRunner
+    from pocket_cli.cli import waf_cli
+
+    cf_ctx = _make_cf_context(waf=_waf_ctx_with_rate_limits())
+    monkeypatch.setattr(waf_cli, "_get_waf_cf_context", lambda stage, name: cf_ctx)
+    monkeypatch.setattr(
+        waf_cli, "_get_web_acl_meta", lambda ctx: ("dev-testprj-web-waf", "acl-id")
+    )
+    fake_client = mock.MagicMock()
+    # ローカル宣言と違う順序・内容を返し、表示が deploy 済みの実態に従うことを見る
+    fake_client.get_web_acl.return_value = {
+        "WebACL": {
+            "Rules": [
+                {
+                    "Name": "allow-0",
+                    "Priority": 1,
+                    "Statement": {"ByteMatchStatement": {}},
+                    "Action": {"Allow": {}},
+                },
+                {
+                    "Name": "ratelimit-0",
+                    "Priority": 0,
+                    "Statement": {
+                        "RateBasedStatement": {
+                            "Limit": 500,
+                            "EvaluationWindowSec": 120,
+                            "AggregateKeyType": "IP",
+                            "ScopeDownStatement": {
+                                "ByteMatchStatement": {
+                                    "SearchString": b"/api/",
+                                    "PositionalConstraint": "STARTS_WITH",
+                                }
+                            },
+                        }
+                    },
+                    "Action": {"Count": {}},
+                },
+            ]
+        }
+    }
+    fake_client.get_rate_based_statement_managed_keys.return_value = {
+        "ManagedKeysIPV4": {"Addresses": ["198.51.100.7/32"]},
+        "ManagedKeysIPV6": {"Addresses": []},
+    }
+    monkeypatch.setattr(waf_cli, "_wafv2_client", lambda: fake_client)
+
+    result = CliRunner().invoke(
+        waf_cli.waf, ["ratelimit", "list", "--stage", "dev", "--name", "web"]
+    )
+    assert result.exit_code == 0, result.output
+    fake_client.get_web_acl.assert_called_once_with(
+        Name="dev-testprj-web-waf", Scope="CLOUDFRONT", Id="acl-id"
+    )
+    fake_client.get_rate_based_statement_managed_keys.assert_called_once_with(
+        Scope="CLOUDFRONT",
+        WebACLName="dev-testprj-web-waf",
+        WebACLId="acl-id",
+        RuleName="ratelimit-0",
+    )
+    assert "ratelimit-0: 500 req / 120 秒, path=/api/*, action=count" in result.output
+    assert "198.51.100.7/32" in result.output
+    assert "ratelimit-1" not in result.output
+
+
+def test_waf_ratelimit_list_warns_when_no_rate_rules_deployed(monkeypatch):
+    from click.testing import CliRunner
+    from pocket_cli.cli import waf_cli
+
+    cf_ctx = _make_cf_context(waf=CloudFrontWafContext())
+    monkeypatch.setattr(waf_cli, "_get_waf_cf_context", lambda stage, name: cf_ctx)
+    monkeypatch.setattr(waf_cli, "_get_web_acl_meta", lambda ctx: ("acl", "id"))
+    fake_client = mock.MagicMock()
+    fake_client.get_web_acl.return_value = {"WebACL": {"Rules": []}}
+    monkeypatch.setattr(waf_cli, "_wafv2_client", lambda: fake_client)
+
+    result = CliRunner().invoke(
+        waf_cli.waf, ["ratelimit", "list", "--stage", "dev", "--name", "web"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "rate rule がありません" in result.output
+    fake_client.get_rate_based_statement_managed_keys.assert_not_called()
+
+
+def test_web_acl_meta_parses_arn():
+    from pocket_cli.cli import waf_cli
+
+    cf_ctx = _make_cf_context(waf=CloudFrontWafContext())
+    fake_stack = mock.MagicMock()
+    arn = "arn:aws:wafv2:us-east-1:123456789012:global/webacl/dev-testprj-web-waf/uid"
+    fake_stack.output = {"WebACLArn": arn}
+    with mock.patch.object(waf_cli, "CloudFrontWafStack", return_value=fake_stack):
+        assert waf_cli._get_web_acl_meta(cf_ctx) == ("dev-testprj-web-waf", "uid")
