@@ -2017,6 +2017,25 @@ ratelimit-1: 1000 req / 300 秒, path=(全リクエスト), action=block
 ([AWS 権限](../permissions/aws.md#cloudfront-wafcloudfrontnamewaf-使用時) を
 参照)。
 
+#### WAF を外す
+
+`[cloudfront.<name>.waf]` block を消して deploy すると CloudFront から WebACL が
+外れますが、**WAF の stack 自体は残ります**。現状の `pocket resource cloudfront-waf
+destroy` は pocket.toml に waf 宣言が残っていないと `cloudfront_waf '<name>' is not
+configured` で使えないため、外す手順は次の順になります。
+
+1. `[cloudfront.<name>.waf]` block を消して `pocket deploy` する（CloudFront の
+   `WebACLId` が空になる。WebACL が紐付いたままだと WAF の stack は削除できない）
+2. 残った stack `<stage>-pocket-<project>-<cf name>-waf` を **us-east-1** で削除する
+
+    ```bash
+    aws cloudformation delete-stack --region us-east-1 \
+      --stack-name <stage>-pocket-<project>-<cf name>-waf
+    ```
+
+宣言を消した後でも `pocket resource cloudfront-waf destroy --name <cf name>` で
+削除できるようにする改善は予定しています。
+
 ### origin verify (enable_origin_verify)
 
 CloudFront 配下の origin (lambda / API Gateway、将来は Fargate/ALB) で、
