@@ -80,7 +80,14 @@ class CloudFrontWaf(StackBackedResource):
                 % (self.context.name, self.context.stage)
             )
         else:
-            echo.info("WAF を作成しました (IP allowlist 無効、managed rules のみ)。")
+            echo.info(
+                "WAF を作成しました (IP allowlist 無効。rate_limits %d 件、"
+                "managed rules %d 件)。"
+                % (
+                    len(self.context.waf.rate_limits),
+                    len(self.context.waf.managed_rule_groups),
+                )
+            )
 
     def update(self, mediator: Mediator | None = None):  # type: ignore[override]
         self._ensure_allow_secrets(mediator)
