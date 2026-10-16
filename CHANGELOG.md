@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.45.0](https://github.com/worgue/magic-pocket/releases/tag/0.45.0) - 2026-10-16
+
 ### Added
 - `[cloudfront.<name>.waf]` に `rate_limits` を追加しました。送信元 IP ごとのレートリミット
   （AWS WAF の rate-based rule）を `{ limit, window_sec, path, action }` の配列で宣言すると、
