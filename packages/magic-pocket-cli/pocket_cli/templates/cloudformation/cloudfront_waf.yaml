@@ -81,7 +81,7 @@ Resources:
                   SearchString: "{{ rule.path_search_string }}"
                   TextTransformations:
                     - Priority: 0
-                      Type: NONE
+                      Type: URL_DECODE
               # {% endif %}
           VisibilityConfig:
             SampledRequestsEnabled: true
@@ -105,7 +105,7 @@ Resources:
                     SearchString: "{{ rule.path_search_string }}"
                     TextTransformations:
                       - Priority: 0
-                        Type: NONE
+                        Type: URL_DECODE
                 - ByteMatchStatement:
                     FieldToMatch:
                       SingleHeader:
@@ -123,7 +123,7 @@ Resources:
               SearchString: "{{ rule.path_search_string }}"
               TextTransformations:
                 - Priority: 0
-                  Type: NONE
+                  Type: URL_DECODE
             # {% else %}
             ByteMatchStatement:
               FieldToMatch:

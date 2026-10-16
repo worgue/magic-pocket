@@ -1897,7 +1897,7 @@ header = "SMOKE_ALLOW_SECRET"
 
 | フィールド | 型 | 説明 |
 |-----------|------|------|
-| `path` | str \| None | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致 |
+| `path` | str \| None | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致。比較は URL デコード後（`/%61pi/` も `/api/` として扱う）。`*` を除いて 200 bytes 以内 |
 | `header` | str \| None | managed secret のキー名。指定するとヘッダ `x-pocket-waf-allow` の値が secret と一致するリクエストのみ allow |
 
 - `path` / `header` の**少なくとも一方が必要**です。両方指定した場合は AND
@@ -1955,7 +1955,7 @@ rate_limits = [
 | `limit` | int | 必須 | 窓あたりの上限回数。10 以上 |
 | `window_sec` | int | `300` | 集計の窓（秒）。`60` / `120` / `300` / `600` のいずれか |
 | `action` | str | `"block"` | `block` = 429 を返す / `count` = 止めずにメトリクスに記録するだけ |
-| `path` | str \| None | `None` | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致。省略で全リクエスト |
+| `path` | str \| None | `None` | 対象 path。末尾 `*` は prefix 一致、それ以外は完全一致。比較は URL デコード後（`/%61pi/` も `/api/` として扱う）。`*` を除いて 200 bytes 以内。省略で全リクエスト |
 
 - **全ルールの先頭で評価されます**。`allow_rules` の秘密ヘッダを持つ呼び手や
   IP allowlist 済みの IP も、超過すれば止まります。漏れた秘密ヘッダや侵害された

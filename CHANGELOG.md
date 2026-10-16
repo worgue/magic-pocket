@@ -18,7 +18,13 @@
 
 ### Changed
 - `allow_rules` / `rate_limits` の `path` に使える文字を RFC 3986 の path 文字（`"` と `\` を除く）に
-  制限しました。CloudFormation template への埋め込みを安全にするためで、通常の URL path には影響しません
+  制限し、`*` を除いた長さを 200 bytes 以内（WAF の ByteMatch SearchString の上限）に制限しました。
+  CloudFormation template への埋め込みを安全にし、deploy 時に失敗する宣言を手前で止めるためで、
+  通常の URL path には影響しません
+- `allow_rules` / `rate_limits` の `path` の比較を **URL デコード後**に行うようにしました（WAF の
+  TextTransformation `URL_DECODE`）。従来は `/%61pi/auth/login` のようにエンコードした path が
+  `/api/auth/*` に一致せず、backend 側は同じ処理に到達するためレートリミットを迂回できました。
+  `allow_rules` ではエンコードした同等 path も allow の対象になります（backend の解釈と揃う方向）
 - WAF の CloudFormation template のコメントを更新したため、`[cloudfront.<name>.waf]` を使っている既存の
   stack は次回 deploy で一度 update されます（ルールの内容は変わりません）
 - 0.29.0 の multi-container 移行で deploy が削除する旧形式の container stack（`{slug}-container`）について、

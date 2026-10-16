@@ -380,8 +380,13 @@ def test_waf_stack_yaml_allow_rules_precede_ip_set():
     assert stmt0["FieldToMatch"] == {"UriPath": {}}
     assert stmt0["PositionalConstraint"] == "EXACTLY"
     assert stmt0["SearchString"] == "/api/health"
+    # path は URL デコード後に比較 (%61pi のようなエンコードで判定を外せないように)
+    assert stmt0["TextTransformations"] == [{"Priority": 0, "Type": "URL_DECODE"}]
     # path + header: AND で固定ヘッダ名 + secret 値
     and_stmts = by_name["allow-1"]["Statement"]["AndStatement"]["Statements"]
+    assert and_stmts[0]["ByteMatchStatement"]["TextTransformations"] == [
+        {"Priority": 0, "Type": "URL_DECODE"}
+    ]
     header_stmt = and_stmts[1]["ByteMatchStatement"]
     assert header_stmt["FieldToMatch"] == {
         "SingleHeader": {"Name": "x-pocket-waf-allow"}
@@ -574,6 +579,7 @@ def test_waf_rate_limit_accepts_minimal_and_full():
         ({"limit": 100, "path": "api/*"}, "path は '/' で始めて"),
         ({"limit": 100, "path": "/api/*/x"}, "'*' は末尾"),
         ({"limit": 100, "path": '/api/"x'}, "使えない文字"),
+        ({"limit": 100, "path": "/" + "a" * 200 + "*"}, "200 bytes 以内"),
         ({"limit": 100, "unknown": 1}, "unknown"),
     ],
 )
@@ -591,6 +597,16 @@ def test_waf_allow_rule_path_rejects_unsafe_chars():
     CloudFrontWafAllowRule.model_validate(
         {"path": "/api/v1/items-(a)_b.c~!$&'+,;=:@%*"}
     )
+
+
+def test_waf_path_length_limit_is_search_string_bytes():
+    """'*' を除いた本体が 200 bytes (SearchString の上限) までは通し、超えたら拒否。"""
+    from pocket.settings import CloudFrontWafAllowRule
+
+    CloudFrontWafAllowRule.model_validate({"path": "/" + "a" * 199})
+    CloudFrontWafAllowRule.model_validate({"path": "/" + "a" * 199 + "*"})
+    with pytest.raises(ValidationError, match="200 bytes 以内"):
+        CloudFrontWafAllowRule.model_validate({"path": "/" + "a" * 200})
 
 
 def test_waf_rate_limits_only_is_valid_without_ip_set():
@@ -700,6 +716,8 @@ def test_waf_stack_yaml_rate_limits_precede_everything():
     assert scope["FieldToMatch"] == {"UriPath": {}}
     assert scope["PositionalConstraint"] == "STARTS_WITH"
     assert scope["SearchString"] == "/api/auth/"
+    # %61pi/auth/ のようなエンコードで scope-down を外せないよう URL デコード後に比較
+    assert scope["TextTransformations"] == [{"Priority": 0, "Type": "URL_DECODE"}]
     # count は Count、path 無しは ScopeDown 無し
     rule1 = by_name["ratelimit-1"]
     assert rule1["Action"] == {"Count": {}}

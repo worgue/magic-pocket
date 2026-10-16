@@ -1188,8 +1188,17 @@ _WAF_PATH_SAFE_CHARS = frozenset(
 )
 
 
+# ByteMatchStatement.SearchString の上限 (AWS WAFv2 の制約、bytes)
+WAF_PATH_MAX_BYTES = 200
+
+
 def validate_waf_path(path: str, field: str) -> str:
-    """WAF の path 宣言を検証する。'/' 始まり、'*' は末尾のみ、安全な文字だけ。"""
+    """WAF の path 宣言を検証する。
+
+    '/' 始まり、'*' は末尾のみ、安全な文字だけ、'*' を除いた本体が 200 bytes 以内
+    (ByteMatchStatement.SearchString の上限。超えると deploy 時に CloudFormation が
+    失敗するので手前で止める)。
+    """
     if not path.startswith("/"):
         raise ValueError("%s: path は '/' で始めてください: %s" % (field, path))
     if "*" in path[:-1]:
@@ -1202,6 +1211,11 @@ def validate_waf_path(path: str, field: str) -> str:
         raise ValueError(
             "%s: path に使えない文字が含まれています %s: %s"
             % (field, "".join(bad), path)
+        )
+    if len(body.encode()) > WAF_PATH_MAX_BYTES:
+        raise ValueError(
+            "%s: path は ('*' を除いて) %d bytes 以内にしてください (%d bytes): %s"
+            % (field, WAF_PATH_MAX_BYTES, len(body.encode()), path)
         )
     return path
 
