@@ -199,10 +199,13 @@ def _deploy_resource(resource, mediator: Mediator, state_store: StateStore):
             resource.update()
         state_store.record(resource.state_info())
     elif resource.status == "FAILED":
-        # 黙ってスキップすると deploy が exit 0 で成功表示になる
+        # 黙ってスキップすると deploy が exit 0 で成功表示になる。
+        # resource が status_detail を持つなら生の状態名を添える (DSQL 等)
+        detail = getattr(resource, "status_detail", None)
         raise RuntimeError(
-            "%s が FAILED 状態です。AWS コンソール等で状態を確認して"
-            "解消してから再実行してください。" % target_name
+            "%s が FAILED 状態です%s。AWS コンソール等で状態を確認して"
+            "解消してから再実行してください。"
+            % (target_name, " (%s)" % detail if detail else "")
         )
     elif resource.status == "PROGRESS":
         raise RuntimeError(

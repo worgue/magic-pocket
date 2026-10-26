@@ -21,6 +21,23 @@ from pocket_cli.resources.aws.poll import wait_until
 if TYPE_CHECKING:
     from pocket.context import DsqlContext
 
+# DSQL cluster の status (get_cluster の status) と ResourceStatus の対応。
+# IDLE はしばらく接続が無いクラスタが自動で入る正常な状態 (接続すれば ACTIVE に
+# 戻る) なので、ACTIVE と同じく使える状態として扱う。利用の少ない stage では
+# deploy のたびに踏むため、FAILED 扱いにすると deploy が止まる (KN2012)
+CLUSTER_READY_STATES = {"ACTIVE", "IDLE"}
+CLUSTER_PROGRESS_STATES = {
+    "CREATING",
+    "UPDATING",
+    "DELETING",
+    "PENDING_SETUP",
+    "PENDING_DELETE",
+}
+# 利用者が AWS 側で解消しないと先に進めない状態
+CLUSTER_FAILED_STATES = {"FAILED", "INACTIVE"}
+# 削除済みは list_clusters に一時的に残るが、存在しないものとして扱う (再作成する)
+CLUSTER_GONE_STATES = {"DELETED"}
+
 # AWS Backup の backup job 終端状態。これ以外は進行中として扱う
 BACKUP_TERMINAL_STATES = {"COMPLETED", "FAILED", "ABORTED", "EXPIRED", "PARTIAL"}
 # restore job の終端状態
@@ -87,11 +104,27 @@ class Dsql:
         if self.cluster is None:
             return "NOEXIST"
         cluster_status = self.cluster["status"]
-        if cluster_status in ("CREATING", "UPDATING", "DELETING"):
+        if cluster_status in CLUSTER_GONE_STATES:
+            return "NOEXIST"
+        if cluster_status in CLUSTER_PROGRESS_STATES:
             return "PROGRESS"
-        if cluster_status == "ACTIVE":
+        if cluster_status in CLUSTER_READY_STATES:
             return "COMPLETED"
-        return "FAILED"
+        if cluster_status in CLUSTER_FAILED_STATES:
+            return "FAILED"
+        # 未知の状態を黙って FAILED に丸めると、deploy のエラー文から原因が
+        # 分からない。状態名を出して止め、対応表への追加を促す
+        raise RuntimeError(
+            "DSQL cluster %s が未知の状態 (%s) です。"
+            % (self.cluster["identifier"], cluster_status)
+        )
+
+    @property
+    def status_detail(self) -> str | None:
+        """deploy のエラー文に添える cluster の生の状態。"""
+        if self.cluster is None:
+            return None
+        return "cluster status: %s" % self.cluster["status"]
 
     @property
     def description(self):
@@ -397,7 +430,7 @@ class Dsql:
         def poll():
             try:
                 res = self._client.get_cluster(identifier=identifier)
-                return res["status"] == "ACTIVE"
+                return res["status"] in CLUSTER_READY_STATES
             except ClientError:
                 return False
 

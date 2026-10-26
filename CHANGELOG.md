@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- Aurora DSQL のクラスタが `IDLE` (しばらく接続が無いと自動で入る正常な状態) のとき、deploy が
+  `Dsql が FAILED 状態です` で止まる問題を修正しました。`IDLE` は `ACTIVE` と同じく使える状態として
+  扱い、`PENDING_SETUP` / `PENDING_DELETE` は進行中、`DELETED` は存在しないものとして扱います。
+  未知の状態は FAILED に丸めず状態名を出して止め、FAILED 時のエラー文にもクラスタの状態名を添えます (KN2012)
+
 ## [0.46.0](https://github.com/worgue/magic-pocket/releases/tag/0.46.0) - 2026-10-26
 
 ### Added

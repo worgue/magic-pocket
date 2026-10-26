@@ -113,6 +113,52 @@ def test_cluster_lookup_uses_lowercamel_params():
     stubber.assert_no_pending_responses()
 
 
+@pytest.mark.parametrize(
+    ("cluster_status", "expected"),
+    [
+        ("ACTIVE", "COMPLETED"),
+        # しばらく接続が無いと自動で入る正常な状態。
+        # FAILED にすると deploy が止まる (KN2012)
+        ("IDLE", "COMPLETED"),
+        ("CREATING", "PROGRESS"),
+        ("UPDATING", "PROGRESS"),
+        ("DELETING", "PROGRESS"),
+        ("PENDING_SETUP", "PROGRESS"),
+        ("PENDING_DELETE", "PROGRESS"),
+        ("FAILED", "FAILED"),
+        ("INACTIVE", "FAILED"),
+        ("DELETED", "NOEXIST"),
+    ],
+)
+def test_status_maps_every_documented_cluster_status(cluster_status, expected):
+    """AWS が返しうる cluster status すべてに対応表の値を返す。"""
+    dsql, _stubber = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123", status=cluster_status)
+    assert dsql.status == expected
+    assert dsql.status_detail == "cluster status: %s" % cluster_status
+
+
+def test_status_unknown_cluster_status_raises_with_name():
+    """未知の状態は FAILED に丸めず、状態名を出して止める。"""
+    dsql, _stubber = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123", status="SOMETHING_NEW")
+    with pytest.raises(RuntimeError, match="abc123.*SOMETHING_NEW"):
+        _ = dsql.status
+
+
+def test_wait_active_accepts_idle():
+    """作成直後の待機は ACTIVE と IDLE のどちらでも抜ける。"""
+    dsql, stubber = _make_dsql()
+    stubber.add_response(
+        "get_cluster",
+        _get_cluster_response("abc123", status="IDLE"),
+        {"identifier": "abc123"},
+    )
+    with stubber:
+        dsql._wait_active("abc123", timeout=5, interval=1)
+    stubber.assert_no_pending_responses()
+
+
 def test_cluster_lookup_skips_non_matching_tag():
     """Name タグが一致しないクラスターは None を返す (探索は継続)。"""
     dsql, stubber = _make_dsql()
