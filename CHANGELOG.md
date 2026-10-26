@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.46.1](https://github.com/worgue/magic-pocket/releases/tag/0.46.1) - 2026-10-26
+
 ### Fixed
 - Aurora DSQL のクラスタが `IDLE` (しばらく接続が無いと自動で入る正常な状態) のとき、deploy が
   `Dsql が FAILED 状態です` で止まる問題を修正しました。`IDLE` は `ACTIVE` と同じく使える状態として

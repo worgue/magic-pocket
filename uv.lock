@@ -1055,7 +1055,7 @@ wheels = [
 
 [[package]]
 name = "magic-pocket"
-version = "0.46.0"
+version = "0.46.1"
 source = { editable = "." }
 dependencies = [
     { name = "apig-wsgi" },
@@ -1131,7 +1131,7 @@ dev = [
 
 [[package]]
 name = "magic-pocket-cli"
-version = "0.46.0"
+version = "0.46.1"
 source = { editable = "packages/magic-pocket-cli" }
 dependencies = [
     { name = "awscrt" },
