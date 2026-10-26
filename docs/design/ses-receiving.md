@@ -1,8 +1,8 @@
-# SES 受信宣言の設計案（KN1449）
+# SES 受信宣言の設計案
 
 2026-09-12の設計記録です。実装した設定名は `inbound` です。
 **現在の仕様と手順は[メール受信](../inbound.md)を参照してください。以下は実装前の検討記録です。**
-KN1449 の同日07:45 UTCの要件更新（S3保存アクションのSNS通知を使う）を対象とします。
+同日07:45 UTCに更新された要件（S3保存アクションのSNS通知を使う）を対象とします。
 メール受信基盤の実装・公開と、利用側の本番導入は別工程です。
 
 ## 現状と責務
@@ -14,7 +14,7 @@ KN1449 の同日07:45 UTCの要件更新（S3保存アクションのSNS通知�
 
 既存のSQS worker宣言はqueue、処理失敗DLQ、EventSourceMapping、partial batch responseを
 再利用できます。DLQ通知は現在emailまたは明示的無効化で、email不要のalarmのみ生成する
-選択肢は追加が必要です。今回同期したtask / feedbackの未完一覧には、KN1449以外に
+選択肢は追加が必要です。検討時点の未完課題一覧には、本件以外に
 SES受信の実装課題はありません（完了済み全履歴までは探索していません）。
 
 | 担当 | 範囲 |
@@ -172,7 +172,7 @@ attachmentsの保存でも受信イベントは発生しないため、再帰処
 有効なセットがまだない場合は、account / regionで一度だけ初期設定が必要です。
 この初期設定（receipt rule setの作成・有効化）はpocketでは行いません。
 当初は共有の固定名 `pocket-inbound` を確認つきで作成・有効化するセットアップを
-0.35.0で提供しましたが、0.36.0で取りやめました（KN1496）。理由は次のとおりです。
+0.35.0で提供しましたが、0.36.0で取りやめました。理由は次のとおりです。
 
 - 有効セットはaccount / regionで1つだけの共有物で、project単位の道具の1 projectが
   他projectの前提を決める形になる。人の確認を挟むほどの操作なら、作らないほうが筋がよい
@@ -226,7 +226,7 @@ SESのbucket/topic policyはservice principalに対してSourceAccountと当該r
 worker / 通知handler等のroleには既存のpermissions_boundary設定があれば付け、
 受信containerで未設定ならforge環境の `FORGE_PERMISSIONS_BOUNDARY_ARN` を使用します。
 Boundaryは任意です (当初は必須でしたが、Boundaryを持たないaccountでdeployできないため
-0.39.1で任意化 = KN1556)。原本・metadataの削除禁止はworker roleの明示Denyで担保します。
+0.39.1で任意化)。原本・metadataの削除禁止はworker roleの明示Denyで担保します。
 現状のpocketはcontainer単位で実行roleを共有するため、メールアクセスを他handlerから
 分離するには上の例のように専用containerを使います。
 
