@@ -319,6 +319,9 @@ class CloudFront:
 
         内容が一致するオブジェクトは skip する (差分アップロード)。数千ファイル
         規模の配信アセットを upload_dir に置いても deploy 時間が伸びない。
+
+        今回の成果物に無い key は route.delete_stale のときだけ消す (content_hash
+        は既定で残す。RouteContext.delete_stale のコメント参照)。
         """
         s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
         if not route.upload_dir:
@@ -341,7 +344,15 @@ class CloudFront:
                 "ContentType": mimetypes.guess_type(str(file))[0]
                 or "application/octet-stream"
             }
-            if route.is_spa:
+            if route.is_content_hash:
+                # viewer-response Function が viewer 向けに付ける値と同じ
+                # (cf_function_cache_control.js)。オブジェクト側にも付けないと
+                # behavior の cache policy (DefaultTTL 1 日) で edge が 1 日で
+                # 切れ、内容 hash 付きの名前なのに origin へ取りに戻る (KN2009)
+                extra_args["CacheControl"] = (
+                    "public, max-age=%d, immutable" % route.versioned_max_age
+                )
+            elif route.is_spa:
                 if file.suffix in (".html", ".htm"):
                     extra_args["CacheControl"] = "no-cache, no-store"
                 else:
@@ -355,11 +366,20 @@ class CloudFront:
             )
             uploaded += 1
             echo.log("アップロード: s3://%s/%s" % (self.context.bucket_name, s3_key))
-        deleted = self._delete_stale_objects(existing, uploaded_keys)
-        echo.info(
-            "%d ファイルをアップロードしました (skip %d / 削除 %d、prefix: %s)"
-            % (uploaded, skipped, deleted, s3_prefix)
-        )
+        stale = [key for key in existing if key not in uploaded_keys]
+        if route.delete_stale:
+            deleted = self._delete_stale_objects(stale)
+            echo.info(
+                "%d ファイルをアップロードしました (skip %d / 削除 %d、prefix: %s)"
+                % (uploaded, skipped, deleted, s3_prefix)
+            )
+        else:
+            deleted = 0
+            echo.info(
+                "%d ファイルをアップロードしました"
+                " (skip %d / 旧版を保持 %d、prefix: %s)"
+                % (uploaded, skipped, len(stale), s3_prefix)
+            )
         return bool(uploaded or deleted)
 
     def _list_objects(self, prefix: str) -> dict[str, str]:
@@ -373,16 +393,11 @@ class CloudFront:
                 objects[obj["Key"]] = obj["ETag"].strip('"')
         return objects
 
-    def _delete_stale_objects(
-        self, existing: dict[str, str], uploaded_keys: set[str]
-    ) -> int:
-        deleted = 0
-        for key in existing:
-            if key not in uploaded_keys:
-                self.s3_client.delete_object(Bucket=self.context.bucket_name, Key=key)
-                deleted += 1
-                echo.log("削除: s3://%s/%s" % (self.context.bucket_name, key))
-        return deleted
+    def _delete_stale_objects(self, stale_keys: list[str]) -> int:
+        for key in stale_keys:
+            self.s3_client.delete_object(Bucket=self.context.bucket_name, Key=key)
+            echo.log("削除: s3://%s/%s" % (self.context.bucket_name, key))
+        return len(stale_keys)
 
     def _invalidate(self, routes: list[RouteContext]):
         """変更があった route の path_pattern だけを invalidate する。

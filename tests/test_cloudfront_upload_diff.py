@@ -138,6 +138,98 @@ def test_stale_objects_are_deleted_and_count_as_change(upload_dir: Path):
     assert changed is True
 
 
+def _content_hash_route(upload_dir: Path, **kwargs) -> RouteContext:
+    return RouteContext(
+        path_pattern="/v2/_app/immutable/*",
+        upload_dir=str(upload_dir),
+        versioning="content_hash",
+        **kwargs,
+    )
+
+
+def test_content_hash_keeps_stale_objects_by_default(upload_dir: Path):
+    """content_hash は今回の成果物に無い key を既定で消さない (KN2009)
+
+    内容 hash 付きの名前は上書きで壊れないので消す必要が無く、消すと deploy 前
+    から開いたままの画面の遅延ロード chunk や、旧 image へロールバックしたときの
+    JS / CSS が 404 になる。
+    """
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {
+        "v2/_app/immutable/a.svg": _md5(upload_dir / "a.svg"),
+        "v2/_app/immutable/b.svg": _md5(upload_dir / "b.svg"),
+        "v2/_app/immutable/old-chunk.js": "whatever",
+    }
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        changed = cf._upload_route(cf.context.routes[0])
+
+    cf.s3_client.delete_object.assert_not_called()
+    assert changed is False
+
+
+def test_content_hash_delete_stale_true_deletes(upload_dir: Path):
+    """content_hash でも delete_stale = true を明示すれば旧版を消す (掃除用)"""
+    cf = _make_cf([_content_hash_route(upload_dir, delete_stale=True)])
+    existing = {
+        "v2/_app/immutable/a.svg": _md5(upload_dir / "a.svg"),
+        "v2/_app/immutable/b.svg": _md5(upload_dir / "b.svg"),
+        "v2/_app/immutable/old-chunk.js": "whatever",
+    }
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        changed = cf._upload_route(cf.context.routes[0])
+
+    cf.s3_client.delete_object.assert_called_once_with(
+        Bucket="dev-testprj-bucket", Key="v2/_app/immutable/old-chunk.js"
+    )
+    assert changed is True
+
+
+def test_plain_route_delete_stale_false_keeps(upload_dir: Path):
+    """versioning 無しの route でも delete_stale = false なら消さない"""
+    cf = _make_cf(
+        [
+            RouteContext(
+                path_pattern="/twemoji/*",
+                upload_dir=str(upload_dir),
+                delete_stale=False,
+            )
+        ]
+    )
+    existing = {"twemoji/gone.svg": "whatever"}
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        cf._upload_route(cf.context.routes[0])
+
+    cf.s3_client.delete_object.assert_not_called()
+
+
+def test_content_hash_upload_sets_immutable_cache_control(upload_dir: Path):
+    """content_hash のオブジェクトには長期 Cache-Control を付ける (KN2009)
+
+    viewer 向けは CloudFront Function が付けるが、オブジェクト側に無いと edge は
+    cache policy の DefaultTTL (1 日) で切れて origin へ戻る。max-age は Function と
+    同じ versioned_max_age。
+    """
+    cf = _make_cf([_content_hash_route(upload_dir, versioned_max_age=3600)])
+    with mock.patch.object(cf, "_list_objects", return_value={}):
+        cf._upload_route(cf.context.routes[0])
+
+    assert cf.s3_client.upload_file.call_count == 2
+    for call in cf.s3_client.upload_file.call_args_list:
+        extra = call.kwargs["ExtraArgs"]
+        assert extra["CacheControl"] == "public, max-age=3600, immutable"
+        assert extra["ContentType"] == "image/svg+xml"
+
+
+def test_plain_route_upload_has_no_cache_control(upload_dir: Path):
+    """versioning 無し・SPA でない route は従来どおり Cache-Control を付けない"""
+    cf = _make_cf([_route(upload_dir)])
+    with mock.patch.object(cf, "_list_objects", return_value={}):
+        cf._upload_route(cf.context.routes[0])
+
+    for call in cf.s3_client.upload_file.call_args_list:
+        assert "CacheControl" not in call.kwargs["ExtraArgs"]
+
+
 def test_invalidate_limits_paths_to_changed_routes(upload_dir: Path):
     """invalidation は変更があった route の path_pattern に限定される"""
     changed = RouteContext(path_pattern="/twemoji/*", upload_dir=str(upload_dir))

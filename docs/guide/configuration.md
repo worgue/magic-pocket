@@ -2167,6 +2167,7 @@ routes = [
 | `signed` | bool | `false` | 署名付きURL（distribution に `signing_key` が必要） |
 | `build` | `{ dir, cmd }` \| None | None | pocket にビルドさせる宣言。`dir`（成果物ディレクトリ = アップロード対象）と `cmd`（ビルドコマンド、deploy が upload 前に shell 実行）は**両方必須** |
 | `upload_dir` | str \| None | None | ビルドは外部（CI 等）の責任と宣言し、このディレクトリの中身をアップロードだけする。**deploy はビルドを実行しない**ため、成果物を最新にするのは利用者の責任 |
+| `delete_stale` | bool \| None | None | `build` / `upload_dir` のアップロードで、今回の成果物に無い S3 key を削除するか。省略時は `versioning = "content_hash"` なら `false`（旧版を残す）、それ以外は `true`（下記 note 参照） |
 | `require_token` | bool | `false` | SPA トークン認証を有効化（`is_spa = true` 必須） |
 | `login_path` | str | `"/api/auth/login"` | 未認証時のリダイレクト先パス |
 
@@ -2182,6 +2183,7 @@ routes = [
     - 旧 `is_versioned` は廃止されました。`versioning = "content_hash"` を使ってください。
     - `handler` は `container.main.handlers` に定義されている必要があり、`apigateway` が設定されていなければなりません。
     - `build` と `upload_dir` は同時に設定できません（ビルド責任の宣言はどちらか一方）。
+    - `delete_stale` は `build` か `upload_dir` を持つルートでだけ指定できます（アップロードしないルートには消す対象がありません）。
     - 旧 `build_dir` と旧文字列形式の `build = "..."` は廃止されました。`build = { dir = "...", cmd = "..." }` または `upload_dir = "..."` を使ってください（起動時に移行手順つきのエラーが出ます）。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
 
@@ -2197,11 +2199,43 @@ routes = [
       内容の同一性を断定できないためで、サイズ比較での代替はしません（同じサイズで
       内容が違うファイルを「変更なし」と誤判定すると、以後どの deploy でもそのファイルが
       更新されなくなります）
-    - ローカルに存在しない key は従来どおり削除されます
+    - ローカルに存在しない key は `delete_stale` に従って削除されます（下記 note 参照）
     - CloudFront の invalidation は**変更があったルートの `path_pattern` に限定**され、
       変更が無ければ invalidation 自体を発行しません。配信専用ルート（`upload_dir` を
       持たないルート）や `versioning = "content_hash"` の immutable なアセットが
       巻き添えで無効化されることはありません
+
+!!! note "旧版のオブジェクトを残す（`delete_stale`）と `content_hash` の Cache-Control"
+    `build` / `upload_dir` のアップロードは、今回の成果物に無い S3 key を既定では削除します。
+    ただし **`versioning = "content_hash"` のルートは既定で削除しません**（`delete_stale = false`
+    相当）。内容ハッシュ付きの名前は上書きで壊れることが無いので消す必要がなく、消すと次の 2 つが
+    起きるためです。
+
+    - deploy 前から開いたままのブラウザ（サイネージ端末のような長時間表示の画面）が、まだ読んでいない
+      遅延ロードの chunk を取りに来ると 404 になる
+    - 前の版の image にロールバックすると、HTML が参照する JS / CSS だけが 404 になる
+
+    SvelteKit / Vite の `_app/immutable/*` のように内容ハッシュ付きで出力されるアセットは、
+    次の宣言で前の版を残したまま配れます。
+
+    ```toml
+    routes = [
+      { path_pattern = "/v2/_app/immutable/*", upload_dir = "frontend/build/_app/immutable", versioning = "content_hash" },
+    ]
+    ```
+
+    - S3 の増加は版ごとの差分（変わったファイルだけ）です。deploy のログには `旧版を保持 N` と
+      件数が出ます。掃除したいときは `delete_stale = true` を付けて 1 回 deploy すると、今回の
+      成果物に無い key をまとめて消します（消したあと外せば既定に戻ります）
+    - `versioning` 無し / `deploy_hash` のルートは同じ key を上書きするので従来どおり削除します。
+      消したくなければ `delete_stale = false` を明示してください
+    - `content_hash` のルートでは、アップロードするオブジェクトに
+      `Cache-Control: public, max-age=<versioned_max_age>, immutable` を付けます。viewer への応答は
+      CloudFront Function が同じ値を付けますが、オブジェクト側に無いと edge は behavior の
+      cache policy（DefaultTTL 1 日）で切れて origin へ取りに戻るためです。これで edge にも
+      `versioned_max_age`（既定 1 年）置かれます
+    - Django の `collectstatic` → `pocket django storage upload` 経路（`ref` で参照する
+      static ルート）は別の仕組みで、この設定の対象外です
 
 !!! tip "S3 key の二重 prefix を避ける（`origin_path` 省略）"
     S3 route の S3 key prefix は `origin_path + path_pattern` で計算されます。CloudFront の

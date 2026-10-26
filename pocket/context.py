@@ -1251,9 +1251,21 @@ class RouteContext(BaseModel):
     # upload_dir 宣言時 (外部ビルド) はそのまま、を正規化して持つ。
     build_cmd: str | None = None
     upload_dir: str | None = None
+    # アップロード時に今回の成果物に無い S3 key を消すか。None は resolve_delete_stale
+    # が versioning で解決する。content_hash は内容 hash 付きの名前で上書き衝突が
+    # 無いため既定で消さない: deploy 前から開いたままの画面が遅延ロードする旧版
+    # chunk や、旧 image へのロールバック時の JS / CSS が 404 にならない (KN2009)。
+    # deploy_hash / 無印は同じ key を上書きするので従来どおり消す。
+    delete_stale: bool | None = None
     origin_path: str = ""
     require_token: bool = False
     login_path: str = "/api/auth/login"
+
+    @model_validator(mode="after")
+    def resolve_delete_stale(self):
+        if self.delete_stale is None:
+            self.delete_stale = self.versioning != "content_hash"
+        return self
 
     @computed_field
     @property
@@ -1298,6 +1310,7 @@ class RouteContext(BaseModel):
             signed=route.signed,
             build_cmd=route.build.cmd if route.build else None,
             upload_dir=route.build.dir if route.build else route.upload_dir,
+            delete_stale=route.delete_stale,
             origin_path=route.origin_path or "",
             require_token=route.require_token,
             login_path=route.login_path,

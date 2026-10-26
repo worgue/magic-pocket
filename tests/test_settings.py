@@ -3,7 +3,7 @@ import pytest
 from moto import mock_aws
 from pydantic import ValidationError
 
-from pocket.context import Context
+from pocket.context import Context, RouteContext
 from pocket.django.settings import DjangoStorage
 from pocket.settings import CloudFront, Route, Settings
 
@@ -285,6 +285,42 @@ def test_route_upload_dir_without_build():
     )
     assert route.build is None
     assert route.upload_dir == "frontend/dist"
+
+
+def test_route_delete_stale_defaults_by_versioning():
+    """delete_stale 省略時は content_hash だけ「消さない」に解決される (KN2009)"""
+    content_hash = Route(
+        path_pattern="/v2/_app/immutable/*",
+        upload_dir="frontend/build/_app/immutable",
+        versioning="content_hash",
+    )
+    deploy_hash = Route(
+        path_pattern="/static/*", upload_dir="dist", versioning="deploy_hash"
+    )
+    plain = Route(path_pattern="/twemoji/*", upload_dir="assets")
+    assert content_hash.delete_stale is None
+    assert RouteContext.from_settings(content_hash).delete_stale is False
+    assert RouteContext.from_settings(deploy_hash).delete_stale is True
+    assert RouteContext.from_settings(plain).delete_stale is True
+
+
+def test_route_delete_stale_explicit_overrides_default():
+    """明示した delete_stale は versioning に関係なくそのまま使う"""
+    cleanup = Route(
+        path_pattern="/v2/_app/immutable/*",
+        upload_dir="build",
+        versioning="content_hash",
+        delete_stale=True,
+    )
+    keep = Route(path_pattern="/twemoji/*", upload_dir="assets", delete_stale=False)
+    assert RouteContext.from_settings(cleanup).delete_stale is True
+    assert RouteContext.from_settings(keep).delete_stale is False
+
+
+def test_route_delete_stale_requires_upload():
+    """アップロードしない route に delete_stale を書いたらエラー (消す対象が無い)"""
+    with pytest.raises(ValueError, match="delete_stale は build か upload_dir"):
+        Route(path_pattern="/static/*", versioning="content_hash", delete_stale=False)
 
 
 def test_route_build_requires_dir_and_cmd():

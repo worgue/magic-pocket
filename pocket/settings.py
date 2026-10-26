@@ -990,6 +990,10 @@ class Route(BaseModel):
     signed: bool = False
     build: RouteBuild | None = None
     upload_dir: str | None = None
+    # build / upload_dir のアップロードで、今回の成果物に無い S3 key を消すか。
+    # None は versioning で決める (content_hash は消さない、それ以外は消す)。
+    # 解決後の値は RouteContext.delete_stale。
+    delete_stale: bool | None = None
     origin_path: str | None = None
     require_token: bool = False
     login_path: str = "/api/auth/login"
@@ -1144,6 +1148,15 @@ class Route(BaseModel):
                 "build と upload_dir は同時に設定できません。pocket にビルド"
                 "させるなら build、外部でビルドした成果物をアップロードするだけ"
                 "なら upload_dir を選んでください"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def check_delete_stale(self):
+        if self.delete_stale is not None and not (self.build or self.upload_dir):
+            raise ValueError(
+                "delete_stale は build か upload_dir を持つ route でだけ指定できます"
+                " (アップロードしない route には消す対象がありません)"
             )
         return self
 

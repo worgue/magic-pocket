@@ -6,6 +6,23 @@
 
 ## [Unreleased]
 
+### Added
+- route に `delete_stale` を追加しました。`build` / `upload_dir` のアップロードで、今回の成果物に無い
+  S3 key を削除するかを宣言します。省略時は `versioning = "content_hash"` のルートだけ `false`
+  （旧版を残す）、それ以外は従来どおり `true` です (KN2009)
+
+### Changed
+- `versioning = "content_hash"` のルートは、**今回の成果物に無い S3 key を既定で削除しなくなりました**。
+  内容ハッシュ付きの名前は上書きで壊れないので消す必要が無く、消すと deploy 前から開いたままの画面の
+  遅延ロード chunk や、前の版の image へロールバックしたときの JS / CSS が 404 になっていました。
+  従来どおり消したい場合は `delete_stale = true` を明示してください（掃除したいときに 1 回付けて
+  deploy する使い方もできます）。deploy のログには `旧版を保持 N` と件数が出ます
+- `versioning = "content_hash"` のルートのアップロードで、オブジェクトに
+  `Cache-Control: public, max-age=<versioned_max_age>, immutable` を付けるようにしました。viewer への
+  応答には CloudFront Function が同じ値を付けていましたが、オブジェクト側に無いと edge は cache policy の
+  DefaultTTL（1 日）で切れて origin へ取りに戻っていました。既にアップロード済みのオブジェクトは内容が
+  変わらない限りスキップされるため付き直りません（新しい版からのファイルに付きます）
+
 ## [0.45.0](https://github.com/worgue/magic-pocket/releases/tag/0.45.0) - 2026-10-16
 
 ### Added
