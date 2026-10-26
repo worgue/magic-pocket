@@ -47,22 +47,39 @@ build & publish** する。
    4. 6 ファイル (pyproject.toml + uv.lock × 2 example、example-dsql の Cargo.toml + Cargo.lock) を
       コミット: `:arrow_up: example の magic-pocket を X.Y.Z に更新`
 
+   !!! note "example は Dependabot の対象外 (手動で毎回)"
+       `.github/dependabot.yml` は repo root (`directory: /`) だけを見ているため、
+       `example-*/` の pin は Dependabot では上がらない。リリースごとにこの手順で
+       手動更新する。sandbox にデプロイ済みの Lambda への反映は、次回その example を
+       再 deploy したとき。
+
    !!! note "vendor wheel は廃止済み"
        以前は git 管理外の vendor wheel を参照していたが、gitignore + 非決定的ビルドで
        wheel を作り直すと `uv.lock` のハッシュが不一致になり `uv sync --frozen` が落ちる
-       footgun があったため PyPI 版に切替えた。**この版更新は Dependabot でも自動化できる**
-       ので、リリース直後の必須手順ではなくなった (Dependabot PR を待つ運用でもよい)。
-       未リリース変更を example で検証したいときだけ、一時的に `[tool.uv.sources]` で
-       ローカル wheel を override する。
+       footgun があったため PyPI 版に切替えた。未リリース変更を example で検証したい
+       ときだけ、一時的に `[tool.uv.sources]` でローカル wheel を override する。
 
-9. **GitHub Release オブジェクトを作成する** (毎回。CHANGELOG の当該節を本文にする):
+9. **GitHub Release オブジェクトを作成する** (毎回。CHANGELOG の当該節を本文にする。
+   本文は引数渡しではなくファイルで渡すとバッククォート等の展開事故がない):
 
    ```bash
-   gh release create X.Y.Z --title "X.Y.Z" --notes "<CHANGELOG の該当節>"
+   awk '/^## \[X.Y.Z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/notes.md
+   gh release create X.Y.Z --title "X.Y.Z" --notes-file /tmp/notes.md
    ```
+
+   agent 環境では「公開面の作成」として権限ゲートに止まることがある。その場合は
+   作成を人間に依頼する (作り忘れが続くと Release 一覧と tag がずれる。抜けた版は
+   同じコマンドで後から作ればよい)。
+
+10. **main を fast-forward する**: `git push origin dev:main`。
 
 !!! note "dev / main の運用について"
     magic-pocket は **dev ベース運用**。日常の作業・リリースコミット・tag はすべて
     dev 上で行い、tag も dev のコミットに打つ (`release.yml` は tag push で発火する
     ため branch は問わない)。main はリリース等の区切りで dev を fast-forward で
-    反映する: `git push origin dev:main`。
+    反映する (手順 10)。
+
+!!! note "手順の正本はこのページ"
+    `AGENTS_COMMON.md` には手順を書かず、このページを参照する。手順を変えるときは
+    ここだけを直す (要約を別に持つと、要約に無い手順 = example-dsql の tag 更新や
+    GitHub Release 作成が抜ける。0.40.0〜0.46.0 で実際に抜けた)。

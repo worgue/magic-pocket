@@ -124,10 +124,7 @@ CLI 専用だったロジックを runtime 側へ移設して公開 API 化す�
 
 ## リリース手順
 
-tag `X.Y.Z` の push で GHA `release.yml` が両パッケージを PyPI へ publish します（tag と両 pyproject の version 一致が必須）。バンプは bug 修正 = patch、新機能 = minor（0.x でも feature は minor）。
-
-1. `pyproject.toml` と `packages/magic-pocket-cli/pyproject.toml` の version を同値にバンプ → `uv lock`。後者の依存は **`magic-pocket>=X.Y.Z,<X.(Y+1)` と上限も同 minor に束縛する**（0.x では minor が breaking の単位なので、上限がないと CLI を version pin した利用者にも lib の破壊的変更がリリース当日に届いて deploy が壊れる）
-2. CHANGELOG の `[Unreleased]` を `[X.Y.Z] - <日付>`（リンクは `releases/tag/X.Y.Z`）へ確定
-3. `:bookmark: X.Y.Z リリース` でコミット → push → `git tag X.Y.Z` → tag push → GHA 成功と PyPI 反映（`https://pypi.org/pypi/<pkg>/json`）を確認
-
-**リリース後フォローアップ**: `example-neon` / `example-tidb` の `magic-pocket[django]==X.Y.Z` pin を新版へ更新し、各ディレクトリで `uv lock` してコミットする（examples は Dependabot 対象外の手動作業。旧 vendor wheel 方式は 2026-07-20 の PyPI 化で廃止済み）。sandbox のデプロイ済み Lambda への反映は次回の example 再 deploy 時。
+リリース (version バンプ → CHANGELOG 確定 → tag push → PyPI publish) と、リリース後に
+毎回行うフォローアップ (example の pin 更新・GitHub Release 作成・main の fast-forward) は
+**`docs/releasing.md` の手順に従う**。手順はそのページが正本で、ここには要約を置かない
+(要約に無い手順が抜ける事故を防ぐため)。
