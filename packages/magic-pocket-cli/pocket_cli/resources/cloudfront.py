@@ -321,22 +321,15 @@ class CloudFront:
         規模の配信アセットを upload_dir に置いても deploy 時間が伸びない。
 
         今回の成果物に無い key は route.delete_stale のときだけ消す (content_hash
-        は既定で残す。RouteContext.delete_stale のコメント参照)。
+        は既定で残す。RouteContext.delete_stale のコメント参照。残した旧版は
+        `pocket resource cloudfront prune` で消せる)。
         """
-        s3_prefix = (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
-        if not route.upload_dir:
-            raise RuntimeError("route.upload_dir is not set")
-        local_dir = Path(route.upload_dir)
+        s3_prefix = self._s3_prefix(route)
         existing = self._list_objects(s3_prefix)
-        uploaded_keys: set[str] = set()
+        local_files = self._local_files(route, s3_prefix)
         uploaded = 0
         skipped = 0
-        for file in local_dir.rglob("*"):
-            if file.is_dir():
-                continue
-            relative = file.relative_to(local_dir)
-            s3_key = s3_prefix + "/" + str(relative)
-            uploaded_keys.add(s3_key)
+        for s3_key, file in local_files.items():
             if _is_unchanged(file, existing.get(s3_key)):
                 skipped += 1
                 continue
@@ -366,9 +359,9 @@ class CloudFront:
             )
             uploaded += 1
             echo.log("アップロード: s3://%s/%s" % (self.context.bucket_name, s3_key))
-        stale = [key for key in existing if key not in uploaded_keys]
+        stale = [key for key in existing if key not in local_files]
         if route.delete_stale:
-            deleted = self._delete_stale_objects(stale)
+            deleted = self.delete_objects(stale)
             echo.info(
                 "%d ファイルをアップロードしました (skip %d / 削除 %d、prefix: %s)"
                 % (uploaded, skipped, deleted, s3_prefix)
@@ -382,6 +375,35 @@ class CloudFront:
             )
         return bool(uploaded or deleted)
 
+    @staticmethod
+    def _s3_prefix(route: RouteContext) -> str:
+        return (route.origin_path + route.path_pattern.rstrip("/*")).lstrip("/")
+
+    @staticmethod
+    def _local_files(route: RouteContext, s3_prefix: str) -> dict[str, Path]:
+        """route の upload_dir 配下のファイルを {S3 key: ローカル path} で返す。"""
+        if not route.upload_dir:
+            raise RuntimeError("route.upload_dir is not set")
+        local_dir = Path(route.upload_dir)
+        files: dict[str, Path] = {}
+        for file in local_dir.rglob("*"):
+            if file.is_dir():
+                continue
+            files[s3_prefix + "/" + str(file.relative_to(local_dir))] = file
+        return files
+
+    def stale_keys(self, route: RouteContext) -> list[str]:
+        """route の S3 prefix 配下で、ローカルの upload_dir に無い key (旧版) を返す。
+
+        ビルドは実行しないので、upload_dir が最新の成果物であることは呼び手の責任
+        (`upload --skip-build` と同じ前提)。
+        """
+        s3_prefix = self._s3_prefix(route)
+        local_files = self._local_files(route, s3_prefix)
+        return sorted(
+            key for key in self._list_objects(s3_prefix) if key not in local_files
+        )
+
     def _list_objects(self, prefix: str) -> dict[str, str]:
         """prefix 配下の {key: ETag} を返す (ETag は前後の `"` を除去済み)。"""
         objects: dict[str, str] = {}
@@ -393,11 +415,11 @@ class CloudFront:
                 objects[obj["Key"]] = obj["ETag"].strip('"')
         return objects
 
-    def _delete_stale_objects(self, stale_keys: list[str]) -> int:
-        for key in stale_keys:
+    def delete_objects(self, keys: list[str]) -> int:
+        for key in keys:
             self.s3_client.delete_object(Bucket=self.context.bucket_name, Key=key)
             echo.log("削除: s3://%s/%s" % (self.context.bucket_name, key))
-        return len(stale_keys)
+        return len(keys)
 
     def _invalidate(self, routes: list[RouteContext]):
         """変更があった route の path_pattern だけを invalidate する。

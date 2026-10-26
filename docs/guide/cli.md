@@ -726,6 +726,14 @@ pocket resource cloudfront upload --stage=dev --skip-build
 
 # 特定のディストリビューションのみ
 pocket resource cloudfront upload --stage=dev --name=main
+
+# ローカルの成果物に無い S3 key（旧版）を一覧して削除（確認プロンプトあり）
+pocket resource cloudfront prune --stage=dev
+
+# 削除せず一覧だけ / 特定の route だけ / 確認をスキップ
+pocket resource cloudfront prune --stage=dev --dry-run
+pocket resource cloudfront prune --stage=dev --route="/v2/_app/immutable/*"
+pocket resource cloudfront prune --stage=dev -y
 ```
 
 `upload` は `build` / `upload_dir` が設定されたルートに対して、ビルド（`build` のルートのみ）→ S3アップロード → CloudFrontキャッシュ無効化を実行します。
@@ -733,6 +741,8 @@ pocket resource cloudfront upload --stage=dev --name=main
 
 アップロードは**差分のみ**です。S3 上のオブジェクトと内容が一致するファイルはスキップされるため、数千ファイル規模のアセットを `upload_dir` に置いても deploy 時間は伸びません（判定は ETag。詳細は [routes](configuration.md#routes) を参照）。
 キャッシュ無効化も**変更があったルートの `path_pattern` に限定**され、変更が無ければ invalidation 自体を発行しません。
+
+`prune` は `build` / `upload_dir` が設定されたルートの S3 prefix 配下で、**ローカルの成果物に無い key（旧版）**を一覧し、確認のうえ削除します。`versioning = "content_hash"` のルートは deploy で旧版を消さない（`delete_stale` の既定）ため、その掃除に使います（[routes](configuration.md#routes) の note を参照）。ビルドは実行しないので、`upload_dir` を最新のビルドにしてから実行してください（`upload --skip-build` と同じ前提）。`--route` で `path_pattern` を指定して 1 ルートに絞れます。
 
 ### cloudfront_keys
 

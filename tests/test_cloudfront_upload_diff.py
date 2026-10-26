@@ -230,6 +230,124 @@ def test_plain_route_upload_has_no_cache_control(upload_dir: Path):
         assert "CacheControl" not in call.kwargs["ExtraArgs"]
 
 
+def test_stale_keys_lists_objects_missing_locally(upload_dir: Path):
+    """stale_keys はローカルに無い key だけを sorted で返し、何もアップロードしない"""
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {
+        "v2/_app/immutable/a.svg": _md5(upload_dir / "a.svg"),
+        "v2/_app/immutable/b.svg": "whatever",
+        "v2/_app/immutable/z-old.js": "whatever",
+        "v2/_app/immutable/chunks/old.js": "whatever",
+    }
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        stale = cf.stale_keys(cf.context.routes[0])
+
+    assert stale == ["v2/_app/immutable/chunks/old.js", "v2/_app/immutable/z-old.js"]
+    cf.s3_client.upload_file.assert_not_called()
+    cf.s3_client.delete_object.assert_not_called()
+
+
+def _run_prune(cf: CloudFront, args: list[str]):
+    from click.testing import CliRunner
+    from pocket_cli.cli import cloudfront_cli
+
+    with mock.patch.object(
+        cloudfront_cli, "get_cloudfront_resources", return_value=[cf]
+    ):
+        return CliRunner().invoke(
+            cloudfront_cli.cloudfront, ["prune", "--stage", "dev", *args]
+        )
+
+
+def test_prune_deletes_stale_keys_with_yes(upload_dir: Path):
+    """prune -y はローカルに無い key を削除する (delete_stale=false の掃除用)"""
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {
+        "v2/_app/immutable/a.svg": _md5(upload_dir / "a.svg"),
+        "v2/_app/immutable/old.js": "whatever",
+    }
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        result = _run_prune(cf, ["-y"])
+
+    assert result.exit_code == 0, result.output
+    cf.s3_client.delete_object.assert_called_once_with(
+        Bucket="dev-testprj-bucket", Key="v2/_app/immutable/old.js"
+    )
+    assert "1 件を削除しました" in result.output
+
+
+def test_prune_dry_run_deletes_nothing(upload_dir: Path):
+    """--dry-run は一覧を出すだけで削除しない"""
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {"v2/_app/immutable/old.js": "whatever"}
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        result = _run_prune(cf, ["--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    cf.s3_client.delete_object.assert_not_called()
+    assert "s3://dev-testprj-bucket/v2/_app/immutable/old.js" in result.output
+    assert "--dry-run" in result.output
+
+
+def test_prune_aborts_without_confirmation(upload_dir: Path):
+    """確認プロンプトで No なら削除しない"""
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {"v2/_app/immutable/old.js": "whatever"}
+    from click.testing import CliRunner
+    from pocket_cli.cli import cloudfront_cli
+
+    with (
+        mock.patch.object(cf, "_list_objects", return_value=existing),
+        mock.patch.object(
+            cloudfront_cli, "get_cloudfront_resources", return_value=[cf]
+        ),
+    ):
+        result = CliRunner().invoke(
+            cloudfront_cli.cloudfront, ["prune", "--stage", "dev"], input="n\n"
+        )
+
+    assert result.exit_code != 0
+    cf.s3_client.delete_object.assert_not_called()
+
+
+def test_prune_route_filter_and_unknown_route(upload_dir: Path):
+    """--route は path_pattern で絞り、当たらなければエラーにする"""
+    immutable = _content_hash_route(upload_dir)
+    other = RouteContext(path_pattern="/twemoji/*", upload_dir=str(upload_dir))
+    cf = _make_cf([immutable, other])
+    existing = {
+        "v2/_app/immutable/old.js": "whatever",
+        "twemoji/old.svg": "whatever",
+    }
+
+    def list_objects(prefix: str) -> dict[str, str]:
+        return {k: v for k, v in existing.items() if k.startswith(prefix + "/")}
+
+    with mock.patch.object(cf, "_list_objects", side_effect=list_objects):
+        result = _run_prune(cf, ["-y", "--route", "/v2/_app/immutable/*"])
+    assert result.exit_code == 0, result.output
+    cf.s3_client.delete_object.assert_called_once_with(
+        Bucket="dev-testprj-bucket", Key="v2/_app/immutable/old.js"
+    )
+
+    with mock.patch.object(cf, "_list_objects", side_effect=list_objects):
+        result = _run_prune(cf, ["-y", "--route", "/nothing/*"])
+    assert result.exit_code != 0
+    assert "アップロード対象" in result.output
+
+
+def test_prune_reports_nothing_to_delete(upload_dir: Path):
+    """旧版が無ければ削除せず、その旨を表示して終わる"""
+    cf = _make_cf([_content_hash_route(upload_dir)])
+    existing = {"v2/_app/immutable/a.svg": _md5(upload_dir / "a.svg")}
+    with mock.patch.object(cf, "_list_objects", return_value=existing):
+        result = _run_prune(cf, [])
+
+    assert result.exit_code == 0, result.output
+    cf.s3_client.delete_object.assert_not_called()
+    assert "削除対象の旧版はありません" in result.output
+
+
 def test_invalidate_limits_paths_to_changed_routes(upload_dir: Path):
     """invalidation は変更があった route の path_pattern に限定される"""
     changed = RouteContext(path_pattern="/twemoji/*", upload_dir=str(upload_dir))

@@ -10,13 +10,17 @@
 - route に `delete_stale` を追加しました。`build` / `upload_dir` のアップロードで、今回の成果物に無い
   S3 key を削除するかを宣言します。省略時は `versioning = "content_hash"` のルートだけ `false`
   （旧版を残す）、それ以外は従来どおり `true` です (KN2009)
+- `pocket resource cloudfront prune --stage <stage>` を追加しました。`build` / `upload_dir` のルートの
+  S3 prefix 配下で、ローカルの成果物に無い key（旧版）を一覧し、確認のうえ削除します
+  （`--dry-run` で一覧のみ、`--route <path_pattern>` で 1 ルートに限定、`-y` で確認スキップ）。
+  `content_hash` のルートが残した旧版の掃除用です
 
 ### Changed
 - `versioning = "content_hash"` のルートは、**今回の成果物に無い S3 key を既定で削除しなくなりました**。
   内容ハッシュ付きの名前は上書きで壊れないので消す必要が無く、消すと deploy 前から開いたままの画面の
   遅延ロード chunk や、前の版の image へロールバックしたときの JS / CSS が 404 になっていました。
-  従来どおり消したい場合は `delete_stale = true` を明示してください（掃除したいときに 1 回付けて
-  deploy する使い方もできます）。deploy のログには `旧版を保持 N` と件数が出ます
+  従来どおり消したい場合は `delete_stale = true` を明示してください。deploy のログには
+  `旧版を保持 N` と件数が出ます（掃除は `pocket resource cloudfront prune`）
 - `versioning = "content_hash"` のルートのアップロードで、オブジェクトに
   `Cache-Control: public, max-age=<versioned_max_age>, immutable` を付けるようにしました。viewer への
   応答には CloudFront Function が同じ値を付けていましたが、オブジェクト側に無いと edge は cache policy の

@@ -118,6 +118,71 @@ def upload(stage, name, skip_build):
 @cloudfront.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
+@click.option(
+    "--route",
+    "path_pattern",
+    default=None,
+    help="対象 route の path_pattern (省略時は build / upload_dir を持つ全 route)",
+)
+@click.option("--dry-run", is_flag=True, default=False, help="削除せず一覧だけ表示")
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def prune(stage, name, path_pattern, dry_run, yes):
+    """ローカルの成果物に無い S3 key (旧版) を削除する。
+
+    delete_stale = false (content_hash の既定) で残した旧版の掃除用。ビルドは
+    実行しないので、upload_dir を最新のビルドにしてから実行する。
+    """
+    targets = _collect_stale_keys(stage, name, path_pattern)
+    total = sum(len(keys) for _, keys in targets)
+    if not total:
+        echo.success("削除対象の旧版はありません")
+        return
+    if dry_run:
+        echo.info("--dry-run のため削除しません (%d 件)" % total)
+        return
+    if not yes:
+        click.confirm("上記 %d 件を削除しますか？" % total, abort=True)
+    for cf, keys in targets:
+        cf.delete_objects(keys)
+    echo.success("%d 件を削除しました" % total)
+
+
+def _collect_stale_keys(
+    stage, name, path_pattern
+) -> list[tuple[CloudFront, list[str]]]:
+    """route ごとの旧版 key を表示しつつ集める。
+
+    --route が何にも当たらなければエラー。
+    """
+    targets: list[tuple[CloudFront, list[str]]] = []
+    matched = False
+    for cf in get_cloudfront_resources(stage, name):
+        for route in cf.context.uploadable_routes:
+            if path_pattern is not None and route.path_pattern != path_pattern:
+                continue
+            matched = True
+            keys = cf.stale_keys(route)
+            echo.info(
+                "[%s] %s: 旧版 %d 件"
+                % (cf.context.name, route.path_pattern or "/*", len(keys))
+            )
+            for key in keys:
+                echo.log("  s3://%s/%s" % (cf.context.bucket_name, key))
+            if keys:
+                targets.append((cf, keys))
+    if path_pattern is not None and not matched:
+        raise click.ClickException(
+            "route '%s' はアップロード対象 (build / upload_dir を持つ route)"
+            " にありません" % path_pattern
+        )
+    return targets
+
+
+@cloudfront.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option("--name", default=None)
 def status(stage, name):
     for cf in get_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)

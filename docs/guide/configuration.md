@@ -2225,8 +2225,10 @@ routes = [
     ```
 
     - S3 の増加は版ごとの差分（変わったファイルだけ）です。deploy のログには `旧版を保持 N` と
-      件数が出ます。掃除したいときは `delete_stale = true` を付けて 1 回 deploy すると、今回の
-      成果物に無い key をまとめて消します（消したあと外せば既定に戻ります）
+      件数が出ます。掃除したいときは `pocket resource cloudfront prune --stage=<stage>` で、
+      ローカルの成果物に無い key を確認してから削除できます（`--dry-run` で一覧のみ。詳細は
+      [CLI リファレンス](cli.md#cloudfront)）。deploy のたびに消す従来の動きに戻したい場合は
+      `delete_stale = true` を明示してください
     - `versioning` 無し / `deploy_hash` のルートは同じ key を上書きするので従来どおり削除します。
       消したくなければ `delete_stale = false` を明示してください
     - `content_hash` のルートでは、アップロードするオブジェクトに
