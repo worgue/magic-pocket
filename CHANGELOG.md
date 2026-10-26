@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.46.0](https://github.com/worgue/magic-pocket/releases/tag/0.46.0) - 2026-10-26
+
 ### Added
 - route に `delete_stale` を追加しました。`build` / `upload_dir` のアップロードで、今回の成果物に無い
   S3 key を削除するかを宣言します。省略時は `versioning = "content_hash"` のルートだけ `false`
