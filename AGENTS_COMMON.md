@@ -25,6 +25,8 @@ commit の書き直しが要る)。
   placeholder で commit し、deploy 前に書き戻す (書き戻しは commit しない)
 - `git add` はパスを明示する (`-A` で書き戻し済みの実値を巻き込んだ事故あり)
 - GitHub の organization 名を含む URL (`github.com/<org>/magic-pocket` 等) は許容されている
+- kadai の課題番号 (`KN1234`) は内部トラッカーの ID なので、CHANGELOG / docs / GitHub Release など
+  公開物には書かない (読者に意味が通らない)。コミットメッセージへの記載は可
 
 ## Python
 

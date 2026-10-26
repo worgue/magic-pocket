@@ -12,14 +12,14 @@
 - Aurora DSQL のクラスタが `IDLE` (しばらく接続が無いと自動で入る正常な状態) のとき、deploy が
   `Dsql が FAILED 状態です` で止まる問題を修正しました。`IDLE` は `ACTIVE` と同じく使える状態として
   扱い、`PENDING_SETUP` / `PENDING_DELETE` は進行中、`DELETED` は存在しないものとして扱います。
-  未知の状態は FAILED に丸めず状態名を出して止め、FAILED 時のエラー文にもクラスタの状態名を添えます (KN2012)
+  未知の状態は FAILED に丸めず状態名を出して止め、FAILED 時のエラー文にもクラスタの状態名を添えます
 
 ## [0.46.0](https://github.com/worgue/magic-pocket/releases/tag/0.46.0) - 2026-10-26
 
 ### Added
 - route に `delete_stale` を追加しました。`build` / `upload_dir` のアップロードで、今回の成果物に無い
   S3 key を削除するかを宣言します。省略時は `versioning = "content_hash"` のルートだけ `false`
-  （旧版を残す）、それ以外は従来どおり `true` です (KN2009)
+  （旧版を残す）、それ以外は従来どおり `true` です
 - `pocket resource cloudfront prune --stage <stage>` を追加しました。`build` / `upload_dir` のルートの
   S3 prefix 配下で、ローカルの成果物に無い key（旧版）を一覧し、確認のうえ削除します
   （`--dry-run` で一覧のみ、`--route <path_pattern>` で 1 ルートに限定、`-y` で確認スキップ）。
@@ -106,7 +106,7 @@
 ### Added
 - `versioning = "deploy_hash"` の route を使う staticfiles で、`STATIC_URL` が
   `<route の prefix>{DEPLOY_HASH}/`（例: `static/{DEPLOY_HASH}/`）の形でなければエラーにする
-  Django system check（`pocket.E001`）を追加しました (KN1688)。0.41.0 から hash を外すのは
+  Django system check（`pocket.E001`）を追加しました。0.41.0 から hash を外すのは
   route の prefix 直下の 1 セグメントだけなので、`static/v2/{DEPLOY_HASH}/` のような形では
   static がすべて 403 になっていました
   - `get_storages()` が登録し、`collectstatic` / `runserver` / `check` で実行されます
@@ -119,7 +119,7 @@
 
 ### Changed
 - `pocket django deploy` / `promote` が、static を Lambda の更新より**先に** upload するように
-  なりました (KN1676)。これまでは Lambda の更新の後だったため、その間に新しい URL で読まれた
+  なりました。これまでは Lambda の更新の後だったため、その間に新しい URL で読まれた
   ファイルは upload 前の内容（新規ファイルなら 403）が返り、`versioning` route ではそれが
   ブラウザに `versioned_max_age` の間残りえました。`pocket deploy` が upload する `versioning`
   route（`build` / `upload_dir`）も同じ順序になります。
@@ -168,7 +168,7 @@
 
 ### Fixed
 - `versioning = "deploy_hash"` の route で、deploy のたびに数分間、新しい hash の static URL が
-  403 になり、その 403 がブラウザに長期間残る問題を修正しました (KN1670)。原因は 2 つでした。
+  403 になり、その 403 がブラウザに長期間残る問題を修正しました。原因は 2 つでした。
   - hash を外す CloudFront Function が**現在の hash だけ**を外していたため、Lambda が新しい hash の
     URL を出し始めてから Function が切り替わるまでの間（container が複数あると長くなります）と、
     旧 hash の HTML を開いたままの端末で、存在しないキーを読んでいました。route の prefix 直下の
@@ -237,7 +237,7 @@
 
 ### Changed
 - **(破壊的変更)** `[inbound.*]` の受信ドメインを、`pocket deploy` だけで受信できる状態まで
-  持っていくようにしました (KN1537)。stage × domain ごとに「受信ドメインの stack」を作り、
+  持っていくようにしました。stage × domain ごとに「受信ドメインの stack」を作り、
   SES identity (`AWS::SES::EmailIdentity`、Easy DKIM)・DKIM CNAME 3 本・MX を CloudFormation で
   管理します。hosted zone は CloudFront の独自ドメインと同じく `domain` から自動で探し
   (`hosted_zone_id_override` で明示可)、deploy の最後に SES の検証完了を最大 10 分待ちます。
@@ -325,7 +325,7 @@ deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_bou
 ## [0.36.0](https://github.com/worgue/magic-pocket/releases/tag/0.36.0) - 2026-09-18
 
 ### Changed
-- `pocket resource inbound ... init` は共有の receipt rule set を作成・有効化しなくなりました (KN1496)。
+- `pocket resource inbound ... init` は共有の receipt rule set を作成・有効化しなくなりました。
   receipt rule set は account/region で 1 つしか active にできない共有物のため、project 単位の
   道具である pocket からは触りません。active なセットが無い場合、`init` と deploy は
   `default-rule-set` を作成・有効化する AWS CLI の手順を案内して停止します。active なセットが
@@ -336,53 +336,53 @@ deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_bou
 
 ### Added
 - `pocket resource inbound ... init --format json` で、登録すべき DNS レコード (TXT / MX) と
-  active な rule set 名・検証状態を機械可読に出力できます (KN1496)。
-- `pocket resource inbound ... destroy` に `-y` / `--yes` を追加しました (KN1496)。確認は
+  active な rule set 名・検証状態を機械可読に出力できます。
+- `pocket resource inbound ... destroy` に `-y` / `--yes` を追加しました。確認は
   他コマンドと同じ assume-yes の仕組みを通るようになり、CI や LLM から非対話で実行できます。
 
 ## [0.35.0](https://github.com/worgue/magic-pocket/releases/tag/0.35.0) - 2026-09-14
 
 ### Added
 - `[inbound.<name>]` によるSES受信を追加しました。原本・受信情報の保存、
-  SNS→SQS配送、DLQ・EventBridge対応の通知、初期設定・照合・コピー・取り込みCLIを備えます (KN1449)。
+  SNS→SQS配送、DLQ・EventBridge対応の通知、初期設定・照合・コピー・取り込みCLIを備えます。
   条件付き保存に必要なboto3の下限を1.35.2へ更新しました。
-- `magic-pocket-rs` に feature `inbound` を追加しました (KN1449)。Python の
+- `magic-pocket-rs` に feature `inbound` を追加しました。Python の
   `pocket.inbound` と同じ契約で、SNS/SES 通知の検証と原本の版・hash・完全な通知の
   条件付き保存を行ってから利用側の処理を呼ぶ worker ヘルパ
   (`Receiver` / `process_inbound_records` / `load_import`) を Rust の container からも使えます。
 - Django に依存しない `pocket build --stage=<stage>` を追加しました。
-  `pocket django build` は同じ処理の別名として維持します (KN1448)。
+  `pocket django build` は同じ処理の別名として維持します。
 
 ### Changed
 - Lambda 環境変数 `DEPLOY_HASH` を、CloudFront の deploy_hash route の有無に関係なく
-  全 container に常に注入するようにしました (KN1450)。route を撤去しても他 container の
+  全 container に常に注入するようにしました。route を撤去しても他 container の
   version 表示・Sentry release 等の版識別が消えなくなります。`envs` に `DEPLOY_HASH` を
   明示している場合はそちらが優先されます。
 
 ### Fixed
 - `pocket destroy` が 0.29.0 以前の旧命名 (`{slug}-container` / `{prefix}lambda`) の
   container stack・ECR repository・log group を検出して削除対象に含めるように
-  しました (KN1456)。移行 deploy を経ずに旧 stack だけ消す (region 移設・廃止)
+  しました。移行 deploy を経ずに旧 stack だけ消す (region 移設・廃止)
   ケースで、現行命名が NOEXIST でも取りこぼしません。
 - `[neon]` 宣言があっても `NEON_API_KEY` が無い環境では、`pocket status` /
   `pocket destroy` が Neon の解決 (401) で止まらず warning を出して続行するように
-  しました (KN1456)。stack の確認・削除に Neon の資格情報は不要です。
+  しました。stack の確認・削除に Neon の資格情報は不要です。
 - 削除直後の同名 bucket (region 移設で旧 region を destroy した直後など) の
   CreateBucket が `OperationAborted` で拒否された場合、deploy が 30 秒間隔で最長
-  1 時間まで待って再試行するようにしました (KN1454)。state bucket と `[s3]`
+  1 時間まで待って再試行するようにしました。state bucket と `[s3]`
   bucket の両方が対象で、進捗は stderr に出ます。
 - SPA gate (`require_token`) の CloudFront Function が `pocket-spa-token` cookie の
-  値を `decodeURIComponent` してから検証するようにしました (KN1458)。axum-extra の
+  値を `decodeURIComponent` してから検証するようにしました。axum-extra の
   CookieJar 等で `:` が `%3A` に percent-encode された cookie でも 302 にならなく
   なります。不正な percent-encoding はログインへ redirect します。
 - VPC 削除前にスタック外の ENI / SG を検知し、CloudFormation の失敗理由を
   リソース単位で表示するようにしました。VPC / RDS の削除待機を30分に延長し、
-  削除中に再実行した場合は待機を再開します (KN1447)。
+  削除中に再実行した場合は待機を再開します。
 - VPC の resource コマンドに `--stage` を追加し、stage 別の VPC 宣言を撤去時にも
-  選択できるようにしました。宣言を消す前に削除する手順も明記しました (KN1443)。
+  選択できるようにしました。宣言を消す前に削除する手順も明記しました。
 - API Gateway handler への最後の CloudFront route を削除した際に、参照中の
   Export を先に削除しようとして deploy が rollback する問題を修正しました
-  (KN1444)。API が存在する間は route の有無に関係なく Export を維持します。
+ 。API が存在する間は route の有無に関係なく Export を維持します。
   handler / API 自体の撤去は、先に route を削除して deploy してから行ってください。
 
 ## [0.34.1](https://github.com/worgue/magic-pocket/releases/tag/0.34.1) - 2026-09-08
@@ -401,7 +401,7 @@ deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_bou
 
 ### Changed
 - **破壊的変更**: SQS の DLQ アラート宣言 (`sqs.dead_letter_alert`) を必須に
-  しました (KN1110)。`sqs = {}` を持つ既存の `pocket.toml` は設定ロード時に
+  しました。`sqs = {}` を持つ既存の `pocket.toml` は設定ロード時に
   エラーになります。通知するなら
   `sqs = { dead_letter_alert = { email = "ops@example.com" } }`、意図的に
   監視しないなら `sqs = { dead_letter_alert = { enabled = false } }` を
@@ -418,7 +418,7 @@ deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_bou
 
 ### Changed
 - `get_databases()` の持続接続 (`CONN_MAX_AGE` + `CONN_HEALTH_CHECKS`) を
-  TiDB 限定から pocket 管理の全 DB (TiDB / Neon / RDS) に広げました (KN1351)。
+  TiDB 限定から pocket 管理の全 DB (TiDB / Neon / RDS) に広げました。
   接続確立コスト (TLS handshake 含む) は Lambda + TLS 必須 DB に共通のためです。
   既定値は「無期限 (None)」から「300 秒」に変更しています (接続の生存期間を
   有界にする保険。TiDB も同様)。`get_databases(conn_max_age=...)` で調整でき、
@@ -432,12 +432,12 @@ deploy job を含む) に `POCKET_PERMISSIONS_BOUNDARY_ARN` か `permissions_bou
 ### Fixed
 - `use_vpc = false` の container が `[rds]` のある stage で CreateStack の
   validation ("Unresolved resource dependencies [LambdaSecurityGroup]") に
-  落ちていたのを修正しました (KN1352)。VPC 外 Lambda は RDS SG への ingress
+  落ちていたのを修正しました。VPC 外 Lambda は RDS SG への ingress
   自体が不要なため、`LambdaRDSAccess` を出力しません。あわせて、この組合せでは
   「container が RDS に到達できない」旨を `pocket settings` 等の設定読込時に
   警告します (DB を使わない container なら無視して構いません)
 - django 未導入の環境で `pocket` CLI 全体が `ModuleNotFoundError: django` の
-  traceback で起動不能になっていたのを修正しました (KN1281)。0.32.0 の
+  traceback で起動不能になっていたのを修正しました。0.32.0 の
   `django-storages` extra 化で django が transitive に入らなくなったことで
   顕在化していました。django 非依存のサブコマンド (`pocket deploy` /
   `pocket settings` 等) は django 無しで動作し、`pocket django ...` の実行時のみ

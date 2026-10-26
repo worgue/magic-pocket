@@ -25,7 +25,8 @@ build & publish** する。
 2. **`uv.lock` を反映する** (version バンプで差分が出る。`uv lock` か `uv run` で更新)。
 3. **CHANGELOG を確定する**: `[Unreleased]` を
    `## [X.Y.Z](https://github.com/worgue/magic-pocket/releases/tag/X.Y.Z) - YYYY-MM-DD`
-   に書き換える。
+   に書き換える。本文は GitHub Release にそのまま転記されるので、kadai の課題番号
+   (`KN1234`) など内部トラッカーの ID は書かない (`grep -c 'KN[0-9]' CHANGELOG.md` が 0)。
 4. **コミットする**: `:bookmark: X.Y.Z リリース (<要約>)`。
 5. **dev を push する**: `git push origin dev` (pre-push hook で gitleaks / ruff /
    semgrep / pyright / pytest が走る。green でないと push されない)。
