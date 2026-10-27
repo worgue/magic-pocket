@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.46.2](https://github.com/worgue/magic-pocket/releases/tag/0.46.2) - 2026-10-27
+
 ### Fixed
 - `use_vpc = false` の container に、stage の `[rds]` の `POCKET_RDS_*` 環境変数が注入されていた問題を
   修正しました。VPC 外の Lambda は private subnet の RDS に到達できないのに、runtime が `POCKET_RDS_*`
