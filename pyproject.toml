@@ -84,3 +84,10 @@ select = ["E", "W", "F", "I", "C", "B", "S"]
 [tool.ruff.lint.per-file-ignores]
 # tests: assert は pytest の正規手段、ダミー token / password はテストデータ
 "tests/**" = ["S101", "S105", "S106"]
+
+# dev group (pre-commit / pytest 等の開発ツール) は Python 3.11 以上で解決する。配布パッケージの
+# requires-python (>=3.10) はそのまま。pre-commit → virtualenv 経由の filelock は 4.2.1 以降で
+# 脆弱性 (GHSA-v4x8-3wr5-3wq8 ほか) が直っているが 4.2.x が Python 3.11+ 専用のため、3.10 を
+# 含めたままだと lock に脆弱な版が残る (uv が 3.10 向けに 4.1.0 を併記する)。
+[tool.uv.dependency-groups]
+dev = { requires-python = ">=3.11" }
