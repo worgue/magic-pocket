@@ -9,7 +9,15 @@ use_vpc=false では LambdaRDSAccess を出力しない。
 
 あわせて、この組合せは deploy 前に気付けるよう Settings.from_toml の
 advisory で「RDS に到達できない」旨を警告する。
+
+KN2035: POCKET_RDS_* env の注入も stage 単位だったため、use_vpc=false の
+container にも入り、runtime が DATABASE_URL を RDS 向けに組み立てて上書きして
+いた (DSQL を使う VPC 外 container が INIT で RDS に繋ぎに行ってタイムアウト)。
+VPC 外 container では [rds] を無いものとして扱い、env / IAM policy / SG ingress
+を出さない。rds_database_url の宣言は検証エラーにする。
 """
+
+import pytest
 
 from pocket.context import Context
 from pocket.settings import Settings
@@ -75,10 +83,49 @@ def test_vpc_container_yaml_keeps_rds_ingress(use_toml, tmp_path):
     assert "LambdaSecurityGroup:" in yaml
 
 
+def test_novpc_container_has_no_rds_envs_and_policies(use_toml, tmp_path):
+    from pocket_cli.resources.aws.cloudformation import ContainerStack
+
+    use_toml(_write_toml(tmp_path))
+    context = Context.from_toml(stage="dev")
+    stack = ContainerStack(context.container["v2"], rds_context=context.rds)
+    yaml = stack.yaml
+    assert "POCKET_RDS_SECRET_ARN" not in yaml
+    assert "POCKET_RDS_ENDPOINT" not in yaml
+    assert not any("access-rds" in name for name in stack.lambda_role.inline_policies)
+
+
+def test_vpc_container_keeps_rds_envs_and_policies(use_toml, tmp_path):
+    from pocket_cli.resources.aws.cloudformation import ContainerStack
+
+    use_toml(_write_toml(tmp_path))
+    context = Context.from_toml(stage="dev")
+    stack = ContainerStack(context.container["main"], rds_context=context.rds)
+    yaml = stack.yaml
+    assert "POCKET_RDS_SECRET_ARN" in yaml
+    assert any("access-rds" in name for name in stack.lambda_role.inline_policies)
+
+
+def test_novpc_container_rejects_rds_database_url(use_toml, tmp_path):
+    toml = (
+        _TOML
+        + """
+[container.v2.secrets.managed]
+DATABASE_URL = { type = "rds_database_url" }
+"""
+    )
+    p = tmp_path / "pocket.toml"
+    p.write_text(toml)
+    use_toml(str(p))
+    with pytest.raises(ValueError, match="container.v2 は use_vpc=false"):
+        Settings.from_toml(stage="dev")
+
+
 def test_novpc_container_with_rds_warns(use_toml, tmp_path, capsys):
     use_toml(_write_toml(tmp_path))
     Settings.from_toml(stage="dev")
     err = capsys.readouterr().err
     assert "container.v2" in err
     assert "到達できません" in err
+    assert "POCKET_RDS_*" in err
     assert "container.main" not in err

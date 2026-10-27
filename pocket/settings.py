@@ -1954,6 +1954,26 @@ class Settings(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def check_rds_database_url_requires_vpc(self):
+        """VPC 外 container は [rds] に到達できず POCKET_RDS_* も注入されない (KN2035)。
+
+        rds_database_url を宣言しても DATABASE_URL が marker 値のまま残るだけなので、
+        deploy 前に止める。auto_database_url は mediator で DB 種別が決まるため
+        ここでは見ない。
+        """
+        for name, c in self.container.items():
+            if c.vpc is not None or c.secrets is None:
+                continue
+            for key, spec in c.secrets.managed.items():
+                if spec.type == "rds_database_url":
+                    raise ValueError(
+                        f"container.{name} は use_vpc=false のため [rds] に到達できず、"
+                        f"secrets.managed.{key} (rds_database_url) は使えません。"
+                        "use_vpc=true にするか、この宣言を外してください"
+                    )
+        return self
+
+    @model_validator(mode="after")
     def check_scheduler_handlers(self):
         if not self.scheduler or not self.scheduler.schedules:
             return self
@@ -2027,7 +2047,9 @@ class Settings(BaseModel):
                     echo.warning(
                         "container.%s は use_vpc=false のため、この stage の "
                         "[rds] (private subnet 内) に到達できません。この "
-                        "container が DB を使わないなら問題ありません" % name
+                        "container には POCKET_RDS_* / DATABASE_URL (RDS) を注入"
+                        "しません。この container が RDS を使わないなら問題"
+                        "ありません" % name
                     )
 
     @classmethod

@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### Fixed
+- `use_vpc = false` の container に、stage の `[rds]` の `POCKET_RDS_*` 環境変数が注入されていた問題を
+  修正しました。VPC 外の Lambda は private subnet の RDS に到達できないのに、runtime が `POCKET_RDS_*`
+  から `DATABASE_URL` を組み立てて上書きするため、DSQL 等を使う VPC 外 container が起動時に RDS へ
+  繋ぎに行って `Connection timed out` で落ちていました。VPC 外 container には `POCKET_RDS_*` を
+  注入せず、RDS secret の IAM 権限と RDS セキュリティグループへの ingress も付けません。
+  `use_vpc = false` の container で `rds_database_url` を宣言した場合は検証エラーになります。
+  deploy 時の advisory にも「`POCKET_RDS_*` / `DATABASE_URL` を注入しない」旨を添えました
+
 ## [0.46.1](https://github.com/worgue/magic-pocket/releases/tag/0.46.1) - 2026-10-26
 
 ### Fixed

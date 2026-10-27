@@ -799,7 +799,12 @@ class ContainerStack(Stack):
         dsql_context: DsqlContext | None = None,
         scheduler_context: SchedulerContext | None = None,
     ):
-        self._rds_context = rds_context
+        # VPC 外 (use_vpc=false) の container は private subnet の RDS に到達できない
+        # ので、[rds] を無いものとして扱う。POCKET_RDS_* env を注入すると runtime が
+        # DATABASE_URL を RDS 向けに組み立てて上書きし、DSQL 等を使う container が
+        # INIT で RDS に繋ぎに行ってタイムアウトする (KN2035)。env に合わせて
+        # RDS secret の IAM policy と RDS SG への ingress も出さない
+        self._rds_context = rds_context if context.vpc else None
         self._dsql_context = dsql_context
         self._scheduler_context = scheduler_context
         super().__init__(context)

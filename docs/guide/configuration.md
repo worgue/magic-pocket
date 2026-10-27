@@ -172,6 +172,14 @@ dockerfile_path = "pocket.Dockerfile"
 use_vpc = false  # VPC を使わない
 ```
 
+!!! warning "use_vpc = false の container と [rds]"
+    VPC 外の container は private subnet の RDS に到達できないため、stage に `[rds]` があっても
+    その container には `POCKET_RDS_*` 環境変数を注入せず、Lambda 起動時の `DATABASE_URL` (RDS) の
+    構築も行いません (RDS secret の IAM 権限と RDS セキュリティグループへの ingress も付きません)。
+    `secrets.managed` に `rds_database_url` を宣言すると検証エラーになります。
+    DSQL / Neon / TiDB を使う container を `use_vpc = false` で同居させる構成では、
+    `DATABASE_URL` にはその DB の値だけが入ります。
+
 ---
 
 ## s3
