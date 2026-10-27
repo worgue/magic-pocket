@@ -30,6 +30,18 @@ commit の書き直しが要る)。
 
 ## Python
 
+### 開発環境の Python
+
+配布パッケージ (`magic-pocket` / `magic-pocket-cli`) の `requires-python` は `>=3.10` ですが、
+**開発環境 (`dev` group) は Python 3.11 以上**です (`pyproject.toml` の
+`[tool.uv.dependency-groups] dev = { requires-python = ">=3.11" }`)。3.10 で
+`uv sync --all-groups` すると dev group の一部が入らず、pre-commit / pytest が動きません。
+
+理由: dev group 専用の依存 (pre-commit → virtualenv → filelock) で、脆弱性の修正版が
+Python 3.11 以上専用のものがあり、3.10 を含めたままだと lock に脆弱な版が残って
+Dependabot alert が消えないため。配布側の対応 Python は変えずに dev group だけ上げています。
+同種の alert (dev 専用依存で修正版の Python 要件が配布側より新しい) が出たときも同じ方法で対処します。
+
 ### コード品質
 
 **重要**: uvによるパッケージ管理は以下の方法を厳守してください。
