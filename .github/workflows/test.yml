@@ -1,0 +1,52 @@
+# CI のテスト。
+#
+# 重い検査 (semgrep / clippy / pytest + cargo test) をここで回す。以前は pre-commit の
+# pre-push hook で回していたが、push 中に tracked ファイルを編集すると pre-commit が
+# `files were modified by this hook` で偽失敗し、検査対象も push する commit ではなく
+# 作業ツリーだったため CI へ移した (KN2130)。pre-push に残るのは gitleaks (scan-leaks) だけ。
+# dev が一時的に赤になるのは許容する (main へ ff する前にこの check の green を確かめる)。
+#
+# trigger は push は dev のみ + pull_request。main は dev で検証済みの commit を
+# ff するだけなので回さない。paths フィルタは付けない (required check に載せたとき、
+# skip された commit は check 未報告になり main への ff が GH013 で詰むため常に起動する)。
+name: test
+on:
+  push:
+    branches: [dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: # 同一 ref の連続 push は最新だけ回す
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      # rust-toolchain.toml は置いていないので stable を明示し、clippy を入れる
+      # (hosted runner の rustup は components を指定しないと clippy を入れない)
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      # shared-key: dependabot-auto-merge.yml と cache を分けない。保存は dev だけ
+      # (PR ごとに保存すると repo の cache 上限を食い、dev の cache を追い出す)
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
+      - uses: extractions/setup-just@v4
+      - run: uv sync --all-groups
+      # SAST。Rust のビルドに依らないので先に回す。registry ルールは実行時に取得する
+      - name: semgrep (SAST)
+        run: just semgrep-all
+      # check のみでリンクしないので test より先に落とせる
+      - name: clippy
+        run: just lint-rust
+      - run: just test

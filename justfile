@@ -3,6 +3,9 @@
 # {{args}} ではなく "$@" を使うこと
 set positional-arguments
 
+# semgrep の版 (semgrep-all = ローカルと CI の test.yml で共用。上げたら just semgrep-all を一度回す)
+semgrep_version := "1.166.0"
+
 docs:
     uv run zensical serve -a 0.0.0.0:8080
 
@@ -10,6 +13,14 @@ docs:
 test *args: _target-gc-guard
     uv run pytest "$@"
     cargo test --all-features
+
+# Rust の lint (clippy -D warnings)。チェックのみでリンクしないので test より軽い。CI の test.yml も呼ぶ
+lint-rust: _target-gc-guard
+    cargo clippy --workspace --all-targets -- -D warnings
+
+# SAST (semgrep) を repo 全量に掛ける。CI の test.yml も呼ぶ。検出があれば exit 1 (--error)
+semgrep-all:
+    uvx semgrep@{{semgrep_version}} scan --config p/python --config p/django --error --metrics=off .
 
 # target/ を作り直し、フルビルド直後のサイズを baseline として記録する
 target-gc:

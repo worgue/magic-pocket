@@ -36,7 +36,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
       - uses: dtolnay/rust-toolchain@stable
+      # test.yml と cache を共有する (dev で保存した cache を Dependabot PR が使う)。
+      # PR では保存しない (PR ごとの cache が repo の上限を食い dev の cache を追い出すため)
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test
+          save-if: ${{ github.ref == 'refs/heads/dev' }}
       - uses: extractions/setup-just@v4
       - run: uv sync --all-groups
       - run: just test
