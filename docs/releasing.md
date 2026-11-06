@@ -28,8 +28,11 @@ build & publish** する。
    に書き換える。本文は GitHub Release にそのまま転記されるので、kadai の課題番号
    (`KN1234`) など内部トラッカーの ID は書かない (`grep -c 'KN[0-9]' CHANGELOG.md` が 0)。
 4. **コミットする**: `:bookmark: X.Y.Z リリース (<要約>)`。
-5. **dev を push する**: `git push origin dev` (pre-push hook で gitleaks / ruff /
-   semgrep / pyright / pytest が走る。green でないと push されない)。
+5. **dev を push し、CI の test が green になるのを待つ**: `git push origin dev`
+   (pre-push hook は gitleaks だけ)。重い検査 (semgrep / clippy / pytest / cargo test) は
+   GitHub Actions の `test` workflow が回すので、`gh run list --workflow test.yml --branch dev`
+   で release commit の run を見つけ、`gh run watch <id> --exit-status` で success を確かめる。
+   **赤のまま次の tag push に進まない** (tag push で PyPI publish が走り、取り消せない)。
 6. **tag を作成して push する**: `git tag -a X.Y.Z -m "..."` → `git push origin X.Y.Z`。
    これで `release.yml` が発火し PyPI publish される。
 7. **publish を確認する**: `gh run watch <id>` で workflow 成功を確認し、
@@ -72,7 +75,8 @@ build & publish** する。
    作成を人間に依頼する (作り忘れが続くと Release 一覧と tag がずれる。抜けた版は
    同じコマンドで後から作ればよい)。
 
-10. **main を fast-forward する**: `git push origin dev:main`。
+10. **main を fast-forward する**: `git push origin dev:main`。dev の tip の `test` が
+    success であることを確かめてから行う (手順 5 の後に commit を積んだ場合はその run も見る)。
 
 !!! note "dev / main の運用について"
     magic-pocket は **dev ベース運用**。日常の作業・リリースコミット・tag はすべて

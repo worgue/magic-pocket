@@ -136,6 +136,19 @@ CLI 専用だったロジックを runtime 側へ移設して公開 API 化す�
 
 「prod だけ特別扱い」という中間案は採りません。
 
+## 検査の置き場所 (pre-commit / pre-push / CI)
+
+- **pre-commit** (commit 毎、数秒): ruff / ruff format / pyright / `cargo fmt --check` 等の軽い検査
+- **pre-push**: gitleaks (scan-leaks) だけ。push は数秒で終わる
+- **CI の `test` workflow** (`.github/workflows/test.yml`、dev push と PR で起動):
+  semgrep (`just semgrep-all`) / clippy (`just lint-rust`) / pytest + cargo test (`just test`)。
+  push しただけでは検査が終わっていないので、区切り (リリース・main への ff・完了報告) の前に
+  `gh run list --workflow test.yml --branch dev` で対象 commit の結果を確かめる。
+  dev が一時的に赤になるのは許容するが、赤のまま tag や main へ進めない
+
+pre-push に重い検査を戻さないこと。push 中に tracked ファイルを編集すると pre-commit が
+`files were modified by this hook` で偽失敗し、検査対象も push する commit ではなく作業ツリーになる。
+
 ## リリース手順
 
 リリース (version バンプ → CHANGELOG 確定 → tag push → PyPI publish) と、リリース後に
