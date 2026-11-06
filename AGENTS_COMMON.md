@@ -116,10 +116,15 @@ uv run pyright
 
 ### パッケージ構成と依存方針
 
-このリポジトリは 2 パッケージ構成です。依存を追加・移設する際は、どちらに属する変更かを必ず意識してください。
+このリポジトリは Python 2 パッケージ + Rust CLI の構成です。依存を追加・移設する際は、どれに属する変更かを必ず意識してください。
 
 - **`magic-pocket` (runtime, リポジトリルート)**: Lambda ランタイムに同梱される。全ユーザーの Lambda にバンドルされるため、**依存は最小限に保つ**こと。新規の実行時依存を安易に追加しない。
 - **`magic-pocket-cli` (`packages/magic-pocket-cli/`)**: deploy / CLI 専用。`requests` 等の重い依存はこちらに置く。
+- **`magic-pocket-cli-rs` (`crates/pocket-cli/`、bin `pocket-rs`)**: CLI の Rust 版 (段階移行中。
+  現状は `pocket static` 系のみ)。**Rust に移した機能は Python 版が parity の正典**で、
+  `tests/test_static_parity.py` が両 CLI をコマンドで実行して結果の一致を固定している。
+  その機能を変えるときは **Python と Rust の両方を直し、parity テストを通す**。
+  Rust lib (`crates/pocket-rs`) には CLI 用の依存を足さない (runtime の依存を増やさない)。
 
 CLI 専用だったロジックを runtime 側へ移設して公開 API 化する場合（例: 外部 provisioner から import 共有させる）、その依存を runtime に持ち込まないこと。**HTTP なら `requests` ではなく stdlib `urllib` で書き換える**（`pocket.provisioning.neon` はこの方針で実装済み）。やむを得ず runtime に依存を足す判断が要る場合は、**ユーザーに確認**してください。
 

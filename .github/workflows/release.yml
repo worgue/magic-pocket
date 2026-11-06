@@ -1,12 +1,20 @@
 name: release
-# tag push (例: 0.2.0) で magic-pocket / magic-pocket-cli を PyPI へ publish する。
-# 認証は PyPI の Trusted Publishing (OIDC)。両 PyPI プロジェクトに、この repo /
+# tag push (例: 0.2.0) で magic-pocket / magic-pocket-cli を PyPI へ publish し、Rust 版 CLI
+# (`pocket-rs`) の各 target のバイナリをビルドして GitHub Release に tar.gz + sha256 を置く
+# (Release の本文は CHANGELOG の当該節)。
+# PyPI の認証は Trusted Publishing (OIDC)。両 PyPI プロジェクトに、この repo /
 # この workflow ファイル名 / environment "pypi" を Trusted Publisher として登録する。
+#
+# Release は PyPI publish とバイナリの両方が揃ってから作る (needs)。一部が失敗したら
+# `gh run rerun <run id> --failed` で失敗 job だけ再実行する。release job は既存の Release が
+# あれば本文を更新して asset を --clobber で差し替えるので、再実行に耐える。
 on:
   push:
     tags:
       - "[0-9]+.[0-9]+.[0-9]+"
 permissions: {}
+env:
+  BIN: pocket-rs
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -22,7 +30,11 @@ jobs:
           python3 - <<'PY'
           import os, re, sys
           tag = os.environ["GITHUB_REF_NAME"]
-          for p in ("pyproject.toml", "packages/magic-pocket-cli/pyproject.toml"):
+          for p in (
+              "pyproject.toml",
+              "packages/magic-pocket-cli/pyproject.toml",
+              "crates/pocket-cli/Cargo.toml",
+          ):
               v = re.search(r'^version = "([^"]+)"', open(p).read(), re.M).group(1)
               if v != tag:
                   sys.exit(f"{p} の version {v} が tag {tag} と一致しません")
@@ -32,3 +44,108 @@ jobs:
         run: uv build --all-packages
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Rust 版 CLI のバイナリ。host (macOS arm64) と VM (linux aarch64 / x86_64) の両方に
+  # 同じ tag の binary が揃うよう 4 target を出す。musl は静的リンクで配布先の glibc に依らない。
+  # public repo なので macOS runner の課金倍率は掛からない
+  build-cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            apt: musl-tools
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            apt: musl-tools
+          - target: aarch64-apple-darwin
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag matches Cargo.toml version
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/pocket-cli/Cargo.toml | head -1)
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "crates/pocket-cli/Cargo.toml の version $version が tag $GITHUB_REF_NAME と一致しません" >&2
+            exit 1
+          fi
+          echo "ok: $GITHUB_REF_NAME"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: musl ツールチェーンを導入
+        if: matrix.apt
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ${{ matrix.apt }}
+      - name: ビルド
+        run: cargo build --release --locked -p magic-pocket-cli-rs --target ${{ matrix.target }}
+      - name: 動作と版を確認
+        run: |
+          "target/${{ matrix.target }}/release/${BIN}" --version
+          "target/${{ matrix.target }}/release/${BIN}" --version | grep -q " ${GITHUB_REF_NAME}$"
+      - name: アーカイブを作成
+        run: |
+          set -eu
+          name="${BIN}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "target/${{ matrix.target }}/release/${BIN}" README.md LICENSE "dist/${name}/"
+          strip "dist/${name}/${BIN}" || true
+          tar czf "dist/${name}.tar.gz" -C dist "${name}"
+          rm -r "dist/${name}"
+          (cd dist && shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256")
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # GitHub Release (本文 = CHANGELOG の当該節、asset = 4 target × (tar.gz + sha256))。
+  # PyPI publish の成功後にだけ作る (tag に対して Python と Rust の両方が揃った状態を
+  # Release の存在で表す)
+  github-release:
+    needs: [publish, build-cli]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # Release の作成と asset の upload (GITHUB_TOKEN に対する権限)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: CHANGELOG から Release 本文を切り出す
+        run: |
+          set -eu
+          awk -v tag="$GITHUB_REF_NAME" '
+            $0 ~ "^## \\[" tag "\\]" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md に '## [$GITHUB_REF_NAME]' の節がありません" >&2
+            exit 1
+          fi
+          cat notes.md
+      - name: GitHub Release を作成 (既存なら本文を更新して asset を差し替え)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          ls -l dist
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*
+          fi

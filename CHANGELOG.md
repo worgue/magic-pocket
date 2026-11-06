@@ -19,6 +19,20 @@
   `magic_pocket_rs::static_url` (feature `static`) で URL を解決します。詳細は
   [設定ファイル - object_hash](https://worgue.github.io/magic-pocket/guide/configuration/#object_hash) と
   [pocket static](https://worgue.github.io/magic-pocket/guide/cli/#pocket-static)
+- Rust 版 CLI `pocket-rs` を追加しました (段階移行の第 1 段)。`pocket static` 系 (`hash generate` /
+  `publish` / `adopt` / `purge` / `status`) を Python 版と同じサブコマンド・オプション・出力で実行でき、
+  map / release / current の形式も同じです (両者の一致は CI の parity テストで固定)。数万件・数十 GB の
+  publish エンジンとして host で使う想定で、各リリースの GitHub Release に 4 target
+  (aarch64-apple-darwin / x86_64-unknown-linux-gnu / x86_64-unknown-linux-musl /
+  aarch64-unknown-linux-musl) のバイナリを添付します。導入は
+  [pocket static - Rust 版 CLI](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs)
+- Rust lib `magic-pocket-rs` の `config` に、pocket.toml の object_hash 設定を container を選ばずに読む
+  `StaticConfig` / `load_static_config_from_path` と、`StaticRouteConfig` の `key_prefix` / `map_path` /
+  `versioned_max_age` / `sources` を追加しました (publish 側が使う。runtime の読み込みは変わりません)
+
+### Changed
+- GitHub Release を tag push の workflow (`release.yml`) が作るようにしました (本文は CHANGELOG の当該節、
+  asset は `pocket-rs` のバイナリ)。これまでは手動で作っていました
 
 ## [0.46.2](https://github.com/worgue/magic-pocket/releases/tag/0.46.2) - 2026-10-27
 

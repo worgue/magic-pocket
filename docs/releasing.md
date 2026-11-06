@@ -3,7 +3,8 @@
 `magic-pocket` (runtime lib) と `magic-pocket-cli` (deploy CLI) を PyPI へ
 リリースするときの手順。**tag `X.Y.Z` の push で GitHub Actions
 (`.github/workflows/release.yml`、PyPI Trusted Publishing / OIDC) が両パッケージを
-build & publish** する。
+build & publish** し、あわせて **Rust 版 CLI `pocket-rs` の 4 target のバイナリをビルドして
+GitHub Release (本文は CHANGELOG の当該節) に添付**する。
 
 ## バージョンの決め方 (SemVer)
 
@@ -22,7 +23,10 @@ build & publish** する。
      `magic-pocket>=X.Y.Z,<X.(Y+1)` (**上限も同 minor に束縛する**。0.x では minor が
      breaking の単位のため、上限なしだと cli を version pin した消費者にも lib の
      破壊的変更がリリース当日に届いて deploy が壊れる)
-2. **`uv.lock` を反映する** (version バンプで差分が出る。`uv lock` か `uv run` で更新)。
+   - `crates/pocket-cli/Cargo.toml` の `version` (Rust 版 CLI `pocket-rs`。`--version` と
+     Release の asset の版がこれになる。`release.yml` の build-cli も tag との一致を検証する)
+2. **`uv.lock` と `Cargo.lock` を反映する** (version バンプで差分が出る。`uv lock` か
+   `uv run` と、`cargo check -p magic-pocket-cli-rs` で更新)。
 3. **CHANGELOG を確定する**: `[Unreleased]` を
    `## [X.Y.Z](https://github.com/worgue/magic-pocket/releases/tag/X.Y.Z) - YYYY-MM-DD`
    に書き換える。本文は GitHub Release にそのまま転記されるので、kadai の課題番号
@@ -35,8 +39,11 @@ build & publish** する。
    **赤のまま次の tag push に進まない** (tag push で PyPI publish が走り、取り消せない)。
 6. **tag を作成して push する**: `git tag -a X.Y.Z -m "..."` → `git push origin X.Y.Z`。
    これで `release.yml` が発火し PyPI publish される。
-7. **publish を確認する**: `gh run watch <id>` で workflow 成功を確認し、
-   `curl -s https://pypi.org/pypi/magic-pocket/json` 等で latest が `X.Y.Z` になることを確認。
+7. **publish を確認する**: `gh run watch <id>` で workflow 成功 (`publish` / `build-cli` ×4 /
+   `github-release` の全 job) を確認し、`curl -s https://pypi.org/pypi/magic-pocket/json` 等で
+   latest が `X.Y.Z` になることを確認。一部の job だけ失敗したら
+   `gh run rerun <id> --failed` で失敗分を再実行する (`github-release` は既存の Release が
+   あれば本文を更新して asset を `--clobber` で差し替えるので、再実行に耐える)。
 
 ## リリース後に必ず実行する (毎回)
 
@@ -63,17 +70,17 @@ build & publish** する。
        footgun があったため PyPI 版に切替えた。未リリース変更を example で検証したい
        ときだけ、一時的に `[tool.uv.sources]` でローカル wheel を override する。
 
-9. **GitHub Release オブジェクトを作成する** (毎回。CHANGELOG の当該節を本文にする。
-   本文は引数渡しではなくファイルで渡すとバッククォート等の展開事故がない):
+9. **GitHub Release を確認する** (作成は `release.yml` の `github-release` job が行う。
+   本文は CHANGELOG の `## [X.Y.Z]` 節、asset は `pocket-rs` の 4 target × (tar.gz + sha256) =
+   8 個):
 
    ```bash
-   awk '/^## \[X.Y.Z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/notes.md
-   gh release create X.Y.Z --title "X.Y.Z" --notes-file /tmp/notes.md
+   gh release view X.Y.Z --json assets,body --jq '{assets: [.assets[].name], body: .body}'
    ```
 
-   agent 環境では「公開面の作成」として権限ゲートに止まることがある。その場合は
-   作成を人間に依頼する (作り忘れが続くと Release 一覧と tag がずれる。抜けた版は
-   同じコマンドで後から作ればよい)。
+   asset が 8 個無い・本文が空のときは手順 7 の `gh run rerun --failed` で作り直す。
+   workflow を経ずに手で作った Release が先にあっても、job は本文を更新して asset を
+   差し替える (作り直しに耐える)。
 
 10. **main を fast-forward する (op が host で行う)**: dev の tip の `test` が success で
     あることを確かめてから (手順 5 の後に commit を積んだ場合はその run も見る)、op に
@@ -90,4 +97,5 @@ build & publish** する。
 !!! note "手順の正本はこのページ"
     `AGENTS_COMMON.md` には手順を書かず、このページを参照する。手順を変えるときは
     ここだけを直す (要約を別に持つと、要約に無い手順 = example-dsql の tag 更新や
-    GitHub Release 作成が抜ける。0.40.0〜0.46.0 で実際に抜けた)。
+    GitHub Release の確認が抜ける。0.40.0〜0.46.0 で実際に Release 作成が抜けた。
+    0.47.0 からは workflow が作る)。

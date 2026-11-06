@@ -294,10 +294,31 @@ pocket static purge --stage=dev --dry-run
 
 prod への publish は、op が host で実行します（CI には prod の credential を置かない。数十 GB を runner に通さない）。
 
-- `magic-pocket-cli` は project と独立に入ります: `uv tool install magic-pocket-cli`（`pocket` コマンド）
+- `magic-pocket-cli` は project と独立に入ります: `uv tool install magic-pocket-cli`（`pocket` コマンド）。件数・容量が大きい project は下の **Rust 版 `pocket-rs`** を使います
 - `pocket.toml` のあるディレクトリで、その stage の AWS profile を使って実行します
 - 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket` がそのまま読めます
 - **host の CLI の版を project の pin と揃えてください**。map / release の format version が違うとエラーで止まります（黙って食い違うことはありません）
+
+**Rust 版 CLI（`pocket-rs`）** {: #pocket-rs }
+
+`pocket static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`）は Rust 版の `pocket-rs` でも実行できます。**サブコマンド・オプション・出力は Python 版と同じ**で（`pocket static ...` を `pocket-rs static ...` に読み替えるだけ）、map / release / current の形式も同じなので、同じ project を Python 版と Rust 版のどちらで publish しても結果は変わりません（両者の一致は CI の parity テストで固定しています）。数万件・数十 GB の publish エンジンとして、host で使う想定です。
+
+```bash
+# host (macOS arm64) に入れる。Release の asset は 4 target
+#   (aarch64-apple-darwin / x86_64-unknown-linux-gnu / x86_64-unknown-linux-musl / aarch64-unknown-linux-musl)
+target=aarch64-apple-darwin
+gh release download X.Y.Z --repo github.com/worgue/magic-pocket --pattern "pocket-rs-${target}.tar.gz*" --dir /tmp/pocket-rs
+(cd /tmp/pocket-rs && shasum -a 256 -c "pocket-rs-${target}.tar.gz.sha256" && tar xzf "pocket-rs-${target}.tar.gz")
+install -m 755 "/tmp/pocket-rs/pocket-rs-${target}/pocket-rs" ~/.local/bin/pocket-rs
+pocket-rs --version   # pocket-rs X.Y.Z
+
+# 使い方は Python 版と同じ
+pocket-rs static publish --stage=prod
+```
+
+- 版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に添付されます。**project の pin と同じ版**を入れてください
+- 診断メッセージは Python 版と同じく stderr に出ます。stdout は `status` の JSON だけです
+- Rust 版は `static` 系だけを持ちます。`deploy` 等は引き続き Python 版の `pocket` で行います（段階移行の第 1 段）
 
 **移行手順（`deploy_hash` / `content_hash` から）**
 
