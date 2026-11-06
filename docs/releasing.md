@@ -75,8 +75,11 @@ build & publish** する。
    作成を人間に依頼する (作り忘れが続くと Release 一覧と tag がずれる。抜けた版は
    同じコマンドで後から作ればよい)。
 
-10. **main を fast-forward する**: `git push origin dev:main`。dev の tip の `test` が
-    success であることを確かめてから行う (手順 5 の後に commit を積んだ場合はその run も見る)。
+10. **main を fast-forward する (op が host で行う)**: dev の tip の `test` が success で
+    あることを確かめてから (手順 5 の後に commit を積んだ場合はその run も見る)、op に
+    host での `git push origin dev:main` を依頼する。main の ruleset は更新を org admin に
+    限り、required check `test` の success も要求するので、LLM (git-ops App) からの push は
+    `GH013` で拒否される。ff できない (main が分岐している) ときは force push せず報告する。
 
 !!! note "dev / main の運用について"
     magic-pocket は **dev ベース運用**。日常の作業・リリースコミット・tag はすべて
