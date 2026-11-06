@@ -9,12 +9,17 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      # この 3 つは hook 側の manifest が pre-push を含む stages を持ち、default_stages が
+      # 効かないので個別に commit 時だけへ限定する
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: end-of-file-fixer
         exclude: ".*\\.css\\.map|.*\\.svg"
+        stages: [pre-commit]
       - id: check-yaml
         exclude: "mkdocs.yml|pocket_cli/templates/cloudformation/.*\\.yaml"
       - id: check-added-large-files
+        stages: [pre-commit]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.17
     hooks:
