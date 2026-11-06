@@ -55,6 +55,51 @@ pub struct StaticRouteConfig {
     pub url_prefix: String,
     /// release 表と current を置く S3 prefix (`.pocket/static/<cloudfront>/<route_name>/`)
     pub meta_prefix: String,
+    /// S3 の key prefix (末尾 / 付き。空なら bucket 直下)。Python の `RouteContext.key_prefix`
+    /// と同じ導出 (`origin_path` + path_pattern の prefix)
+    pub key_prefix: String,
+    /// map ファイルの pocket.toml からの相対パス (`map` 省略時は
+    /// `pocket_static/<cloudfront>-<route_name>.map`)
+    pub map_path: String,
+    /// 配信の `Cache-Control: max-age` (秒)。route の `versioned_max_age`
+    pub versioned_max_age: u64,
+    /// route の `sources` (publish の入力。runtime は使わない)
+    pub sources: Vec<StaticSourceConfig>,
+}
+
+/// `versioning = "object_hash"` の route に載せるローカルファイルの集合 (Python の
+/// `settings.StaticSource`)。name / dir / prefix の形の検査は publish 側 (CLI) で行う
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct StaticSourceConfig {
+    pub name: String,
+    pub dir: String,
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub include: Vec<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default = "default_true")]
+    pub hashed: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// pocket.toml のうち `pocket static` (publish 側) が使う部分。runtime の
+/// [`PocketConfig`] と違い container を選ばない (複数 container でも読める)
+#[derive(Debug, Clone)]
+pub struct StaticConfig {
+    pub region: String,
+    pub project_name: String,
+    pub stage: String,
+    /// `[cloudfront.<name>]` の name 一覧 (sorted)
+    pub cloudfront_names: Vec<String>,
+    /// `[s3]` の bucket 名 (`bucket_name_format` を展開したもの)。`[s3]` が無ければ None
+    pub s3_bucket_name: Option<String>,
+    /// `versioning = "object_hash"` の route (cloudfront 名順、route は定義順)
+    pub static_routes: Vec<StaticRouteConfig>,
 }
 
 /// Python の `pocket.utils.route_logical_name` と同じ導出。
@@ -227,6 +272,33 @@ struct RouteToml {
     route_ref: Option<String>,
     #[serde(default)]
     versioning: Option<String>,
+    // 以下は object_hash の publish 側 (CLI) が使う。runtime は読むだけで検査しない
+    // (publish を使わない設定でも読み込みが厳しくならないよう全部 default)
+    #[serde(default)]
+    origin_path: Option<String>,
+    #[serde(default = "default_versioned_max_age")]
+    versioned_max_age: u64,
+    #[serde(default)]
+    sources: Vec<StaticSourceConfig>,
+    #[serde(default)]
+    map: Option<String>,
+}
+
+/// Python の `settings.Route.versioned_max_age` の既定 (365 日)
+fn default_versioned_max_age() -> u64 {
+    60 * 60 * 24 * 365
+}
+
+/// Python の `RouteContext.key_prefix` と同じ導出。origin_path 指定時は OriginPath として
+/// 付くので origin_path + path_pattern の prefix、省略時は path_pattern の prefix だけ
+pub fn route_key_prefix(origin_path: &str, path_pattern: &str) -> String {
+    let prefix = format!("{origin_path}{}", path_pattern.trim_end_matches(['/', '*']));
+    let prefix = prefix.trim_start_matches('/');
+    if prefix.is_empty() {
+        String::new()
+    } else {
+        format!("{prefix}/")
+    }
 }
 
 /// `[s3]` のうち runtime が必要とするキー
@@ -344,15 +416,9 @@ pub fn load_config_from_path(path: &Path, stage: &str) -> Result<PocketConfig> {
     load_config_from_str(&content, stage, env_container_name().as_deref())
 }
 
-/// TOML 文字列から PocketConfig を構築する
-///
-/// `container` は自 container 名。None の場合、container が 1 つだけならそれを
-/// 選択し、複数なら Config エラー (silent に誤った container を選ばない)。
-pub fn load_config_from_str(
-    content: &str,
-    stage: &str,
-    container: Option<&str>,
-) -> Result<PocketConfig> {
+/// pocket.toml の文字列を stage でマージし、general と project_name を取り出す
+/// (`load_config_from_str` と `load_static_config_from_str` の共通部)
+fn parse_stage(content: &str, stage: &str) -> Result<(toml::Value, GeneralToml, String)> {
     let mut data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
 
     // [general] 欠如を先に検出する (stages 取得の失敗を StageNotFound と
@@ -400,13 +466,112 @@ pub fn load_config_from_str(
             .map_err(PocketError::TomlParse)?
     };
 
-    let project_name = require_project_name(general.project_name)?;
+    let project_name = require_project_name(general.project_name.clone())?;
+    Ok((data, general, project_name))
+}
 
-    let format_vars = |s: &str| -> String {
-        s.replace("{stage}", stage)
-            .replace("{project}", &project_name)
-            .replace("{namespace}", &general.namespace)
-    };
+/// Python の `format_vars` と同じ `{stage}` / `{project}` / `{namespace}` の展開
+fn format_vars(s: &str, stage: &str, project_name: &str, namespace: &str) -> String {
+    s.replace("{stage}", stage)
+        .replace("{project}", project_name)
+        .replace("{namespace}", namespace)
+}
+
+/// `[cloudfront.<name>]` をパースして (name 一覧, table 一覧, object_hash route 一覧) を返す。
+/// name は distribution ドメインの env 注入用 (順序は決定的にするため sorted)。
+/// enable_origin_verify / waf.allow_rules は自動注入 managed secret の導出に使う
+/// (値は CFn stack output / secret store から引くのでここでは宣言だけ読む)
+fn parse_cloudfront(
+    data: &toml::Value,
+) -> Result<(Vec<String>, Vec<CloudFrontToml>, Vec<StaticRouteConfig>)> {
+    let mut cloudfront_names: Vec<String> = Vec::new();
+    let mut cloudfront_tables: Vec<CloudFrontToml> = Vec::new();
+    let mut static_routes: Vec<StaticRouteConfig> = Vec::new();
+    if let Some(table) = data.get("cloudfront").and_then(|v| v.as_table()) {
+        // toml::Table は BTreeMap なので name 順に並ぶ
+        for (name, c_val) in table {
+            cloudfront_names.push(name.clone());
+            let c: CloudFrontToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
+            for r in &c.routes {
+                if r.versioning.as_deref() != Some("object_hash") {
+                    continue;
+                }
+                let route_name = route_logical_name(&r.path_pattern);
+                let map_path = r
+                    .map
+                    .clone()
+                    .unwrap_or_else(|| format!("pocket_static/{name}-{route_name}.map"));
+                static_routes.push(StaticRouteConfig {
+                    cloudfront: name.clone(),
+                    route_ref: r.route_ref.clone(),
+                    url_prefix: route_url_prefix(&r.path_pattern),
+                    meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
+                    key_prefix: route_key_prefix(
+                        r.origin_path.as_deref().unwrap_or(""),
+                        &r.path_pattern,
+                    ),
+                    map_path,
+                    versioned_max_age: r.versioned_max_age,
+                    sources: r.sources.clone(),
+                    route_name,
+                });
+            }
+            cloudfront_tables.push(c);
+        }
+    }
+    cloudfront_names.sort();
+    Ok((cloudfront_names, cloudfront_tables, static_routes))
+}
+
+/// `[s3]` の bucket 名 (Python の `S3.bucket_name(format_vars)` と同じ展開)
+fn parse_s3_bucket_name(
+    data: &toml::Value,
+    format_vars: impl Fn(&str) -> String,
+) -> Result<Option<String>> {
+    match data.get("s3") {
+        Some(v) => {
+            let s3: S3Toml = v.clone().try_into().map_err(PocketError::TomlParse)?;
+            Ok(Some(format_vars(&s3.bucket_name_format)))
+        }
+        None => Ok(None),
+    }
+}
+
+/// pocket.toml のうち `pocket static` が使う部分を読む (container を選ばない)
+pub fn load_static_config_from_path(path: &Path, stage: &str) -> Result<StaticConfig> {
+    let content = std::fs::read_to_string(path).map_err(PocketError::Io)?;
+    load_static_config_from_str(&content, stage)
+}
+
+/// TOML 文字列から [`StaticConfig`] を構築する
+pub fn load_static_config_from_str(content: &str, stage: &str) -> Result<StaticConfig> {
+    let (data, general, project_name) = parse_stage(content, stage)?;
+    let format_vars =
+        |s: &str| -> String { format_vars(s, stage, &project_name, &general.namespace) };
+    let (cloudfront_names, _, static_routes) = parse_cloudfront(&data)?;
+    let s3_bucket_name = parse_s3_bucket_name(&data, format_vars)?;
+    Ok(StaticConfig {
+        region: general.region,
+        project_name,
+        stage: stage.to_string(),
+        cloudfront_names,
+        s3_bucket_name,
+        static_routes,
+    })
+}
+
+/// TOML 文字列から PocketConfig を構築する
+///
+/// `container` は自 container 名。None の場合、container が 1 つだけならそれを
+/// 選択し、複数なら Config エラー (silent に誤った container を選ばない)。
+pub fn load_config_from_str(
+    content: &str,
+    stage: &str,
+    container: Option<&str>,
+) -> Result<PocketConfig> {
+    let (data, general, project_name) = parse_stage(content, stage)?;
+    let format_vars =
+        |s: &str| -> String { format_vars(s, stage, &project_name, &general.namespace) };
 
     let resource_prefix = format_vars(&general.prefix_template);
     let slug = format!("{}-{}", stage, project_name);
@@ -501,44 +666,8 @@ pub fn load_config_from_str(
         .cloned()
         .unwrap_or_default();
 
-    // [cloudfront.<name>] をパースする。name は distribution ドメインの env 注入用
-    // (順序は決定的にするため sorted)。enable_origin_verify / waf.allow_rules は
-    // 自動注入 managed secret の導出に使う (値は CFn stack output / secret store
-    // から引くのでここでは宣言だけ読む)
-    let mut cloudfront_names: Vec<String> = Vec::new();
-    let mut cloudfront_tables: Vec<CloudFrontToml> = Vec::new();
-    let mut static_routes: Vec<StaticRouteConfig> = Vec::new();
-    if let Some(table) = data.get("cloudfront").and_then(|v| v.as_table()) {
-        // toml::Table は BTreeMap なので name 順に並ぶ
-        for (name, c_val) in table {
-            cloudfront_names.push(name.clone());
-            let c: CloudFrontToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
-            for r in &c.routes {
-                if r.versioning.as_deref() != Some("object_hash") {
-                    continue;
-                }
-                let route_name = route_logical_name(&r.path_pattern);
-                static_routes.push(StaticRouteConfig {
-                    cloudfront: name.clone(),
-                    route_ref: r.route_ref.clone(),
-                    url_prefix: route_url_prefix(&r.path_pattern),
-                    meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
-                    route_name,
-                });
-            }
-            cloudfront_tables.push(c);
-        }
-    }
-    cloudfront_names.sort();
-
-    // [s3] の bucket 名 (Python の S3.bucket_name(format_vars) と同じ展開)
-    let s3_bucket_name = match data.get("s3") {
-        Some(v) => {
-            let s3: S3Toml = v.clone().try_into().map_err(PocketError::TomlParse)?;
-            Some(format_vars(&s3.bucket_name_format))
-        }
-        None => None,
-    };
+    let (cloudfront_names, cloudfront_tables, static_routes) = parse_cloudfront(&data)?;
+    let s3_bucket_name = parse_s3_bucket_name(&data, format_vars)?;
 
     // 自動注入 managed secret (Python の pocket.context._injected_managed_specs と
     // 同じ導出)。enable_origin_verify の検証用 secret と waf.allow_rules の header
@@ -1011,6 +1140,17 @@ sources = [{ name = "img", dir = "img" }]
                     route_name: "img-v2".into(),
                     url_prefix: "/img/v2/".into(),
                     meta_prefix: ".pocket/static/media/img-v2/".into(),
+                    key_prefix: "img/v2/".into(),
+                    map_path: "pocket_static/media-img-v2.map".into(),
+                    versioned_max_age: 31_536_000,
+                    sources: vec![StaticSourceConfig {
+                        name: "img".into(),
+                        dir: "img".into(),
+                        prefix: String::new(),
+                        include: vec![],
+                        exclude: vec![],
+                        hashed: true,
+                    }],
                 },
                 StaticRouteConfig {
                     cloudfront: "web".into(),
@@ -1018,6 +1158,17 @@ sources = [{ name = "img", dir = "img" }]
                     route_name: "static".into(),
                     url_prefix: "/static/".into(),
                     meta_prefix: ".pocket/static/web/static/".into(),
+                    key_prefix: "static/".into(),
+                    map_path: "pocket_static/web-static.map".into(),
+                    versioned_max_age: 31_536_000,
+                    sources: vec![StaticSourceConfig {
+                        name: "data".into(),
+                        dir: "data".into(),
+                        prefix: String::new(),
+                        include: vec![],
+                        exclude: vec![],
+                        hashed: true,
+                    }],
                 },
             ]
         );

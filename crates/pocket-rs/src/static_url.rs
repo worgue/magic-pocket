@@ -73,6 +73,35 @@ pub fn hashed_name(path: &str, sha256_hex: &str) -> String {
     format!("{head}{base}")
 }
 
+/// map / source の論理 path として使える形かを検査する (Python の
+/// `pocket.static.naming.validate_logical_path` と同じ規則)。
+///
+/// 空・先頭 `/`・末尾 `/`・空 / `.` / `..` の要素・タブ / 改行 / CR / バックスラッシュを拒否する
+/// (map 形式の区切りを守るための列挙。他の制御文字は Python と同じく通す)
+pub fn validate_logical_path(path: &str) -> Result<()> {
+    let bad = |message: String| PocketError::Config(message);
+    if path.is_empty() {
+        return Err(bad("path が空です".to_string()));
+    }
+    if path.starts_with('/') {
+        return Err(bad(format!("path は先頭に / を付けません: {path:?}")));
+    }
+    if path.ends_with('/') {
+        return Err(bad(format!("path は末尾に / を付けません: {path:?}")));
+    }
+    if path.split('/').any(|seg| matches!(seg, "" | "." | "..")) {
+        return Err(bad(format!(
+            "path に空・. ・.. の要素は使えません: {path:?}"
+        )));
+    }
+    if path.contains(['\t', '\n', '\r', '\\']) {
+        return Err(bad(format!(
+            "path にタブ・改行・バックスラッシュは使えません: {path:?}"
+        )));
+    }
+    Ok(())
+}
+
 /// URL の path 部分に埋める形に percent-encode する (Python の `encode_url_path`)。
 /// `A-Za-z0-9-._~/` 以外をすべて encode する。日本語は UTF-8 の byte 単位
 pub fn encode_url_path(path: &str) -> String {
@@ -464,6 +493,28 @@ mod tests {
         hashed_name: String,
         encoded_hashed_name: String,
         encoded_path: String,
+    }
+
+    #[test]
+    fn test_validate_logical_path_matches_python() {
+        // tests/test_static_naming.py::test_validate_logical_path_rejects と同じケース
+        for bad in [
+            "",
+            "/abs",
+            "trail/",
+            "a//b",
+            "./a",
+            "a/../b",
+            "tab\tx",
+            "nl\nx",
+            "back\\slash",
+        ] {
+            assert!(
+                validate_logical_path(bad).is_err(),
+                "{bad:?} は拒否されるべき"
+            );
+        }
+        validate_logical_path("img/写真 1 #%+?.jpg").unwrap();
     }
 
     #[test]
