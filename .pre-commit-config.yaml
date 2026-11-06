@@ -1,6 +1,9 @@
 # 重い検査 (semgrep / clippy / pytest) は CI の test workflow に置く (pre-push に置かない)。
 # pre-push で走るのは .git/hooks 直置きの gitleaks (scan-leaks) だけ
 default_install_hook_types: [pre-commit]
+# stages を書かない hook は pre-push でも走るため、commit 時だけに限定する
+# (push 中に整形系 hook がファイルを書き換えると偽失敗になる)
+default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
