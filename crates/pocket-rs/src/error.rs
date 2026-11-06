@@ -43,6 +43,12 @@ pub enum PocketError {
 
     #[error("config error: {0}")]
     Config(String),
+
+    #[error("static file '{path}' is not in the map of release {release}")]
+    StaticPathNotFound { path: String, release: String },
+
+    #[error("static release error: {0}")]
+    StaticRelease(String),
 }
 
 pub type Result<T> = std::result::Result<T, PocketError>;

@@ -1,0 +1,69 @@
+{
+  "comment": "pocket.static.naming (Python) と magic_pocket_rs::static_url (Rust) の共通テストベクタ。hashed_name は <stem>.<sha256 先頭 16 hex>.<ext>、encode は A-Za-z0-9-._~/ 以外を percent-encode",
+  "hash_len": 16,
+  "cases": [
+    {
+      "path": "img/photo.jpg",
+      "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+      "hashed_name": "img/photo.ca978112ca1bbdca.jpg",
+      "encoded_hashed_name": "img/photo.ca978112ca1bbdca.jpg",
+      "encoded_path": "img/photo.jpg"
+    },
+    {
+      "path": "img/写真 1.jpg",
+      "sha256": "3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+      "hashed_name": "img/写真 1.3e23e8160039594a.jpg",
+      "encoded_hashed_name": "img/%E5%86%99%E7%9C%9F%201.3e23e8160039594a.jpg",
+      "encoded_path": "img/%E5%86%99%E7%9C%9F%201.jpg"
+    },
+    {
+      "path": "css/a#b%c.png",
+      "sha256": "2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+      "hashed_name": "css/a#b%c.2e7d2c03a9507ae2.png",
+      "encoded_hashed_name": "css/a%23b%25c.2e7d2c03a9507ae2.png",
+      "encoded_path": "css/a%23b%25c.png"
+    },
+    {
+      "path": "dir/.htaccess",
+      "sha256": "18ac3e7343f016890c510e93f935261169d9e3f565436429830faf0934f4f8e4",
+      "hashed_name": "dir/.htaccess.18ac3e7343f01689",
+      "encoded_hashed_name": "dir/.htaccess.18ac3e7343f01689",
+      "encoded_path": "dir/.htaccess"
+    },
+    {
+      "path": "noext",
+      "sha256": "3f79bb7b435b05321651daefd374cdc681dc06faa65e374e38337b88ca046dea",
+      "hashed_name": "noext.3f79bb7b435b0532",
+      "encoded_hashed_name": "noext.3f79bb7b435b0532",
+      "encoded_path": "noext"
+    },
+    {
+      "path": "archive.tar.gz",
+      "sha256": "252f10c83610ebca1a059c0bae8255eba2f95be4d1d7bcfa89d7248a82d9f111",
+      "hashed_name": "archive.tar.252f10c83610ebca.gz",
+      "encoded_hashed_name": "archive.tar.252f10c83610ebca.gz",
+      "encoded_path": "archive.tar.gz"
+    },
+    {
+      "path": "a+b?c=d.txt",
+      "sha256": "cd0aa9856147b6c5b4ff2b7dfee5da20aa38253099ef1b4a64aced233c9afe29",
+      "hashed_name": "a+b?c=d.cd0aa9856147b6c5.txt",
+      "encoded_hashed_name": "a%2Bb%3Fc%3Dd.cd0aa9856147b6c5.txt",
+      "encoded_path": "a%2Bb%3Fc%3Dd.txt"
+    },
+    {
+      "path": "~user/x_y-z.txt",
+      "sha256": "aaa9402664f1a41f40ebbc52c9993eb66aeb366602958fdfaa283b71e64db123",
+      "hashed_name": "~user/x_y-z.aaa9402664f1a41f.txt",
+      "encoded_hashed_name": "~user/x_y-z.aaa9402664f1a41f.txt",
+      "encoded_path": "~user/x_y-z.txt"
+    },
+    {
+      "path": "deep/a/b/c/file.v1.2.min.js",
+      "sha256": "de7d1b721a1e0632b7cf04edf5032c8ecffa9f9a08492152b926f1a5a7e765d7",
+      "hashed_name": "deep/a/b/c/file.v1.2.min.de7d1b721a1e0632.js",
+      "encoded_hashed_name": "deep/a/b/c/file.v1.2.min.de7d1b721a1e0632.js",
+      "encoded_path": "deep/a/b/c/file.v1.2.min.js"
+    }
+  ]
+}

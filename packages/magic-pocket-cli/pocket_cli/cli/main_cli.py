@@ -33,6 +33,7 @@ from pocket_cli.cli import (
     rds_cli,
     runtime_config_cli,
     s3_cli,
+    static_cli,
     status_cli,
     tidb_cli,
     upstash_cli,
@@ -136,6 +137,7 @@ main.add_command(permissions_cli.permissions)
 main.add_command(waf_cli.waf)
 main.add_command(backup_cli.backup)
 main.add_command(cleanup_deprecated_cli.cleanup_deprecated)
+main.add_command(static_cli.static)
 
 
 @main.group()

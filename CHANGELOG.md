@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+### Added
+- 静的ファイルを内容 hash の immutable key で配信する `versioning = "object_hash"` を追加しました。
+  key は `<route prefix>/<dir>/<stem>.<sha256 先頭 16 hex>.<ext>` で、同じ key には二度と書きません
+  (`If-None-Match: *` + `ChecksumSHA256`)。code だけの deploy で URL が変わらず、1 ファイルを差し替えると
+  その URL だけが変わります。route の `sources` にローカルのディレクトリを宣言し、`pocket static publish`
+  で上げます (deploy は触りません)。path → 内容 hash の map (`pocket_static/<cloudfront>-<route>.map`) を
+  git に commit して release の正本とし、照合モードの publish は commit 済みの map と一致しないと止まる
+  ので、同じ map から publish した stage は同じ内容を配信します。`pocket static hash generate` / `adopt`
+  (既存の平置き key からの server-side copy) / `purge` / `status` も追加しました。runtime は Python の
+  `pocket.static.get_static_resolver` と Django の `ObjectHashStaticStorage`、Rust の
+  `magic_pocket_rs::static_url` (feature `static`) で URL を解決します。詳細は
+  [設定ファイル - object_hash](https://worgue.github.io/magic-pocket/guide/configuration/#object_hash) と
+  [pocket static](https://worgue.github.io/magic-pocket/guide/cli/#pocket-static)
+
 ## [0.46.2](https://github.com/worgue/magic-pocket/releases/tag/0.46.2) - 2026-10-27
 
 ### Fixed

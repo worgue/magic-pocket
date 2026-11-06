@@ -965,7 +965,48 @@ class RedirectFrom(BaseModel):
     hosted_zone_id_override: str | None = None
 
 
-Versioning = Literal["content_hash", "deploy_hash"]
+Versioning = Literal["content_hash", "deploy_hash", "object_hash"]
+
+
+class StaticSource(BaseModel):
+    """`versioning = "object_hash"` の route に載せるローカルファイルの集合。
+
+    `pocket static publish` が `dir` 配下を列挙し、`prefix` + 相対 path を論理 path
+    (= map の path、`static_url(path)` の引数) にする。`hashed = false` は Vite の
+    `_app/immutable` のように名前に内容 hash を持つ出力向けで、名前を変えずに置く。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    dir: str
+    prefix: str = ""
+    include: list[str] = []
+    exclude: list[str] = []
+    hashed: bool = True
+
+    @model_validator(mode="after")
+    def check_fields(self):
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", self.name):
+            raise ValueError(
+                "sources の name は英数字と - _ だけで書いてください: %r" % self.name
+            )
+        if not self.dir or self.dir.startswith("/"):
+            raise ValueError(
+                "sources の dir は pocket.toml からの相対パスで書いてください: %r"
+                % self.dir
+            )
+        if self.prefix.startswith("/"):
+            raise ValueError(
+                "sources の prefix は先頭の / を付けずに書いてください: %r"
+                % self.prefix
+            )
+        if self.prefix and not self.prefix.endswith("/"):
+            raise ValueError(
+                "sources の prefix は末尾を / にしてください (例: 'img/'): %r"
+                % self.prefix
+            )
+        return self
 
 
 class RouteBuild(BaseModel):
@@ -997,6 +1038,11 @@ class Route(BaseModel):
     origin_path: str | None = None
     require_token: bool = False
     login_path: str = "/api/auth/login"
+    # versioning = "object_hash" の入力 (ローカルファイルの集合) と、path → 内容 hash の
+    # map ファイル (git に commit する release の正本)。map 省略時は
+    # pocket_static/<cloudfront 名>-<route 名>.map (RouteContext.map_path)。
+    sources: list[StaticSource] = []
+    map: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -1167,6 +1213,45 @@ class Route(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def check_object_hash(self):
+        """object_hash は sources から `pocket static publish` で上げる route。
+
+        deploy が触る build / upload_dir と排他にし (publish の経路を 1 つにする)、
+        署名 URL は第 1 段では扱わない。
+        """
+        if self.versioning == "object_hash":
+            if not self.sources:
+                raise ValueError(
+                    'versioning = "object_hash" には sources を 1 つ以上宣言して'
+                    'ください (例: sources = [{ name = "data", dir = "data" }])'
+                )
+            if self.build or self.upload_dir:
+                raise ValueError(
+                    'versioning = "object_hash" と build / upload_dir は同時に'
+                    "設定できません (object_hash は pocket static publish で上げます)"
+                )
+            if self.signed:
+                raise ValueError(
+                    'versioning = "object_hash" と signed は同時に設定できません'
+                )
+            names = [s.name for s in self.sources]
+            dupes = sorted({n for n in names if names.count(n) > 1})
+            if dupes:
+                raise ValueError(
+                    "sources の name が重複しています: %s" % ", ".join(dupes)
+                )
+        else:
+            if self.sources:
+                raise ValueError(
+                    'sources は versioning = "object_hash" の route でだけ使えます'
+                )
+            if self.map is not None:
+                raise ValueError(
+                    'map は versioning = "object_hash" の route でだけ使えます'
+                )
+        return self
+
+    @model_validator(mode="after")
     def check_is_default(self):
         if self.is_default and self.path_pattern:
             raise ValueError("is_default route must have empty path_pattern")
@@ -1183,6 +1268,13 @@ class Route(BaseModel):
                 raise ValueError("non default path_pattern must starts with /")
             if self.path_pattern[-1] == "/":
                 raise ValueError("path_pattern must not ends with /")
+            if self.path_pattern.startswith("/.pocket"):
+                # bucket 直下の .pocket/ は object_hash の release 表の置き場
+                # (CloudFront から到達しないことが前提)。route で露出させない
+                raise ValueError(
+                    "path_pattern に /.pocket で始まる値は使えません"
+                    " (pocket の内部 metadata の置き場です)"
+                )
         return self
 
     @model_validator(mode="after")

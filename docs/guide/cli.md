@@ -241,6 +241,77 @@ pocket cleanup-deprecated --stage=dev
 - IAM ロールは全 region 共通です。複数 region で pocket を使っている場合は、全 region の更新後に実行してください。
 - `-y` / `--yes` で確認プロンプトを省略できます。
 
+### pocket static
+
+`versioning = "object_hash"` のルート（[設定ファイル - object_hash](configuration.md#object_hash)）の静的ファイルを、内容 hash 付きの immutable key で S3 に上げます。deploy はこのルートに触りません。
+
+```bash
+# map（path → 内容 hash）を書くだけ（upload しない）
+pocket static hash generate --stage=dev
+
+# dev 向け: map を作り直してから publish（map は commit する）
+pocket static publish --stage=dev --hash-generate
+
+# prod 向け: commit 済みの map と照合してから publish（op が host で実行）
+pocket static publish --stage=prod
+
+# 既存の平置き key から server-side copy で移行
+pocket static adopt --stage=dev --hash-generate
+
+# current の release と map の release の一致を表示
+pocket static status --stage=dev
+
+# release が参照する object を全部消す（配信を止める操作）
+pocket static purge --stage=dev --dry-run
+```
+
+| コマンド | 動作 |
+|---------|------|
+| `hash generate` | `sources` を hash して map を書く。S3 には触らない |
+| `publish --hash-generate` | map を作り直してから publish する（dev 向け）。map が未 commit でもよい |
+| `publish` | **照合モード**（prod 向け）。commit 済みの map とローカルを照合し、hash のずれ・map に無いファイル・map にあってローカルにも S3 にも無い path はエラーで止まる。map が git で未 commit か作業ツリーと差があれば拒否する（`--allow-dirty` で通す） |
+| `adopt` | publish と同じだが、同じ prefix の平置き key（`<route prefix>/<path>`）と内容が一致する（ETag が MD5 で一致する）ファイルは upload せず server-side copy で hashed key を作る。`deploy_hash` / `content_hash` からの移行で host から上げ直さないため |
+| `purge` | release が参照する object を全部消す（`current` と release 表は残す） |
+| `status` | `current` の release id とローカル map の release id の一致を表示する |
+
+共通オプション: `--name <cloudfront 名>` / `--route <ref か path_pattern>` で対象を絞る、`--jobs`（hash / upload の並列数、既定 8）。
+
+**publish の動作**
+
+1. `sources` を列挙して並列に hash する（毎回すべての内容を読む）
+2. map と照合する（照合モード）か、map を書く（`--hash-generate`）
+3. ルートの key prefix 配下を一覧し、**無い key だけ**上げる。変更なしの再 publish は upload 0 件
+4. upload は `If-None-Match: *` + `ChecksumSHA256` 付き。同じ key が先にあれば内容を照合し、違えばエラー
+5. 全部上がってから release 表を書き、`current` を切り替える（publish 開始時点から `current` が変わっていれば競合として止める）
+
+!!! note "途中で止まっても再実行で続きから進みます"
+    上げ終わった key は次回の一覧で除かれるので、初回の prod publish のように件数・容量が大きいときも、止まったら同じコマンドを再実行するだけで続きから進みます。`current` は全部上がってから切り替わるので、途中の状態が配信されることはありません。
+
+!!! note "既存 key の内容照合"
+    `hashed = false` の source（名前に hash が無い）は、S3 に既にある key の内容を**必ず** HEAD で照合します（同じ名前で内容を変えた publish を止めるため）。`hashed = true` の key は名前に内容 hash が入っているので既定では存在確認だけで skip します。`--verify-existing` を付けると全件を照合します（件数分の HEAD が走ります）。
+
+**host で実行する（prod）**
+
+prod への publish は、op が host で実行します（CI には prod の credential を置かない。数十 GB を runner に通さない）。
+
+- `magic-pocket-cli` は project と独立に入ります: `uv tool install magic-pocket-cli`（`pocket` コマンド）
+- `pocket.toml` のあるディレクトリで、その stage の AWS profile を使って実行します
+- 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket` がそのまま読めます
+- **host の CLI の版を project の pin と揃えてください**。map / release の format version が違うとエラーで止まります（黙って食い違うことはありません）
+
+**移行手順（`deploy_hash` / `content_hash` から）**
+
+1. ルートの `versioning` を `object_hash` に変え、`sources` を宣言する（[設定ファイル](configuration.md#object_hash)）
+2. `pocket deploy --stage=dev`（CloudFront Function の構成が変わる）
+3. `pocket static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）
+4. map を commit する
+5. app の URL 解決を object_hash に切り替えて deploy する（[Django](django.md#object_hash) / [runtime](runtime.md#static_url)）
+6. prod は host で `pocket static adopt --stage=prod`（照合モード）
+7. 平置きの旧 key は凍結して残す（更新しない）。旧形式の URL を使う端末が残る間は、そのまま配信される
+
+!!! warning "purge は配信を止める操作です"
+    `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。
+
 ### pocket runtime-config
 
 Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）が除外されます。

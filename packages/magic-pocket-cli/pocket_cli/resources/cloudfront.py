@@ -446,6 +446,13 @@ class CloudFront:
         for route in self.context.routes:
             if route.upload_dir:
                 continue
+            if route.is_object_hash:
+                echo.info(
+                    "%s は object_hash route です。`pocket static publish --stage %s`"
+                    " で上げてください (deploy は触りません)"
+                    % (route.path_pattern or "default", self.context.stage)
+                )
+                continue
             origin = route.origin_path + route.path_pattern
             echo.warning("Upload files manually to s3://%s%s" % (bucket, origin))
             if route.is_spa:

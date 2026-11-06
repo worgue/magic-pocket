@@ -195,6 +195,14 @@ def get_storages(*, stage: str | None = None) -> dict:
         # S3 用 OPTIONS (bucket_name 等) を渡してはいけない
         if storage.deploy_hash and storage.static:
             continue
+        if storage.object_hash:
+            # URL は S3 の release 表から解決する。resolver の特定に必要な情報だけ渡す
+            storages[key]["OPTIONS"] = {
+                "distribution": storage.distribution,
+                "route": storage.route,
+                **storage.options,
+            }
+            continue
         options = _build_storage_options(storage, context, general_context)
         if options is not None:
             storages[key]["OPTIONS"] = options

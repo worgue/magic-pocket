@@ -233,3 +233,53 @@ let delete_cookie = logout_cookie_value();
 - `secret` を省略すると `os.environ["SPA_TOKEN_SECRET"]` を使用します
 - `max_age` のデフォルトは `604800`（7日間）です
 - Cookie 名は `pocket-spa-token` で、`HttpOnly`, `Secure`, `SameSite=Lax` が設定されます
+
+## 静的ファイルの URL 解決 (object_hash) {: #static_url }
+
+`versioning = "object_hash"` のルート（[設定ファイル - object_hash](configuration.md#object_hash)）では、論理 path（map の path）から内容 hash 付きの URL を runtime が解決します。
+
+- release 表は初回の呼び出しで S3 から読みます（`current` → `releases/<id>.json.gz`）。初回の取得に失敗したら例外で、次の呼び出しで再試行します
+- 以降は呼び出し時に経過時間（既定 60 秒）を見て `current` を HEAD し、ETag が変わったときだけ release 表を 1 本読み直して差し替えます。読み直しに失敗したら前の版を使い続けます
+- 表に無い path はエラーです（hash なしの URL を黙って返しません）
+- 配信ドメインは `POCKET_CLOUDFRONT_<NAME>_DOMAIN`（上記の環境変数）→ `[cloudfront.<name>].domain` の順に取ります
+
+### Python
+
+```python
+from pocket.static import StaticPathNotFound, get_static_resolver
+
+resolver = get_static_resolver("web", "static")   # distribution 名, route の ref
+url = resolver.url("img/photo.jpg")
+# → "https://cdn.example.com/static/img/photo.ca978112ca1bbdca.jpg"
+
+try:
+    resolver.url("missing.jpg")
+except StaticPathNotFound:
+    ...
+```
+
+`route` は distribution 内の object_hash ルートが 1 つだけなら省略できます。同じ引数には同じ instance（release 表の cache を共有）が返ります。Django は [ObjectHashStaticStorage](django.md#object_hash) がこれを使います。
+
+### Rust
+
+`magic-pocket-rs` の feature `static` で `static_url` module が有効になります。
+
+```toml
+magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git", tag = "X.Y.Z", features = ["static"] }
+```
+
+```rust
+use magic_pocket_rs::static_url::StaticResolver;
+
+let config = magic_pocket_rs::config::load_config("dev")?;
+let resolver = StaticResolver::load(&config, "web", Some("static")).await?;
+
+// 期限が来ていれば current を確かめてから解決する
+let url = resolver.url("img/photo.jpg").await?;
+// 同期版 (refresh しない。読み込み済みの表だけで解決する)
+let url = resolver.url_cached("img/photo.jpg")?;
+```
+
+- 表に無い path は `PocketError::StaticPathNotFound { path, release }` です（hash なしの URL は返しません）
+- 初回の読み込み（`load`）の失敗は `Err`。以降の読み直しの失敗は warn ログを出して前の版を使い続けます
+- URL encode の規則（`A-Za-z0-9-._~/` 以外を percent-encode）は Python と同じで、両実装のテストが同じ test vector（`tests/data/static_url_vectors.json`）を読みます

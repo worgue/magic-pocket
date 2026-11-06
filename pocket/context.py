@@ -1260,11 +1260,17 @@ class RouteContext(BaseModel):
     origin_path: str = ""
     require_token: bool = False
     login_path: str = "/api/auth/login"
+    # object_hash の入力と map (settings.Route.sources / map)。cloudfront_name は
+    # map の既定パスと S3 上の metadata prefix の導出に使う
+    cloudfront_name: str = ""
+    sources: list[settings.StaticSource] = []
+    map: str | None = None
 
     @model_validator(mode="after")
     def resolve_delete_stale(self):
         if self.delete_stale is None:
-            self.delete_stale = self.versioning != "content_hash"
+            # object_hash は deploy が upload しない (消す対象が無い)
+            self.delete_stale = self.versioning not in ("content_hash", "object_hash")
         return self
 
     @computed_field
@@ -1284,6 +1290,47 @@ class RouteContext(BaseModel):
 
     @computed_field
     @property
+    def is_object_hash(self) -> bool:
+        return self.versioning == "object_hash"
+
+    @computed_field
+    @property
+    def key_prefix(self) -> str:
+        """S3 の key prefix (末尾 / 付き。空なら bucket 直下)。
+
+        origin_path 指定時は OriginPath として付くので origin_path + path_pattern の
+        prefix、省略時は path_pattern の prefix だけ。deploy の upload と同じ導出。
+        """
+        prefix = (self.origin_path + self.path_pattern.rstrip("/*")).lstrip("/")
+        return prefix + "/" if prefix else ""
+
+    @computed_field
+    @property
+    def url_prefix(self) -> str:
+        """配信 URL の path prefix (末尾 / 付き。catch-all なら "/")。"""
+        return self.path_pattern.rstrip("/*") + "/"
+
+    @computed_field
+    @property
+    def static_meta_prefix(self) -> str:
+        """object_hash の release 表と current ポインタを置く S3 prefix。
+
+        bucket 直下の `.pocket/` 配下で、どの route の key prefix にも含まれない
+        (route は prefix を要し、origin_path = "/" は不可) ので CloudFront から
+        到達しない。
+        """
+        return ".pocket/static/%s/%s/" % (self.cloudfront_name, self.name)
+
+    @computed_field
+    @property
+    def map_path(self) -> str:
+        """map ファイルの pocket.toml からの相対パス。"""
+        if self.map:
+            return self.map
+        return "pocket_static/%s-%s.map" % (self.cloudfront_name, self.name)
+
+    @computed_field
+    @property
     def name(self) -> str:
         if self.path_pattern and self.path_pattern[0] != "/":
             raise RuntimeError("Should be validated in settings")
@@ -1296,8 +1343,13 @@ class RouteContext(BaseModel):
         return "".join([s.capitalize() for s in self.name.split("-")])
 
     @classmethod
-    def from_settings(cls, route: settings.Route) -> RouteContext:
+    def from_settings(
+        cls, route: settings.Route, *, cloudfront_name: str = ""
+    ) -> RouteContext:
         return cls(
+            cloudfront_name=cloudfront_name,
+            sources=route.sources,
+            map=route.map,
             type=route.type,
             handler=route.handler,
             path_pattern=route.path_pattern,
@@ -1497,7 +1549,9 @@ class CloudFrontContext(BaseModel):
         if not root.s3:
             raise RuntimeError("s3 is required when cloudfront is configured")
         resource_prefix = root.resource_prefix
-        routes = [RouteContext.from_settings(r) for r in cf.routes]
+        routes = [
+            RouteContext.from_settings(r, cloudfront_name=name) for r in cf.routes
+        ]
         deploy_hash = ""
         if any(r.is_deploy_hash for r in routes):
             deploy_hash = _get_deploy_hash()

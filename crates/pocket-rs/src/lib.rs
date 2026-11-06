@@ -7,6 +7,8 @@ pub mod rds;
 pub mod resources;
 pub mod secrets;
 pub mod sqs;
+#[cfg(feature = "static")]
+pub mod static_url;
 
 use error::Result;
 use tracing::info;

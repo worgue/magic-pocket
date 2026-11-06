@@ -3,6 +3,7 @@ from typing import Any, Callable
 from urllib.parse import urlencode
 
 from django.contrib.staticfiles.storage import ManifestFilesMixin
+from django.core.files.storage import Storage
 from django.utils.encoding import filepath_to_uri
 from storages.backends.s3boto3 import (
     S3Boto3Storage,
@@ -87,3 +88,64 @@ class CloudFrontS3ManifestStaticStorage(ManifestFilesMixin, CloudFrontS3StaticSt
     # ManifestFilesMixin を MRO の先頭に置くことで、ハッシュ名解決 →
     # CloudFrontOriginPathMixin.url (origin_path 除去 → 署名) の順になる
     pass
+
+
+class ObjectHashStaticStorage(Storage):
+    """`versioning = "object_hash"` の route の staticfiles backend。
+
+    `url(name)` を S3 の release 表 (pocket.static.StaticResolver) から解決するだけ。
+    ファイルは `pocket static publish` が上げるので、保存系の操作はできない
+    (collectstatic は Lambda では走らせない。ローカル開発は
+    `POCKET_STATICFILES_BACKEND_OVERRIDE` で filesystem に切り替える)。
+    release 表に無い name は `StaticPathNotFound` (hash なしの URL を黙って返さない)。
+    """
+
+    def __init__(self, distribution: str, route: str | None = None, **options):
+        self.distribution = distribution
+        self.route = route
+        self.stage = options.pop("stage", None)
+        self.refresh_interval = options.pop("refresh_interval", None)
+        self._resolver = None
+
+    @property
+    def resolver(self):
+        if self._resolver is None:
+            from pocket.static import get_static_resolver
+
+            kwargs = {}
+            if self.refresh_interval is not None:
+                kwargs["refresh_interval"] = self.refresh_interval
+            self._resolver = get_static_resolver(
+                self.distribution, self.route, stage=self.stage, **kwargs
+            )
+        return self._resolver
+
+    def url(self, name, *args, **kwargs):
+        return self.resolver.url(clean_name(name or ""))
+
+    def exists(self, name):
+        try:
+            self.resolver.url(clean_name(name or ""))
+        except KeyError:
+            return False
+        return True
+
+    def _open(self, name, mode="rb"):
+        raise NotImplementedError(
+            "ObjectHashStaticStorage は URL の解決だけを行います (open 不可)"
+        )
+
+    def _save(self, name, content):
+        raise NotImplementedError(
+            "ObjectHashStaticStorage には保存できません。"
+            "静的ファイルは `pocket static publish` で上げてください"
+        )
+
+    def delete(self, name):
+        raise NotImplementedError("ObjectHashStaticStorage は削除できません")
+
+    def listdir(self, path):
+        raise NotImplementedError("ObjectHashStaticStorage は一覧できません")
+
+    def size(self, name):
+        raise NotImplementedError("ObjectHashStaticStorage は size を返せません")

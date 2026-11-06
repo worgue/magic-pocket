@@ -2168,7 +2168,7 @@ routes = [
 | `path_pattern` | str | `""` | パスパターン |
 | `is_default` | bool | `false` | CloudFront の DefaultCacheBehavior として使用 |
 | `is_spa` | bool | `false` | SPA用の設定（フォールバックHTML対応） |
-| `versioning` | `"content_hash"` \| `"deploy_hash"` \| None | None | バージョニング方式。`content_hash` = ファイル内容ハッシュ (ManifestStaticFilesStorage)、`deploy_hash` = git hash で URL prefix 付与 |
+| `versioning` | `"content_hash"` \| `"deploy_hash"` \| `"object_hash"` \| None | None | バージョニング方式。`content_hash` = ファイル内容ハッシュ (ManifestStaticFilesStorage)、`deploy_hash` = git hash で URL prefix 付与、`object_hash` = 内容 hash を名前に入れた immutable key（下記 [object_hash](#object_hash) 参照） |
 | `spa_fallback_html` | str | `"index.html"` | SPAフォールバック先のHTML |
 | `versioned_max_age` | int | `31536000` | バージョン付きアセットのmax-age（秒、デフォルト1年） |
 | `ref` | str | `""` | ルートの参照名（Django storage の route で参照） |
@@ -2176,6 +2176,8 @@ routes = [
 | `build` | `{ dir, cmd }` \| None | None | pocket にビルドさせる宣言。`dir`（成果物ディレクトリ = アップロード対象）と `cmd`（ビルドコマンド、deploy が upload 前に shell 実行）は**両方必須** |
 | `upload_dir` | str \| None | None | ビルドは外部（CI 等）の責任と宣言し、このディレクトリの中身をアップロードだけする。**deploy はビルドを実行しない**ため、成果物を最新にするのは利用者の責任 |
 | `delete_stale` | bool \| None | None | `build` / `upload_dir` のアップロードで、今回の成果物に無い S3 key を削除するか。省略時は `versioning = "content_hash"` なら `false`（旧版を残す）、それ以外は `true`（下記 note 参照） |
+| `sources` | list[StaticSource] | `[]` | `versioning = "object_hash"` の入力（ローカルファイルの集合）。`pocket static publish` が上げる。下記 [object_hash](#object_hash) 参照 |
+| `map` | str \| None | None | `object_hash` の map ファイル（path → 内容 hash）のパス。省略時は `pocket_static/<cloudfront 名>-<route 名>.map` |
 | `require_token` | bool | `false` | SPA トークン認証を有効化（`is_spa = true` 必須） |
 | `login_path` | str | `"/api/auth/login"` | 未認証時のリダイレクト先パス |
 
@@ -2194,6 +2196,8 @@ routes = [
     - `delete_stale` は `build` か `upload_dir` を持つルートでだけ指定できます（アップロードしないルートには消す対象がありません）。
     - 旧 `build_dir` と旧文字列形式の `build = "..."` は廃止されました。`build = { dir = "...", cmd = "..." }` または `upload_dir = "..."` を使ってください（起動時に移行手順つきのエラーが出ます）。
     - `require_token = true` のルートには `is_spa = true` が必須です。distribution に `token_secret` の設定が必要です。
+    - `versioning = "object_hash"` は `sources` が必須で、`build` / `upload_dir` / `is_spa` / `signed` / `delete_stale` と同時に使えません。`sources` / `map` は `object_hash` のルートでだけ使えます。
+    - `path_pattern` は `/.pocket` で始められません（bucket 直下の `.pocket/` は pocket の内部 metadata の置き場です）。
 
 !!! note "差分アップロードと invalidation の範囲"
     `build` / `upload_dir` のアップロードは差分のみです。S3 上のオブジェクトと内容が
@@ -2419,6 +2423,92 @@ routes = [
     - 初回 deploy（bucket や CloudFront が未作成）だけは、従来どおり Lambda の更新の後に upload します。
     - upload から Lambda の更新までの間、稼働中の版（旧 hash の URL）でまだキャッシュされていないファイルは、新しい内容で返ります。旧 hash の URL は deploy が終われば使われなくなります。
     - `publish = "command"` で static を deploy から切り離している場合は、同じ理由で `pocket django deploystatic` を deploy より先に実行してください。
+
+#### `object_hash` — 内容 hash の immutable key {: #object_hash }
+
+ファイルの内容 hash を**名前に入れた S3 key に置き、同じ key には二度と書かない**方式。URL は key そのものなので、CloudFront Function で hash を外す処理はありません。数万件・数十 GB の静的ファイル（画像・生成物など）を、deploy と切り離して配信する用途向けです。
+
+| | `deploy_hash` | `content_hash` | `object_hash` |
+|---|---|---|---|
+| URL の形 | `/static/<git hash>/img/a.jpg` | `/static/img/a.<hash>.jpg`（Django の manifest が付ける） | `/static/img/a.<内容 hash 16 hex>.jpg` |
+| code だけの deploy | 全 URL が変わる（CDN / ブラウザのキャッシュがすべて外れる） | 変わらない | 変わらない |
+| 1 ファイルの差し替え | 全 URL が変わる | その URL だけ変わる | その URL だけ変わる |
+| 上げる経路 | deploy（collectstatic） | deploy（collectstatic + manifest） | **`pocket static publish`**（deploy は触らない） |
+| 想定規模 | 小〜中 | 小〜中（manifest 計算が全件を読む） | 数万件・数十 GB |
+
+**仕組み**
+
+- key は `<route prefix>/<dir>/<stem>.<sha256 の先頭 16 hex>.<ext>`（拡張子が無ければ `<stem>.<hash>`、`archive.tar.gz` は `archive.tar.<hash>.gz`）
+- PutObject は `If-None-Match: *` と `ChecksumSHA256` を付けるので、同じ key に別の内容は載りません。先に同じ key があれば内容 hash を照合し、違えばエラーで止まります
+- 2xx / 304 の応答に `cache-control: public, max-age=<versioned_max_age>, immutable` が付きます（`content_hash` / `deploy_hash` と同じ CloudFront Function）
+- どの path がどの key かは **map**（下記）で決まり、runtime の `static_url(path)` は S3 上の release 表から URL を解決します
+
+```toml
+[cloudfront.web]
+domain = "cdn.example.com"
+
+[[cloudfront.web.routes]]
+is_default = true
+is_spa = true
+origin_path = "/spa"
+
+[[cloudfront.web.routes]]
+path_pattern = "/static/*"
+ref = "static"
+versioning = "object_hash"
+sources = [
+    { name = "data", dir = "data", exclude = ["*.tmp"] },
+    { name = "derived", dir = "derived", prefix = "thumb/" },
+    { name = "code", dir = "frontend/build/_app/immutable", prefix = "_app/immutable/", hashed = false },
+]
+```
+
+!!! note "routes を `[[cloudfront.web.routes]]` で書く"
+    `sources` を持つルートは inline table だと長くなるので、TOML の array of tables（`[[cloudfront.web.routes]]`）で 1 ルートずつ書けます。inline table の `routes = [ ... ]` と同じ意味です。
+
+**`sources`**
+
+| フィールド | 型 | デフォルト | 説明 |
+|-----------|------|----------|------|
+| `name` | str | **必須** | source の名前（英数字と `-` `_`。ルート内で一意）。map に記録されます |
+| `dir` | str | **必須** | ローカルのディレクトリ（`pocket.toml` からの相対パス）。symlink は追いません |
+| `prefix` | str | `""` | 論理 path の前置（末尾 `/`、例 `thumb/`）。`dir` からの相対 path の前に付いて、map の path と URL の path になります |
+| `include` | list[str] | `[]` | 取り込むファイルの gitignore 風 pattern。空なら全件 |
+| `exclude` | list[str] | `[]` | 除くファイルの gitignore 風 pattern |
+| `hashed` | bool | `true` | `false` にすると名前を変えずに置きます（下記） |
+
+`hashed = false` は、Vite の `_app/immutable/` のように**出力の名前に既に内容 hash が入っている**ファイル向けです。key は `<route prefix>/<prefix><path>` のままで、書き込み規則は同じです。**同じ名前のまま内容を変えると publish はエラーになります**（一度配った URL の内容は変わらない、を守るため）。内容を変えたら名前も変えてください。
+
+!!! warning "ファイル内の参照は書き換えません"
+    CSS の `url(...)` や JavaScript の `import` が指す先を hash 付きの名前に書き換える処理は**ありません**（Django の `ManifestStaticFilesStorage` 相当の後処理は無い）。他のファイルを参照するビルド成果物は、生成側（Vite 等）で命名と参照の書き換えを済ませたうえで `hashed = false` の source として置いてください。`hashed = true` は画像・動画・データのように、他から名前で参照されるだけのファイルに向いています。
+
+**map（release の正本）**
+
+`pocket static hash generate` / `pocket static publish --hash-generate` が、ローカルの `sources` を hash して map ファイルに書きます。既定の置き場所は `pocket_static/<cloudfront 名>-<route 名>.map`（`map` で変更可）。テキストで path 順に並び、1 行 1 entry（`path<TAB>sha256<TAB>source<TAB>H|P`）なので、変更が少ないときの diff は小さく、レビューできます。
+
+```
+# magic-pocket static map v1
+# route: web/static
+_app/immutable/chunks/index-BxYz1234.js	3f79bb7b...	code	P
+img/photo.jpg	ca978112...	data	H
+thumb/photo.webp	559aead0...	derived	H
+```
+
+**map は git に commit してください。** release id は map の内容から決まり、`pocket static publish`（照合モード）は commit 済みの map とローカルを照合してから上げるので、**同じ map から publish した stage は同じ内容を配信します**（dev で確かめた release と同じものが prod に出る）。コマンドの使い方は [pocket static](cli.md#pocket-static) を参照してください。
+
+**S3 上の metadata**
+
+| key | 内容 |
+|-----|------|
+| `.pocket/static/<cloudfront 名>/<route 名>/current` | 配信中の release id（runtime はこの ETag で更新を検知する） |
+| `.pocket/static/<cloudfront 名>/<route 名>/releases/<release id>.json.gz` | release 表（path → key） |
+
+bucket 直下の `.pocket/` は、どのルートの key prefix にも含まれない（ルートは prefix を要し、`origin_path = "/"` は使えない）ので CloudFront からは到達しません。
+
+!!! note "運用の注意"
+    - **map から path を消さない**: runtime は常に最新の `current` を追います。map から path を消して publish すると、ロールバック中の古い app などがその path を解決できなくなります（`StaticPathNotFound`）。app が参照する path は map に残してください。
+    - **旧 object は消しません**: 差し替え前の URL は前の内容を返し続けます。掃除は `pocket static purge`（配信を止める操作）で行い、参照されなくなった object だけを消す GC は後続の機能です。
+    - deploy は `object_hash` のルートに触りません（`pocket deploy` の案内に `pocket static publish` を使う旨が出ます）。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 

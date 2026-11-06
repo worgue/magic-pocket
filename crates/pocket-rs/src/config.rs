@@ -36,6 +36,44 @@ pub struct PocketConfig {
     /// `[cloudfront.<name>]` の name 一覧 (sorted)。
     /// distribution ドメインを POCKET_CLOUDFRONT_<NAME>_DOMAIN に注入するのに使う。
     pub cloudfront_names: Vec<String>,
+    /// `[s3]` の bucket 名 (`bucket_name_format` を展開したもの)。`[s3]` が無ければ None
+    pub s3_bucket_name: Option<String>,
+    /// `versioning = "object_hash"` の route (cloudfront 名順)。`static_url` の解決に使う
+    pub static_routes: Vec<StaticRouteConfig>,
+}
+
+/// `versioning = "object_hash"` の route 1 つ分 (Python の RouteContext の導出と同じ)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticRouteConfig {
+    /// `[cloudfront.<name>]` の name
+    pub cloudfront: String,
+    /// route の `ref` (無ければ None)
+    pub route_ref: Option<String>,
+    /// route の論理名 (path_pattern から導出。`/static/*` → `static`)
+    pub route_name: String,
+    /// 配信 URL の path prefix (末尾 / 付き。`/static/*` → `/static/`)
+    pub url_prefix: String,
+    /// release 表と current を置く S3 prefix (`.pocket/static/<cloudfront>/<route_name>/`)
+    pub meta_prefix: String,
+}
+
+/// Python の `pocket.utils.route_logical_name` と同じ導出。
+/// path を "/" で分け、"*" と空を除き、各要素を英数字だけにして "-" で繋ぐ (空なら "root")
+pub fn route_logical_name(path_pattern: &str) -> String {
+    if path_pattern.is_empty() {
+        return "root".to_string();
+    }
+    let parts: Vec<String> = path_pattern
+        .split('/')
+        .filter(|p| !p.is_empty() && *p != "*")
+        .map(|p| p.chars().filter(|c| c.is_alphanumeric()).collect())
+        .collect();
+    parts.join("-")
+}
+
+/// Python の `RouteContext.url_prefix` と同じ導出 (`/static/*` → `/static/`)
+pub fn route_url_prefix(path_pattern: &str) -> String {
+    format!("{}/", path_pattern.trim_end_matches(['/', '*']))
 }
 
 #[derive(Debug, Clone)]
@@ -175,6 +213,31 @@ struct CloudFrontToml {
     #[serde(default)]
     enable_origin_verify: bool,
     waf: Option<WafToml>,
+    /// routes のうち runtime が見るのは versioning / ref / path_pattern だけ
+    /// (他のキーは無視する)
+    #[serde(default)]
+    routes: Vec<RouteToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RouteToml {
+    #[serde(default)]
+    path_pattern: String,
+    #[serde(default, rename = "ref")]
+    route_ref: Option<String>,
+    #[serde(default)]
+    versioning: Option<String>,
+}
+
+/// `[s3]` のうち runtime が必要とするキー
+#[derive(Debug, Deserialize)]
+struct S3Toml {
+    #[serde(default = "default_bucket_name_format")]
+    bucket_name_format: String,
+}
+
+fn default_bucket_name_format() -> String {
+    "{stage}-{project}-{namespace}".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -270,6 +333,8 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
         handlers: HashMap::new(),
         containers: HashMap::new(),
         cloudfront_names: Vec::new(),
+        s3_bucket_name: None,
+        static_routes: Vec::new(),
     })
 }
 
@@ -442,14 +507,38 @@ pub fn load_config_from_str(
     // から引くのでここでは宣言だけ読む)
     let mut cloudfront_names: Vec<String> = Vec::new();
     let mut cloudfront_tables: Vec<CloudFrontToml> = Vec::new();
+    let mut static_routes: Vec<StaticRouteConfig> = Vec::new();
     if let Some(table) = data.get("cloudfront").and_then(|v| v.as_table()) {
+        // toml::Table は BTreeMap なので name 順に並ぶ
         for (name, c_val) in table {
             cloudfront_names.push(name.clone());
             let c: CloudFrontToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
+            for r in &c.routes {
+                if r.versioning.as_deref() != Some("object_hash") {
+                    continue;
+                }
+                let route_name = route_logical_name(&r.path_pattern);
+                static_routes.push(StaticRouteConfig {
+                    cloudfront: name.clone(),
+                    route_ref: r.route_ref.clone(),
+                    url_prefix: route_url_prefix(&r.path_pattern),
+                    meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
+                    route_name,
+                });
+            }
             cloudfront_tables.push(c);
         }
     }
     cloudfront_names.sort();
+
+    // [s3] の bucket 名 (Python の S3.bucket_name(format_vars) と同じ展開)
+    let s3_bucket_name = match data.get("s3") {
+        Some(v) => {
+            let s3: S3Toml = v.clone().try_into().map_err(PocketError::TomlParse)?;
+            Some(format_vars(&s3.bucket_name_format))
+        }
+        None => None,
+    };
 
     // 自動注入 managed secret (Python の pocket.context._injected_managed_specs と
     // 同じ導出)。enable_origin_verify の検証用 secret と waf.allow_rules の header
@@ -602,6 +691,8 @@ pub fn load_config_from_str(
         handlers: handlers_config,
         containers: containers_config,
         cloudfront_names,
+        s3_bucket_name,
+        static_routes,
     })
 }
 
@@ -874,6 +965,90 @@ domain = "example.com"
     fn test_cloudfront_names_empty_when_absent() {
         let config = load_config_from_str(MINIMAL_TOML, "dev", None).unwrap();
         assert!(config.cloudfront_names.is_empty());
+        assert!(config.s3_bucket_name.is_none());
+        assert!(config.static_routes.is_empty());
+    }
+
+    #[test]
+    fn test_static_routes_collected_from_object_hash_routes() {
+        // routes は inline table でも [[...]] でも来る。object_hash 以外は無視する
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[s3]
+bucket_name_format = "{stage}-{project}-assets"
+
+[cloudfront.web]
+domain = "example.com"
+routes = [
+  { is_default = true, is_spa = true, origin_path = "/spa" },
+  { path_pattern = "/static/*", ref = "static", versioning = "object_hash", sources = [{ name = "data", dir = "data" }] },
+  { path_pattern = "/assets/*", versioning = "content_hash", upload_dir = "build" },
+]
+
+[cloudfront.media]
+
+[[cloudfront.media.routes]]
+is_default = true
+origin_path = "/media"
+
+[[cloudfront.media.routes]]
+path_pattern = "/img/v2/*"
+versioning = "object_hash"
+sources = [{ name = "img", dir = "img" }]
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        assert_eq!(config.s3_bucket_name.as_deref(), Some("dev-myapp-assets"));
+        assert_eq!(
+            config.static_routes,
+            vec![
+                StaticRouteConfig {
+                    cloudfront: "media".into(),
+                    route_ref: None,
+                    route_name: "img-v2".into(),
+                    url_prefix: "/img/v2/".into(),
+                    meta_prefix: ".pocket/static/media/img-v2/".into(),
+                },
+                StaticRouteConfig {
+                    cloudfront: "web".into(),
+                    route_ref: Some("static".into()),
+                    route_name: "static".into(),
+                    url_prefix: "/static/".into(),
+                    meta_prefix: ".pocket/static/web/static/".into(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_s3_bucket_name_default_format() {
+        let toml = r#"
+[general]
+region = "ap-northeast-1"
+project_name = "myapp"
+stages = ["dev"]
+
+[s3]
+"#;
+        let config = load_config_from_str(toml, "dev", None).unwrap();
+        // Python の S3.bucket_name_format 既定 "{stage}-{project}-{namespace}"
+        assert_eq!(config.s3_bucket_name.as_deref(), Some("dev-myapp-pocket"));
+    }
+
+    #[test]
+    fn test_route_logical_name_matches_python() {
+        assert_eq!(route_logical_name(""), "root");
+        assert_eq!(route_logical_name("/static/*"), "static");
+        assert_eq!(route_logical_name("/foo-bar/*"), "foobar");
+        assert_eq!(
+            route_logical_name("/v2/_app/immutable/*"),
+            "v2-app-immutable"
+        );
+        assert_eq!(route_url_prefix("/static/*"), "/static/");
+        assert_eq!(route_url_prefix(""), "/");
     }
 
     #[test]

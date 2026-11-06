@@ -24,6 +24,8 @@ class DjangoStorageContext(BaseModel):
     deploy_hash: bool = False
     # deploy_hash route の prefix (`/static/*` → `/static/`)。STATIC_URL の検査用
     deploy_hash_prefix: str | None = None
+    # route が versioning = "object_hash" (URL は S3 の release 表から解決する)
+    object_hash: bool = False
     publish: settings.PublishMode = "deploy"
     link: bool = False
 
@@ -32,6 +34,8 @@ class DjangoStorageContext(BaseModel):
         # deploy_hash: STATIC_URL ベースで URL を生成
         if self.deploy_hash and self.static:
             return _STATIC_FILES_STORAGE
+        if self.object_hash:
+            return "pocket.django.storages.ObjectHashStaticStorage"
         if self.store == "s3":
             return self._s3_backend
         if self.store == "filesystem":
@@ -80,20 +84,9 @@ class DjangoStorageContext(BaseModel):
                         "route ref '%s' not found in cloudfront.%s"
                         % (storage.route, storage.distribution)
                     )
-        # route の versioning が deploy_hash かどうかを判定
-        is_deploy_hash = False
-        deploy_hash_prefix = None
-        if storage.distribution and storage.route and cloudfront_distributions:
-            cf = cloudfront_distributions.get(storage.distribution)
-            if cf:
-                for r in cf.routes:
-                    if r.ref == storage.route and r.versioning == "deploy_hash":
-                        is_deploy_hash = True
-                        # CloudFront Function と同じ規則で prefix を取る
-                        deploy_hash_prefix = (
-                            r.path_pattern.rstrip("*").rstrip("/") + "/"
-                        )
-                        break
+        is_deploy_hash, deploy_hash_prefix, is_object_hash = _route_versioning(
+            storage, cloudfront_distributions
+        )
         return cls(
             store=storage.store,
             location=storage.location,
@@ -104,9 +97,36 @@ class DjangoStorageContext(BaseModel):
             route=storage.route,
             deploy_hash=is_deploy_hash,
             deploy_hash_prefix=deploy_hash_prefix,
+            object_hash=is_object_hash,
             publish=storage.publish,
             link=storage.link,
         )
+
+
+def _route_versioning(
+    storage: settings.DjangoStorage, cloudfront_distributions: dict | None
+) -> tuple[bool, str | None, bool]:
+    """storage が指す route の (deploy_hash か, その prefix, object_hash か)。"""
+    if not (storage.distribution and storage.route and cloudfront_distributions):
+        return False, None, False
+    cf = cloudfront_distributions.get(storage.distribution)
+    if not cf:
+        return False, None, False
+    for r in cf.routes:
+        if r.ref != storage.route:
+            continue
+        if r.versioning == "deploy_hash":
+            # CloudFront Function と同じ規則で prefix を取る
+            return True, r.path_pattern.rstrip("*").rstrip("/") + "/", False
+        if r.versioning == "object_hash":
+            if not storage.static:
+                raise ValueError(
+                    "object_hash の route '%s' は static = true の storage でだけ"
+                    "使えます (URL の解決だけを行い、保存はできません)" % storage.route
+                )
+            return False, None, True
+        break
+    return False, None, False
 
 
 class DjangoCacheContext(BaseModel):
