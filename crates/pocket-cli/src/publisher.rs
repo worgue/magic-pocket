@@ -105,6 +105,7 @@ fn content_type_of(path: &str) -> String {
         .to_string()
 }
 
+type PutObjectSdkError = SdkError<aws_sdk_s3::operation::put_object::PutObjectError, HttpResponse>;
 type HttpResponse = aws_sdk_s3::config::http::HttpResponse;
 
 fn http_status<E>(e: &SdkError<E, HttpResponse>) -> Option<u16> {
@@ -388,14 +389,13 @@ impl StaticPublisher {
         &self,
         key: &str,
         local: &LocalFile,
-    ) -> std::result::Result<
-        (),
-        SdkError<aws_sdk_s3::operation::put_object::PutObjectError, HttpResponse>,
-    > {
+    ) -> std::result::Result<(), Box<PutObjectSdkError>> {
+        // SdkError は大きいので Box で返す (clippy::result_large_err)
         let body = ByteStream::from_path(&local.file)
             .await
-            .map_err(SdkError::construction_failure)?;
-        let checksum = b64_sha256(&local.sha256).map_err(SdkError::construction_failure)?;
+            .map_err(|e| Box::new(SdkError::construction_failure(e)))?;
+        let checksum =
+            b64_sha256(&local.sha256).map_err(|e| Box::new(SdkError::construction_failure(e)))?;
         self.s3
             .put_object()
             .bucket(&self.bucket)
@@ -406,7 +406,8 @@ impl StaticPublisher {
             .content_type(content_type_of(&local.path))
             .cache_control(self.cache_control())
             .send()
-            .await?;
+            .await
+            .map_err(Box::new)?;
         Ok(())
     }
 
@@ -415,7 +416,7 @@ impl StaticPublisher {
         match self.put(key, local).await {
             Ok(()) => return Ok(Outcome::Uploaded),
             Err(e) if is_precondition_failed(&e) => {}
-            Err(e) => return Err(s3_err(e, &format!("PutObject {key}"))),
+            Err(e) => return Err(s3_err(*e, &format!("PutObject {key}"))),
         }
         // 並行する publish が先に置いた (内容 hash が同じなら同じ内容のはず)。照合する
         self.verify_existing(key, &local.entry(), Some(&local.md5))
