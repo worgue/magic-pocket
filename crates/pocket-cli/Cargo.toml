@@ -1,6 +1,6 @@
 [package]
 name = "magic-pocket-cli-rs"
-version = "0.46.2"
+version = "0.47.0"
 edition = "2021"
 description = "magic-pocket の Rust 版 CLI (第 1 段: pocket static の publish 系)"
 publish = false

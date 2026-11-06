@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.47.0](https://github.com/worgue/magic-pocket/releases/tag/0.47.0) - 2026-11-06
 
 ### Added
 - 静的ファイルを内容 hash の immutable key で配信する `versioning = "object_hash"` を追加しました。
