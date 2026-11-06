@@ -1,4 +1,4 @@
-kits = ["core", "uv", "just", "postgres", "docker", "infra", "llmcore", "claude", "mysql", "redis", "depot", "rust", "bun", "codex"]
+kits = ["core", "uv", "just", "postgres", "docker", "aws", "llmcore", "claude", "mysql", "redis", "depot", "rust", "bun", "codex"]
 aws_region = "ap-northeast-1"
 
 [git]
