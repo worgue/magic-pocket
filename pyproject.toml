@@ -46,7 +46,7 @@ magic-pocket-cli = { workspace = true }
 dev = [
     "magic-pocket-cli",
     "pytest>=7.4.4",
-    "moto[all]>=4.2.13",
+    "moto[all,server]>=4.2.13",
     "ruff>=0.2.1",
     "pre-commit>=3.6.0",
     "cryptography>=42.0.8",

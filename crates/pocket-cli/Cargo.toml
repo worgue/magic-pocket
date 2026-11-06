@@ -1,0 +1,36 @@
+[package]
+name = "magic-pocket-cli-rs"
+version = "0.1.0"
+edition = "2021"
+description = "magic-pocket の Rust 版 CLI (第 1 段: pocket static の publish 系)"
+publish = false
+
+# bin 名は `pocket-rs`。Python の `pocket` と両立させる期間は別名で配る。
+# 全面移行後に `pocket` へ rename する
+[[bin]]
+name = "pocket-rs"
+path = "src/main.rs"
+
+[dependencies]
+# runtime lib。pocket.toml の読み込み (StaticConfig) と key 名 / URL encode / 論理 path
+# の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない
+magic-pocket-rs = { path = "../pocket-rs", features = ["static"] }
+clap = { version = "4", features = ["derive", "env"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+anyhow = "1"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+# aws-sdk-* は default の `rustls` feature が legacy TLS スタックを依存ツリーに残すため
+# 外す (lib と同じ方針)
+aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+sha2 = "0.11"
+md-5 = "0.11"
+hex = "0.4"
+base64 = "0.22"
+flate2 = "1"
+serde = { version = "1", features = ["derive"] }
+# preserve_order: `pocket static status` の JSON を Python (dict の挿入順) と同じ並びで出す
+serde_json = { version = "1", features = ["preserve_order"] }
+# sources の include / exclude (gitignore 風。Python 側は pathspec)
+ignore = "0.4"
+# PutObject の Content-Type (Python 側は mimetypes。環境依存なので parity の対象外)
+mime_guess = "2"
