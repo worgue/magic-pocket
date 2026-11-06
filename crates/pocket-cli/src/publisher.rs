@@ -796,6 +796,7 @@ impl StaticPublisher {
         if dry_run || keys.is_empty() {
             return Ok(keys);
         }
+        let mut failed: Vec<String> = Vec::new();
         for batch in keys.chunks(DELETE_BATCH) {
             let objects = batch
                 .iter()
@@ -805,16 +806,47 @@ impl StaticPublisher {
                 .set_objects(Some(objects))
                 .quiet(true)
                 .build()?;
-            self.s3
+            let res = self
+                .s3
                 .delete_objects()
                 .bucket(&self.bucket)
                 .delete(delete)
                 .send()
                 .await
                 .map_err(|e| s3_err(e, "DeleteObjects"))?;
+            // Quiet でも失敗した key は Errors に入る。HTTP 200 なので自分で見る
+            failed.extend(describe_delete_errors(res.errors()));
+        }
+        if !failed.is_empty() {
+            bail!(purge_failure_message(&failed));
         }
         Ok(keys)
     }
+}
+
+/// DeleteObjects の Errors を `key: Code Message` の形にする (Python 版と同文)
+fn describe_delete_errors(errors: &[aws_sdk_s3::types::Error]) -> Vec<String> {
+    errors
+        .iter()
+        .map(|err| {
+            format!(
+                "{}: {} {}",
+                err.key().unwrap_or("?"),
+                err.code().unwrap_or("?"),
+                err.message().unwrap_or("")
+            )
+        })
+        .collect()
+}
+
+/// DeleteObjects が一部の key を消せなかったときのエラー文 (Python 版と同文)
+fn purge_failure_message(failed: &[String]) -> String {
+    let lines: Vec<String> = failed.iter().map(|f| format!("  {f}")).collect();
+    format!(
+        "{} 件の削除に失敗しました (purge を再実行すると残りを対象にします):\n{}",
+        failed.len(),
+        lines.join("\n")
+    )
 }
 
 fn describe(entry: &MapEntry) -> String {
@@ -891,4 +923,36 @@ pub async fn status_report(publisher: &StaticPublisher) -> Result<Value> {
     let in_sync = matches!((&current, &map_release), (Some(c), Some(m)) if &c.release == m);
     report.insert("in_sync".into(), Value::Bool(in_sync));
     Ok(Value::Object(report))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_purge_failure_message_lists_failed_keys() {
+        let errors = vec![
+            aws_sdk_s3::types::Error::builder()
+                .key("static/img/a.0123456789abcdef.jpg")
+                .code("AccessDenied")
+                .message("Access Denied")
+                .build(),
+            aws_sdk_s3::types::Error::builder()
+                .key("static/b.txt")
+                .build(),
+        ];
+        let failed = describe_delete_errors(&errors);
+        assert_eq!(
+            failed,
+            vec![
+                "static/img/a.0123456789abcdef.jpg: AccessDenied Access Denied",
+                "static/b.txt: ? ",
+            ]
+        );
+        assert_eq!(
+            purge_failure_message(&failed),
+            "2 件の削除に失敗しました (purge を再実行すると残りを対象にします):\n  \
+             static/img/a.0123456789abcdef.jpg: AccessDenied Access Denied\n  static/b.txt: ? "
+        );
+    }
 }

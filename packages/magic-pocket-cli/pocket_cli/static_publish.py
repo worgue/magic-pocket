@@ -599,13 +599,30 @@ class StaticPublisher:
         keys = sorted(self.recorded_release_keys() & set(self.list_existing()))
         if dry_run or not keys:
             return keys
+        failed: list[str] = []
         for i in range(0, len(keys), _DELETE_BATCH):
             batch = keys[i : i + _DELETE_BATCH]
-            self.s3.delete_objects(
+            res = self.s3.delete_objects(
                 Bucket=self.bucket,
                 Delete={"Objects": [{"Key": k} for k in batch], "Quiet": True},
             )
+            # Quiet でも失敗した key は Errors に入る。HTTP 200 なので自分で見る
+            failed.extend(
+                "%s: %s %s"
+                % (err.get("Key", "?"), err.get("Code", "?"), err.get("Message", ""))
+                for err in res.get("Errors", [])
+            )
+        if failed:
+            raise StaticPublishError(purge_failure_message(failed))
         return keys
+
+
+def purge_failure_message(failed: list[str]) -> str:
+    """DeleteObjects が一部の key を消せなかったときのエラー文 (Rust 版と同文)。"""
+    return "%d 件の削除に失敗しました (purge を再実行すると残りを対象にします):\n%s" % (
+        len(failed),
+        "\n".join("  " + f for f in failed),
+    )
 
 
 def _describe(entry: MapEntry) -> str:

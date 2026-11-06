@@ -331,7 +331,7 @@ pocket-rs static publish --stage=prod
 7. 平置きの旧 key は凍結して残す（更新しない）。旧形式の URL を使う端末が残る間は、そのまま配信される
 
 !!! warning "purge は配信を止める操作です"
-    `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。
+    `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。一部の object が消せなかったとき（S3 の DeleteObjects は一部失敗でも HTTP 200 を返す）は、消せなかった key を列挙して終了コード 1 で止まります。原因を直して再実行すると残りが対象になります。
 
 ### pocket runtime-config
 

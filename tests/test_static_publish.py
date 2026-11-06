@@ -345,6 +345,42 @@ def test_purge_deletes_only_release_referenced_keys(publisher, s3, project):
     assert "static/img/a.%s.jpg" % _sha(b"A2")[:16] in _keys(s3)
 
 
+def test_purge_reports_keys_that_delete_objects_could_not_delete(
+    publisher, s3, monkeypatch
+):
+    """DeleteObjects は一部失敗でも HTTP 200 なので Errors を見て失敗にする。"""
+    publisher.publish(hash_generate=True)
+    targets = publisher.purge(dry_run=True)
+    real = publisher.s3.delete_objects
+
+    def partial(**kwargs):
+        objects = kwargs["Delete"]["Objects"]
+        res = real(
+            Bucket=kwargs["Bucket"], Delete={"Objects": objects[1:], "Quiet": True}
+        )
+        res["Errors"] = [
+            {
+                "Key": objects[0]["Key"],
+                "Code": "AccessDenied",
+                "Message": "Access Denied",
+            }
+        ]
+        return res
+
+    monkeypatch.setattr(publisher.s3, "delete_objects", partial)
+    with pytest.raises(StaticPublishError) as info:
+        publisher.purge()
+    assert str(info.value) == (
+        "1 件の削除に失敗しました (purge を再実行すると残りを対象にします):\n"
+        "  %s: AccessDenied Access Denied" % targets[0]
+    )
+    assert targets[0] in _keys(s3)
+    assert not any(k in _keys(s3) for k in targets[1:])
+    # 再実行で残りが対象になる
+    monkeypatch.undo()
+    assert publisher.purge() == [targets[0]]
+
+
 def test_status_report(publisher, s3, project):
     report = status_report(publisher)
     assert report["in_sync"] is False

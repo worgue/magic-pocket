@@ -200,9 +200,14 @@ def purge(stage, name, route_ref, dry_run, yes):
     echo.warning("消してから次の publish までの間、この route の URL は 404 になります")
     if not yes:
         click.confirm("上記 %d 件を削除しますか？" % total, abort=True)
-    for publisher, _ in targets:
-        deleted = publisher.purge()
-        echo.info("[%s] %d 件を削除しました" % (publisher.route_label, len(deleted)))
+    try:
+        for publisher, _ in targets:
+            deleted = publisher.purge()
+            echo.info(
+                "[%s] %d 件を削除しました" % (publisher.route_label, len(deleted))
+            )
+    except StaticPublishError as e:
+        raise click.ClickException(str(e)) from e
     echo.success("%d 件を削除しました" % total)
 
 
