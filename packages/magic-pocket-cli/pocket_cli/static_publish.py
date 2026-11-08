@@ -19,15 +19,17 @@ import json
 import mimetypes
 import os
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable, TypeVar
 
 import boto3
 import pathspec
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
 
 from pocket.static.mapfile import MapEntry, StaticMap, StaticMapError
 from pocket.static.naming import validate_logical_path
@@ -51,6 +53,16 @@ if TYPE_CHECKING:
 _SINGLE_PUT_LIMIT = 5 * 1024 * 1024 * 1024
 _CHUNK = 1024 * 1024
 _DELETE_BATCH = 1000
+# 1 件の PutObject / CopyObject を一過性のエラーで諦めるまでの試行回数と、待ち時間の
+# 初期値 (1 秒, 2 秒, ...)。SDK 自身の retry の外側で、proxy の CONNECT 失敗など接続層の
+# 失敗を拾う (数万件の publish を 1 件の瞬断で止めないため)。Rust 版と同じ値
+_TRANSFER_ATTEMPTS = 3
+_TRANSFER_RETRY_BASE_DELAY = 1.0
+_TRANSIENT_ERROR_CODES = frozenset(
+    {"SlowDown", "RequestTimeout", "InternalError", "ServiceUnavailable"}
+)
+
+_T = TypeVar("_T")
 
 
 class StaticPublishError(Exception):
@@ -102,6 +114,45 @@ def _digest_file(file: Path) -> tuple[str, str]:
 
 def _b64_sha256(sha256_hex: str) -> str:
     return base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
+
+
+def _is_transient_error(e: BaseException) -> bool:
+    """接続層の失敗・timeout・5xx・SlowDown なら True。4xx (412 / 403 等) は False。"""
+    if isinstance(e, (BotoConnectionError, HTTPClientError)):
+        return True
+    if isinstance(e, ClientError):
+        status = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
+        return status >= 500 or e.response["Error"]["Code"] in _TRANSIENT_ERROR_CODES
+    return False
+
+
+def _retry_transient(
+    what: str,
+    op: Callable[[], _T],
+    *,
+    attempts: int = _TRANSFER_ATTEMPTS,
+    base_delay: float = _TRANSFER_RETRY_BASE_DELAY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> _T:
+    """`op()` を一過性のエラーのときだけ最大 `attempts` 回まで繰り返す (1 件単位)。
+
+    それ以外のエラーと、最後の試行の失敗はそのまま raise する (publish 全体が止まる。
+    再実行で続きから進む)。
+    """
+    attempt = 1
+    while True:
+        try:
+            return op()
+        except (ClientError, BotoConnectionError, HTTPClientError) as e:
+            if attempt >= attempts or not _is_transient_error(e):
+                raise
+            delay = base_delay * 2 ** (attempt - 1)
+            echo.warning(
+                "%s: 一過性のエラーのため %g 秒後に再試行します (%d/%d): %s"
+                % (what, delay, attempt, attempts, e)
+            )
+            sleep(delay)
+            attempt += 1
 
 
 def _is_plain_md5_etag(etag: str | None) -> bool:
@@ -335,7 +386,7 @@ class StaticPublisher:
     def _upload_one(self, key: str, local: LocalFile) -> str:
         """1 件 upload する。戻り値は "uploaded" | "verified"。"""
         try:
-            self._put(key, local)
+            _retry_transient("PutObject %s" % key, lambda: self._put(key, local))
             return "uploaded"
         except ClientError as e:
             if e.response["Error"]["Code"] != "PreconditionFailed":
@@ -351,15 +402,18 @@ class StaticPublisher:
         flat_key = self.key_prefix + local.path
         content_type = mimetypes.guess_type(local.path)[0] or "application/octet-stream"
         try:
-            self.s3.copy_object(
-                Bucket=self.bucket,
-                Key=key,
-                CopySource={"Bucket": self.bucket, "Key": flat_key},
-                CopySourceIfMatch=flat_etag,
-                MetadataDirective="REPLACE",
-                ContentType=content_type,
-                CacheControl=self.cache_control,
-                ChecksumAlgorithm="SHA256",
+            _retry_transient(
+                "CopyObject %s" % key,
+                lambda: self.s3.copy_object(
+                    Bucket=self.bucket,
+                    Key=key,
+                    CopySource={"Bucket": self.bucket, "Key": flat_key},
+                    CopySourceIfMatch=flat_etag,
+                    MetadataDirective="REPLACE",
+                    ContentType=content_type,
+                    CacheControl=self.cache_control,
+                    ChecksumAlgorithm="SHA256",
+                ),
             )
         except ClientError as e:
             if e.response["Error"]["Code"] == "PreconditionFailed":

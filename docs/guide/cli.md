@@ -287,6 +287,8 @@ pocket static purge --stage=dev --dry-run
 !!! note "途中で止まっても再実行で続きから進みます"
     上げ終わった key は次回の一覧で除かれるので、初回の prod publish のように件数・容量が大きいときも、止まったら同じコマンドを再実行するだけで続きから進みます。`current` は全部上がってから切り替わるので、途中の状態が配信されることはありません。
 
+    1 件の PutObject / CopyObject が一過性のエラー（接続の瞬断・timeout・5xx・`SlowDown`）で失敗したときは、その key だけ 1 秒・2 秒と待って最大 3 回まで試し直します（警告を出します）。3 回とも失敗したときと、一過性でないエラー（403 / 412 等）はそのまま止まります。
+
 !!! note "既存 key の内容照合"
     `hashed = false` の source（名前に hash が無い）は、S3 に既にある key の内容を**必ず** HEAD で照合します（同じ名前で内容を変えた publish を止めるため）。`hashed = true` の key は名前に内容 hash が入っているので既定では存在確認だけで skip します。`--verify-existing` を付けると全件を照合します（件数分の HEAD が走ります）。
 

@@ -16,7 +16,7 @@ path = "src/main.rs"
 # の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない
 magic-pocket-rs = { path = "../pocket-rs", features = ["static"] }
 clap = { version = "4", features = ["derive", "env"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 anyhow = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 # aws-sdk-* は default の `rustls` feature が legacy TLS スタックを依存ツリーに残すため

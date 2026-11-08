@@ -7,6 +7,7 @@ import json
 import boto3
 import django
 import pytest
+from botocore.exceptions import ClientError
 from django.conf import settings as dj_settings
 from moto import mock_aws
 
@@ -100,6 +101,38 @@ def test_url_resolves_and_encodes(s3):
         == "https://cdn.example.com/static/img/%E5%86%99%E7%9C%9F%201.aaaaaaaaaaaaaaaa.jpg"
     )
     assert resolver.url("app/chunk.js") == "https://cdn.example.com/static/app/chunk.js"
+
+
+def test_url_path_drops_origin(s3):
+    _publish(s3, [MapEntry("img/写真 1.jpg", H1, "data", True)])
+    resolver = _resolver(s3, _Clock())
+    assert resolver.url_prefix == "/static/"
+    assert (
+        resolver.url_path("img/写真 1.jpg")
+        == "/static/img/%E5%86%99%E7%9C%9F%201.aaaaaaaaaaaaaaaa.jpg"
+    )
+    with pytest.raises(StaticPathNotFound):
+        resolver.url_path("missing.jpg")
+
+
+def test_forced_refresh_ignores_interval_and_raises_on_failure(s3):
+    clock = _Clock()
+    _publish(s3, [MapEntry("a.txt", H1, "data", True)])
+    resolver = _resolver(s3, clock)
+    # 未読なら refresh が初回の読み込みになる
+    resolver.refresh()
+    old = resolver.url("a.txt")
+    _publish(s3, [MapEntry("a.txt", H2, "data", True)])
+    # 期限前なので url() は表を変えないが、強制なら即差し替わる
+    clock.now += 1
+    assert resolver.url("a.txt") == old
+    resolver.refresh()
+    assert resolver.url("a.txt").endswith("/a.bbbbbbbbbbbbbbbb.txt")
+    # 失敗は例外で、表は前の版のまま
+    s3.delete_object(Bucket=BUCKET, Key=current_key(META))
+    with pytest.raises(ClientError):
+        resolver.refresh()
+    assert resolver.url("a.txt").endswith("/a.bbbbbbbbbbbbbbbb.txt")
 
 
 def test_unknown_path_raises(s3):

@@ -14,6 +14,7 @@ import os
 import threading
 import time
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -63,6 +64,8 @@ class StaticResolver:
         self.meta_prefix = meta_prefix
         # base_url は "https://<domain>/<url prefix>/" の形 (末尾 / 付き)
         self.base_url = base_url if base_url.endswith("/") else base_url + "/"
+        # origin 無しの URL path の prefix ("/static/")。url_path() が使う
+        self.url_prefix = urlsplit(self.base_url).path
         self.refresh_interval = refresh_interval
         self._s3 = s3_client
         self._clock = clock
@@ -81,11 +84,43 @@ class StaticResolver:
         return self._ensure_table().release_id
 
     def url(self, path: str) -> str:
+        """論理 path を URL にする。期限が来ていれば先に release 表を読み直す。"""
+        return self.base_url + self._resolve_rel(path)
+
+    def url_path(self, path: str) -> str:
+        """論理 path を origin 無しの URL path (`/static/img/a.<hash>.jpg`) にする。
+
+        画面と同じ origin から相対で参照するとき用。期限が来ていれば先に読み直す。
+        """
+        return self.url_prefix + self._resolve_rel(path)
+
+    def refresh(self) -> None:
+        """期限に関係なく今すぐ current を確かめ、ETag が変わっていたら表を差し替える。
+
+        表が未読なら読む。失敗は例外で、読み込み済みの表はそのまま残る (呼び出し側は
+        前の版で続けてよい)。publish 直後に即反映したいときなど、明示の読み直し用。
+        `url()` は期限 (既定 60 秒) ごとに同じ確認を自動で行うので、通常は不要。
+        """
+        with self._lock:
+            current = self._table
+            if current is None:
+                self._table = self._load(etag=None)
+                self._checked_at = self._clock()
+                return
+            self._checked_at = self._clock()
+            head = self.s3.head_object(
+                Bucket=self.bucket, Key=current_key(self.meta_prefix)
+            )
+            if head["ETag"] == current.etag:
+                return
+            self._table = self._load(etag=head["ETag"])
+
+    def _resolve_rel(self, path: str) -> str:
         table = self._ensure_table()
         rel_key = table.entries.get(path)
         if rel_key is None:
             raise StaticPathNotFound(path, table.release_id)
-        return self.base_url + encode_url_path(rel_key)
+        return encode_url_path(rel_key)
 
     def _ensure_table(self) -> _Table:
         table = self._table

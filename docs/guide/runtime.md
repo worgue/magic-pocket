@@ -251,14 +251,20 @@ from pocket.static import StaticPathNotFound, get_static_resolver
 resolver = get_static_resolver("web", "static")   # distribution 名, route の ref
 url = resolver.url("img/photo.jpg")
 # → "https://cdn.example.com/static/img/photo.ca978112ca1bbdca.jpg"
+path = resolver.url_path("img/photo.jpg")
+# → "/static/img/photo.ca978112ca1bbdca.jpg"（origin 無し。画面と同じ origin から相対で参照するとき）
 
 try:
     resolver.url("missing.jpg")
 except StaticPathNotFound:
     ...
+
+resolver.refresh()   # 期限に関係なく今すぐ current を確かめ、変わっていれば表を差し替える
 ```
 
 `route` は distribution 内の object_hash ルートが 1 つだけなら省略できます。同じ引数には同じ instance（release 表の cache を共有）が返ります。Django は [ObjectHashStaticStorage](django.md#object_hash) がこれを使います。
+
+- `url()` / `url_path()` は呼び出し時に期限（既定 60 秒）を見て自動で読み直すので、通常 `refresh()` は要りません。publish 直後に即反映したいときなどの明示用です。失敗は例外で、読み込み済みの表はそのまま残ります
 
 ### Rust
 
@@ -278,8 +284,20 @@ let resolver = StaticResolver::load(&config, "web", Some("static")).await?;
 let url = resolver.url("img/photo.jpg").await?;
 // 同期版 (refresh しない。読み込み済みの表だけで解決する)
 let url = resolver.url_cached("img/photo.jpg")?;
+
+// origin 無しの URL path ("/static/img/photo.<hash>.jpg")。画面と同じ origin から相対で参照するとき
+let path = resolver.url_path("img/photo.jpg").await?;
+let path = resolver.url_path_cached("img/photo.jpg")?;
+
+// リクエストの初めに期限を見て読み直し、あとは同期版で組み立てる (テンプレート関数など await できない場所向け)
+resolver.refresh_if_due().await;
+let path = resolver.url_path_cached("img/photo.jpg")?;
+
+// 期限に関係なく今すぐ確かめる (publish 直後に即反映したいときなど)。失敗は Err で、表は前の版のまま
+resolver.refresh().await?;
 ```
 
 - 表に無い path は `PocketError::StaticPathNotFound { path, release }` です（hash なしの URL は返しません）
+- `refresh_if_due()` は `url()` / `url_path()` が毎回行うのと同じ処理（期限が来ていれば current を HEAD し、ETag が変わったときだけ表を読み直す）で、同期版だけで組み立てる handler の入口で 1 回呼ぶ用途です。表が未読なら何もしません（初回は `load` で読まれています）
 - 初回の読み込み（`load`）の失敗は `Err`。以降の読み直しの失敗は warn ログを出して前の版を使い続けます
 - URL encode の規則（`A-Za-z0-9-._~/` 以外を percent-encode）は Python と同じで、両実装のテストが同じ test vector（`tests/data/static_url_vectors.json`）を読みます

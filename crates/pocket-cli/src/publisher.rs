@@ -12,10 +12,12 @@
 //! 流す (本文を保持しない)。hash・転送とも並列数は `jobs`
 
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
@@ -121,6 +123,60 @@ fn is_precondition_failed<E: ProvideErrorMetadata>(e: &SdkError<E, HttpResponse>
 
 fn is_not_found<E: ProvideErrorMetadata>(e: &SdkError<E, HttpResponse>) -> bool {
     matches!(e.code(), Some("404" | "NoSuchKey" | "NotFound")) || http_status(e) == Some(404)
+}
+
+/// 1 件の PutObject / CopyObject を一過性のエラーで諦めるまでの試行回数と、待ち時間の
+/// 初期値 (1 秒, 2 秒, ...)。SDK 自身の retry の外側で、proxy の CONNECT 失敗など接続層の
+/// 失敗を拾う (数万件の publish を 1 件の瞬断で止めないため)。Python 版と同じ値
+const TRANSFER_ATTEMPTS: u32 = 3;
+const TRANSFER_RETRY_BASE_DELAY: Duration = Duration::from_secs(1);
+
+/// 接続層の失敗・timeout・5xx・SlowDown なら true。4xx (412 / 403 等) は false
+fn is_transient<E: ProvideErrorMetadata>(e: &SdkError<E, HttpResponse>) -> bool {
+    match e {
+        SdkError::DispatchFailure(_) | SdkError::TimeoutError(_) | SdkError::ResponseError(_) => {
+            true
+        }
+        SdkError::ServiceError(se) => {
+            se.raw().status().as_u16() >= 500
+                || matches!(
+                    e.code(),
+                    Some("SlowDown" | "RequestTimeout" | "InternalError" | "ServiceUnavailable")
+                )
+        }
+        _ => false,
+    }
+}
+
+/// `op()` を一過性のエラーのときだけ最大 `attempts` 回まで繰り返す (1 件単位)。
+/// それ以外のエラーと、最後の試行の失敗はそのまま返す (publish 全体が止まる。
+/// 再実行で続きから進む)
+async fn retry_transient<T, E, Fut>(
+    what: &str,
+    attempts: u32,
+    base_delay: Duration,
+    mut op: impl FnMut() -> Fut,
+) -> std::result::Result<T, SdkError<E, HttpResponse>>
+where
+    E: ProvideErrorMetadata + std::fmt::Debug,
+    Fut: Future<Output = std::result::Result<T, SdkError<E, HttpResponse>>>,
+{
+    let mut attempt = 1;
+    loop {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(e) if attempt < attempts && is_transient(&e) => {
+                let delay = base_delay * 2u32.pow(attempt - 1);
+                warn(&format!(
+                    "{what}: 一過性のエラーのため {} 秒後に再試行します ({attempt}/{attempts}): {e}",
+                    delay.as_secs_f64()
+                ));
+                tokio::time::sleep(delay).await;
+                attempt += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 fn s3_err<E: std::fmt::Debug>(e: SdkError<E, HttpResponse>, what: &str) -> anyhow::Error {
@@ -391,23 +447,32 @@ impl StaticPublisher {
         local: &LocalFile,
     ) -> std::result::Result<(), Box<PutObjectSdkError>> {
         // SdkError は大きいので Box で返す (clippy::result_large_err)
-        let body = ByteStream::from_path(&local.file)
-            .await
-            .map_err(|e| Box::new(SdkError::construction_failure(e)))?;
         let checksum =
             b64_sha256(&local.sha256).map_err(|e| Box::new(SdkError::construction_failure(e)))?;
-        self.s3
-            .put_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .body(body)
-            .if_none_match("*")
-            .checksum_sha256(checksum)
-            .content_type(content_type_of(&local.path))
-            .cache_control(self.cache_control())
-            .send()
-            .await
-            .map_err(Box::new)?;
+        // body は send で消費されるので試行ごとに開き直す
+        retry_transient(
+            &format!("PutObject {key}"),
+            TRANSFER_ATTEMPTS,
+            TRANSFER_RETRY_BASE_DELAY,
+            || async {
+                let body = ByteStream::from_path(&local.file)
+                    .await
+                    .map_err(SdkError::construction_failure)?;
+                self.s3
+                    .put_object()
+                    .bucket(&self.bucket)
+                    .key(key)
+                    .body(body)
+                    .if_none_match("*")
+                    .checksum_sha256(&checksum)
+                    .content_type(content_type_of(&local.path))
+                    .cache_control(self.cache_control())
+                    .send()
+                    .await
+            },
+        )
+        .await
+        .map_err(Box::new)?;
         Ok(())
     }
 
@@ -435,19 +500,26 @@ impl StaticPublisher {
             return Ok(None);
         }
         let flat_key = format!("{}{}", self.key_prefix(), local.path);
-        let result = self
-            .s3
-            .copy_object()
-            .bucket(&self.bucket)
-            .key(key)
-            .copy_source(format!("{}/{}", self.bucket, encode_url_path(&flat_key)))
-            .copy_source_if_match(flat_etag)
-            .metadata_directive(MetadataDirective::Replace)
-            .content_type(content_type_of(&local.path))
-            .cache_control(self.cache_control())
-            .checksum_algorithm(ChecksumAlgorithm::Sha256)
-            .send()
-            .await;
+        let copy_source = format!("{}/{}", self.bucket, encode_url_path(&flat_key));
+        let result = retry_transient(
+            &format!("CopyObject {key}"),
+            TRANSFER_ATTEMPTS,
+            TRANSFER_RETRY_BASE_DELAY,
+            || {
+                self.s3
+                    .copy_object()
+                    .bucket(&self.bucket)
+                    .key(key)
+                    .copy_source(&copy_source)
+                    .copy_source_if_match(flat_etag)
+                    .metadata_directive(MetadataDirective::Replace)
+                    .content_type(content_type_of(&local.path))
+                    .cache_control(self.cache_control())
+                    .checksum_algorithm(ChecksumAlgorithm::Sha256)
+                    .send()
+            },
+        )
+        .await;
         match result {
             Ok(_) => {}
             Err(e) if is_precondition_failed(&e) => return Ok(None),
@@ -929,6 +1001,84 @@ pub async fn status_report(publisher: &StaticPublisher) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_sdk_s3::error::{ConnectorError, ErrorMetadata};
+    use aws_sdk_s3::operation::put_object::PutObjectError;
+    use aws_sdk_s3::primitives::SdkBody;
+    use std::cell::Cell;
+
+    type PutErr = SdkError<PutObjectError, HttpResponse>;
+
+    fn service_error(code: &str, status: u16) -> PutErr {
+        let raw = HttpResponse::new(status.try_into().expect("status"), SdkBody::empty());
+        SdkError::service_error(
+            PutObjectError::generic(ErrorMetadata::builder().code(code).build()),
+            raw,
+        )
+    }
+
+    fn dispatch_failure() -> PutErr {
+        SdkError::dispatch_failure(ConnectorError::io(
+            std::io::Error::other("CONNECT tunnel failed").into(),
+        ))
+    }
+
+    #[test]
+    fn test_is_transient_classifies_sdk_errors() {
+        assert!(is_transient(&dispatch_failure()));
+        assert!(is_transient(
+            &SdkError::<PutObjectError, HttpResponse>::timeout_error(std::io::Error::other(
+                "timeout"
+            ))
+        ));
+        assert!(is_transient(&service_error("SlowDown", 503)));
+        assert!(is_transient(&service_error("InternalError", 500)));
+        assert!(!is_transient(&service_error("PreconditionFailed", 412)));
+        assert!(!is_transient(&service_error("AccessDenied", 403)));
+        assert!(!is_transient(
+            &SdkError::<PutObjectError, HttpResponse>::construction_failure(std::io::Error::other(
+                "no such file"
+            ))
+        ));
+    }
+
+    #[test]
+    fn test_retry_transient_retries_only_transient_errors() {
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        // 2 回瞬断して 3 回目で成功
+        let calls = Cell::new(0);
+        let result: std::result::Result<&str, PutErr> =
+            rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
+                calls.set(calls.get() + 1);
+                let n = calls.get();
+                async move {
+                    if n <= 2 {
+                        Err(dispatch_failure())
+                    } else {
+                        Ok("ok")
+                    }
+                }
+            }));
+        assert_eq!(result.expect("recovered"), "ok");
+        assert_eq!(calls.get(), 3);
+        // 試行回数を使い切ったら最後のエラーを返す
+        let calls = Cell::new(0);
+        let result: std::result::Result<&str, PutErr> =
+            rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
+                calls.set(calls.get() + 1);
+                async { Err(dispatch_failure()) }
+            }));
+        assert!(matches!(result, Err(SdkError::DispatchFailure(_))));
+        assert_eq!(calls.get(), 3);
+        // 412 は再試行しない
+        let calls = Cell::new(0);
+        let result: std::result::Result<&str, PutErr> =
+            rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
+                calls.set(calls.get() + 1);
+                async { Err(service_error("PreconditionFailed", 412)) }
+            }));
+        assert!(is_precondition_failed(&result.unwrap_err()));
+        assert_eq!(calls.get(), 1);
+    }
 
     #[test]
     fn test_purge_failure_message_lists_failed_keys() {

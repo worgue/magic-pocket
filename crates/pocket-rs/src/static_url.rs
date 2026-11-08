@@ -21,6 +21,9 @@
 //! let url = resolver.url("img/photo.jpg").await?;
 //! // refresh せず同期で解決 (テンプレート関数など await できない場所)
 //! let url = resolver.url_cached("img/photo.jpg")?;
+//! // リクエストの初めに期限を見て読み直し、あとは同期で解決する
+//! resolver.refresh_if_due().await;
+//! let path = resolver.url_path_cached("img/photo.jpg")?; // "/static/img/photo.<hash>.jpg"
 //! ```
 
 use std::collections::HashMap;
@@ -235,6 +238,8 @@ pub struct StaticResolver<S: StaticStore = aws_sdk_s3::Client> {
     meta_prefix: String,
     /// `https://<domain><url_prefix>` (末尾 / 付き)
     base_url: String,
+    /// `base_url` の path 部分 (`/static/`。末尾 / 付き)。`url_path` が返す URL の prefix
+    url_prefix: String,
     refresh_interval: Duration,
     store: S,
     table: RwLock<Option<Arc<Table>>>,
@@ -292,6 +297,19 @@ impl S3StaticResolver {
     }
 }
 
+/// `https://<domain>/static/` → `/static/` (scheme と host を落とす。Python の
+/// `urllib.parse.urlsplit(base_url).path` と同じ)
+fn url_path_of(base_url: &str) -> String {
+    let rest = match base_url.find("://") {
+        Some(i) => &base_url[i + 3..],
+        None => base_url,
+    };
+    match rest.find('/') {
+        Some(i) => rest[i..].to_string(),
+        None => "/".to_string(),
+    }
+}
+
 /// 配信ドメイン: `[cloudfront.<name>].domain` (alias) → `POCKET_CLOUDFRONT_<NAME>_DOMAIN`。
 /// Python `pocket.static.resolver._build_resolver` と同じ優先順
 fn resolve_domain(distribution: &str, declared: Option<&str>) -> Result<String> {
@@ -324,10 +342,12 @@ impl<S: StaticStore> StaticResolver<S> {
         } else {
             format!("{base_url}/")
         };
+        let url_prefix = url_path_of(&base_url);
         Self {
             bucket,
             meta_prefix,
             base_url,
+            url_prefix,
             refresh_interval,
             store,
             table: RwLock::new(None),
@@ -413,9 +433,13 @@ impl<S: StaticStore> StaticResolver<S> {
             .ok_or_else(|| release_error("release 表を保持できませんでした"))
     }
 
-    /// 期限が来ていれば current を HEAD し、ETag が変わっていたら表を差し替える。
-    /// 失敗は warn で前の版を使い続ける。同時に来た呼び出しは 1 つだけが S3 を見る
-    async fn refresh_if_due(&self) {
+    /// 期限 (既定 60 秒) が来ていれば current を HEAD し、ETag が変わっていたら表を
+    /// 差し替える。[`StaticResolver::url`] が毎回呼ぶのと同じ処理で、同期の
+    /// [`StaticResolver::url_cached`] / [`StaticResolver::url_path_cached`] で組み立てる
+    /// 前にリクエストの初めで呼ぶ用途。失敗は warn で前の版を使い続ける。同時に来た
+    /// 呼び出しは 1 つだけが S3 を見る。表が未読なら何もしない (初回は [`StaticResolver::url`]
+    /// か [`StaticResolver::refresh`] で読む)
+    pub async fn refresh_if_due(&self) {
         if !self.refresh_due() {
             return;
         }
@@ -452,9 +476,31 @@ impl<S: StaticStore> StaticResolver<S> {
         }
     }
 
-    fn resolve(&self, table: &Table, path: &str) -> Result<String> {
+    /// 期限に関係なく今すぐ current を確かめ、ETag が変わっていたら表を差し替える。
+    /// 表が未読なら読む。失敗は Err で、読み込み済みの表はそのまま残る (呼び出し側は
+    /// 前の版で続けてよい)。publish 直後に即反映したいときなど、明示の読み直し用
+    pub async fn refresh(&self) -> Result<()> {
+        let Some(current) = self.current_table() else {
+            self.ensure_loaded().await?;
+            return Ok(());
+        };
+        self.mark_checked();
+        let etag = self
+            .store
+            .head_etag(&self.bucket, &self.current_key())
+            .await?;
+        if etag == current.etag {
+            return Ok(());
+        }
+        let table = self.load_table().await?;
+        self.swap_table(table);
+        Ok(())
+    }
+
+    /// 表から percent-encode 済みの rel_key を引く
+    fn resolve_rel(&self, table: &Table, path: &str) -> Result<String> {
         match table.entries.get(path) {
-            Some(rel_key) => Ok(format!("{}{}", self.base_url, encode_url_path(rel_key))),
+            Some(rel_key) => Ok(encode_url_path(rel_key)),
             None => Err(PocketError::StaticPathNotFound {
                 path: path.to_string(),
                 release: table.release_id.clone(),
@@ -462,21 +508,57 @@ impl<S: StaticStore> StaticResolver<S> {
         }
     }
 
-    /// 論理 path を URL にする。期限が来ていれば先に release 表を読み直す
-    pub async fn url(&self, path: &str) -> Result<String> {
+    fn resolve(&self, table: &Table, path: &str) -> Result<String> {
+        Ok(format!(
+            "{}{}",
+            self.base_url,
+            self.resolve_rel(table, path)?
+        ))
+    }
+
+    fn resolve_path(&self, table: &Table, path: &str) -> Result<String> {
+        Ok(format!(
+            "{}{}",
+            self.url_prefix,
+            self.resolve_rel(table, path)?
+        ))
+    }
+
+    async fn table_for_url(&self) -> Result<Arc<Table>> {
         let table = self.ensure_loaded().await?;
         self.refresh_if_due().await;
-        let table = self.current_table().unwrap_or(table);
+        Ok(self.current_table().unwrap_or(table))
+    }
+
+    fn loaded_table(&self) -> Result<Arc<Table>> {
+        self.current_table()
+            .ok_or_else(|| release_error("release 表がまだ読み込まれていません"))
+    }
+
+    /// 論理 path を URL にする。期限が来ていれば先に release 表を読み直す
+    pub async fn url(&self, path: &str) -> Result<String> {
+        let table = self.table_for_url().await?;
         self.resolve(&table, path)
     }
 
     /// 論理 path を URL にする (refresh せず、読み込み済みの表だけで解決する)。
     /// 表が未読なら Err
     pub fn url_cached(&self, path: &str) -> Result<String> {
-        let table = self
-            .current_table()
-            .ok_or_else(|| release_error("release 表がまだ読み込まれていません"))?;
+        let table = self.loaded_table()?;
         self.resolve(&table, path)
+    }
+
+    /// 論理 path を origin 無しの URL path (`/static/img/a.<hash>.jpg`) にする。
+    /// 画面と同じ origin から相対で参照するとき用。期限が来ていれば先に読み直す
+    pub async fn url_path(&self, path: &str) -> Result<String> {
+        let table = self.table_for_url().await?;
+        self.resolve_path(&table, path)
+    }
+
+    /// [`StaticResolver::url_path`] の同期版 (refresh せず、読み込み済みの表だけで解決する)
+    pub fn url_path_cached(&self, path: &str) -> Result<String> {
+        let table = self.loaded_table()?;
+        self.resolve_path(&table, path)
     }
 
     /// 読み込み済みの release id (未読なら None)
@@ -700,6 +782,55 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_url_path_drops_origin() {
+        assert_eq!(url_path_of("https://cdn.example.com/static/"), "/static/");
+        assert_eq!(url_path_of("https://cdn.example.com/"), "/");
+        assert_eq!(url_path_of("https://cdn.example.com"), "/");
+        let store = MemoryStore::new();
+        store.publish(
+            "rel1",
+            &[("img/写真 1.jpg", "img/写真 1.3e23e8160039594a.jpg")],
+            "\"etag1\"",
+        );
+        let r = resolver(store, Duration::from_secs(60));
+        assert!(r.url_path_cached("img/写真 1.jpg").is_err(), "未読なら Err");
+        assert_eq!(
+            block(r.url_path("img/写真 1.jpg")).expect("path"),
+            "/static/img/%E5%86%99%E7%9C%9F%201.3e23e8160039594a.jpg"
+        );
+        assert_eq!(
+            r.url_path_cached("img/写真 1.jpg").expect("cached"),
+            "/static/img/%E5%86%99%E7%9C%9F%201.3e23e8160039594a.jpg"
+        );
+    }
+
+    #[test]
+    fn test_forced_refresh_ignores_interval_and_reports_failure() {
+        let store = MemoryStore::new();
+        store.publish("rel1", &[("a.txt", "a.1111111111111111.txt")], "\"etag1\"");
+        let r = resolver(store, Duration::from_secs(3600));
+        // 未読なら refresh が初回の読み込みになる
+        block(r.refresh()).expect("initial load");
+        assert_eq!(r.release_id().as_deref(), Some("rel1"));
+        r.store
+            .publish("rel2", &[("a.txt", "a.2222222222222222.txt")], "\"etag2\"");
+        // 期限前なので url() も refresh_if_due() も表を変えない
+        block(r.refresh_if_due());
+        block(r.url("a.txt")).expect("url");
+        assert_eq!(r.release_id().as_deref(), Some("rel1"));
+        // 強制なら即差し替わる
+        block(r.refresh()).expect("forced");
+        assert_eq!(r.release_id().as_deref(), Some("rel2"));
+        // 失敗は Err で、表は前の版のまま
+        r.store.fail_reads.store(true, Ordering::Release);
+        assert!(block(r.refresh()).is_err());
+        assert_eq!(
+            r.url_cached("a.txt").expect("kept"),
+            "https://cdn.example.com/static/a.2222222222222222.txt"
+        );
     }
 
     #[test]

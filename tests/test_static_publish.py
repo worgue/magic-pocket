@@ -15,7 +15,9 @@ from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError, EndpointConnectionError
 from moto import mock_aws
+from pocket_cli import static_publish
 from pocket_cli.static_publish import StaticPublisher, StaticPublishError, status_report
 
 from pocket.context import RouteContext
@@ -403,6 +405,69 @@ def test_map_from_other_route_is_rejected(publisher, s3, project):
     )
     with pytest.raises(StaticPublishError, match="route web/other の map"):
         publisher.publish(allow_dirty=True)
+
+
+def test_transient_put_failure_is_retried_per_key(publisher, s3, monkeypatch):
+    """接続層の瞬断は、その key だけ待って再試行する (publish 全体は止めない)。"""
+    monkeypatch.setattr(static_publish.time, "sleep", lambda _s: None)
+    calls: list[str] = []
+    original = s3.put_object
+
+    def flaky(**kwargs):
+        calls.append(kwargs["Key"])
+        if kwargs["Key"] == A_KEY and calls.count(A_KEY) <= 2:
+            raise EndpointConnectionError(endpoint_url="https://s3.example")
+        return original(**kwargs)
+
+    publisher.s3 = type("S3", (), {"__getattr__": lambda _, n: getattr(s3, n)})()
+    publisher.s3.put_object = flaky  # type: ignore[attr-defined]
+    result = publisher.publish(hash_generate=True)
+    assert result.uploaded == 3
+    assert calls.count(A_KEY) == 3
+    assert A_KEY in _keys(s3)
+
+
+def _client_error(code: str, status: int) -> ClientError:
+    return ClientError(
+        {
+            "Error": {"Code": code, "Message": code},
+            "ResponseMetadata": {
+                "RequestId": "r",
+                "HostId": "h",
+                "HTTPStatusCode": status,
+                "HTTPHeaders": {},
+                "RetryAttempts": 0,
+            },
+        },
+        "PutObject",
+    )
+
+
+def test_retry_transient_gives_up_and_skips_non_transient():
+    slept: list[float] = []
+
+    def always_down():
+        raise EndpointConnectionError(endpoint_url="https://s3.example")
+
+    with pytest.raises(EndpointConnectionError):
+        static_publish._retry_transient(
+            "PutObject k", always_down, attempts=3, sleep=slept.append
+        )
+    assert slept == [1.0, 2.0]
+
+    def forbidden():
+        raise _client_error("AccessDenied", 403)
+
+    slept.clear()
+    with pytest.raises(ClientError):
+        static_publish._retry_transient("PutObject k", forbidden, sleep=slept.append)
+    assert slept == []
+    # 5xx と SlowDown は一過性。412 (PreconditionFailed) は違う
+    assert static_publish._is_transient_error(_client_error("SlowDown", 503))
+    assert static_publish._is_transient_error(_client_error("InternalError", 500))
+    assert not static_publish._is_transient_error(
+        _client_error("PreconditionFailed", 412)
+    )
 
 
 def test_put_sends_checksum_and_no_overwrite(publisher, s3):

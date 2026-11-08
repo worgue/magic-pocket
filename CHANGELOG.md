@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+### Added
+- `object_hash` の runtime resolver に、origin 無しの URL path (`/static/img/a.<hash>.jpg`) を返す
+  `url_path()` (Rust は `url_path()` / `url_path_cached()`) と、期限に関係なく今すぐ release 表を確かめる
+  `refresh()` を追加しました。Rust では `url()` が毎回行う期限付きの確認 `refresh_if_due()` も公開し、
+  リクエストの初めに 1 回呼んで同期版だけで組み立てられるようにしました。
+  [runtime - static_url](https://worgue.github.io/magic-pocket/guide/runtime/#static_url)
+- `pocket static publish` / `adopt` (Python 版・Rust 版とも) で、1 件の PutObject / CopyObject が
+  一過性のエラー (接続の瞬断・timeout・5xx・`SlowDown`) で失敗したとき、その key だけ 1 秒・2 秒と待って
+  最大 3 回まで試し直すようにしました。数万件の publish が proxy の瞬断 1 件で止まらないためです
+
 ### Fixed
 - `object_hash` の runtime URL 解決 (Python `get_static_resolver` / Rust `StaticResolver::load`) が、
   `[cloudfront.<name>].domain` (alias) を宣言していても CloudFront の既定ドメイン (`*.cloudfront.net`) で
