@@ -241,7 +241,7 @@ let delete_cookie = logout_cookie_value();
 - release 表は初回の呼び出しで S3 から読みます（`current` → `releases/<id>.json.gz`）。初回の取得に失敗したら例外で、次の呼び出しで再試行します
 - 以降は呼び出し時に経過時間（既定 60 秒）を見て `current` を HEAD し、ETag が変わったときだけ release 表を 1 本読み直して差し替えます。読み直しに失敗したら前の版を使い続けます
 - 表に無い path はエラーです（hash なしの URL を黙って返しません）
-- 配信ドメインは `POCKET_CLOUDFRONT_<NAME>_DOMAIN`（上記の環境変数）→ `[cloudfront.<name>].domain` の順に取ります
+- 配信ドメインは `[cloudfront.<name>].domain`（alias）→ `POCKET_CLOUDFRONT_<NAME>_DOMAIN`（上記の環境変数。distribution の既定ドメイン `*.cloudfront.net`）の順に取ります。alias を宣言していれば画面と同じ origin の URL になります
 
 ### Python
 

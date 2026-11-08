@@ -322,13 +322,19 @@ pocket-rs static publish --stage=prod
 
 **移行手順（`deploy_hash` / `content_hash` から）**
 
-1. ルートの `versioning` を `object_hash` に変え、`sources` を宣言する（[設定ファイル](configuration.md#object_hash)）
-2. `pocket deploy --stage=dev`（CloudFront Function の構成が変わる）
-3. `pocket static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）
-4. map を commit する
-5. app の URL 解決を object_hash に切り替えて deploy する（[Django](django.md#object_hash) / [runtime](runtime.md#static_url)）
-6. prod は host で `pocket static adopt --stage=prod`（照合モード）
-7. 平置きの旧 key は凍結して残す（更新しない）。旧形式の URL を使う端末が残る間は、そのまま配信される
+`adopt` は route の `versioning` を `object_hash` に変えた pocket.toml を読みますが、deploy は要りません。**切り替え前に adopt を済ませておき、app の切り替えと pocket.toml の deploy を同じ commit で行う**と、配信と app が同時に切り替わります。
+
+1. ルートの `versioning` を `object_hash` に変え、`sources` を宣言する（[設定ファイル](configuration.md#object_hash)）。この時点では deploy しない
+2. `pocket static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）。CloudFront はまだ旧構成のままだが、hash 付きの名前の URL（`/static/img/a.<hash>.png`）は旧構成でもそのまま配信される（`deploy_hash` の hash を外す Function は `/static/` 直後の要素が git hash のときだけ働く）
+3. map を commit する
+4. app の URL 解決を object_hash に切り替え（[Django](django.md#object_hash) / [runtime](runtime.md#static_url)）、pocket.toml の変更と同じ commit で `pocket deploy --stage=dev`（CloudFront Function の構成が変わる）
+5. prod は host で `pocket static adopt --stage=prod`（照合モード）を先に済ませてから、同じ順で deploy する
+6. 平置きの旧 key は凍結して残す（更新しない）
+
+**旧形式の URL がいつまで使えるか**は、移行元で異なります。
+
+- `content_hash` から: 旧 URL は平置きの key（`/static/img/a.<manifest hash>.png`）をそのまま指すので、旧 key を残す限り deploy 後も配信される。開いたままの端末・ブラウザが旧 URL を持っていても切れない
+- `deploy_hash` から: 旧 URL（`/static/<git hash>/img/a.png`）は hash を外す CloudFront Function が無いと解決できず、**切り替えた deploy の時点で 403 になる**（object_hash の route にはこの Function が無い）。ページを開いたままの端末は次の読み込みまで画像が取れないので、端末が止まっている時間帯に切り替えるか、切り替え後にページを再読み込みさせる
 
 !!! warning "purge は配信を止める操作です"
     `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。一部の object が消せなかったとき（S3 の DeleteObjects は一部失敗でも HTTP 200 を返す）は、消せなかった key を列挙して終了コード 1 で止まります。原因を直して再実行すると残りが対象になります。

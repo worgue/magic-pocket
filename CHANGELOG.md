@@ -4,6 +4,20 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Fixed
+- `object_hash` の runtime URL 解決 (Python `get_static_resolver` / Rust `StaticResolver::load`) が、
+  `[cloudfront.<name>].domain` (alias) を宣言していても CloudFront の既定ドメイン (`*.cloudfront.net`) で
+  URL を組んでいたため、画面と別 origin になっていました。alias を優先し、無いときだけ
+  `POCKET_CLOUDFRONT_<NAME>_DOMAIN` を使うようにしました (Django の `_resolve_cloudfront_domain` と同じ順)
+
+### Changed
+- `pocket static` の移行手順を、切り替え前に `adopt` を済ませて app と pocket.toml を同じ deploy で
+  切り替える順に書き直し、`deploy_hash` からの移行では旧 URL が切り替え時点で 403 になることを明記しました
+  (`content_hash` からは旧 key を残す限り配信されます)。
+  [pocket static](https://worgue.github.io/magic-pocket/guide/cli/#pocket-static)
+
 ## [0.47.0](https://github.com/worgue/magic-pocket/releases/tag/0.47.0) - 2026-11-06
 
 ### Added

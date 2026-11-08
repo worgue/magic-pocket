@@ -47,6 +47,9 @@ pub struct PocketConfig {
 pub struct StaticRouteConfig {
     /// `[cloudfront.<name>]` の name
     pub cloudfront: String,
+    /// `[cloudfront.<name>].domain` (alias)。配信 URL のドメインはこれを優先し、無ければ
+    /// runtime が注入する `POCKET_CLOUDFRONT_<NAME>_DOMAIN` (distribution の既定ドメイン)
+    pub cloudfront_domain: Option<String>,
     /// route の `ref` (無ければ None)
     pub route_ref: Option<String>,
     /// route の論理名 (path_pattern から導出。`/static/*` → `static`)
@@ -255,6 +258,7 @@ struct ApiGatewayToml {
 /// (routes 等は CLI 専用なので無視する)
 #[derive(Debug, Deserialize)]
 struct CloudFrontToml {
+    domain: Option<String>,
     #[serde(default)]
     enable_origin_verify: bool,
     waf: Option<WafToml>,
@@ -503,6 +507,7 @@ fn parse_cloudfront(
                     .unwrap_or_else(|| format!("pocket_static/{name}-{route_name}.map"));
                 static_routes.push(StaticRouteConfig {
                     cloudfront: name.clone(),
+                    cloudfront_domain: c.domain.clone(),
                     route_ref: r.route_ref.clone(),
                     url_prefix: route_url_prefix(&r.path_pattern),
                     meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
@@ -1136,6 +1141,7 @@ sources = [{ name = "img", dir = "img" }]
             vec![
                 StaticRouteConfig {
                     cloudfront: "media".into(),
+                    cloudfront_domain: None,
                     route_ref: None,
                     route_name: "img-v2".into(),
                     url_prefix: "/img/v2/".into(),
@@ -1154,6 +1160,7 @@ sources = [{ name = "img", dir = "img" }]
                 },
                 StaticRouteConfig {
                     cloudfront: "web".into(),
+                    cloudfront_domain: Some("example.com".into()),
                     route_ref: Some("static".into()),
                     route_name: "static".into(),
                     url_prefix: "/static/".into(),

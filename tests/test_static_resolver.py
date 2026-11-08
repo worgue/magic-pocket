@@ -150,6 +150,8 @@ def test_refresh_failure_keeps_previous_table(s3):
 
 def test_get_static_resolver_from_settings(use_toml, monkeypatch, s3):
     use_toml("tests/data/toml/cloudfront_object_hash.toml")
+    # 宣言した domain (alias) が、runtime の注入する distribution 既定ドメインより優先
+    # (画面と同じ origin の URL を返す)
     monkeypatch.setenv("POCKET_CLOUDFRONT_WEB_DOMAIN", "d123.cloudfront.net")
     monkeypatch.setattr(resolver_module, "_resolvers", {})
     _publish(s3, [MapEntry("a.txt", H1, "data", True)])
@@ -157,18 +159,29 @@ def test_get_static_resolver_from_settings(use_toml, monkeypatch, s3):
     assert resolver.bucket == BUCKET
     assert resolver.meta_prefix == META
     assert resolver.url("a.txt") == (
-        "https://d123.cloudfront.net/static/a.aaaaaaaaaaaaaaaa.txt"
+        "https://cdn.example.com/static/a.aaaaaaaaaaaaaaaa.txt"
     )
     # ref 省略でも object_hash route が 1 つなら特定できる。同じ instance を返す
     assert get_static_resolver("web", "static", stage="dev") is resolver
 
 
-def test_get_static_resolver_falls_back_to_declared_domain(use_toml, monkeypatch, s3):
-    use_toml("tests/data/toml/cloudfront_object_hash.toml")
-    monkeypatch.delenv("POCKET_CLOUDFRONT_WEB_DOMAIN", raising=False)
+def test_get_static_resolver_falls_back_to_distribution_domain(
+    use_toml, monkeypatch, s3
+):
+    # domain の宣言が無ければ POCKET_CLOUDFRONT_<NAME>_DOMAIN (*.cloudfront.net) を使う
+    use_toml("tests/data/toml/cloudfront_object_hash_no_domain.toml")
+    monkeypatch.setenv("POCKET_CLOUDFRONT_WEB_DOMAIN", "d123.cloudfront.net")
     monkeypatch.setattr(resolver_module, "_resolvers", {})
     resolver = get_static_resolver("web", stage="dev")
-    assert resolver.base_url == "https://cdn.example.com/static/"
+    assert resolver.base_url == "https://d123.cloudfront.net/static/"
+
+
+def test_get_static_resolver_without_any_domain(use_toml, monkeypatch, s3):
+    use_toml("tests/data/toml/cloudfront_object_hash_no_domain.toml")
+    monkeypatch.delenv("POCKET_CLOUDFRONT_WEB_DOMAIN", raising=False)
+    monkeypatch.setattr(resolver_module, "_resolvers", {})
+    with pytest.raises(RuntimeError, match="配信ドメインが分かりません"):
+        get_static_resolver("web", stage="dev")
 
 
 def test_get_static_resolver_unknown_route(use_toml, monkeypatch):

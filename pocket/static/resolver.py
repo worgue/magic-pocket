@@ -154,9 +154,11 @@ def get_static_resolver(
     """pocket.toml の `[cloudfront.<distribution>]` の object_hash route の resolver。
 
     route は route の `ref`。省略時は distribution 内の object_hash route が 1 つ
-    だけならそれ。配信ドメインは `POCKET_CLOUDFRONT_<NAME>_DOMAIN` (runtime が
-    注入) → `[cloudfront.<name>].domain` の順に取る。同じ引数には同じ instance を
-    返す (release 表の cache を共有する)。
+    だけならそれ。配信ドメインは `[cloudfront.<name>].domain` (alias) →
+    `POCKET_CLOUDFRONT_<NAME>_DOMAIN` (runtime が注入する distribution の既定ドメイン)
+    の順に取る (django の `_resolve_cloudfront_domain` と同じ優先順。画面と同じ
+    origin の URL を返すため)。同じ引数には同じ instance を返す (release 表の cache
+    を共有する)。
     """
     cache_key = (distribution, route)
     with _resolvers_lock:
@@ -188,12 +190,13 @@ def _build_resolver(
             " route の ref を指定してください" % (distribution, len(candidates))
         )
     target = candidates[0]
-    domain = os.environ.get("POCKET_CLOUDFRONT_%s_DOMAIN" % distribution.upper())
-    domain = domain or cf.domain
+    domain = cf.domain or os.environ.get(
+        "POCKET_CLOUDFRONT_%s_DOMAIN" % distribution.upper()
+    )
     if not domain:
         raise RuntimeError(
             "cloudfront '%s' の配信ドメインが分かりません"
-            " (POCKET_CLOUDFRONT_%s_DOMAIN が未設定で domain の宣言も無い)"
+            " (domain の宣言が無く POCKET_CLOUDFRONT_%s_DOMAIN も未設定)"
             % (distribution, distribution.upper())
         )
     return StaticResolver(

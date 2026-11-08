@@ -13,7 +13,7 @@
 //! ```ignore
 //! use magic_pocket_rs::static_url::StaticResolver;
 //!
-//! // 起動時 (set_envs の後。POCKET_CLOUDFRONT_<NAME>_DOMAIN を読む)
+//! // 起動時 (set_envs の後。[cloudfront.<name>].domain が無ければ POCKET_CLOUDFRONT_<NAME>_DOMAIN を読む)
 //! let config = magic_pocket_rs::config::load_config("prod")?;
 //! let resolver = StaticResolver::load(&config, "web", Some("static")).await?;
 //!
@@ -249,9 +249,10 @@ impl S3StaticResolver {
     /// pocket.toml の `[cloudfront.<distribution>]` の object_hash route の resolver。
     ///
     /// `route_ref` は route の `ref`。None なら distribution 内の object_hash route が
-    /// 1 つだけのときそれ。配信ドメインは runtime が注入する
-    /// `POCKET_CLOUDFRONT_<NAME>_DOMAIN` から取る。初回の current + release 表を
-    /// ここで読む (失敗は Err)
+    /// 1 つだけのときそれ。配信ドメインは `[cloudfront.<name>].domain` (alias) →
+    /// runtime が注入する `POCKET_CLOUDFRONT_<NAME>_DOMAIN` (distribution の既定ドメイン)
+    /// の順に取る (Python の `get_static_resolver` と同じ。画面と同じ origin の URL を
+    /// 返すため)。初回の current + release 表をここで読む (失敗は Err)
     pub async fn load(
         config: &PocketConfig,
         distribution: &str,
@@ -274,16 +275,7 @@ impl S3StaticResolver {
             )));
         }
         let route = candidates[0];
-        let env_key = format!("POCKET_CLOUDFRONT_{}_DOMAIN", distribution.to_uppercase());
-        let domain = std::env::var(&env_key)
-            .ok()
-            .filter(|d| !d.is_empty())
-            .ok_or_else(|| {
-                PocketError::Config(format!(
-                    "cloudfront '{distribution}' の配信ドメインが分かりません ({env_key} が未設定。\
-                     set_envs の後に呼んでください)"
-                ))
-            })?;
+        let domain = resolve_domain(distribution, route.cloudfront_domain.as_deref())?;
         let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .region(aws_config::Region::new(config.region.clone()))
             .load()
@@ -298,6 +290,24 @@ impl S3StaticResolver {
         resolver.ensure_loaded().await?;
         Ok(resolver)
     }
+}
+
+/// 配信ドメイン: `[cloudfront.<name>].domain` (alias) → `POCKET_CLOUDFRONT_<NAME>_DOMAIN`。
+/// Python `pocket.static.resolver._build_resolver` と同じ優先順
+fn resolve_domain(distribution: &str, declared: Option<&str>) -> Result<String> {
+    if let Some(d) = declared.filter(|d| !d.is_empty()) {
+        return Ok(d.to_string());
+    }
+    let env_key = format!("POCKET_CLOUDFRONT_{}_DOMAIN", distribution.to_uppercase());
+    std::env::var(&env_key)
+        .ok()
+        .filter(|d| !d.is_empty())
+        .ok_or_else(|| {
+            PocketError::Config(format!(
+                "cloudfront '{distribution}' の配信ドメインが分かりません (domain の宣言が無く \
+                 {env_key} も未設定。set_envs の後に呼んでください)"
+            ))
+        })
 }
 
 impl<S: StaticStore> StaticResolver<S> {
@@ -542,6 +552,30 @@ mod tests {
                 case.path
             );
         }
+    }
+
+    #[test]
+    fn test_resolve_domain_prefers_declared_alias_over_env() {
+        // env は process 全体で共有されるので、他テストと衝突しない distribution 名を使う
+        std::env::set_var("POCKET_CLOUDFRONT_RD_ALIAS_DOMAIN", "d123.cloudfront.net");
+        assert_eq!(
+            resolve_domain("rd_alias", Some("cdn.example.com")).unwrap(),
+            "cdn.example.com"
+        );
+        assert_eq!(
+            resolve_domain("rd_alias", None).unwrap(),
+            "d123.cloudfront.net"
+        );
+        assert_eq!(
+            resolve_domain("rd_alias", Some("")).unwrap(),
+            "d123.cloudfront.net"
+        );
+        std::env::remove_var("POCKET_CLOUDFRONT_RD_ALIAS_DOMAIN");
+        let err = resolve_domain("rd_alias", None).unwrap_err();
+        assert!(
+            err.to_string().contains("配信ドメインが分かりません"),
+            "{err}"
+        );
     }
 
     fn gzip(json: &str) -> Vec<u8> {
