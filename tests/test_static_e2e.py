@@ -478,6 +478,8 @@ def test_purge_deletes_only_release_referenced_keys(prj: Project):
     new_a_key = "static/img/a.%s.jpg" % _sha(b"A2")[:16]
     prj.s3.put_object(Bucket=BUCKET, Key="static/unrelated.txt", Body=b"keep")
     keys_before = prj.keys()
+    meta_before = {k: prj.body(k) for k in keys_before if k.startswith(META)}
+    assert len(meta_before) == 3  # current + release 表 2 つ
     # 2 release が参照する key 4 件 (a の新旧・b・chunk) が対象
     res = prj.ok("purge", "--stage", STAGE, "--dry-run")
     assert "削除対象 4 件" in res.stderr
@@ -487,10 +489,10 @@ def test_purge_deletes_only_release_referenced_keys(prj: Project):
     assert prj.keys() == keys_before
     res = prj.ok("purge", "--stage", STAGE, "-y")
     assert "4 件を削除しました" in res.stderr
-    keys = prj.keys()
     assert prj.content_keys() == {"static/unrelated.txt"}
-    assert META + "current" in keys
-    assert not {A_KEY, new_a_key, B_KEY, CHUNK_KEY} & keys
+    # current と release 表は本文ごと残す
+    meta_after = {k: prj.body(k) for k in prj.keys() if k.startswith(META)}
+    assert meta_after == meta_before
     # purge → publish で同じ key に戻る
     res = prj.ok("publish", "--stage", STAGE, "--allow-dirty")
     assert _counts(res.stderr)["upload"] == 3
