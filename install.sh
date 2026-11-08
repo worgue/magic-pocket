@@ -89,9 +89,14 @@ mkdir -p "$install_dir"
 # 実行中のバイナリを壊さないよう、同じディレクトリに置いてから rename する
 cp "$tmp/$name/$BIN" "$dest.tmp.$$"
 chmod 755 "$dest.tmp.$$"
+# 置き場所で実行できること (noexec・共有ライブラリ不足でない) を確かめてから置き換える
+if ! new=$("$dest.tmp.$$" --version); then
+    rm -f "$dest.tmp.$$"
+    die "$install_dir で $BIN を実行できません (noexec の mount か、必要なライブラリが無い可能性があります)。既存のファイルは変えていません"
+fi
 mv -f "$dest.tmp.$$" "$dest"
 
-echo "入れました: $dest ($("$dest" --version))"
+echo "入れました: $dest ($new)"
 case ":$PATH:" in
     *":$install_dir:"*) ;;
     *) echo "注意: $install_dir が PATH にありません" >&2 ;;
