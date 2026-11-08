@@ -121,10 +121,10 @@ uv run pyright
 - **`magic-pocket` (runtime, リポジトリルート)**: Lambda ランタイムに同梱される。全ユーザーの Lambda にバンドルされるため、**依存は最小限に保つ**こと。新規の実行時依存を安易に追加しない。
 - **`magic-pocket-cli` (`packages/magic-pocket-cli/`)**: deploy / CLI 専用。`requests` 等の重い依存はこちらに置く。
 - **`magic-pocket-cli-rs` (`crates/pocket-cli/`、bin `pocket-rs`)**: CLI の Rust 版 (段階移行中。
-  現状は `pocket static` 系のみ)。**Rust に移したコマンドの新機能は Rust 版だけに実装する**
-  (Python 版は一本化 = 削除まで凍結し、不具合修正だけ入れる。修正は両方に入れて
-  `tests/test_static_parity.py` を通す。parity テストは既存の挙動の一致を固定するもので、
-  Rust 版だけの新機能は対象外)。未移植のコマンドは Python 版だけに実装する。
+  現状は `static` 系のみ)。**Rust に移したコマンドの新機能は Rust 版だけに実装する**
+  (静的系は Rust 版に一本化済みで、Python 版 `pocket static` は `pocket-rs static` への
+  案内だけを出す stub)。
+  未移植のコマンドは Python 版だけに実装する。
   どのコマンドがどちらかは `docs/guide/cli.md` の「コマンドごとの実装の所在」の表が正で、
   移植したら表を更新する。
   Rust lib (`crates/pocket-rs`) には CLI 用の依存を足さない (runtime の依存を増やさない)。

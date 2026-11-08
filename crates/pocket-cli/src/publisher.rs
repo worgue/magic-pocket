@@ -1,5 +1,5 @@
-//! `versioning = "object_hash"` の route の publish エンジン (Python の
-//! `pocket_cli.static_publish.StaticPublisher` と同じ契約)。
+//! `versioning = "object_hash"` の route の publish エンジン (旧 Python 版
+//! `StaticPublisher` の契約を引き継ぐ)。
 //!
 //! - 同じ key に別の内容は載らない: PutObject は `If-None-Match: *` と `ChecksumSHA256`
 //!   を付け、412 なら既存の checksum を map の hash と照合する
@@ -296,7 +296,7 @@ impl StaticPublisher {
         let path = self.map_file();
         if !path.is_file() {
             bail!(
-                "map ファイルがありません: {}\n  初回は `pocket static publish --hash-generate` か `pocket static hash generate` で作ってください",
+                "map ファイルがありません: {}\n  初回は `pocket-rs static publish --hash-generate` か `pocket-rs static hash generate` で作ってください",
                 path.display()
             );
         }
@@ -952,7 +952,7 @@ pub fn warn(message: &str) {
     eprintln!("{message}");
 }
 
-/// `pocket static status` の表示用 (Python の `status_report` と同じキー順)
+/// `pocket-rs static status` の表示用 (旧 Python 版の `status_report` と同じキー順)
 pub async fn status_report(publisher: &StaticPublisher) -> Result<Value> {
     let mut report = Map::new();
     report.insert("route".into(), Value::String(publisher.route_label()));

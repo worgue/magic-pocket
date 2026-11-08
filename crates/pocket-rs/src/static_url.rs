@@ -1,7 +1,7 @@
 //! `versioning = "object_hash"` の route の runtime `static_url(path)`。
 //! Python 側 `pocket.static.StaticResolver` と同じ契約。
 //!
-//! `pocket static publish` が S3 の metadata prefix に置く current (JSON) → release 表
+//! `pocket-rs static publish` が S3 の metadata prefix に置く current (JSON) → release 表
 //! (gzip JSON、`path → rel_key`) を読み、論理 path を内容 hash 付きの URL にする。
 //! 表に無い path は [`PocketError::StaticPathNotFound`] (hash なしの URL を黙って返さない)。
 //! 初回の取得失敗は Err で、呼び出し側が次で再試行する。以降は [`StaticResolver::url`] の

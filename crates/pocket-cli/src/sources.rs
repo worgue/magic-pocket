@@ -1,4 +1,4 @@
-//! route の `sources` からローカルファイルを列挙する (Python の
+//! route の `sources` からローカルファイルを列挙する (旧 Python 版の
 //! `StaticPublisher.enumerate_sources` / `_walk_files` と同じ規則)。
 //!
 //! - `dir` 配下を再帰する。symlink は追わず、`.pocket` ディレクトリは除く

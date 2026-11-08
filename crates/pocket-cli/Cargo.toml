@@ -32,5 +32,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # sources の include / exclude (gitignore 風。Python 側は pathspec)
 ignore = "0.4"
-# PutObject の Content-Type (Python 側は mimetypes。環境依存なので parity の対象外)
+# PutObject の Content-Type (旧 Python 版は mimetypes)
 mime_guess = "2"

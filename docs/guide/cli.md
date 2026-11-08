@@ -241,28 +241,31 @@ pocket cleanup-deprecated --stage=dev
 - IAM ロールは全 region 共通です。複数 region で pocket を使っている場合は、全 region の更新後に実行してください。
 - `-y` / `--yes` で確認プロンプトを省略できます。
 
-### pocket static
+### pocket static {#pocket-static}
 
 `versioning = "object_hash"` のルート（[設定ファイル - object_hash](configuration.md#object_hash)）の静的ファイルを、内容 hash 付きの immutable key で S3 に上げます。deploy はこのルートに触りません。
 
+!!! warning "静的系は Rust 版 `pocket-rs` だけです"
+    `pocket static` 系は Rust 版 CLI の `pocket-rs static ...` に一本化しました。Python 版の `pocket static` は廃止し、何を渡しても `pocket-rs static ...` への案内を出して終了コード 2 で止まります。サブコマンド・オプション・出力と map / release / current の形式は旧 Python 版と同じなので、`pocket static ...` を `pocket-rs static ...` に読み替えるだけで移れます。導入は下の [Rust 版 CLI の導入](#pocket-rs) を参照してください。
+
 ```bash
 # map（path → 内容 hash）を書くだけ（upload しない）
-pocket static hash generate --stage=dev
+pocket-rs static hash generate --stage=dev
 
 # dev 向け: map を作り直してから publish（map は commit する）
-pocket static publish --stage=dev --hash-generate
+pocket-rs static publish --stage=dev --hash-generate
 
 # prod 向け: commit 済みの map と照合してから publish（op が host で実行）
-pocket static publish --stage=prod
+pocket-rs static publish --stage=prod
 
 # 既存の平置き key から server-side copy で移行
-pocket static adopt --stage=dev --hash-generate
+pocket-rs static adopt --stage=dev --hash-generate
 
 # current の release と map の release の一致を表示
-pocket static status --stage=dev
+pocket-rs static status --stage=dev
 
 # release が参照する object を全部消す（配信を止める操作）
-pocket static purge --stage=dev --dry-run
+pocket-rs static purge --stage=dev --dry-run
 ```
 
 | コマンド | 動作 |
@@ -274,7 +277,7 @@ pocket static purge --stage=dev --dry-run
 | `purge` | release が参照する object を全部消す（`current` と release 表は残す） |
 | `status` | `current` の release id とローカル map の release id の一致を表示する |
 
-共通オプション: `--name <cloudfront 名>` / `--route <ref か path_pattern>` で対象を絞る、`--jobs`（hash / upload の並列数、既定 8）。
+共通オプション: `--name <cloudfront 名>` / `--route <ref か path_pattern>` で対象を絞る、`--jobs`（hash / upload の並列数、既定 8）。診断メッセージは stderr に出ます。stdout は `status` の JSON だけです。
 
 **publish の動作**
 
@@ -292,43 +295,49 @@ pocket static purge --stage=dev --dry-run
 !!! note "既存 key の内容照合"
     `hashed = false` の source（名前に hash が無い）は、S3 に既にある key の内容を**必ず** HEAD で照合します（同じ名前で内容を変えた publish を止めるため）。`hashed = true` の key は名前に内容 hash が入っているので既定では存在確認だけで skip します。`--verify-existing` を付けると全件を照合します（件数分の HEAD が走ります）。
 
+**Rust 版 CLI の導入（`pocket-rs`）** {: #pocket-rs }
+
+`pocket-rs` は単一のバイナリで、Python は要りません。版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に 4 target（`aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`）のバイナリが添付されます。repo ルートの `install.sh` が環境に合う target を選び、sha256 を検証してから入れます。
+
+```bash
+# X.Y.Z は project の pin（magic-pocket の版）と同じ版。省略はできません（latest は入れません）
+curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z
+pocket-rs --version   # pocket-rs X.Y.Z
+```
+
+- 置き場所は `~/.local/bin/pocket-rs`（`POCKET_RS_INSTALL_DIR` で変更）。既存があれば版を表示してから上書きします
+- target は `uname` から決めます。Linux の x86_64 は glibc があれば `gnu`、無ければ（Alpine 等）静的リンクの `musl`、aarch64 は常に `musl` です。Intel Mac 向けは配っていません
+- 依存は `curl` / `tar` / `sha256sum`（または `shasum`）だけです。取得・検証に失敗すると非 0 で止まります
+- **CLI の版を project の pin と揃えてください**。map / release の format version が違うとエラーで止まります（黙って食い違うことはありません）
+
 **host で実行する（prod）**
 
 prod への publish は、op が host で実行します（CI には prod の credential を置かない。数十 GB を runner に通さない）。
 
-- `magic-pocket-cli` は project と独立に入ります: `uv tool install magic-pocket-cli`（`pocket` コマンド）。件数・容量が大きい project は下の **Rust 版 `pocket-rs`** を使います
+- host には上の `install.sh` で `pocket-rs` を入れます（project と独立。`deploy` 等に使う Python 版 `pocket` とは別に入れます）
 - `pocket.toml` のあるディレクトリで、その stage の AWS profile を使って実行します
-- 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket` がそのまま読めます
-- **host の CLI の版を project の pin と揃えてください**。map / release の format version が違うとエラーで止まります（黙って食い違うことはありません）
+- 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket-rs` がそのまま読めます
 
-**Rust 版 CLI（`pocket-rs`）** {: #pocket-rs }
+**VM / CI で使う**
 
-`pocket static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`）は Rust 版の `pocket-rs` でも実行できます。**サブコマンド・オプション・出力は Python 版と同じ**で（`pocket static ...` を `pocket-rs static ...` に読み替えるだけ）、map / release / current の形式も同じなので、同じ project を Python 版と Rust 版のどちらで publish しても結果は変わりません（両者の一致は CI の parity テストで固定しています）。数万件・数十 GB の publish エンジンとして、host で使う想定です。
+dev の publish を VM や CI で行うときも同じ `install.sh` で入れます。CI では版を project の pin から渡し、`PATH` に置き場所を足します。
 
-```bash
-# host (macOS arm64) に入れる。Release の asset は 4 target
-#   (aarch64-apple-darwin / x86_64-unknown-linux-gnu / x86_64-unknown-linux-musl / aarch64-unknown-linux-musl)
-target=aarch64-apple-darwin
-gh release download X.Y.Z --repo github.com/worgue/magic-pocket --pattern "pocket-rs-${target}.tar.gz*" --dir /tmp/pocket-rs
-(cd /tmp/pocket-rs && shasum -a 256 -c "pocket-rs-${target}.tar.gz.sha256" && tar xzf "pocket-rs-${target}.tar.gz")
-install -m 755 "/tmp/pocket-rs/pocket-rs-${target}/pocket-rs" ~/.local/bin/pocket-rs
-pocket-rs --version   # pocket-rs X.Y.Z
-
-# 使い方は Python 版と同じ
-pocket-rs static publish --stage=prod
+```yaml
+# GitHub Actions の例 (版は project の pin に合わせる)
+- name: pocket-rs を入れる
+  run: |
+    curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z
+    echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+- run: pocket-rs static publish --stage=dev
 ```
-
-- 版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に添付されます。**project の pin と同じ版**を入れてください
-- 診断メッセージは Python 版と同じく stderr に出ます。stdout は `status` の JSON だけです
-- Rust 版は `static` 系だけを持ちます。`deploy` 等は引き続き Python 版の `pocket` で行います（段階移行の第 1 段）
 
 **コマンドごとの実装の所在** {: #implementation-map }
 
-CLI は Python 版から Rust 版へ段階的に移行しています。どのコマンドがどちらで実装されているかは次の表のとおりで、**Rust に移したコマンドの新機能は Rust 版だけに入ります**（Python 版は一本化まで不具合修正のみ）。未移植のコマンドは Python 版だけです。
+CLI は Python 版から Rust 版へ段階的に移行しています。どのコマンドがどちらで実装されているかは次の表のとおりで、**Rust に移したコマンドの新機能は Rust 版だけに入ります**（静的系は Rust 版に一本化済み）。未移植のコマンドは Python 版だけです。
 
 | コマンド | 実装 | 補足 |
 |---|---|---|
-| `pocket static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs`**（Python 版 `pocket static` は同じ挙動で並走中） | 新機能は Rust 版のみ。Python 版は一本化（削除）まで不具合修正だけ |
+| `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
 | `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` / `context` / `runtime-config` / `django` | Python 版 `pocket` | |
@@ -340,10 +349,10 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 `adopt` は route の `versioning` を `object_hash` に変えた pocket.toml を読みますが、deploy は要りません。**切り替え前に adopt を済ませておき、app の切り替えと pocket.toml の deploy を同じ commit で行う**と、配信と app が同時に切り替わります。
 
 1. ルートの `versioning` を `object_hash` に変え、`sources` を宣言する（[設定ファイル](configuration.md#object_hash)）。この時点では deploy しない
-2. `pocket static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）。CloudFront はまだ旧構成のままだが、hash 付きの名前の URL（`/static/img/a.<hash>.png`）は旧構成でもそのまま配信される（`deploy_hash` の hash を外す Function は `/static/` 直後の要素が git hash のときだけ働く）
+2. `pocket-rs static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）。CloudFront はまだ旧構成のままだが、hash 付きの名前の URL（`/static/img/a.<hash>.png`）は旧構成でもそのまま配信される（`deploy_hash` の hash を外す Function は `/static/` 直後の要素が git hash のときだけ働く）
 3. map を commit する
 4. app の URL 解決を object_hash に切り替え（[Django](django.md#object_hash) / [runtime](runtime.md#static_url)）、pocket.toml の変更と同じ commit で `pocket deploy --stage=dev`（CloudFront Function の構成が変わる）
-5. prod は host で `pocket static adopt --stage=prod`（照合モード）を先に済ませてから、同じ順で deploy する
+5. prod は host で `pocket-rs static adopt --stage=prod`（照合モード）を先に済ませてから、同じ順で deploy する
 6. 平置きの旧 key は凍結して残す（更新しない）
 
 **旧形式の URL がいつまで使えるか**は、移行元で異なります。

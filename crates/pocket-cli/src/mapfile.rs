@@ -204,8 +204,7 @@ mod tests {
     #[test]
     fn release_id_matches_python() {
         // Python: hashlib.sha256(StaticMap("web/static") に同じ 3 entry を add した dumps()).hexdigest()[:16]
-        // (tests/test_static_parity.py が同じ map を Python で作って突き合わせる。ここでは
-        // 形式が固定であることだけを見る)
+        // (runtime の pocket.static.mapfile と同じ形式。ここでは形式が固定であることだけを見る)
         let text = sample().dumps();
         assert!(text.ends_with("img/b.jpg\taaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tdata\tH\n"));
     }

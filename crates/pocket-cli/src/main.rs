@@ -1,8 +1,8 @@
 //! `pocket-rs`: magic-pocket の Rust 版 CLI (第 1 段)。
 //!
-//! Python の `pocket static ...` (packages/magic-pocket-cli/pocket_cli/cli/static_cli.py) と
-//! 同じサブコマンド・引数・出力で、object_hash route の publish / adopt / purge / status /
-//! hash generate を行う。Python 版は parity テストの正典として残している。
+//! object_hash route の publish / adopt / purge / status / hash generate を行う。
+//! サブコマンド・引数・出力は旧 Python 版 `pocket static ...` (削除済み) を引き継いでいる。
+//! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
 mod mapfile;
 mod publisher;

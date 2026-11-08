@@ -90,7 +90,7 @@ fn default_true() -> bool {
     true
 }
 
-/// pocket.toml のうち `pocket static` (publish 側) が使う部分。runtime の
+/// pocket.toml のうち `pocket-rs static` (publish 側) が使う部分。runtime の
 /// [`PocketConfig`] と違い container を選ばない (複数 container でも読める)
 #[derive(Debug, Clone)]
 pub struct StaticConfig {
@@ -542,7 +542,7 @@ fn parse_s3_bucket_name(
     }
 }
 
-/// pocket.toml のうち `pocket static` が使う部分を読む (container を選ばない)
+/// pocket.toml のうち `pocket-rs static` が使う部分を読む (container を選ばない)
 pub fn load_static_config_from_path(path: &Path, stage: &str) -> Result<StaticConfig> {
     let content = std::fs::read_to_string(path).map_err(PocketError::Io)?;
     load_static_config_from_str(&content, stage)

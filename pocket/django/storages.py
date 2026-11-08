@@ -94,7 +94,7 @@ class ObjectHashStaticStorage(Storage):
     """`versioning = "object_hash"` の route の staticfiles backend。
 
     `url(name)` を S3 の release 表 (pocket.static.StaticResolver) から解決するだけ。
-    ファイルは `pocket static publish` が上げるので、保存系の操作はできない
+    ファイルは `pocket-rs static publish` が上げるので、保存系の操作はできない
     (collectstatic は Lambda では走らせない。ローカル開発は
     `POCKET_STATICFILES_BACKEND_OVERRIDE` で filesystem に切り替える)。
     release 表に無い name は `StaticPathNotFound` (hash なしの URL を黙って返さない)。
@@ -138,7 +138,7 @@ class ObjectHashStaticStorage(Storage):
     def _save(self, name, content):
         raise NotImplementedError(
             "ObjectHashStaticStorage には保存できません。"
-            "静的ファイルは `pocket static publish` で上げてください"
+            "静的ファイルは `pocket-rs static publish` で上げてください"
         )
 
     def delete(self, name):

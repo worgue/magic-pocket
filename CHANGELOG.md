@@ -6,13 +6,26 @@
 
 ## [Unreleased]
 
+### Removed
+- Python 版の `pocket static` (`hash generate` / `publish` / `adopt` / `purge` / `status`) を削除し、
+  静的系を Rust 版 `pocket-rs static ...` に一本化しました。サブコマンド・オプション・出力と
+  map / release / current の形式は同じなので、`pocket static ...` を `pocket-rs static ...` に
+  読み替えるだけで移れます。`pocket static` は移行先の案内を出して終了コード 2 で止まります。
+  runtime の URL 解決 (`pocket.static` / Django storage) は変わりません。
+  [pocket static](https://worgue.github.io/magic-pocket/guide/cli/#pocket-static)
+
 ### Added
+- `pocket-rs` を GitHub Release から入れる `install.sh` (repo ルート、POSIX sh) を追加しました。
+  `curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z`
+  で、環境に合う target を選び sha256 を検証してから `~/.local/bin/pocket-rs` に置きます。
+  版は必須です (project の pin と同じ版を入れる)。Python は要りません。
+  [Rust 版 CLI の導入](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs)
 - `object_hash` の runtime resolver に、origin 無しの URL path (`/static/img/a.<hash>.jpg`) を返す
   `url_path()` (Rust は `url_path()` / `url_path_cached()`) と、期限に関係なく今すぐ release 表を確かめる
   `refresh()` を追加しました。Rust では `url()` が毎回行う期限付きの確認 `refresh_if_due()` も公開し、
   リクエストの初めに 1 回呼んで同期版だけで組み立てられるようにしました。
   [runtime - static_url](https://worgue.github.io/magic-pocket/guide/runtime/#static_url)
-- `pocket static publish` / `adopt` (Python 版・Rust 版とも) で、1 件の PutObject / CopyObject が
+- `pocket-rs static publish` / `adopt` で、1 件の PutObject / CopyObject が
   一過性のエラー (接続の瞬断・timeout・5xx・`SlowDown`) で失敗したとき、その key だけ 1 秒・2 秒と待って
   最大 3 回まで試し直すようにしました。数万件の publish が proxy の瞬断 1 件で止まらないためです
 
@@ -24,8 +37,7 @@
 
 ### Changed
 - CLI の Python 版 → Rust 版の移行方針を docs に明記しました。Rust に移したコマンド (`pocket static` 系) の
-  新機能は Rust 版 `pocket-rs` だけに入り、Python 版 `pocket static` は一本化 (削除) まで不具合修正のみに
-  なります。どのコマンドがどちらの実装かは
+  新機能は Rust 版 `pocket-rs` だけに入ります (静的系は今回の版で Rust 版に一本化しました)。どのコマンドがどちらの実装かは
   [pocket static - コマンドごとの実装の所在](https://worgue.github.io/magic-pocket/guide/cli/#implementation-map)
 - `pocket static` の移行手順を、切り替え前に `adopt` を済ませて app と pocket.toml を同じ deploy で
   切り替える順に書き直し、`deploy_hash` からの移行では旧 URL が切り替え時点で 403 になることを明記しました
