@@ -322,6 +322,19 @@ pocket-rs static publish --stage=prod
 - 診断メッセージは Python 版と同じく stderr に出ます。stdout は `status` の JSON だけです
 - Rust 版は `static` 系だけを持ちます。`deploy` 等は引き続き Python 版の `pocket` で行います（段階移行の第 1 段）
 
+**コマンドごとの実装の所在** {: #implementation-map }
+
+CLI は Python 版から Rust 版へ段階的に移行しています。どのコマンドがどちらで実装されているかは次の表のとおりで、**Rust に移したコマンドの新機能は Rust 版だけに入ります**（Python 版は一本化まで不具合修正のみ）。未移植のコマンドは Python 版だけです。
+
+| コマンド | 実装 | 補足 |
+|---|---|---|
+| `pocket static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs`**（Python 版 `pocket static` は同じ挙動で並走中） | 新機能は Rust 版のみ。Python 版は一本化（削除）まで不具合修正だけ |
+| `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
+| `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
+| `settings` / `context` / `runtime-config` / `django` | Python 版 `pocket` | |
+
+移植が進んだらこの表を更新します。
+
 **移行手順（`deploy_hash` / `content_hash` から）**
 
 `adopt` は route の `versioning` を `object_hash` に変えた pocket.toml を読みますが、deploy は要りません。**切り替え前に adopt を済ませておき、app の切り替えと pocket.toml の deploy を同じ commit で行う**と、配信と app が同時に切り替わります。

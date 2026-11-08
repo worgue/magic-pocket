@@ -23,6 +23,10 @@
   `POCKET_CLOUDFRONT_<NAME>_DOMAIN` を使うようにしました (Django の `_resolve_cloudfront_domain` と同じ順)
 
 ### Changed
+- CLI の Python 版 → Rust 版の移行方針を docs に明記しました。Rust に移したコマンド (`pocket static` 系) の
+  新機能は Rust 版 `pocket-rs` だけに入り、Python 版 `pocket static` は一本化 (削除) まで不具合修正のみに
+  なります。どのコマンドがどちらの実装かは
+  [pocket static - コマンドごとの実装の所在](https://worgue.github.io/magic-pocket/guide/cli/#implementation-map)
 - `pocket static` の移行手順を、切り替え前に `adopt` を済ませて app と pocket.toml を同じ deploy で
   切り替える順に書き直し、`deploy_hash` からの移行では旧 URL が切り替え時点で 403 になることを明記しました
   (`content_hash` からは旧 key を残す限り配信されます)。
