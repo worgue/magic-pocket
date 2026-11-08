@@ -295,7 +295,7 @@ pocket-rs static purge --stage=dev --dry-run
 !!! note "既存 key の内容照合"
     `hashed = false` の source（名前に hash が無い）は、S3 に既にある key の内容を**必ず** HEAD で照合します（同じ名前で内容を変えた publish を止めるため）。`hashed = true` の key は名前に内容 hash が入っているので既定では存在確認だけで skip します。`--verify-existing` を付けると全件を照合します（件数分の HEAD が走ります）。
 
-**Rust 版 CLI の導入（`pocket-rs`）** {: #pocket-rs }
+#### Rust 版 CLI の導入（`pocket-rs`） {#pocket-rs}
 
 `pocket-rs` は単一のバイナリで、Python は要りません。版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に 4 target（`aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`）のバイナリが添付されます。repo ルートの `install.sh` が環境に合う target を選び、sha256 を検証してから入れます。
 
@@ -331,7 +331,7 @@ dev の publish を VM や CI で行うときも同じ `install.sh` で入れま
 - run: pocket-rs static publish --stage=dev
 ```
 
-**コマンドごとの実装の所在** {: #implementation-map }
+#### コマンドごとの実装の所在 {#implementation-map}
 
 CLI は Python 版から Rust 版へ段階的に移行しています。どのコマンドがどちらで実装されているかは次の表のとおりで、**Rust に移したコマンドの新機能は Rust 版だけに入ります**（静的系は Rust 版に一本化済み）。未移植のコマンドは Python 版だけです。
 
