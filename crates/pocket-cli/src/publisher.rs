@@ -150,13 +150,13 @@ fn is_transient<E: ProvideErrorMetadata>(e: &SdkError<E, HttpResponse>) -> bool 
 
 /// `op()` を一過性のエラーのときだけ最大 `attempts` 回まで繰り返す (1 件単位)。
 /// それ以外のエラーと、最後の試行の失敗はそのまま返す (publish 全体が止まる。
-/// 再実行で続きから進む)
+/// 再実行で続きから進む)。SdkError は大きいので Box で返す (clippy::result_large_err)
 async fn retry_transient<T, E, Fut>(
     what: &str,
     attempts: u32,
     base_delay: Duration,
     mut op: impl FnMut() -> Fut,
-) -> std::result::Result<T, SdkError<E, HttpResponse>>
+) -> std::result::Result<T, Box<SdkError<E, HttpResponse>>>
 where
     E: ProvideErrorMetadata + std::fmt::Debug,
     Fut: Future<Output = std::result::Result<T, SdkError<E, HttpResponse>>>,
@@ -174,7 +174,7 @@ where
                 tokio::time::sleep(delay).await;
                 attempt += 1;
             }
-            Err(e) => return Err(e),
+            Err(e) => return Err(Box::new(e)),
         }
     }
 }
@@ -471,8 +471,7 @@ impl StaticPublisher {
                     .await
             },
         )
-        .await
-        .map_err(Box::new)?;
+        .await?;
         Ok(())
     }
 
@@ -523,7 +522,7 @@ impl StaticPublisher {
         match result {
             Ok(_) => {}
             Err(e) if is_precondition_failed(&e) => return Ok(None),
-            Err(e) => return Err(s3_err(e, &format!("CopyObject {key}"))),
+            Err(e) => return Err(s3_err(*e, &format!("CopyObject {key}"))),
         }
         self.verify_existing(key, &local.entry(), Some(&local.md5))
             .await?;
@@ -1046,7 +1045,7 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().expect("runtime");
         // 2 回瞬断して 3 回目で成功
         let calls = Cell::new(0);
-        let result: std::result::Result<&str, PutErr> =
+        let result: std::result::Result<&str, Box<PutErr>> =
             rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
                 calls.set(calls.get() + 1);
                 let n = calls.get();
@@ -1062,16 +1061,19 @@ mod tests {
         assert_eq!(calls.get(), 3);
         // 試行回数を使い切ったら最後のエラーを返す
         let calls = Cell::new(0);
-        let result: std::result::Result<&str, PutErr> =
+        let result: std::result::Result<&str, Box<PutErr>> =
             rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
                 calls.set(calls.get() + 1);
                 async { Err(dispatch_failure()) }
             }));
-        assert!(matches!(result, Err(SdkError::DispatchFailure(_))));
+        assert!(matches!(
+            result.map_err(|e| *e),
+            Err(SdkError::DispatchFailure(_))
+        ));
         assert_eq!(calls.get(), 3);
         // 412 は再試行しない
         let calls = Cell::new(0);
-        let result: std::result::Result<&str, PutErr> =
+        let result: std::result::Result<&str, Box<PutErr>> =
             rt.block_on(retry_transient("PutObject k", 3, Duration::ZERO, || {
                 calls.set(calls.get() + 1);
                 async { Err(service_error("PreconditionFailed", 412)) }
