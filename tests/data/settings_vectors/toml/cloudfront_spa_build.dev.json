@@ -1,0 +1,269 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": null
+  },
+  "input": "tests/data/toml/cloudfront_spa_build.toml",
+  "masked": {
+    "backup": null,
+    "cloudfront": {
+      "web": {
+        "basic_auth": null,
+        "domain": null,
+        "enable_origin_verify": false,
+        "hosted_zone_id_override": null,
+        "managed_assets": null,
+        "redirect_from": [],
+        "routes": [
+          {
+            "build": {
+              "cmd": "just frontend-build",
+              "dir": "frontend/dist"
+            },
+            "delete_stale": null,
+            "handler": null,
+            "is_default": true,
+            "is_spa": true,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/web/app",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/web",
+            "path_pattern": "/static/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": "content_hash"
+          }
+        ],
+        "signing_key": null,
+        "token_secret": null,
+        "waf": null
+      }
+    },
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "testprj",
+      "region": "ap-southeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": null,
+      "lifecycle_rules": [],
+      "versioning": false
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-testprj",
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null,
+    "vpc": null
+  },
+  "settings": {
+    "backup": null,
+    "cloudfront": {
+      "web": {
+        "basic_auth": null,
+        "domain": null,
+        "enable_origin_verify": false,
+        "hosted_zone_id_override": null,
+        "managed_assets": null,
+        "redirect_from": [],
+        "routes": [
+          {
+            "build": {
+              "cmd": "just frontend-build",
+              "dir": "frontend/dist"
+            },
+            "delete_stale": null,
+            "handler": null,
+            "is_default": true,
+            "is_spa": true,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/web/app",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/web",
+            "path_pattern": "/static/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": "content_hash"
+          }
+        ],
+        "signing_key": null,
+        "token_secret": null,
+        "waf": null
+      }
+    },
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "testprj",
+      "region": "ap-southeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": null,
+      "lifecycle_rules": [],
+      "versioning": false
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-testprj",
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null,
+    "vpc": null
+  },
+  "stage": "dev"
+}

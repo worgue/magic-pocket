@@ -1,0 +1,381 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": null
+  },
+  "input": "example-tidb/pocket.toml",
+  "masked": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {
+      "main": {
+        "build": {
+          "backend": "depot",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": {
+          "caches": {
+            "default": {
+              "location_subdir": "{stage}",
+              "store": "locmem"
+            }
+          },
+          "project_dir": null,
+          "settings": {},
+          "storages": {
+            "default": {
+              "distribution": null,
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": null,
+              "static": false,
+              "store": "filesystem"
+            },
+            "staticfiles": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "static",
+              "static": true,
+              "store": "s3"
+            }
+          }
+        },
+        "dockerfile_path": "pocket.Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "management": {
+            "apigateway": null,
+            "command": "pocket.django.lambda_handlers.management_command_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 600
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "domain": null,
+              "hosted_zone_id_override": null
+            },
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/example-permissions-boundary",
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "DJANGO_SUPERUSER_PASSWORD": {
+              "options": {
+                "length": 16
+              },
+              "shared": false,
+              "type": "password"
+            },
+            "SECRET_KEY": {
+              "options": {
+                "length": 50
+              },
+              "shared": false,
+              "type": "password"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {
+            "DATABASE_URL": {
+              "name": null,
+              "store": null,
+              "type": "tidb_database_url"
+            }
+          }
+        },
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "pocket-example",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "sandbox"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": null,
+      "lifecycle_rules": [],
+      "versioning": false
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-pocket-example",
+    "stage": "dev",
+    "tidb": {
+      "cluster": null,
+      "private_key": "****",
+      "project": null,
+      "provisioning": "command",
+      "public_key": "****",
+      "region": "ap-northeast-1"
+    },
+    "upstash": null,
+    "vpc": null
+  },
+  "settings": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {
+      "main": {
+        "build": {
+          "backend": "depot",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": {
+          "caches": {
+            "default": {
+              "location_subdir": "{stage}",
+              "store": "locmem"
+            }
+          },
+          "project_dir": null,
+          "settings": {},
+          "storages": {
+            "default": {
+              "distribution": null,
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": null,
+              "static": false,
+              "store": "filesystem"
+            },
+            "staticfiles": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "static",
+              "static": true,
+              "store": "s3"
+            }
+          }
+        },
+        "dockerfile_path": "pocket.Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "management": {
+            "apigateway": null,
+            "command": "pocket.django.lambda_handlers.management_command_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 600
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "domain": null,
+              "hosted_zone_id_override": null
+            },
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/example-permissions-boundary",
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "DJANGO_SUPERUSER_PASSWORD": {
+              "options": {
+                "length": 16
+              },
+              "shared": false,
+              "type": "password"
+            },
+            "SECRET_KEY": {
+              "options": {
+                "length": 50
+              },
+              "shared": false,
+              "type": "password"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {
+            "DATABASE_URL": {
+              "name": null,
+              "store": null,
+              "type": "tidb_database_url"
+            }
+          }
+        },
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "pocket-example",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "sandbox"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": null,
+      "lifecycle_rules": [],
+      "versioning": false
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-pocket-example",
+    "stage": "dev",
+    "tidb": {
+      "cluster": null,
+      "private_key": "vector-tidb-private-key",
+      "project": null,
+      "provisioning": "command",
+      "public_key": "vector-tidb-public-key",
+      "region": "ap-northeast-1"
+    },
+    "upstash": null,
+    "vpc": null
+  },
+  "stage": "dev"
+}

@@ -1,0 +1,51 @@
+# [general] / [iam] の全 field と stage 上書き (入れ子 table の merge・配列の置換)
+[general]
+namespace = "myorg"
+prefix_template = "{project}-{stage}-"
+region = "us-west-2"
+project_name = "vectorprj"
+stages = ["dev", "prod", "stg"]
+s3_fallback_bucket_name = "fallback-bucket"
+
+[general.django_fallback]
+project_dir = "src"
+
+[general.django_fallback.storages]
+default = { store = "s3", location = "media", options = { querystring_auth = false, max_age = 60 } }
+staticfiles = { store = "s3", distribution = "web", route = "static", static = true, manifest = true, publish = "command", link = true }
+management = { store = "filesystem", location = "management" }
+
+[general.django_fallback.caches]
+default = { store = "redis", location_subdir = "{stage}-cache" }
+local = { store = "efs" }
+
+[general.django_fallback.settings]
+ALLOWED_HOSTS = ["a.example.com", "b.example.com"]
+TIMEOUT = 1.5
+DEBUG = false
+NESTED = { first = { second = [1, { third = "x" }] } }
+UTC_AT = 1979-05-27T07:32:00Z
+OFFSET_AT = 1979-05-27T00:32:00.5-07:00
+ZERO_OFFSET_AT = 1979-05-27T07:32:00+00:00
+LOCAL_AT = 1979-05-27 07:32:00.123456789
+LOCAL_DATE = 1979-05-27
+LOCAL_TIME = 07:32:00.25
+NOT_A_NUMBER = nan
+INFINITE = -inf
+
+[iam]
+external_roles = true
+namespace = "platform"
+
+# 入れ子 table は merge、配列は置き換え
+[prod.general.django_fallback.settings]
+ALLOWED_HOSTS = ["prod.example.com"]
+DEBUG = true
+NESTED = { first = { other = "y" } }
+
+[prod.iam]
+external_roles = false
+
+# stage と同名の key は stage 上書きの table として扱う
+[stg.general]
+namespace = "stg-ns"

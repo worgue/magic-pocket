@@ -1,0 +1,7 @@
+# Rust 側で照合する settings vector (tests/data/settings_vectors からの相対、.json 抜き)。
+# 移行中だけの表: 移植した section だけを含む vector から足し、分割 8 でこの表ごと
+# 消して全件を対象にする。
+toml_vectors/general_full.dev
+toml_vectors/general_full.prod
+toml_vectors/general_full.stg
+toml_vectors/general_minimal.dev

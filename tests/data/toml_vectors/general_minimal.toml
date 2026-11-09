@@ -1,0 +1,4 @@
+# 必須だけの [general]。project_name は LoadContext の既定で補う
+[general]
+region = "ap-northeast-1"
+stages = ["dev"]
