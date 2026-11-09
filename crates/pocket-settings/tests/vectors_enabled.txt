@@ -5,3 +5,6 @@ toml_vectors/general_full.dev
 toml_vectors/general_full.prod
 toml_vectors/general_full.stg
 toml_vectors/general_minimal.dev
+toml_vectors/s3_vpc.dev
+toml_vectors/s3_vpc.prod
+toml_vectors/s3_vpc.shared

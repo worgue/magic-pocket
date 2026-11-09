@@ -2,6 +2,7 @@
 
 pub mod django;
 pub mod general;
+pub mod s3;
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +10,8 @@ use crate::error::{path, SettingsError};
 use crate::types::TagStr;
 
 pub use django::{CacheStore, Django, DjangoCache, DjangoStorage, PublishMode, StorageStore};
-pub use general::{GeneralSettings, Iam};
+pub use general::{Efs, GeneralSettings, Iam, Vpc};
+pub use s3::{OneOrMany, S3Cors, S3LifecycleRule, S3};
 
 /// pocket.toml の top-level に書ける key (Python の `Settings.model_fields` から
 /// `stage` を除いたもの)。stage 上書きの table と区別する前処理で使う
@@ -34,7 +36,6 @@ pub(crate) const TOP_LEVEL_KEYS: &[&str] = &[
 /// まだ Rust に移していない top-level の section と、宣言が無いときの JSON 値が
 /// `{}` (dict の section) か `null` か。移した section から順に外す (移行中だけの表)
 const UNPORTED_SECTIONS: &[(&str, bool)] = &[
-    ("vpc", false),
     ("container", true),
     ("neon", false),
     ("tidb", false),
@@ -44,7 +45,6 @@ const UNPORTED_SECTIONS: &[(&str, bool)] = &[
     ("backup", false),
     ("ses", false),
     ("inbound", true),
-    ("s3", false),
     ("cloudfront", true),
     ("scheduler", false),
 ];
@@ -54,6 +54,10 @@ const UNPORTED_SECTIONS: &[(&str, bool)] = &[
 pub struct Settings {
     pub general: GeneralSettings,
     pub stage: TagStr,
+    #[serde(default)]
+    pub vpc: Option<Vpc>,
+    #[serde(default)]
+    pub s3: Option<S3>,
     #[serde(default)]
     pub iam: Iam,
 }
@@ -88,6 +92,12 @@ impl Settings {
     /// Python の validator を宣言順に (入れ子のモデルが先)
     pub(crate) fn validate(&mut self) -> Result<(), SettingsError> {
         self.general.validate(&path(&["general"]))?;
+        if let Some(vpc) = &self.vpc {
+            vpc.validate(&path(&["vpc"]))?;
+        }
+        if let Some(s3) = &self.s3 {
+            s3.validate(&path(&["s3"]))?;
+        }
         Ok(())
     }
 }

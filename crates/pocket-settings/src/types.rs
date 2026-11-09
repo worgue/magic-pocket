@@ -53,6 +53,45 @@ constrained_str!(
     Some(128)
 );
 
+constrained_str!(
+    /// 変数 (`{stage}` 等) を含められる名前の書式 (Python の `FormatStr`)
+    FormatStr,
+    "^[a-z0-9{][{}a-z0-9._-]*$",
+    Some(128)
+);
+
+constrained_str!(
+    /// EFS の mount 先 (`/mnt/` 配下)
+    EfsMountPath,
+    "^/mnt/.*",
+    None
+);
+
+constrained_str!(
+    /// EFS の access point の path
+    EfsAccessPointPath,
+    "^/.+",
+    None
+);
+
+constrained_str!(
+    /// AZ の末尾 1 文字 (Vpc.zone_suffixes の要素)
+    ZoneSuffix,
+    "^",
+    Some(1)
+);
+
+impl FormatStr {
+    /// `{namespace}` / `{stage}` / `{project}` 等を展開する
+    pub fn format(&self, vars: &[(&str, &str)]) -> String {
+        let mut out = self.0.clone();
+        for (k, v) in vars {
+            out = out.replace(&format!("{{{k}}}"), v);
+        }
+        out
+    }
+}
+
 /// 型を問わない値 (Python の `dict[str, Any]` の値)。
 ///
 /// toml の datetime は Python の `model_dump(mode="json")` と同じ ISO 文字列にする。
@@ -152,3 +191,39 @@ fn python_isoformat(dt: &toml::value::Datetime) -> String {
     }
     out
 }
+
+/// 範囲制約付きの整数を定義する (Python の `Field(ge=..., le=...)`)。
+/// 範囲外は型エラーとして扱う (error vector では message を比べない)
+macro_rules! ranged_int_fn {
+    ($name:ident, $opt:ident, $ge:expr, $le:expr) => {
+        #[allow(dead_code)]
+        pub(crate) fn $name<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
+            let v = i64::deserialize(d)?;
+            check_range(v, $ge, $le).map_err(D::Error::custom)?;
+            Ok(v)
+        }
+
+        #[allow(dead_code)]
+        pub(crate) fn $opt<'de, D: Deserializer<'de>>(d: D) -> Result<Option<i64>, D::Error> {
+            let v = i64::deserialize(d)?;
+            check_range(v, $ge, $le).map_err(D::Error::custom)?;
+            Ok(Some(v))
+        }
+    };
+}
+
+fn check_range(v: i64, ge: Option<i64>, le: Option<i64>) -> Result<(), String> {
+    if let Some(ge) = ge {
+        if v < ge {
+            return Err(format!("Input should be greater than or equal to {ge}"));
+        }
+    }
+    if let Some(le) = le {
+        if v > le {
+            return Err(format!("Input should be less than or equal to {le}"));
+        }
+    }
+    Ok(())
+}
+
+ranged_int_fn!(ge1, opt_ge1, Some(1), None);

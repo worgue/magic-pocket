@@ -70,6 +70,7 @@ impl Settings {
         }
         data.insert("stage".to_string(), toml::Value::String(stage.to_string()));
         fill_project_name(&mut data, &ctx.project_name_fallback);
+        resolve_vpc(&mut data)?;
         reject_legacy_keys(&data)?;
         let mut data = toml::Value::Table(data);
         mark_datetimes(&mut data);
@@ -238,6 +239,55 @@ fn fill_project_name(data: &mut toml::Table, fallback: &str) {
     }
 }
 
+/// `use_vpc` から `container.<name>.vpc` と `rds.vpc` を決める (Python の `resolve_vpc`)。
+/// 未指定は `[vpc]` があれば使う、true は `[vpc]` 必須、それ以外は使わない
+fn resolve_vpc(data: &mut toml::Table) -> Result<(), SettingsError> {
+    let vpc = data
+        .get("vpc")
+        .filter(|v| !matches!(v, toml::Value::Table(t) if t.is_empty()))
+        .cloned();
+    let mut sections: Vec<(String, &mut toml::Table)> = Vec::new();
+    let (containers, rest): (Vec<_>, Vec<_>) = data
+        .iter_mut()
+        .filter(|(k, _)| *k == "container" || *k == "rds")
+        .partition(|(k, _)| *k == "container");
+    for (_, value) in containers {
+        if let toml::Value::Table(containers) = value {
+            for (name, c) in containers.iter_mut() {
+                if let toml::Value::Table(c) = c {
+                    sections.push((format!("container.{name}"), c));
+                }
+            }
+        }
+    }
+    for (_, value) in rest {
+        if let toml::Value::Table(rds) = value {
+            sections.push(("rds".to_string(), rds));
+        }
+    }
+    for (label, section) in sections {
+        match section.remove("use_vpc") {
+            None => {
+                if let Some(vpc) = &vpc {
+                    section.insert("vpc".to_string(), vpc.clone());
+                }
+            }
+            Some(toml::Value::Boolean(true)) => {
+                let Some(vpc) = &vpc else {
+                    return Err(SettingsError::value(
+                        Vec::new(),
+                        format!("{label}.use_vpc=true ですが [vpc] が定義されていません"),
+                    ));
+                };
+                section.insert("vpc".to_string(), vpc.clone());
+            }
+            // false (と true 以外の値) は VPC を使わない
+            Some(_) => {}
+        }
+    }
+    Ok(())
+}
+
 /// 廃止したキーを移行案内つきで拒否する (Python の `mode="before"` validator)。
 /// 未知キーとして弾くより先に見る
 fn reject_legacy_keys(data: &toml::Table) -> Result<(), SettingsError> {
@@ -260,6 +310,7 @@ fn reject_legacy_keys(data: &toml::Table) -> Result<(), SettingsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::PathSeg;
 
     #[test]
     fn test_project_name_fallback_reads_pyproject_upward() {
@@ -290,7 +341,7 @@ mod tests {
     #[test]
     fn test_error_path_and_kind() {
         use crate::ErrorKind::*;
-        let cases: &[(&str, &str, Vec<crate::PathSeg>, crate::ErrorKind)] = &[
+        let cases: &[(&str, &str, Vec<PathSeg>, crate::ErrorKind)] = &[
             ("[general]\nstages = [\"dev\"]\n", "dev", path(&["general", "region"]), Missing),
             ("[general]\nregion = \"r\"\nstages = [\"dev\"]\nfoo = 1\n", "dev", path(&["general", "foo"]), Extra),
             ("[general]\nregion = 5\nstages = [\"dev\"]\n", "dev", path(&["general", "region"]), Type),
@@ -312,6 +363,13 @@ mod tests {
             ("[general]\nregion = \"r\"\nstages = [\"dev\"]\n", "prod", Vec::new(), Value),
             (&format!("{BASE}[foo]\n"), "dev", Vec::new(), Value),
             ("[general\n", "dev", Vec::new(), Syntax),
+            (&format!("{BASE}[vpc]\nref = \"x\"\n"), "dev", path(&["vpc"]), Value),
+            (&format!("{BASE}[vpc]\nref = \"x\"\nzone_suffixes = [\"ab\"]\n"), "dev", vec![PathSeg::Key("vpc".into()), PathSeg::Key("zone_suffixes".into()), PathSeg::Index(0)], Type),
+            (&format!("{BASE}[vpc]\nref = \"x\"\nmanage = false\nefs = {{ local_mount_path = \"/tmp\" }}\n"), "dev", path(&["vpc", "efs", "local_mount_path"]), Type),
+            (&format!("{BASE}[s3]\nbucket_name_format = \"Bad\"\n"), "dev", path(&["s3", "bucket_name_format"]), Type),
+            (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\", expiration_days = 0 }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0), PathSeg::Key("expiration_days".into())], Type),
+            (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\" }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0)], Value),
+            (&format!("{BASE}[container.a]\nuse_vpc = true\n"), "dev", Vec::new(), Value),
         ];
         for (text, stage, want_path, want_kind) in cases {
             let e = load_err(text, stage);
