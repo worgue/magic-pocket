@@ -101,7 +101,7 @@ def parse_handler_ref(ref: str) -> tuple[str, str]:
 
 
 class BuildConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     backend: BuildBackend = "codebuild"
     compute_type: str = "BUILD_GENERAL1_MEDIUM"
@@ -116,7 +116,7 @@ class BuildConfig(BaseModel):
 
 
 class ManagedSecretSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     type: Literal[
         "auto_database_url",
@@ -186,7 +186,7 @@ UserSecretType = Literal["neon_database_url", "tidb_database_url", "upstash_redi
 
 
 class UserSecretSpec(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     # name と type は排他 (name = 任意名を明示参照 / type = stored mode で正準名を導出)
     name: str | None = None  # SM: ARN or secret name, SSM: parameter name/path
@@ -208,7 +208,7 @@ class UserSecretSpec(BaseModel):
 
 
 class Secrets(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     store: StoreType = "sm"
     pocket_key_format: Annotated[
@@ -293,7 +293,7 @@ class ContainerIam(BaseModel):
     カバーできない権限を、ユーザーが宣言的に与えるための逃げ道。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     managed_policy_arns: list[str] = []
     """LambdaRole の ManagedPolicyArns に追加する AWS managed policy ARN の list。"""
@@ -316,7 +316,7 @@ class Container(BaseModel):
     container で一致が必要 (Settings 側で検証)。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     vpc: Vpc | None = None
     secrets: Secrets | None = None
@@ -346,7 +346,7 @@ class Container(BaseModel):
 
 
 class LambdaHandler(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     command: str
     timeout: int = 30
@@ -361,7 +361,7 @@ class LambdaHandler(BaseModel):
 
 
 class ApiGateway(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     domain: str | None = None
     create_records: bool = True
@@ -376,7 +376,7 @@ _BUILTIN_SCHEDULERS = (_LAMBDA_SCHEDULER, _DJANGO_MANAGEMENT_SCHEDULER, _SQS_SCH
 
 class _ScheduleEntryBase(BaseModel):
     # 派生の LambdaScheduleEntry / DjangoManagementScheduleEntry にも継承される
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     cron: str | None = None
     rate: str | None = None
@@ -444,7 +444,7 @@ ScheduleEntry = Annotated[
 
 
 class Scheduler(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     schedules: dict[str, ScheduleEntry] = {}
 
@@ -477,7 +477,7 @@ class Alert(BaseModel):
     (書き忘れと型レベルで区別するための表現)。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     enabled: bool = True
     email: str | None = None
@@ -497,7 +497,7 @@ class Alert(BaseModel):
 
 
 class Sqs(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     batch_size: int = 10
     message_retention_period: int = 345600
@@ -530,7 +530,7 @@ class Sqs(BaseModel):
 class Inbound(BaseModel):
     """SES受信口。内部のSNS接続とrule順序はdeployが解決する。"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
     domain: str
     # 受信ドメインの identity / DKIM / MX は domain ごとの stack が持つ。
     # 同じ domain を使う inbound どうしで manage_dns / hosted_zone_id_override は
@@ -655,7 +655,7 @@ class BackupRule(BaseModel):
     (書くと extra="forbid" で即エラー)。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     # scheduler の schedule entry と同じ表記 (cron(...) は pocket が付ける)。
     # 既定は階層ごとに定める (subclass で上書き)
@@ -729,7 +729,7 @@ class DsqlBackupPlan(BaseModel):
     (rds と違い PITR が無い)。宣言だけで既定の 3 階層が有効になる。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     daily: DsqlDailyRule = DsqlDailyRule()
     weekly: DsqlWeeklyRule = DsqlWeeklyRule()
@@ -743,7 +743,7 @@ class RdsBackupPlan(BaseModel):
     秒単位で担うため。daily キーを書くと extra="forbid" で即エラー)。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     weekly: RdsWeeklyRule = RdsWeeklyRule()
     monthly: RdsMonthlyRule = RdsMonthlyRule()
@@ -767,7 +767,7 @@ class Backup(BaseModel):
     Standard → Glacier → 有効期限と同じ保持ポリシーを組める。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     # true にすると pocket からバックアップ「データ」(recovery point) を削除
     # できるようになる (`pocket backup cleanup` と destroy 時の確認プロンプト)。
@@ -790,13 +790,13 @@ class Backup(BaseModel):
 
 
 class Dsql(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     deletion_protection: bool = False
 
 
 class RdsBackup(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     # Aurora の自動バックアップ (PITR) 保持日数。AWS 既定は 1 日だが、pocket は
     # ネイティブ上限の 35 日を既定にする。1 日だと「PITR があるからいつでも
@@ -813,7 +813,7 @@ ROTATING_PASSWORD_STRATEGIES = frozenset({"aws-managed"})
 
 
 class Rds(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     managed: bool = True
     backup: RdsBackup = RdsBackup()
@@ -907,7 +907,7 @@ class Rds(BaseModel):
 
 
 class Ses(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     from_email: str
     region: str | None = None  # None → general.region を継承
@@ -915,14 +915,14 @@ class Ses(BaseModel):
 
 
 class S3Cors(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     methods: list[str]
     cloudfront: str | list[str]
 
 
 class S3LifecycleRule(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     id: str
     prefix: str
@@ -942,7 +942,7 @@ class S3LifecycleRule(BaseModel):
 
 
 class S3(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     bucket_name_format: FormatStr = "{stage}-{project}-{namespace}"
     cors: S3Cors | None = None
@@ -959,7 +959,7 @@ class S3(BaseModel):
 
 
 class RedirectFrom(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     domain: str
     hosted_zone_id_override: str | None = None
@@ -976,7 +976,7 @@ class StaticSource(BaseModel):
     `_app/immutable` のように名前に内容 hash を持つ出力向けで、名前を変えずに置く。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     name: str
     dir: str
@@ -1010,14 +1010,14 @@ class StaticSource(BaseModel):
 
 
 class RouteBuild(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     dir: str
     cmd: str
 
 
 class Route(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     type: Literal["s3", "lambda"] = "s3"
     handler: str | None = None
@@ -1340,7 +1340,7 @@ class CloudFrontWafAllowRule(BaseModel):
     どちらも「WAF を弱める」宣言なので、deploy 時に一覧が表示される。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     path: str | None = None
     header: EnvStr | None = None
@@ -1379,7 +1379,7 @@ class CloudFrontWafRateLimit(BaseModel):
     IP なので、X-Forwarded-For の設定は不要。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     limit: int = Field(ge=10, le=2_000_000_000)
     window_sec: int = 300
@@ -1413,7 +1413,7 @@ class CloudFrontWaf(BaseModel):
     書かせず、pocket の managed secret 経路で自動生成・管理する。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     enable_ip_set: bool = True
     managed_rule_groups: list[str] = []
@@ -1447,7 +1447,7 @@ class CloudFrontWaf(BaseModel):
 
 
 class CloudFront(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     domain: str | None = None
     hosted_zone_id_override: str | None = None
@@ -1595,7 +1595,7 @@ class CloudFront(BaseModel):
 class Iam(BaseModel):
     """[iam] — pocket が作る IAM role の扱い (project 共通。stage 上書き可)。"""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     external_roles: bool = False
     """true なら pocket は IAM role を作らず、既存の role を名前で参照する。
@@ -1622,7 +1622,7 @@ class Iam(BaseModel):
 
 
 class Settings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     general: GeneralSettings
     stage: TagStr

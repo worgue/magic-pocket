@@ -15,7 +15,7 @@ else:
 
 
 class GeneralSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     namespace: str = "pocket"
     prefix_template: str = "{stage}-{project}-{namespace}-"
@@ -32,14 +32,14 @@ class GeneralSettings(BaseModel):
 
 
 class Efs(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     local_mount_path: str = Field(pattern="^/mnt/.*", default="/mnt/efs")
     access_point_path: str = Field(pattern="^/.+", default="/lambda")
 
 
 class Vpc(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     ref: str
     zone_suffixes: list[Annotated[str, Field(max_length=1)]] = []

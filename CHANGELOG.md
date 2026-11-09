@@ -36,6 +36,12 @@
   `POCKET_CLOUDFRONT_<NAME>_DOMAIN` を使うようにしました (Django の `_resolve_cloudfront_domain` と同じ順)
 
 ### Changed
+- **破壊的変更**: pocket.toml の値を別の型へ暗黙に変換しなくなりました。`timeout = "30"` (文字列 → 整数)、
+  `timeout = 30.0` (小数 → 整数)、`deletion_protection = "yes"` / `1` (文字列・整数 → 真偽値)、
+  managed secret の `options` の `true` (→ `1`) は設定エラーになります。toml の型どおりに
+  `timeout = 30` / `deletion_protection = true` と書いてください。整数を小数の項目に書く
+  (`min_capacity = 1`) のは引き続き受理します。`[neon]` / `[tidb]` / `[upstash]` は環境変数から
+  文字列で読むため対象外です。Rust 版 CLI と設定の解釈を一致させるための変更です
 - CLI の Python 版 → Rust 版の移行方針を docs に明記しました。Rust に移したコマンド (`pocket static` 系) の
   新機能は Rust 版 `pocket-rs` だけに入ります (静的系は今回の版で Rust 版に一本化しました)。どのコマンドがどちらの実装かは
   [pocket static - コマンドごとの実装の所在](https://worgue.github.io/magic-pocket/guide/cli/#implementation-map)

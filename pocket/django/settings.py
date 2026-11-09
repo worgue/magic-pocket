@@ -13,7 +13,7 @@ PublishMode = Literal["deploy", "command"]
 
 
 class DjangoStorage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     store: Literal["s3", "filesystem"]
     location: str | None = None
@@ -68,14 +68,14 @@ class DjangoStorage(BaseModel):
 
 
 class DjangoCache(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     store: Literal["efs", "locmem", "redis"]
     location_subdir: str = "{stage}"
 
 
 class Django(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     storages: dict[str, DjangoStorage] | None = None
     caches: dict[str, DjangoCache] | None = None

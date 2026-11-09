@@ -71,6 +71,39 @@ def test_nested_settings_reject_unknown_key():
             model.model_validate(data)
 
 
+@pytest.mark.parametrize(
+    ("model", "data", "match"),
+    [
+        ("LambdaHandler", {"command": "x", "timeout": "30"}, "valid integer"),
+        ("LambdaHandler", {"command": "x", "timeout": 30.0}, "valid integer"),
+        ("Dsql", {"deletion_protection": "yes"}, "valid boolean"),
+        ("Dsql", {"deletion_protection": 1}, "valid boolean"),
+        (
+            "ManagedSecretSpec",
+            {"type": "password", "options": {"c": True}},
+            "valid string",
+        ),
+    ],
+)
+def test_settings_reject_implicit_type_conversion(model, data, match):
+    """toml の値を別の型に暗黙変換しないこと (strict)
+
+    lax だと "30" が int、"yes" / 1 が bool として通り、Rust 版 CLI の読み込みと
+    結果が食い違う。int → float (min_capacity = 1) だけは strict でも受理する。
+    """
+    from pocket import settings as settings_module
+
+    cls = getattr(settings_module, model)
+    with pytest.raises(ValidationError, match=match):
+        cls.model_validate(data)
+
+
+def test_settings_accept_int_for_float():
+    from pocket.settings import Rds
+
+    assert Rds.model_validate({"min_capacity": 1}).min_capacity == 1.0
+
+
 def test_env_backed_sections_reject_unknown_toml_key(use_toml, tmp_path):
     """[neon] / [tidb] / [upstash] の toml キーの typo を拒否すること
 
