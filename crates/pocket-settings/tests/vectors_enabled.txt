@@ -8,3 +8,9 @@ toml_vectors/general_minimal.dev
 toml_vectors/s3_vpc.dev
 toml_vectors/s3_vpc.prod
 toml_vectors/s3_vpc.shared
+toml_vectors/container_full.dev
+toml_vectors/container_full.prod
+toml/awscontainer_pocket_secrets.prod
+toml/awscontainer_secrets_ssm.prod
+toml/staticfiles_link.dev
+toml/staticfiles_publish_command.dev

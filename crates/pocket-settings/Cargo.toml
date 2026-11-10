@@ -7,7 +7,7 @@ publish = false
 
 # AWS SDK・tracing は入れない (runtime lib と CLI の両方から使う純粋な設定モデル)
 [dependencies]
-toml = "1.1"
+toml = { version = "1.1", features = ["preserve_order"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

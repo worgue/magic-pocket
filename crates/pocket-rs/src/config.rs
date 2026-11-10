@@ -1105,7 +1105,8 @@ domain = "example.com"
 
     #[test]
     fn test_static_routes_collected_from_object_hash_routes() {
-        // routes は inline table でも [[...]] でも来る。object_hash 以外は無視する
+        // routes は inline table でも [[...]] でも来る。object_hash 以外は無視する。
+        // 並びは toml に書いた順 (cloudfront web → media)
         let toml = r#"
 [general]
 region = "ap-northeast-1"
@@ -1140,25 +1141,6 @@ sources = [{ name = "img", dir = "img" }]
             config.static_routes,
             vec![
                 StaticRouteConfig {
-                    cloudfront: "media".into(),
-                    cloudfront_domain: None,
-                    route_ref: None,
-                    route_name: "img-v2".into(),
-                    url_prefix: "/img/v2/".into(),
-                    meta_prefix: ".pocket/static/media/img-v2/".into(),
-                    key_prefix: "img/v2/".into(),
-                    map_path: "pocket_static/media-img-v2.map".into(),
-                    versioned_max_age: 31_536_000,
-                    sources: vec![StaticSourceConfig {
-                        name: "img".into(),
-                        dir: "img".into(),
-                        prefix: String::new(),
-                        include: vec![],
-                        exclude: vec![],
-                        hashed: true,
-                    }],
-                },
-                StaticRouteConfig {
                     cloudfront: "web".into(),
                     cloudfront_domain: Some("example.com".into()),
                     route_ref: Some("static".into()),
@@ -1171,6 +1153,25 @@ sources = [{ name = "img", dir = "img" }]
                     sources: vec![StaticSourceConfig {
                         name: "data".into(),
                         dir: "data".into(),
+                        prefix: String::new(),
+                        include: vec![],
+                        exclude: vec![],
+                        hashed: true,
+                    }],
+                },
+                StaticRouteConfig {
+                    cloudfront: "media".into(),
+                    cloudfront_domain: None,
+                    route_ref: None,
+                    route_name: "img-v2".into(),
+                    url_prefix: "/img/v2/".into(),
+                    meta_prefix: ".pocket/static/media/img-v2/".into(),
+                    key_prefix: "img/v2/".into(),
+                    map_path: "pocket_static/media-img-v2.map".into(),
+                    versioned_max_age: 31_536_000,
+                    sources: vec![StaticSourceConfig {
+                        name: "img".into(),
+                        dir: "img".into(),
                         prefix: String::new(),
                         include: vec![],
                         exclude: vec![],

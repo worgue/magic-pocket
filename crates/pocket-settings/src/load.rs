@@ -71,6 +71,7 @@ impl Settings {
         data.insert("stage".to_string(), toml::Value::String(stage.to_string()));
         fill_project_name(&mut data, &ctx.project_name_fallback);
         resolve_vpc(&mut data)?;
+        accept_build_string(&mut data);
         reject_legacy_keys(&data)?;
         let mut data = toml::Value::Table(data);
         mark_datetimes(&mut data);
@@ -288,6 +289,22 @@ fn resolve_vpc(data: &mut toml::Table) -> Result<(), SettingsError> {
     Ok(())
 }
 
+/// `build = "docker"` を `{ backend = "docker" }` と同じに読む (Python の
+/// `BuildConfig.accept_string`)
+fn accept_build_string(data: &mut toml::Table) {
+    let Some(toml::Value::Table(containers)) = data.get_mut("container") else {
+        return;
+    };
+    for (_, c) in containers.iter_mut() {
+        let toml::Value::Table(c) = c else { continue };
+        if let Some(toml::Value::String(backend)) = c.get("build").cloned() {
+            let mut t = toml::Table::new();
+            t.insert("backend".to_string(), toml::Value::String(backend));
+            c.insert("build".to_string(), toml::Value::Table(t));
+        }
+    }
+}
+
 /// 廃止したキーを移行案内つきで拒否する (Python の `mode="before"` validator)。
 /// 未知キーとして弾くより先に見る
 fn reject_legacy_keys(data: &toml::Table) -> Result<(), SettingsError> {
@@ -370,6 +387,14 @@ mod tests {
             (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\", expiration_days = 0 }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0), PathSeg::Key("expiration_days".into())], Type),
             (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\" }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0)], Value),
             (&format!("{BASE}[container.a]\nuse_vpc = true\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[container.Bad]\ndockerfile_path = \"D\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nplatform = \"x\"\n"), "dev", path(&["container", "a", "platform"]), Type),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nhandlers = {{ w = {{ command = \"c\", sqs = {{}} }} }}\n"), "dev", path(&["container", "a", "handlers", "w", "sqs"]), Value),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nhandlers = {{ w = {{ command = \"c\", timeout = \"30\" }} }}\n"), "dev", path(&["container", "a", "handlers", "w", "timeout"]), Type),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nsecrets = {{ managed = {{ \"bad-key\" = {{ type = \"password\" }} }} }}\n"), "dev", path(&["container", "a", "secrets", "managed", "bad-key", "[key]"]), Type),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nsecrets = {{ managed = {{ K = {{ type = \"password\", options = {{ c = true }} }} }} }}\n"), "dev", path(&["container", "a", "secrets", "managed", "K", "options", "c"]), Type),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nsecrets = {{ user = {{ K = {{ name = \"n\", type = \"neon_database_url\" }} }} }}\n"), "dev", path(&["container", "a", "secrets"]), Value),
+            (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nsecrets = {{ store = \"ssm\" }}\n[container.b]\ndockerfile_path = \"D\"\nsecrets = {{}}\n"), "dev", Vec::new(), Value),
         ];
         for (text, stage, want_path, want_kind) in cases {
             let e = load_err(text, stage);

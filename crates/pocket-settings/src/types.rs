@@ -227,3 +227,114 @@ fn check_range(v: i64, ge: Option<i64>, le: Option<i64>) -> Result<(), String> {
 }
 
 ranged_int_fn!(ge1, opt_ge1, Some(1), None);
+
+/// toml に書いた順を保つ map (Python の dict と同じ順で検証し、エラー文の
+/// 「最初に見つかったもの」を一致させるため)。JSON には object として出す
+#[derive(Debug, Clone)]
+pub struct OrderedMap<V>(pub Vec<(String, V)>);
+
+/// 等値は Python の dict と同じく順序を見ない
+impl<V: PartialEq> PartialEq for OrderedMap<V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len() && self.iter().all(|(k, v)| other.get(k) == Some(v))
+    }
+}
+
+impl<V> Default for OrderedMap<V> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<V> OrderedMap<V> {
+    pub fn get(&self, key: &str) -> Option<&V> {
+        self.0.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &V)> {
+        self.0.iter().map(|(k, v)| (k, v))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut V)> {
+        self.0.iter_mut().map(|(k, v)| (&*k, v))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|(k, _)| k)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.0.iter().map(|(_, v)| v)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl<'de, V: Deserialize<'de>> Deserialize<'de> for OrderedMap<V> {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct Visitor<V>(std::marker::PhantomData<V>);
+        impl<'de, V: Deserialize<'de>> serde::de::Visitor<'de> for Visitor<V> {
+            type Value = OrderedMap<V>;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a table")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut out = Vec::new();
+                while let Some((k, v)) = map.next_entry::<String, V>()? {
+                    out.push((k, v));
+                }
+                Ok(OrderedMap(out))
+            }
+        }
+        d.deserialize_map(Visitor(std::marker::PhantomData))
+    }
+}
+
+impl<V: Serialize> Serialize for OrderedMap<V> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut m = s.serialize_map(Some(self.0.len()))?;
+        for (k, v) in &self.0 {
+            m.serialize_entry(k, v)?;
+        }
+        m.end()
+    }
+}
+
+/// 型を問わない table (Python の型なし `dict`)。table 以外は型エラー
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct AnyDict(pub serde_json::Value);
+
+impl<'de> Deserialize<'de> for AnyDict {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let v = toml::Value::deserialize(d)?;
+        match &v {
+            toml::Value::Table(t) if !(t.len() == 1 && t.contains_key(DATETIME_MARKER)) => {
+                Ok(Self(toml_to_json(&v)))
+            }
+            _ => Err(D::Error::custom("Input should be a valid dictionary")),
+        }
+    }
+}
+
+/// 文字列か整数 (Python の `str | int`。strict なので bool・小数は型エラー)
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum StrOrInt {
+    Str(String),
+    Int(i64),
+}

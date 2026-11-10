@@ -1,0 +1,96 @@
+# container 一式の全 field、use_vpc の 3 通り、build の文字列形、stage 上書き
+[general]
+region = "ap-northeast-1"
+project_name = "ctr"
+stages = ["dev", "prod"]
+
+[vpc]
+ref = "main"
+zone_suffixes = ["a"]
+
+# use_vpc 省略 = [vpc] があれば使う
+[container.web]
+dockerfile_path = "web/Dockerfile"
+platform = "linux/arm64"
+permissions_boundary = "arn:aws:iam::123456789012:policy/boundary"
+ecr_name = "shared-web"
+build = "docker"
+envs = { APP_ENV = "web", EMPTY = "" }
+
+[container.web.secrets]
+store = "ssm"
+pocket_key_format = "{project}-{stage}"
+extra_resources = ["arn:aws:ssm:ap-northeast-1:123456789012:parameter/extra"]
+require_list_secrets = true
+
+[container.web.secrets.managed]
+SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
+DATABASE_URL = { type = "auto_database_url" }
+BASIC_AUTH = { type = "basic_auth_credential", options = { username = "admin", password = "pw" } }
+SIGNING = { type = "cloudfront_signing_key", options = { pem_base64_environ_suffix = "_PEM" } }
+
+[container.web.secrets.user]
+EXTERNAL_API = { name = "external/api", store = "sm" }
+NEON_URL = { type = "neon_database_url" }
+
+[container.web.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+timeout = 29
+memory_size = 1024
+reserved_concurrency = 5
+apigateway = { domain = "api.example.com", create_records = false, hosted_zone_id_override = "Z123" }
+envs = { MODE = "wsgi" }
+
+[container.web.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[container.web.handlers.worker]
+command = "pocket.django.lambda_handlers.sqs_management_command_handler"
+sqs = { batch_size = 5, message_retention_period = 3600, maximum_concurrency = 4, dead_letter_max_receive_count = 3, dead_letter_message_retention_period = 7200, report_batch_item_failures = false, dead_letter_alert = { email = "ops@example.com" } }
+
+[container.web.handlers.events]
+command = "app.events"
+sqs = { dead_letter_alert = { eventbridge = true } }
+
+[container.web.handlers.quiet]
+command = "app.quiet"
+sqs = { dead_letter_alert = { enabled = false } }
+
+[container.web.django]
+project_dir = "src"
+settings = { ALLOWED_HOSTS = ["*"] }
+
+[container.web.django.storages]
+default = { store = "s3", location = "media" }
+staticfiles = { store = "s3", location = "static", static = true, manifest = true }
+
+[container.web.iam]
+managed_policy_arns = ["arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"]
+inline_policies = { extra = { Version = "2012-10-17", Statement = [{ Effect = "Allow", Action = ["s3:GetObject"], Resource = "*" }] } }
+
+# use_vpc = false は VPC を使わない。build は table でも書ける
+[container.api]
+dockerfile_path = "api/Dockerfile"
+use_vpc = false
+build = { backend = "depot", compute_type = "BUILD_GENERAL1_LARGE", depot_project_id = "abc123" }
+
+[container.api.secrets]
+store = "ssm"
+pocket_key_format = "{project}-{stage}"
+managed = { SECRET_KEY = { type = "password", options = { length = 50 }, shared = true } }
+user = { NEON_URL = { type = "neon_database_url" } }
+
+[container.api.handlers.main]
+command = "bootstrap"
+
+# use_vpc = true は [vpc] 必須
+[container.batch]
+dockerfile_path = "batch/Dockerfile"
+use_vpc = true
+
+[prod.container.web.handlers.wsgi]
+memory_size = 2048
+
+[prod.container.api]
+use_vpc = true

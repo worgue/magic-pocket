@@ -42,6 +42,8 @@
   `timeout = 30` / `deletion_protection = true` と書いてください。整数を小数の項目に書く
   (`min_capacity = 1`) のは引き続き受理します。`[neon]` / `[tidb]` / `[upstash]` は環境変数から
   文字列で読むため対象外です。Rust 版 CLI と設定の解釈を一致させるための変更です
+- `pocket-rs static` と Rust lib `magic-pocket-rs` が複数の `object_hash` route を扱う順を、cloudfront 名の
+  辞書順から pocket.toml に書いた順に変えました (Python 版と同じ順)
 - CLI の Python 版 → Rust 版の移行方針を docs に明記しました。Rust に移したコマンド (`pocket static` 系) の
   新機能は Rust 版 `pocket-rs` だけに入ります (静的系は今回の版で Rust 版に一本化しました)。どのコマンドがどちらの実装かは
   [pocket static - コマンドごとの実装の所在](https://worgue.github.io/magic-pocket/guide/cli/#implementation-map)

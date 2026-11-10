@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-toml = "1.1"
+# preserve_order: table を toml に書いた順で列挙する (Python の dict と同じ順。
+# magic-pocket-settings も同じ指定で、build の組み合わせで順序が変わらないよう揃える)
+toml = { version = "1.1", features = ["preserve_order"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aws-config = { version = "1", features = ["behavior-version-latest"] }
