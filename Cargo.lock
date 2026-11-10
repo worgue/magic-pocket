@@ -1742,6 +1742,7 @@ dependencies = [
  "hex",
  "ignore",
  "magic-pocket-rs",
+ "magic-pocket-settings",
  "md-5",
  "mime_guess",
  "serde",

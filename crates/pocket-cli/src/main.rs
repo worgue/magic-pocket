@@ -1,11 +1,13 @@
-//! `pocket-rs`: magic-pocket の Rust 版 CLI (第 1 段)。
+//! `pocket-rs`: magic-pocket の Rust 版 CLI。
 //!
-//! object_hash route の publish / adopt / purge / status / hash generate を行う。
+//! object_hash route の publish / adopt / purge / status / hash generate と、
+//! 設定の表示 (`settings`) を行う。
 //! サブコマンド・引数・出力は旧 Python 版 `pocket static ...` (削除済み) を引き継いでいる。
 //! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
 mod mapfile;
 mod publisher;
+mod pyjson;
 mod release;
 mod sources;
 
@@ -32,6 +34,12 @@ enum Top {
     Static {
         #[command(subcommand)]
         command: StaticCommand,
+    },
+    /// Settings を JSON で出力する (pocket.toml のみ、AWS 不要)。secret はマスク
+    Settings {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
     },
 }
 
@@ -192,8 +200,23 @@ async fn get_publishers(target: &Target, jobs: usize) -> Result<Vec<Arc<StaticPu
     Ok(publishers)
 }
 
+/// `pocket-rs settings`: Python の `pocket settings` と同じ JSON (マスク済み、indent 2)
+fn print_settings(stage: &str) -> Result<()> {
+    let toml_path = find_toml_path()?;
+    let (settings, advisories) = magic_pocket_settings::Settings::load(&toml_path, stage)?;
+    for advisory in advisories {
+        eprintln!("{}", advisory.message);
+    }
+    let masked = magic_pocket_settings::mask_secret_values(&settings.to_json());
+    println!("{}", pyjson::dumps_indent2(&masked));
+    Ok(())
+}
+
 async fn run(cli: Cli) -> Result<()> {
-    let Top::Static { command } = cli.command;
+    let command = match cli.command {
+        Top::Static { command } => command,
+        Top::Settings { stage } => return print_settings(&stage),
+    };
     match command {
         StaticCommand::Publish {
             target,

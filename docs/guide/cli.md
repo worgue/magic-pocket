@@ -340,7 +340,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
 | `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
-| `settings` / `context` / `runtime-config` / `django` | Python 版 `pocket` | |
+| `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
+| `context` / `runtime-config` / `django` | Python 版 `pocket` | |
 
 移植が進んだらこの表を更新します。
 
@@ -362,6 +363,16 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 
 !!! warning "purge は配信を止める操作です"
     `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。一部の object が消せなかったとき（S3 の DeleteObjects は一部失敗でも HTTP 200 を返す）は、消せなかった key を列挙して終了コード 1 で止まります。原因を直して再実行すると残りが対象になります。
+
+### pocket-rs settings {#pocket-rs-settings}
+
+pocket.toml を読んで、stage をマージした設定を JSON で出力します。AWS には接続しません。secret の値（`api_key` / `private_key` / `public_key` / `token_secret` / `password`）は `****` に伏せます。
+
+```bash
+pocket-rs settings --stage=dev
+```
+
+`--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです（`[neon]` 等の credential は環境変数と `.env` から読みます）。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
 
 ### pocket runtime-config
 

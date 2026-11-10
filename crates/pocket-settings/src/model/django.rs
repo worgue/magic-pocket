@@ -1,11 +1,9 @@
 //! `pocket/django/settings.py` の `Django` / `DjangoStorage` / `DjangoCache`。
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::{child, PathSeg, SettingsError};
-use crate::types::AnyValue;
+use crate::types::{AnyValue, OrderedMap};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -34,7 +32,7 @@ pub struct DjangoStorage {
     #[serde(default)]
     pub manifest: bool,
     #[serde(default)]
-    pub options: BTreeMap<String, AnyValue>,
+    pub options: OrderedMap<AnyValue>,
     #[serde(default)]
     pub distribution: Option<String>,
     #[serde(default)]
@@ -52,7 +50,7 @@ impl DjangoStorage {
             location: None,
             r#static: is_static,
             manifest: false,
-            options: BTreeMap::new(),
+            options: OrderedMap::default(),
             distribution: None,
             route: None,
             publish: PublishMode::Deploy,
@@ -121,11 +119,11 @@ fn default_location_subdir() -> String {
 pub struct Django {
     /// validate 後は必ず Some (Python の `set_defaults` と同じく既定を補う)
     #[serde(default)]
-    pub storages: Option<BTreeMap<String, DjangoStorage>>,
+    pub storages: Option<OrderedMap<DjangoStorage>>,
     #[serde(default)]
-    pub caches: Option<BTreeMap<String, DjangoCache>>,
+    pub caches: Option<OrderedMap<DjangoCache>>,
     #[serde(default)]
-    pub settings: BTreeMap<String, AnyValue>,
+    pub settings: OrderedMap<AnyValue>,
     #[serde(default)]
     pub project_dir: Option<String>,
 }
@@ -136,7 +134,7 @@ impl Default for Django {
         let mut d = Self {
             storages: None,
             caches: None,
-            settings: BTreeMap::new(),
+            settings: OrderedMap::default(),
             project_dir: None,
         };
         d.validate(&[]).expect("既定の Django 設定は検証を通る");
@@ -148,14 +146,14 @@ impl Django {
     pub(crate) fn validate(&mut self, path: &[PathSeg]) -> Result<(), SettingsError> {
         // field の検証 (入れ子のモデル) が先、モデルの validator が後 = pydantic と同じ順
         if let Some(storages) = &self.storages {
-            for (key, s) in storages {
+            for (key, s) in storages.iter() {
                 s.validate(&child(&child(path, "storages"), key))?;
             }
         }
         // set_defaults
         let err = |m: &str| Err(SettingsError::value(path.to_vec(), m));
         let storages = self.storages.get_or_insert_with(|| {
-            BTreeMap::from([
+            OrderedMap(vec![
                 (
                     "default".to_string(),
                     DjangoStorage::new(StorageStore::Filesystem, false),
@@ -182,7 +180,7 @@ impl Django {
             return err("static can only be used with staticfiles");
         }
         if self.caches.is_none() {
-            self.caches = Some(BTreeMap::from([(
+            self.caches = Some(OrderedMap(vec![(
                 "default".to_string(),
                 DjangoCache {
                     store: CacheStore::Locmem,

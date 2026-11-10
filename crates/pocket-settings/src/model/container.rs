@@ -1,7 +1,6 @@
 //! `[container.<name>]` 一式 (Python の `Container` / `LambdaHandler` / `Secrets` 等) と、
 //! handler が使う `Sqs` / `Alert` / `ApiGateway`。
 
-use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use regex::Regex;
@@ -393,7 +392,7 @@ pub struct LambdaHandler {
     pub sqs: Option<Sqs>,
     /// handler 単位の env の追加・上書き (container の envs より優先)
     #[serde(default)]
-    pub envs: BTreeMap<String, String>,
+    pub envs: OrderedMap<String>,
 }
 
 fn default_timeout() -> i64 {
@@ -416,7 +415,7 @@ pub struct Container {
     pub handlers: OrderedMap<LambdaHandler>,
     pub dockerfile_path: String,
     #[serde(default)]
-    pub envs: BTreeMap<String, String>,
+    pub envs: OrderedMap<String>,
     /// Lambda の Architectures もこの値から導出する
     #[serde(default)]
     pub platform: Platform,

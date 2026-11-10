@@ -15,6 +15,9 @@
   [pocket static](https://worgue.github.io/magic-pocket/guide/cli/#pocket-static)
 
 ### Added
+- `pocket-rs settings --stage=<stage>` を追加しました。Python 版 `pocket settings` と同じく、stage をマージした
+  設定を secret を伏せた JSON で出力します (出力も同じ)。
+  [pocket-rs settings](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-settings)
 - `pocket-rs` を GitHub Release から入れる `install.sh` (repo ルート、POSIX sh) を追加しました。
   `curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z`
   で、環境に合う target を選び sha256 を検証してから `~/.local/bin/pocket-rs` に置きます。

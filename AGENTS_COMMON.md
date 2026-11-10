@@ -121,13 +121,22 @@ uv run pyright
 - **`magic-pocket` (runtime, リポジトリルート)**: Lambda ランタイムに同梱される。全ユーザーの Lambda にバンドルされるため、**依存は最小限に保つ**こと。新規の実行時依存を安易に追加しない。
 - **`magic-pocket-cli` (`packages/magic-pocket-cli/`)**: deploy / CLI 専用。`requests` 等の重い依存はこちらに置く。
 - **`magic-pocket-cli-rs` (`crates/pocket-cli/`、bin `pocket-rs`)**: CLI の Rust 版 (段階移行中。
-  現状は `static` 系のみ)。**Rust に移したコマンドの新機能は Rust 版だけに実装する**
+  現状は `static` 系と `settings`)。**Rust に移したコマンドの新機能は Rust 版だけに実装する**
   (静的系は Rust 版に一本化済みで、Python 版 `pocket static` は `pocket-rs static` への
   案内だけを出す stub)。
   未移植のコマンドは Python 版だけに実装する。
   どのコマンドがどちらかは `docs/guide/cli.md` の「コマンドごとの実装の所在」の表が正で、
   移植したら表を更新する。
   Rust lib (`crates/pocket-rs`) には CLI 用の依存を足さない (runtime の依存を増やさない)。
+- **`magic-pocket-settings` (`crates/pocket-settings/`)**: pocket.toml の設定モデルの Rust 版
+  (runtime lib と CLI の両方が使う)。Python の `pocket.settings` との一致は共有 test vector で固定している。
+  **Python の設定モデル (`pocket/settings.py` 等) を変えたら `just vectors` で
+  `tests/data/settings_vectors` / `tests/data/toml_errors/*.expected.json` を作り直し、Rust 側を直して
+  `tests/test_settings_vectors.py` と `cargo test -p magic-pocket-settings` を両方 green にする**。
+  新しい field には既定でない値を与える fixture (`tests/data/toml_vectors/`) を、新しい検証には
+  1 ファイル 1 欠陥の fixture (`tests/data/toml_errors/`) を足す (カバレッジ検査が field の不足を落とす)。
+  example の pocket.toml に実値を書き戻したまま `just vectors` を回すと vector に実値が入るので、
+  書き戻しを戻してから回す
 
 CLI 専用だったロジックを runtime 側へ移設して公開 API 化する場合（例: 外部 provisioner から import 共有させる）、その依存を runtime に持ち込まないこと。**HTTP なら `requests` ではなく stdlib `urllib` で書き換える**（`pocket.provisioning.neon` はこの方針で実装済み）。やむを得ず runtime に依存を足す判断が要る場合は、**ユーザーに確認**してください。
 
