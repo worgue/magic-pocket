@@ -61,25 +61,27 @@ impl DjangoStorage {
     /// Python の validator を宣言順に
     fn validate(&self, path: &[PathSeg]) -> Result<(), SettingsError> {
         let err = |m: &str| Err(SettingsError::value(path.to_vec(), m));
+        // Python の真偽判定に合わせ、distribution / route の空文字は「無し」と同じ
+        let distribution = self.distribution.as_deref().is_some_and(|d| !d.is_empty());
+        let route = self.route.as_deref().is_some_and(|r| !r.is_empty());
         // check_manifest
         if self.manifest && !self.r#static {
             return err("manifest can only be used with static");
         }
         // check_location
-        if self.store == StorageStore::S3 && self.location.is_none() && self.distribution.is_none()
-        {
+        if self.store == StorageStore::S3 && self.location.is_none() && !distribution {
             return err("location is required for s3 storage without distribution");
         }
-        if self.distribution.is_some() && self.location.is_some() {
+        if distribution && self.location.is_some() {
             return err("location cannot be used with distribution \
                  (S3 location is computed from the route's origin_path)");
         }
         // check_route
-        if self.route.is_some() && self.distribution.is_none() {
+        if route && !distribution {
             return err("route requires distribution");
         }
         // check_distribution
-        if self.distribution.is_some() && self.store != StorageStore::S3 {
+        if distribution && self.store != StorageStore::S3 {
             return err("distribution can only be used with s3 store");
         }
         // check_publish

@@ -20,7 +20,8 @@ region = "us-east-1"
 provisioning = "command"
 
 [upstash]
-budget = 50
+# Python (lax) と同じく桁区切りの文字列も受ける
+budget = "1_000"
 
 # alias (neon_api_key 等) で書けば toml の値が環境より優先される
 [prod.neon]
@@ -29,3 +30,4 @@ pg_version = 17
 
 [prod.upstash]
 upstash_email = "toml@example.com"
+budget = "16.0"

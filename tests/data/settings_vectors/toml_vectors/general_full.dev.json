@@ -71,7 +71,7 @@
             "store": "s3"
           },
           "management": {
-            "distribution": null,
+            "distribution": "",
             "link": false,
             "location": "management",
             "manifest": false,
@@ -181,7 +181,7 @@
             "store": "s3"
           },
           "management": {
-            "distribution": null,
+            "distribution": "",
             "link": false,
             "location": "management",
             "manifest": false,

@@ -90,7 +90,7 @@
     },
     "upstash": {
       "api_key": "****",
-      "budget": 50,
+      "budget": 16,
       "email": "toml@example.com",
       "provisioning": "deploy"
     },
@@ -175,7 +175,7 @@
     },
     "upstash": {
       "api_key": "vector-upstash-api-key",
-      "budget": 50,
+      "budget": 16,
       "email": "toml@example.com",
       "provisioning": "deploy"
     },

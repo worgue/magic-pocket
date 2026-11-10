@@ -198,17 +198,28 @@ fn default_budget() -> i64 {
     20
 }
 
-/// 整数か整数の文字列 (環境変数の値) を受ける (Python の lax な int)
+/// Python (pydantic) の lax な int: 整数・小数部が 0 の小数・真偽値 (1 / 0)、
+/// 整数を表す文字列 (前後の空白・桁区切りの `_`・小数部が 0 の `16.0` を許す)
 fn lax_int<'de, D: serde::Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     use serde::de::Error as _;
+    let integral = |f: f64| (f.fract() == 0.0 && f.is_finite()).then_some(f as i64);
     match toml::Value::deserialize(d)? {
         toml::Value::Integer(i) => Ok(i),
-        toml::Value::Float(f) if f.fract() == 0.0 && f.is_finite() => Ok(f as i64),
-        toml::Value::String(s) => s.trim().parse().map_err(|_| {
-            D::Error::custom(
-                "Input should be a valid integer, unable to parse string as an integer",
-            )
+        toml::Value::Boolean(b) => Ok(i64::from(b)),
+        toml::Value::Float(f) => integral(f).ok_or_else(|| {
+            D::Error::custom("Input should be a valid integer, got a number with a fractional part")
         }),
+        toml::Value::String(s) => {
+            let s = s.trim().replace('_', "");
+            s.parse::<i64>()
+                .ok()
+                .or_else(|| s.parse::<f64>().ok().and_then(integral))
+                .ok_or_else(|| {
+                    D::Error::custom(
+                        "Input should be a valid integer, unable to parse string as an integer",
+                    )
+                })
+        }
         _ => Err(D::Error::custom("Input should be a valid integer")),
     }
 }

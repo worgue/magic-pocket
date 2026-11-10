@@ -13,7 +13,8 @@ project_dir = "src"
 [general.django_fallback.storages]
 default = { store = "s3", location = "media", options = { querystring_auth = false, max_age = 60 } }
 staticfiles = { store = "s3", distribution = "web", route = "static", static = true, manifest = true, publish = "command", link = true }
-management = { store = "filesystem", location = "management" }
+# distribution の空文字は「無し」と同じ (filesystem でも使える)
+management = { store = "filesystem", location = "management", distribution = "" }
 
 [general.django_fallback.caches]
 default = { store = "redis", location_subdir = "{stage}-cache" }

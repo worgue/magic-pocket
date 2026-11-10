@@ -17,7 +17,7 @@ region = "us-east-1"
 provisioning = "command"
 
 [upstash]
-budget = 50
+budget = "1_000"
 
 [prod.neon]
 neon_api_key = "toml-neon-key"
@@ -25,3 +25,4 @@ pg_version = 17
 
 [prod.upstash]
 upstash_email = "toml@example.com"
+budget = "16.0"

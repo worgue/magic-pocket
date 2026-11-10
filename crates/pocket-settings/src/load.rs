@@ -45,12 +45,11 @@ impl Settings {
         })?;
         let cwd = std::env::current_dir()
             .map_err(|e| SettingsError::value(Vec::new(), format!("cwd を取得できません: {e}")))?;
-        // `.env` (cwd のもの) の上に環境変数を重ねる (環境変数が優先)
-        let mut env = match std::fs::read_to_string(cwd.join(".env")) {
+        let dotenv = match std::fs::read_to_string(cwd.join(".env")) {
             Ok(text) => parse_dotenv(&text),
             Err(_) => BTreeMap::new(),
         };
-        env.extend(std::env::vars());
+        let env = merge_env(dotenv, std::env::vars());
         let ctx = LoadContext {
             project_name_fallback: project_name_fallback(&cwd),
             env,
@@ -95,6 +94,22 @@ impl Settings {
         let advisories = settings.advisories();
         Ok((settings, advisories))
     }
+}
+
+/// `.env` (cwd のもの) の上に環境変数を重ねる。名前は大文字小文字を区別しない
+/// (Python の BaseSettings と同じ) ので、環境変数と同名 (大文字小文字違いを含む) の
+/// `.env` の値は捨てる
+fn merge_env(
+    dotenv: BTreeMap<String, String>,
+    process: impl Iterator<Item = (String, String)>,
+) -> BTreeMap<String, String> {
+    let process: BTreeMap<String, String> = process.collect();
+    let mut env: BTreeMap<String, String> = dotenv
+        .into_iter()
+        .filter(|(k, _)| !process.keys().any(|p| p.eq_ignore_ascii_case(k)))
+        .collect();
+    env.extend(process);
+    env
 }
 
 /// `.env` を読む (python-dotenv のよく使う書式: `export ` 前置き、`'...'` はそのまま、
@@ -529,6 +544,25 @@ mod tests {
         assert_eq!(env.get("EMPTY").map(String::as_str), Some(""));
         assert_eq!(env.get("SPACED").map(String::as_str), Some("x"));
         assert!(!env.contains_key("NOEQ"));
+    }
+
+    #[test]
+    fn test_env_overrides_dotenv_ignoring_case() {
+        let dotenv = BTreeMap::from([
+            ("UPSTASH_EMAIL".to_string(), "old@example.com".to_string()),
+            ("ONLY_DOTENV".to_string(), "d".to_string()),
+        ]);
+        let env = merge_env(
+            dotenv,
+            [("upstash_email".to_string(), "new@example.com".to_string())].into_iter(),
+        );
+        assert_eq!(
+            env,
+            BTreeMap::from([
+                ("ONLY_DOTENV".to_string(), "d".to_string()),
+                ("upstash_email".to_string(), "new@example.com".to_string()),
+            ])
+        );
     }
 
     #[test]
