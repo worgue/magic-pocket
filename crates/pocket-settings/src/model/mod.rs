@@ -5,6 +5,7 @@ pub mod container;
 pub mod db;
 pub mod django;
 pub mod general;
+pub mod misc;
 pub mod provisioning;
 pub mod s3;
 
@@ -33,6 +34,7 @@ pub use db::{
 };
 pub use django::{CacheStore, Django, DjangoCache, DjangoStorage, PublishMode, StorageStore};
 pub use general::{Efs, GeneralSettings, Iam, Vpc};
+pub use misc::{Inbound, ScheduleEntry, Scheduler, SchedulerKind, Ses, TlsPolicy};
 pub use provisioning::{Neon, ProvisioningMode, TiDb, Upstash};
 pub use s3::{OneOrMany, S3Cors, S3LifecycleRule, S3};
 
@@ -56,11 +58,6 @@ pub(crate) const TOP_LEVEL_KEYS: &[&str] = &[
     "iam",
 ];
 
-/// まだ Rust に移していない top-level の section と、宣言が無いときの JSON 値が
-/// `{}` (dict の section) か `null` か。移した section から順に外す (移行中だけの表)
-const UNPORTED_SECTIONS: &[(&str, bool)] =
-    &[("ses", false), ("inbound", true), ("scheduler", false)];
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Settings {
@@ -83,9 +80,15 @@ pub struct Settings {
     #[serde(default)]
     pub backup: Option<Backup>,
     #[serde(default)]
+    pub ses: Option<Ses>,
+    #[serde(default)]
+    pub inbound: OrderedMap<Inbound>,
+    #[serde(default)]
     pub s3: Option<S3>,
     #[serde(default)]
     pub cloudfront: OrderedMap<CloudFront>,
+    #[serde(default)]
+    pub scheduler: Option<Scheduler>,
     #[serde(default)]
     pub iam: Iam,
 }
@@ -105,14 +108,6 @@ impl Settings {
     pub fn to_json(&self) -> serde_json::Value {
         let mut value = serde_json::to_value(self).expect("Settings は JSON にできる");
         let obj = value.as_object_mut().expect("Settings は object");
-        for (key, is_dict) in UNPORTED_SECTIONS {
-            let empty = if *is_dict {
-                serde_json::Value::Object(serde_json::Map::new())
-            } else {
-                serde_json::Value::Null
-            };
-            obj.insert((*key).to_string(), empty);
-        }
         obj.insert("slug".to_string(), serde_json::Value::String(self.slug()));
         value
     }
@@ -133,6 +128,10 @@ impl Settings {
         if let Some(backup) = &self.backup {
             backup.validate(&path(&["backup"]))?;
         }
+        let inbounds = path(&["inbound"]);
+        for (name, inlet) in self.inbound.iter() {
+            inlet.validate(&child(&inbounds, name))?;
+        }
         if let Some(s3) = &self.s3 {
             s3.validate(&path(&["s3"]))?;
         }
@@ -140,11 +139,16 @@ impl Settings {
         for (name, cf) in self.cloudfront.iter() {
             cf.validate(&child(&cloudfronts, name))?;
         }
+        if let Some(scheduler) = &self.scheduler {
+            scheduler.validate(&path(&["scheduler"]))?;
+        }
         self.check_container_names()?;
         self.check_container_secrets_consistency()?;
+        self.check_inbound_handlers()?;
         self.check_backup_targets()?;
         self.check_rds_vpc()?;
         self.check_rds_database_url_requires_vpc()?;
+        self.check_scheduler_handlers()?;
         self.check_cloudfront_requires_s3()?;
         Ok(())
     }
@@ -174,6 +178,109 @@ impl Settings {
             }
         }
         out
+    }
+
+    fn check_inbound_handlers(&self) -> Result<(), SettingsError> {
+        let err = |m: String| Err(SettingsError::value(Vec::new(), m));
+        static RE: OnceLock<Regex> = OnceLock::new();
+        let name_re = RE.get_or_init(|| Regex::new("^[a-z][a-z0-9]{0,31}$").expect("re"));
+        let mut handlers: Vec<&str> = Vec::new();
+        let mut recipients: Vec<&str> = Vec::new();
+        let mut dns: Vec<(&str, (bool, Option<&str>))> = Vec::new();
+        for (name, inlet) in self.inbound.iter() {
+            if !inlet.manage_dns
+                && inlet
+                    .hosted_zone_id_override
+                    .as_deref()
+                    .is_some_and(|z| !z.is_empty())
+            {
+                return err(
+                    "manage_dns = false では hosted_zone_id_override を指定できません".to_string(),
+                );
+            }
+            let declared = (inlet.manage_dns, inlet.hosted_zone_id_override.as_deref());
+            match dns.iter().find(|(d, _)| *d == inlet.domain) {
+                Some((_, first)) if *first != declared => return err(
+                    "同じdomainのinboundは manage_dns と hosted_zone_id_override を揃えてください"
+                        .to_string(),
+                ),
+                Some(_) => {}
+                None => dns.push((&inlet.domain, declared)),
+            }
+            if !name_re.is_match(name) {
+                return err("inbound名はcontainer名と同じ形式で指定してください".to_string());
+            }
+            let (container, _, handler) = match self.resolve_handler(&inlet.handler) {
+                Ok(r) => r,
+                Err(m) => return err(m),
+            };
+            if !handler
+                .sqs
+                .as_ref()
+                .is_some_and(|q| q.report_batch_item_failures)
+            {
+                return err(
+                    "inbound.handlerにはpartial batch response対応SQS workerが必要です".to_string(),
+                );
+            }
+            if handlers.contains(&inlet.handler.as_str())
+                || inlet
+                    .recipients
+                    .iter()
+                    .any(|r| recipients.contains(&r.as_str()))
+            {
+                return err("inboundのhandlerまたは宛先が重複しています".to_string());
+            }
+            let c = self.container.get(container).expect("resolve_handler 済み");
+            if c.envs.contains_key("POCKET_INBOUND")
+                || c.handlers
+                    .values()
+                    .any(|h| h.envs.contains_key("POCKET_INBOUND"))
+            {
+                return err("POCKET_INBOUND はpocketが管理します".to_string());
+            }
+            handlers.push(&inlet.handler);
+            recipients.extend(inlet.recipients.iter().map(String::as_str));
+        }
+        Ok(())
+    }
+
+    fn check_scheduler_handlers(&self) -> Result<(), SettingsError> {
+        let Some(scheduler) = self.scheduler.as_ref().filter(|s| !s.schedules.is_empty()) else {
+            return Ok(());
+        };
+        let err = |m: String| Err(SettingsError::value(Vec::new(), m));
+        if self.container.is_empty() {
+            return err("scheduler is configured but container is missing".to_string());
+        }
+        const MANAGEMENT: &str = "pocket.django.lambda_handlers.management_command_handler";
+        for (key, entry) in scheduler.schedules.iter() {
+            let (_, _, handler) = match self.resolve_handler(&entry.handler) {
+                Ok(r) => r,
+                Err(m) => return err(format!("scheduler.schedules.{key}: {m}")),
+            };
+            match entry.scheduler {
+                SchedulerKind::DjangoManagement if handler.command != MANAGEMENT => {
+                    return err(format!(
+                        "scheduler.schedules.{key}: scheduler='{}' requires the target handler \
+                         '{}' to use command='{MANAGEMENT}', got '{}'",
+                        misc::DJANGO_MANAGEMENT_SCHEDULER,
+                        entry.handler,
+                        handler.command
+                    ));
+                }
+                SchedulerKind::Sqs if handler.sqs.is_none() => {
+                    return err(format!(
+                        "scheduler.schedules.{key}: scheduler='{}' requires the target handler \
+                         '{}' to have sqs configured",
+                        misc::SQS_SCHEDULER,
+                        entry.handler
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     fn check_backup_targets(&self) -> Result<(), SettingsError> {

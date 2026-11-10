@@ -1,0 +1,67 @@
+# [ses] / [inbound.<name>] / [scheduler] の全 field
+[general]
+region = "ap-northeast-1"
+project_name = "misc"
+stages = ["dev", "prod"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.handlers.wsgi]
+command = "app.wsgi"
+
+[container.app.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+
+[container.app.handlers.mail]
+command = "app.mail"
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
+
+[container.app.handlers.jobs]
+command = "app.jobs"
+sqs = { dead_letter_alert = { enabled = false } }
+
+[ses]
+from_email = "noreply@example.com"
+region = "us-east-1"
+configuration_set = "default"
+
+[inbound.support]
+domain = "mail.example.com"
+manage_dns = false
+recipients = ["support@mail.example.com", "help@mail.example.com"]
+handler = "app.mail"
+rule_set = "shared-rules"
+enabled = false
+tls_policy = "Optional"
+scan_enabled = false
+raw_prefix = "in/raw/"
+metadata_prefix = "in/meta/"
+import_prefix = "in/import/"
+retention_days = 30
+delivery_alert = { eventbridge = true }
+
+[scheduler.schedules.ping]
+cron = "0 * * * ? *"
+handler = "app.wsgi"
+input = { path = "/ping", nested = { a = [1, 2] } }
+
+[scheduler.schedules.cleanup]
+rate = "1 day"
+handler = "app.management"
+scheduler = "pocket.django.management_lambda_scheduler"
+manage = "clearsessions --verbosity 2"
+
+[scheduler.schedules.enqueue]
+rate = "5 minutes"
+handler = "app.jobs"
+scheduler = "pocket.sqs_scheduler"
+message = { command = "sync", args = ["a"], kwargs = { force = true } }
+
+[scheduler.schedules.bare]
+rate = "1 hour"
+handler = "app.jobs"
+scheduler = "pocket.sqs_scheduler"
+
+[prod.inbound.support]
+retention_days = 365

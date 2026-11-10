@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{from_serde, path, SettingsError};
+use crate::model::misc::fill_default_scheduler;
 use crate::model::provisioning::{check_section_keys, fill_from_env, reject_skip_check_existing};
 use crate::model::{Settings, TOP_LEVEL_KEYS};
 use crate::types::mark_datetimes;
@@ -81,6 +82,7 @@ impl Settings {
         fill_project_name(&mut data, &ctx.project_name_fallback);
         resolve_vpc(&mut data)?;
         accept_build_string(&mut data);
+        fill_default_scheduler(&mut data);
         reject_legacy_keys(&data)?;
         reject_skip_check_existing(&data)?;
         fill_from_env(&mut data, &ctx.env);
@@ -452,6 +454,14 @@ mod tests {
             (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\" }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0)], Value),
             (&format!("{BASE}[container.a]\nuse_vpc = true\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[container.Bad]\ndockerfile_path = \"D\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[ses]\n"), "dev", path(&["ses", "from_email"]), Missing),
+            (&format!("{BASE}[scheduler.schedules.a]\nrate = \"1 day\"\nhandler = \"x.y\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[scheduler.schedules.a]\nhandler = \"x.y\"\n"), "dev", path(&["scheduler", "schedules", "a"]), Value),
+            (&format!("{BASE}[scheduler.schedules.a]\nrate = 5\nhandler = \"x.y\"\n"), "dev", path(&["scheduler", "schedules", "a", "rate"]), Type),
+            (&format!("{BASE}[scheduler.schedules.a]\nrate = \"1 day\"\nhandler = \"x.y\"\nmanage = \"m\"\n"), "dev", path(&["scheduler", "schedules", "a", "manage"]), Extra),
+            (&format!("{BASE}[scheduler.schedules.a]\nrate = \"1 day\"\nhandler = \"x.y\"\nscheduler = \"pocket.django.management_lambda_scheduler\"\n"), "dev", path(&["scheduler", "schedules", "a", "manage"]), Missing),
+            (&format!("{BASE}[inbound.a]\ndomain = \"m.example.com\"\nrecipients = []\nhandler = \"x.y\"\nretention_days = 30\ndelivery_alert = {{ enabled = false }}\n"), "dev", path(&["inbound", "a", "recipients"]), Type),
+            (&format!("{BASE}[inbound.a]\ndomain = \"m.example.com\"\nrecipients = [\"a@other.com\"]\nhandler = \"x.y\"\nretention_days = 30\ndelivery_alert = {{ enabled = false }}\n"), "dev", path(&["inbound", "a"]), Value),
             (&format!("{BASE}[neon]\nprojectname = \"x\"\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[neon]\nproject_name = \"x\"\nskip_check_existing = true\n"), "dev", path(&["neon"]), Value),
             (&format!("{BASE}[neon]\n"), "dev", path(&["neon", "project_name"]), Missing),
