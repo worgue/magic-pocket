@@ -35,3 +35,11 @@ toml/rds.dev
 toml/rds_external_vpc.dev
 toml/rds_external_vpc.prod
 toml/rds.prod
+toml_vectors/provisioning.dev
+toml_vectors/provisioning.prod
+toml/db_command_provisioning.dev
+toml/default.dev
+toml/default.prod
+toml/default.sandbox
+toml/default.stg
+toml/upstash.dev

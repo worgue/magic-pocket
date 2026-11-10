@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{from_serde, path, SettingsError};
+use crate::model::provisioning::{check_section_keys, fill_from_env, reject_skip_check_existing};
 use crate::model::{Settings, TOP_LEVEL_KEYS};
 use crate::types::mark_datetimes;
 
@@ -42,9 +43,15 @@ impl Settings {
         })?;
         let cwd = std::env::current_dir()
             .map_err(|e| SettingsError::value(Vec::new(), format!("cwd を取得できません: {e}")))?;
+        // `.env` (cwd のもの) の上に環境変数を重ねる (環境変数が優先)
+        let mut env = match std::fs::read_to_string(cwd.join(".env")) {
+            Ok(text) => parse_dotenv(&text),
+            Err(_) => BTreeMap::new(),
+        };
+        env.extend(std::env::vars());
         let ctx = LoadContext {
             project_name_fallback: project_name_fallback(&cwd),
-            env: std::env::vars().collect(),
+            env,
             runtime_version: None,
         };
         Settings::from_parts(&text, stage, &ctx)
@@ -68,11 +75,15 @@ impl Settings {
         for s in &stages {
             data.remove(s);
         }
+        // stage 上書きの後に見る ([<stage>.neon] の typo も対象にするため)
+        check_section_keys(&data)?;
         data.insert("stage".to_string(), toml::Value::String(stage.to_string()));
         fill_project_name(&mut data, &ctx.project_name_fallback);
         resolve_vpc(&mut data)?;
         accept_build_string(&mut data);
         reject_legacy_keys(&data)?;
+        reject_skip_check_existing(&data)?;
+        fill_from_env(&mut data, &ctx.env);
         let mut data = toml::Value::Table(data);
         mark_datetimes(&mut data);
         let mut settings: Settings = serde_path_to_error::deserialize(data).map_err(from_serde)?;
@@ -80,6 +91,58 @@ impl Settings {
         let advisories = settings.advisories();
         Ok((settings, advisories))
     }
+}
+
+/// `.env` を読む (python-dotenv のよく使う書式: `export ` 前置き、`'...'` はそのまま、
+/// `"..."` は `\n` 等を展開、引用無しは ` #` 以降をコメントとして捨てる)
+fn parse_dotenv(text: &str) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        let value = if let Some(rest) = value.strip_prefix('\'') {
+            rest.split_once('\'').map(|(v, _)| v.to_string())
+        } else if let Some(rest) = value.strip_prefix('"') {
+            let mut v = String::new();
+            let mut chars = rest.chars();
+            let mut closed = false;
+            while let Some(c) = chars.next() {
+                match c {
+                    '"' => {
+                        closed = true;
+                        break;
+                    }
+                    '\\' => match chars.next() {
+                        Some('n') => v.push('\n'),
+                        Some('t') => v.push('\t'),
+                        Some('r') => v.push('\r'),
+                        Some(other) => v.push(other),
+                        None => break,
+                    },
+                    c => v.push(c),
+                }
+            }
+            closed.then_some(v)
+        } else {
+            let v = match value.find(" #") {
+                Some(i) => &value[..i],
+                None => value,
+            };
+            Some(v.trim_end().to_string())
+        };
+        if let Some(value) = value {
+            out.insert(key.to_string(), value);
+        }
+    }
+    out
 }
 
 /// pyproject.toml を cwd から上方向に探し、`project.name` を返す。
@@ -389,6 +452,11 @@ mod tests {
             (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\" }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0)], Value),
             (&format!("{BASE}[container.a]\nuse_vpc = true\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[container.Bad]\ndockerfile_path = \"D\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[neon]\nprojectname = \"x\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[neon]\nproject_name = \"x\"\nskip_check_existing = true\n"), "dev", path(&["neon"]), Value),
+            (&format!("{BASE}[neon]\n"), "dev", path(&["neon", "project_name"]), Missing),
+            (&format!("{BASE}[neon]\nproject_name = \"x\"\npg_version = \"abc\"\n"), "dev", path(&["neon", "pg_version"]), Type),
+            (&format!("{BASE}[upstash]\nprovisioning = \"auto\"\n"), "dev", path(&["upstash", "provisioning"]), Type),
             (&format!("{BASE}[backup]\n"), "dev", path(&["backup"]), Value),
             (&format!("{BASE}[backup.dsql]\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[dsql]\n[backup.dsql.monthly]\ncold_storage_after_days = 30\ndelete_after_days = 100\n"), "dev", path(&["backup", "dsql", "monthly"]), Value),
@@ -435,6 +503,20 @@ mod tests {
              二重 prefix (static/static/...) になります。 origin_path を省略すると単一 prefix \
              (static/...) になり、S3 を直接操作する運用で prefix が直感的になります。"
         );
+    }
+
+    #[test]
+    fn test_parse_dotenv() {
+        let env = parse_dotenv(
+            "# comment\nexport NEON_API_KEY='q u'  # c\nPLAIN=v1 # note\nQUOTED=\"a\\nb\"\n\
+             EMPTY=\nNOEQ\n  SPACED = x \n",
+        );
+        assert_eq!(env.get("NEON_API_KEY").map(String::as_str), Some("q u"));
+        assert_eq!(env.get("PLAIN").map(String::as_str), Some("v1"));
+        assert_eq!(env.get("QUOTED").map(String::as_str), Some("a\nb"));
+        assert_eq!(env.get("EMPTY").map(String::as_str), Some(""));
+        assert_eq!(env.get("SPACED").map(String::as_str), Some("x"));
+        assert!(!env.contains_key("NOEQ"));
     }
 
     #[test]

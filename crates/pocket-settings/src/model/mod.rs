@@ -5,6 +5,7 @@ pub mod container;
 pub mod db;
 pub mod django;
 pub mod general;
+pub mod provisioning;
 pub mod s3;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,7 @@ pub use db::{
 };
 pub use django::{CacheStore, Django, DjangoCache, DjangoStorage, PublishMode, StorageStore};
 pub use general::{Efs, GeneralSettings, Iam, Vpc};
+pub use provisioning::{Neon, ProvisioningMode, TiDb, Upstash};
 pub use s3::{OneOrMany, S3Cors, S3LifecycleRule, S3};
 
 /// pocket.toml の top-level に書ける key (Python の `Settings.model_fields` から
@@ -56,14 +58,8 @@ pub(crate) const TOP_LEVEL_KEYS: &[&str] = &[
 
 /// まだ Rust に移していない top-level の section と、宣言が無いときの JSON 値が
 /// `{}` (dict の section) か `null` か。移した section から順に外す (移行中だけの表)
-const UNPORTED_SECTIONS: &[(&str, bool)] = &[
-    ("neon", false),
-    ("tidb", false),
-    ("upstash", false),
-    ("ses", false),
-    ("inbound", true),
-    ("scheduler", false),
-];
+const UNPORTED_SECTIONS: &[(&str, bool)] =
+    &[("ses", false), ("inbound", true), ("scheduler", false)];
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +70,12 @@ pub struct Settings {
     pub vpc: Option<Vpc>,
     #[serde(default)]
     pub container: OrderedMap<Container>,
+    #[serde(default)]
+    pub neon: Option<Neon>,
+    #[serde(default)]
+    pub tidb: Option<TiDb>,
+    #[serde(default)]
+    pub upstash: Option<Upstash>,
     #[serde(default)]
     pub dsql: Option<Dsql>,
     #[serde(default)]
