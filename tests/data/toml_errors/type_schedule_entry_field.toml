@@ -1,0 +1,15 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.handlers.wsgi]
+command = "app.wsgi"
+apigateway = {}
+
+[scheduler.schedules.a]
+rate = 5
+handler = "app.wsgi"

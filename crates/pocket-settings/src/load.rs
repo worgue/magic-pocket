@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::error::{from_serde, path, SettingsError};
+use crate::model::cloudfront::reject_legacy_route_keys;
 use crate::model::misc::fill_default_scheduler;
 use crate::model::provisioning::{check_section_keys, fill_from_env, reject_skip_check_existing};
 use crate::model::{Settings, TOP_LEVEL_KEYS};
@@ -84,6 +85,7 @@ impl Settings {
         accept_build_string(&mut data);
         fill_default_scheduler(&mut data);
         reject_legacy_keys(&data)?;
+        reject_legacy_route_keys(&data)?;
         reject_skip_check_existing(&data)?;
         fill_from_env(&mut data, &ctx.env);
         let mut data = toml::Value::Table(data);

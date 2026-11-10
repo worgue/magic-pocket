@@ -1,0 +1,18 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/legacy_awscontainer.toml",
+  "kind": "Value",
+  "message": "[awscontainer] は廃止されました。[container.<name>] の dict 形式に移行してください (container は複数宣言できます)。\n  例) [awscontainer] → [container.mydjango]\n      [awscontainer.handlers.wsgi] → [container.mydjango.handlers.wsgi]\n      [sandbox.awscontainer] → [sandbox.container.mydjango]\n  あわせて cloudfront routes / scheduler の handler 参照を \"<container>.<handler>\" のドット記法に変更してください (例: handler = \"mydjango.wsgi\")。移行手順は CHANGELOG 0.29.0 を参照。",
+  "path": [],
+  "stage": "dev"
+}

@@ -1,0 +1,9 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[vpc]
+ref = "v"
+manage = false
+sharable = true

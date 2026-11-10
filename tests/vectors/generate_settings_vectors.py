@@ -5,6 +5,10 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 に書く。Rust 側 (`crates/pocket-settings/tests/vectors.rs`) は同じ入力を読んで
 この JSON と一致することを確かめる。
 
+入力の先頭に `# vector-env: KEY=VALUE` の行 (`# vector-env:` だけなら環境変数なし)
+があれば、その入力の vector の環境変数をその行のものだけにする (credential の
+空文字・未設定・大文字小文字の違いを固定するため)。
+
 ファイル・環境に依らない読み込み (Rust の純粋層 `Settings::from_parts` と同じ入力)
 にするため、読み込みは空の一時ディレクトリを cwd にし (`.env` を読まない)、
 環境変数を vector の context だけに差し替えて行う。project_name の既定は一時
@@ -15,6 +19,12 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 が読む形を固定するため)。Python が読めない runtime.toml は vector にせず、理由を
 stderr に出す。
 
+エラーの vector: `tests/data/toml_errors/<名前>.toml` (1 ファイル 1 欠陥。stage は
+先頭の `# stage: <名前>` コメント、無ければ `[general] stages` の先頭) を Python で
+読んだときのエラーを `<名前>.expected.json` に書く。エラーがちょうど 1 件でない
+fixture は不正として止める。kind は Missing / Extra / Type / Value (独自の検証と
+前処理) / Syntax。path から pydantic の union のタグは除く。
+
 `--check` は書かずに、commit 済みの vector と一致するか (不足・余分を含む) を見る。
 """
 
@@ -23,6 +33,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -30,13 +41,25 @@ from unittest import mock
 
 import click
 from pocket_cli.cli.runtime_config_cli import _clean_data, _to_toml
+from pydantic import ValidationError
 
+from pocket import __version__ as runtime_version
 from pocket.settings import Settings
 from pocket.utils import mask_secret_values, tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests/data/settings_vectors"
 RUNTIME_DIR = OUT_DIR / "runtime"
+ERRORS_DIR = REPO_ROOT / "tests/data/toml_errors"
+
+# discriminated union のタグ (pydantic のエラーの loc に入る)
+_UNION_TAGS = frozenset(
+    {
+        "pocket.lambda_scheduler",
+        "pocket.django.management_lambda_scheduler",
+        "pocket.sqs_scheduler",
+    }
+)
 
 # 入力の group 名と glob (repo root からの相対)
 INPUT_GROUPS = (
@@ -56,6 +79,19 @@ DEFAULT_CONTEXT: dict = {
     },
     "runtime_version": None,
 }
+
+
+def input_context(text: str) -> dict:
+    """入力の `# vector-env:` 行から vector の context を決める"""
+    lines = re.findall(r"^# vector-env:(.*)$", text, re.MULTILINE)
+    if not lines:
+        return DEFAULT_CONTEXT
+    env = {}
+    for line in lines:
+        if line.strip():
+            key, value = line.strip().split("=", 1)
+            env[key] = value
+    return {**DEFAULT_CONTEXT, "env": env}
 
 
 def iter_inputs() -> Iterator[tuple[str, str, Path]]:
@@ -121,10 +157,12 @@ def expected_files() -> tuple[dict[Path, str], list[str]]:
     files: dict[Path, str] = {}
     skipped: list[str] = []
     for group, name, path in iter_inputs():
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+        data = tomllib.loads(text)
+        context = input_context(text)
         stages = data["general"]["stages"]
         for stage in stages:
-            vector = build_vector(path, stage, DEFAULT_CONTEXT)
+            vector = build_vector(path, stage, context)
             files[OUT_DIR / group / ("%s.%s.json" % (name, stage))] = render(vector)
         runtime_path = RUNTIME_DIR / ("%s.%s.runtime.toml" % (group, name))
         runtime_text = runtime_toml_text(path)
@@ -137,7 +175,7 @@ def expected_files() -> tuple[dict[Path, str], list[str]]:
                 for stage in stages:
                     current = stage
                     vector = build_vector(
-                        tmp_path, stage, DEFAULT_CONTEXT, input_path=runtime_path
+                        tmp_path, stage, context, input_path=runtime_path
                     )
                     out = RUNTIME_DIR / ("%s.%s.%s.json" % (group, name, stage))
                     runtime_files[out] = render(vector)
@@ -151,8 +189,88 @@ def expected_files() -> tuple[dict[Path, str], list[str]]:
     return files, skipped
 
 
+def _error_kind(error_type: str) -> str:
+    if error_type == "missing":
+        return "Missing"
+    if error_type == "extra_forbidden":
+        return "Extra"
+    if error_type == "value_error":
+        return "Value"
+    return "Type"
+
+
+def _error_path(loc: tuple) -> list:
+    """pydantic の loc から union のタグ (`function-after[...]` 等) を除く"""
+    return [
+        seg
+        for seg in loc
+        if not (
+            isinstance(seg, str)
+            and (seg in _UNION_TAGS or ("[" in seg and seg != "[key]"))
+        )
+    ]
+
+
+def error_stage(text: str) -> str:
+    m = re.search(r"^# stage: (\S+)", text, re.MULTILINE)
+    if m:
+        return m.group(1)
+    with contextlib.suppress(tomllib.TOMLDecodeError, KeyError, IndexError, TypeError):
+        return tomllib.loads(text)["general"]["stages"][0]
+    return "dev"
+
+
+def build_error_vector(toml_path: Path, context: dict) -> dict:
+    text = toml_path.read_text(encoding="utf-8")
+    stage = error_stage(text)
+    result = {
+        "input": toml_path.relative_to(REPO_ROOT).as_posix(),
+        "stage": stage,
+        "context": context,
+    }
+    with isolated_load(toml_path, context):
+        try:
+            Settings.from_toml(stage=stage)
+        except ValidationError as e:
+            errors = e.errors()
+            if len(errors) != 1:
+                raise click.ClickException(
+                    "%s: エラーが %d 件あります (1 ファイル 1 欠陥にしてください):\n%s"
+                    % (toml_path.name, len(errors), e)
+                ) from e
+            error = errors[0]
+            kind = _error_kind(error["type"])
+            message = error["msg"]
+            if kind == "Value":
+                message = message.removeprefix("Value error, ")
+            return {
+                **result,
+                "path": _error_path(error["loc"]),
+                "kind": kind,
+                "message": message,
+            }
+        except tomllib.TOMLDecodeError as e:
+            return {**result, "path": [], "kind": "Syntax", "message": str(e)}
+        except ValueError as e:
+            return {**result, "path": [], "kind": "Value", "message": str(e)}
+    raise click.ClickException("%s: エラーになりません" % toml_path.name)
+
+
+def expected_error_files() -> dict[Path, str]:
+    context = {**DEFAULT_CONTEXT, "runtime_version": runtime_version}
+    files: dict[Path, str] = {}
+    for path in sorted(ERRORS_DIR.glob("*.toml")):
+        vector = build_error_vector(path, context)
+        files[path.with_suffix(".expected.json")] = render(vector)
+    return files
+
+
 def existing_files() -> set[Path]:
-    return set(OUT_DIR.rglob("*.json")) | set(RUNTIME_DIR.glob("*.runtime.toml"))
+    return (
+        set(OUT_DIR.rglob("*.json"))
+        | set(RUNTIME_DIR.glob("*.runtime.toml"))
+        | set(ERRORS_DIR.glob("*.expected.json"))
+    )
 
 
 def diff_files(expected: dict[Path, str]) -> list[str]:
@@ -174,6 +292,7 @@ def diff_files(expected: dict[Path, str]) -> list[str]:
 @click.option("--check", is_flag=True, help="書かずに commit 済みの vector と比べる")
 def main(check: bool):
     expected, skipped = expected_files()
+    expected.update(expected_error_files())
     if skipped:
         click.echo(
             "Python が読めない runtime.toml は vector にしていません:\n  "

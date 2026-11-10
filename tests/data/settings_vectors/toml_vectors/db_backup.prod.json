@@ -16,28 +16,28 @@
       "deletable": true,
       "dsql": {
         "daily": {
-          "cold_storage_after_days": 0,
+          "cold_storage_after_days": 10,
           "cron": "0 1 * * ? *",
-          "delete_after_days": 7
+          "delete_after_days": 100
         },
         "monthly": {
           "cold_storage_after_days": 30,
-          "cron": "0 5 1 * ? *",
+          "cron": "0 3 1 * ? *",
           "delete_after_days": 400
         },
         "weekly": {
           "cold_storage_after_days": 0,
-          "cron": "0 4 ? * 1 *",
-          "delete_after_days": 365
+          "cron": "0 2 ? * 1 *",
+          "delete_after_days": 120
         }
       },
       "rds": {
         "monthly": {
-          "cron": "0 5 1 * ? *",
-          "delete_after_days": 1095
+          "cron": "0 2 1 * ? *",
+          "delete_after_days": 730
         },
         "weekly": {
-          "cron": "0 4 ? * 1 *",
+          "cron": "0 2 ? * 7 *",
           "delete_after_days": 180
         }
       },
@@ -217,28 +217,28 @@
       "deletable": true,
       "dsql": {
         "daily": {
-          "cold_storage_after_days": 0,
+          "cold_storage_after_days": 10,
           "cron": "0 1 * * ? *",
-          "delete_after_days": 7
+          "delete_after_days": 100
         },
         "monthly": {
           "cold_storage_after_days": 30,
-          "cron": "0 5 1 * ? *",
+          "cron": "0 3 1 * ? *",
           "delete_after_days": 400
         },
         "weekly": {
           "cold_storage_after_days": 0,
-          "cron": "0 4 ? * 1 *",
-          "delete_after_days": 365
+          "cron": "0 2 ? * 1 *",
+          "delete_after_days": 120
         }
       },
       "rds": {
         "monthly": {
-          "cron": "0 5 1 * ? *",
-          "delete_after_days": 1095
+          "cron": "0 2 1 * ? *",
+          "delete_after_days": 730
         },
         "weekly": {
-          "cron": "0 4 ? * 1 *",
+          "cron": "0 2 ? * 7 *",
           "delete_after_days": 180
         }
       },

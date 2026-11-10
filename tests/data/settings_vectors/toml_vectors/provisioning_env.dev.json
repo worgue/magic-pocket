@@ -1,0 +1,181 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "",
+      "PROJECT_NAME": "from-env",
+      "upstash_api_key": "lower-case-key"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": null
+  },
+  "input": "tests/data/toml_vectors/provisioning_env.toml",
+  "masked": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "provenv",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": {
+      "api_key": "****",
+      "branch_name": null,
+      "parent_branch_name": null,
+      "pg_version": 15,
+      "project_name": "from-env",
+      "provisioning": "deploy"
+    },
+    "rds": null,
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-provenv",
+    "stage": "dev",
+    "tidb": {
+      "cluster": null,
+      "private_key": null,
+      "project": null,
+      "provisioning": "deploy",
+      "public_key": null,
+      "region": "ap-northeast-1"
+    },
+    "upstash": {
+      "api_key": "****",
+      "budget": 20,
+      "email": null,
+      "provisioning": "deploy"
+    },
+    "vpc": null
+  },
+  "settings": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "provenv",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": {
+      "api_key": "",
+      "branch_name": null,
+      "parent_branch_name": null,
+      "pg_version": 15,
+      "project_name": "from-env",
+      "provisioning": "deploy"
+    },
+    "rds": null,
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-provenv",
+    "stage": "dev",
+    "tidb": {
+      "cluster": null,
+      "private_key": null,
+      "project": null,
+      "provisioning": "deploy",
+      "public_key": null,
+      "region": "ap-northeast-1"
+    },
+    "upstash": {
+      "api_key": "lower-case-key",
+      "budget": 20,
+      "email": null,
+      "provisioning": "deploy"
+    },
+    "vpc": null
+  },
+  "stage": "dev"
+}

@@ -1,0 +1,13 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[s3]
+
+[cloudfront.web]
+basic_auth = "B"
+routes = [{ is_default = true, origin_path = "/spa" }]

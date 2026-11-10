@@ -1,0 +1,8 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[general.django_fallback.storages]
+default = { store = "filesystem", publish = "command" }
+staticfiles = { store = "filesystem", static = true }

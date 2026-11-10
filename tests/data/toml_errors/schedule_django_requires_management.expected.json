@@ -1,0 +1,18 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/schedule_django_requires_management.toml",
+  "kind": "Value",
+  "message": "scheduler.schedules.a: scheduler='pocket.django.management_lambda_scheduler' requires the target handler 'app.wsgi' to use command='pocket.django.lambda_handlers.management_command_handler', got 'app.wsgi'",
+  "path": [],
+  "stage": "dev"
+}

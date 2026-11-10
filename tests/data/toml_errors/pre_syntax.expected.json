@@ -1,0 +1,18 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/pre_syntax.toml",
+  "kind": "Syntax",
+  "message": "Expected ']' at the end of a table declaration (at line 5, column 4)",
+  "path": [],
+  "stage": "dev"
+}

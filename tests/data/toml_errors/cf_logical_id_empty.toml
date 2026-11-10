@@ -1,0 +1,9 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[s3]
+
+[cloudfront.web]
+routes = [{ is_default = true, origin_path = "/spa" }, { path_pattern = "/-/*" }]

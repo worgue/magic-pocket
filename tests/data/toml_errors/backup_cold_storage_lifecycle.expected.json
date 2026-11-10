@@ -1,0 +1,22 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/backup_cold_storage_lifecycle.toml",
+  "kind": "Value",
+  "message": "delete_after_days は cold_storage_after_days + 90 以上に してください (AWS Backup の cold storage 最低保持期間)。 cold_storage_after_days = 30 なら 120 以上が必要です。",
+  "path": [
+    "backup",
+    "dsql",
+    "monthly"
+  ],
+  "stage": "dev"
+}

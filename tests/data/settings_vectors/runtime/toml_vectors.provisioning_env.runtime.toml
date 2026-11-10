@@ -1,0 +1,12 @@
+[general]
+region = "ap-northeast-1"
+project_name = "provenv"
+stages = ["dev"]
+
+[neon]
+
+
+[tidb]
+
+
+[upstash]

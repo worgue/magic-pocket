@@ -102,9 +102,9 @@
     "upstash": null,
     "vpc": {
       "efs": null,
-      "internet_gateway": true,
+      "internet_gateway": false,
       "manage": true,
-      "nat_gateway": true,
+      "nat_gateway": false,
       "ref": "main",
       "sharable": true,
       "zone_suffixes": [
@@ -204,9 +204,9 @@
     "upstash": null,
     "vpc": {
       "efs": null,
-      "internet_gateway": true,
+      "internet_gateway": false,
       "manage": true,
-      "nat_gateway": true,
+      "nat_gateway": false,
       "ref": "main",
       "sharable": true,
       "zone_suffixes": [

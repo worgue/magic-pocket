@@ -1,0 +1,10 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[s3]
+
+[cloudfront.web]
+waf = { enable_ip_set = false, rate_limits = [{ limit = 100, action = "count" }] }
+routes = [{ is_default = true, origin_path = "/spa" }]

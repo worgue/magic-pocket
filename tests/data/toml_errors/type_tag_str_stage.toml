@@ -1,0 +1,4 @@
+[general]
+region = "r"
+project_name = "err"
+stages = ["Dev"]

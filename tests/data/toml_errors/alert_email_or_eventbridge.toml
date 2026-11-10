@@ -1,0 +1,11 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.handlers.w]
+command = "c"
+sqs = { dead_letter_alert = { email = "a@example.com", eventbridge = true } }

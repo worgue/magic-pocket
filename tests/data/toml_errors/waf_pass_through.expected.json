@@ -1,0 +1,22 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/waf_pass_through.toml",
+  "kind": "Value",
+  "message": "[cloudfront.<name>.waf]: enable_ip_set = false の場合は managed_rule_groups か action = \"block\" の rate_limits を 1 つ以上指定してください。どれも無いと WebACL が何も遮断しない pass-through 状態になり、WAF を attach する意味がありません (action = \"count\" の rate_limits は観測だけで遮断しません)。",
+  "path": [
+    "cloudfront",
+    "web",
+    "waf"
+  ],
+  "stage": "dev"
+}

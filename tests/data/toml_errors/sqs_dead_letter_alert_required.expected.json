@@ -1,0 +1,24 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/sqs_dead_letter_alert_required.toml",
+  "kind": "Value",
+  "message": "sqs.dead_letter_alert is required so that messages falling into the dead-letter queue never go unnoticed. Either declare a notification target:\n  sqs = { dead_letter_alert = { email = \"ops@example.com\" } }\nor explicitly opt out of monitoring:\n  sqs = { dead_letter_alert = { enabled = false } }",
+  "path": [
+    "container",
+    "app",
+    "handlers",
+    "w",
+    "sqs"
+  ],
+  "stage": "dev"
+}

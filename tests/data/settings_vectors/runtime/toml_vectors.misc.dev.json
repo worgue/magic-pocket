@@ -209,6 +209,16 @@
           "schedule_expression": "rate(5 minutes)",
           "scheduler": "pocket.sqs_scheduler"
         },
+        "nightly": {
+          "cron": "0 3 * * ? *",
+          "handler": "app.jobs",
+          "message": {
+            "command": "nightly"
+          },
+          "rate": null,
+          "schedule_expression": "cron(0 3 * * ? *)",
+          "scheduler": "pocket.sqs_scheduler"
+        },
         "ping": {
           "cron": "0 * * * ? *",
           "handler": "app.wsgi",
@@ -434,6 +444,16 @@
           },
           "rate": "5 minutes",
           "schedule_expression": "rate(5 minutes)",
+          "scheduler": "pocket.sqs_scheduler"
+        },
+        "nightly": {
+          "cron": "0 3 * * ? *",
+          "handler": "app.jobs",
+          "message": {
+            "command": "nightly"
+          },
+          "rate": null,
+          "schedule_expression": "cron(0 3 * * ? *)",
           "scheduler": "pocket.sqs_scheduler"
         },
         "ping": {

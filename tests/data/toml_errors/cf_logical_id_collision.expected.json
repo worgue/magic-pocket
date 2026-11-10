@@ -1,0 +1,21 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/cf_logical_id_collision.toml",
+  "kind": "Value",
+  "message": "routes '/foo-bar/*' と '/foobar/*' は同じ CloudFormation 論理 ID 'foobar' を導出します (英数字以外は除去されます)。区別可能な path prefix を使ってください。",
+  "path": [
+    "cloudfront",
+    "web"
+  ],
+  "stage": "dev"
+}

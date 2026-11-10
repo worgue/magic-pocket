@@ -1,0 +1,10 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[dsql]
+
+[backup.dsql.monthly]
+cold_storage_after_days = 30
+delete_after_days = 100

@@ -1,0 +1,20 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/backup_no_target.toml",
+  "kind": "Value",
+  "message": "[backup] には [backup.dsql] / [backup.rds] の少なくとも 一方の宣言が必要です。",
+  "path": [
+    "backup"
+  ],
+  "stage": "dev"
+}

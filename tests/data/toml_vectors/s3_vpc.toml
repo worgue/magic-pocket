@@ -20,6 +20,11 @@ lifecycle_rules = [
     { id = "old", prefix = "", noncurrent_version_expiration_days = 30 },
 ]
 
+# NAT も Internet Gateway も持たない管理 VPC (閉じた private subnet)
+[dev.vpc]
+nat_gateway = false
+internet_gateway = false
+
 # EFS は管理する VPC でだけ使える
 [prod.vpc]
 efs = { local_mount_path = "/mnt/data", access_point_path = "/app" }

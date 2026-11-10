@@ -1,0 +1,18 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/settings_origin_verify_requires_lambda.toml",
+  "kind": "Value",
+  "message": "cloudfront.web: enable_origin_verify requires at least one lambda route (the origin to protect). S3-only distributions are already protected by OAC.",
+  "path": [],
+  "stage": "dev"
+}

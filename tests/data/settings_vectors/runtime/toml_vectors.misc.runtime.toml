@@ -81,7 +81,17 @@ rate = "1 hour"
 handler = "app.jobs"
 scheduler = "pocket.sqs_scheduler"
 
+[scheduler.schedules.nightly]
+cron = "0 3 * * ? *"
+handler = "app.jobs"
+scheduler = "pocket.sqs_scheduler"
+
+[scheduler.schedules.nightly.message]
+command = "nightly"
+
 [prod.inbound]
 
 [prod.inbound.support]
 retention_days = 365
+manage_dns = true
+hosted_zone_id_override = "Z1"

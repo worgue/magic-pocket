@@ -1,0 +1,22 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/waf_rate_limit_too_many.toml",
+  "kind": "Value",
+  "message": "[cloudfront.<name>.waf]: rate_limits は 10 件までです (AWS WAF の WebACL あたりの rate-based rule 数の上限): 11 件",
+  "path": [
+    "cloudfront",
+    "web",
+    "waf"
+  ],
+  "stage": "dev"
+}

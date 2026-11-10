@@ -157,9 +157,9 @@
         "domain": "mail.example.com",
         "enabled": false,
         "handler": "app.mail",
-        "hosted_zone_id_override": null,
+        "hosted_zone_id_override": "Z1",
         "import_prefix": "in/import/",
-        "manage_dns": false,
+        "manage_dns": true,
         "metadata_prefix": "in/meta/",
         "raw_prefix": "in/raw/",
         "recipients": [
@@ -207,6 +207,16 @@
           },
           "rate": "5 minutes",
           "schedule_expression": "rate(5 minutes)",
+          "scheduler": "pocket.sqs_scheduler"
+        },
+        "nightly": {
+          "cron": "0 3 * * ? *",
+          "handler": "app.jobs",
+          "message": {
+            "command": "nightly"
+          },
+          "rate": null,
+          "schedule_expression": "cron(0 3 * * ? *)",
           "scheduler": "pocket.sqs_scheduler"
         },
         "ping": {
@@ -384,9 +394,9 @@
         "domain": "mail.example.com",
         "enabled": false,
         "handler": "app.mail",
-        "hosted_zone_id_override": null,
+        "hosted_zone_id_override": "Z1",
         "import_prefix": "in/import/",
-        "manage_dns": false,
+        "manage_dns": true,
         "metadata_prefix": "in/meta/",
         "raw_prefix": "in/raw/",
         "recipients": [
@@ -434,6 +444,16 @@
           },
           "rate": "5 minutes",
           "schedule_expression": "rate(5 minutes)",
+          "scheduler": "pocket.sqs_scheduler"
+        },
+        "nightly": {
+          "cron": "0 3 * * ? *",
+          "handler": "app.jobs",
+          "message": {
+            "command": "nightly"
+          },
+          "rate": null,
+          "schedule_expression": "cron(0 3 * * ? *)",
           "scheduler": "pocket.sqs_scheduler"
         },
         "ping": {

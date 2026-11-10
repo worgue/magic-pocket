@@ -1,0 +1,20 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/rds_unmanaged_fields_with_managed.toml",
+  "kind": "Value",
+  "message": "secret_arn は managed = false でのみ使用できます。 既存の RDS を参照する場合は managed = false を指定してください。",
+  "path": [
+    "rds"
+  ],
+  "stage": "dev"
+}

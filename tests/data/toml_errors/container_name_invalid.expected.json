@@ -1,0 +1,18 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/container_name_invalid.toml",
+  "kind": "Value",
+  "message": "container 名 'App' が不正です。英小文字始まりの英小文字+数字 (最大 32 文字、hyphen 不可) にしてください。物理リソース名の slot とドット記法の一意分解に使うための制約です。",
+  "path": [],
+  "stage": "dev"
+}

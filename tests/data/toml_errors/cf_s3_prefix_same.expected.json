@@ -1,0 +1,21 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/cf_s3_prefix_same.toml",
+  "kind": "Value",
+  "message": "ルート '/b/*' の S3 prefix 'x/a/b' はルート '/a/*' の S3 prefix 'x/a' の子パスです。s3 sync --delete 等で意図せずファイルが削除される危険があります。",
+  "path": [
+    "cloudfront",
+    "web"
+  ],
+  "stage": "dev"
+}

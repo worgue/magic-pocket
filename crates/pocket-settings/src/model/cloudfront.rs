@@ -673,3 +673,69 @@ impl CloudFront {
         Ok(())
     }
 }
+
+/// Python の真偽 (空・0・false が偽)
+fn truthy(v: &toml::Value) -> bool {
+    match v {
+        toml::Value::Boolean(b) => *b,
+        toml::Value::Integer(i) => *i != 0,
+        toml::Value::Float(f) => *f != 0.0,
+        toml::Value::String(s) => !s.is_empty(),
+        toml::Value::Array(a) => !a.is_empty(),
+        toml::Value::Table(t) => !t.is_empty(),
+        toml::Value::Datetime(_) => true,
+    }
+}
+
+/// route の廃止キーを移行案内つきで拒否する (Python の `Route` の `mode="before"` validator:
+/// is_versioned / build_dir / 文字列の build / type = "api")
+pub(crate) fn reject_legacy_route_keys(data: &toml::Table) -> Result<(), SettingsError> {
+    let Some(toml::Value::Table(cloudfronts)) = data.get("cloudfront") else {
+        return Ok(());
+    };
+    for (name, cf) in cloudfronts.iter() {
+        let Some(toml::Value::Array(routes)) = cf.get("routes") else {
+            continue;
+        };
+        for (i, route) in routes.iter().enumerate() {
+            let toml::Value::Table(r) = route else {
+                continue;
+            };
+            let path = vec![
+                PathSeg::Key("cloudfront".to_string()),
+                PathSeg::Key(name.clone()),
+                PathSeg::Key("routes".to_string()),
+                PathSeg::Index(i),
+            ];
+            let err = |m: &str| Err(SettingsError::value(path.clone(), m));
+            if r.get("is_versioned").is_some_and(truthy) {
+                return err(
+                    "is_versioned は廃止されました。versioning = \"content_hash\" を使ってください。",
+                );
+            }
+            if r.contains_key("build_dir") {
+                return err(
+                    "build_dir は廃止されました。pocket にビルドさせる場合は build = { dir = \"...\", \
+                     cmd = \"...\" } を、ビルド済み成果物をアップロードするだけの場合は upload_dir = \
+                     \"...\" を使ってください。\n  例) build = { dir = \"frontend/dist\", cmd = \
+                     \"just frontend-build\" }\n  例) upload_dir = \"frontend/dist\"  # ビルドは CI 等の責任",
+                );
+            }
+            if matches!(r.get("build"), Some(toml::Value::String(_))) {
+                return err(
+                    "build の文字列指定は廃止されました。ビルドコマンドと成果物ディレクトリを組で\
+                     宣言してください。\n  例) build = { dir = \"frontend/dist\", cmd = \
+                     \"just frontend-build\" }",
+                );
+            }
+            if r.get("type").and_then(|t| t.as_str()) == Some("api") {
+                return err(
+                    "type = \"api\" は廃止されました。type = \"lambda\" を使ってください。 \
+                     あわせて旧 api の制約が解除され、is_default = true も含めて すべての route \
+                     オプションが利用可能になっています。",
+                );
+            }
+        }
+    }
+    Ok(())
+}

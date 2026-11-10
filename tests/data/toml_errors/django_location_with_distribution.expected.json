@@ -1,0 +1,23 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/django_location_with_distribution.toml",
+  "kind": "Value",
+  "message": "location cannot be used with distribution (S3 location is computed from the route's origin_path)",
+  "path": [
+    "general",
+    "django_fallback",
+    "storages",
+    "default"
+  ],
+  "stage": "dev"
+}

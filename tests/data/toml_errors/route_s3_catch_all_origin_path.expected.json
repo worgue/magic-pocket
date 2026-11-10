@@ -1,0 +1,23 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/route_s3_catch_all_origin_path.toml",
+  "kind": "Value",
+  "message": "S3 route requires `origin_path` when path_pattern has no prefix (catch-all). Set a prefix like \"/spa\" to separate from other S3 routes (e.g. Django static at /static).\n  Example: { type = \"s3\", path_pattern = \"\", is_default = true, origin_path = \"/spa\" }",
+  "path": [
+    "cloudfront",
+    "web",
+    "routes",
+    0
+  ],
+  "stage": "dev"
+}

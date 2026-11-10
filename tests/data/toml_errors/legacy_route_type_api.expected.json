@@ -1,0 +1,23 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/legacy_route_type_api.toml",
+  "kind": "Value",
+  "message": "type = \"api\" は廃止されました。type = \"lambda\" を使ってください。 あわせて旧 api の制約が解除され、is_default = true も含めて すべての route オプションが利用可能になっています。",
+  "path": [
+    "cloudfront",
+    "web",
+    "routes",
+    1
+  ],
+  "stage": "dev"
+}

@@ -1,0 +1,8 @@
+[general]
+region = "ap-northeast-1"
+project_name = "err"
+stages = ["dev"]
+
+[scheduler.schedules.a]
+rate = "1 day"
+handler = "app.wsgi"

@@ -1,0 +1,21 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/cf_ref_duplicate.toml",
+  "kind": "Value",
+  "message": "routes の ref 'x' が重複しています。ref は route を一意に識別するため、同じ値を複数の route に設定することはできません。",
+  "path": [
+    "cloudfront",
+    "web"
+  ],
+  "stage": "dev"
+}

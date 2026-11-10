@@ -20,6 +20,9 @@ use_vpc = false
 
 [rds]
 
+[dev.rds]
+password_strategy = "static"
+
 [prod.dsql]
 deletion_protection = true
 
@@ -35,12 +38,12 @@ rotation_duration = "3h"
 [prod.backup]
 deletable = true
 timezone = "Asia/Tokyo"
-rds = { weekly = { delete_after_days = 180 } }
+rds = { weekly = { cron = "0 2 ? * 7 *", delete_after_days = 180 }, monthly = { cron = "0 2 1 * ? *", delete_after_days = 730 } }
 
 [prod.backup.dsql]
-daily = { cron = "0 1 * * ? *", delete_after_days = 7 }
-weekly = { cold_storage_after_days = 0 }
-monthly = { delete_after_days = 400, cold_storage_after_days = 30 }
+daily = { cron = "0 1 * * ? *", delete_after_days = 100, cold_storage_after_days = 10 }
+weekly = { cron = "0 2 ? * 1 *", delete_after_days = 120, cold_storage_after_days = 0 }
+monthly = { cron = "0 3 1 * ? *", delete_after_days = 400, cold_storage_after_days = 30 }
 
 [ext.rds]
 managed = false

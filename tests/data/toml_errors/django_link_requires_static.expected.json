@@ -1,0 +1,23 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": "0.47.0"
+  },
+  "input": "tests/data/toml_errors/django_link_requires_static.toml",
+  "kind": "Value",
+  "message": "link can only be used with static storage",
+  "path": [
+    "general",
+    "django_fallback",
+    "storages",
+    "default"
+  ],
+  "stage": "dev"
+}
