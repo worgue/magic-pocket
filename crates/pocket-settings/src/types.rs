@@ -369,3 +369,21 @@ pub(crate) fn py_repr(s: &str) -> String {
     out.push(quote);
     out
 }
+
+ranged_int_fn!(ge0, opt_ge0, Some(0), None);
+ranged_int_fn!(retention_1_35, opt_retention_1_35, Some(1), Some(35));
+ranged_int_fn!(ge14, opt_ge14, Some(14), None);
+
+constrained_str!(
+    /// RDS のパスワードローテーションの schedule (`cron(...)` / `rate(...)`)
+    RotationSchedule,
+    r"^(cron|rate)\(.+\)$",
+    None
+);
+
+constrained_str!(
+    /// RDS のパスワードローテーションの所要上限 (`1h`〜`24h`)
+    RotationDuration,
+    "^([1-9]|1[0-9]|2[0-4])h$",
+    None
+);

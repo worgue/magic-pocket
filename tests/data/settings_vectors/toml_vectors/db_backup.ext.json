@@ -1,0 +1,399 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": null
+  },
+  "input": "tests/data/toml_vectors/db_backup.toml",
+  "masked": {
+    "backup": {
+      "deletable": false,
+      "dsql": {
+        "daily": {
+          "cold_storage_after_days": 0,
+          "cron": "0 3 * * ? *",
+          "delete_after_days": 35
+        },
+        "monthly": {
+          "cold_storage_after_days": 90,
+          "cron": "0 5 1 * ? *",
+          "delete_after_days": 1095
+        },
+        "weekly": {
+          "cold_storage_after_days": 90,
+          "cron": "0 4 ? * 1 *",
+          "delete_after_days": 365
+        }
+      },
+      "rds": null,
+      "timezone": "UTC"
+    },
+    "cloudfront": {},
+    "container": {
+      "app": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {},
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "DATABASE_URL": {
+              "options": {},
+              "shared": false,
+              "type": "rds_database_url"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "sm",
+          "user": {}
+        },
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      "batch": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {},
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": null,
+        "vpc": null
+      }
+    },
+    "dsql": {
+      "deletion_protection": false
+    },
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "db",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "ext"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": {
+      "backup": {
+        "retention_days": 35
+      },
+      "database": null,
+      "managed": false,
+      "max_capacity": 2.0,
+      "min_capacity": 0.5,
+      "password_strategy": "aws-managed",
+      "rotation_duration": null,
+      "rotation_schedule": null,
+      "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db",
+      "security_group_id": "sg-123",
+      "snapshot_identifier": null,
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
+    },
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "ext-db",
+    "stage": "ext",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "settings": {
+    "backup": {
+      "deletable": false,
+      "dsql": {
+        "daily": {
+          "cold_storage_after_days": 0,
+          "cron": "0 3 * * ? *",
+          "delete_after_days": 35
+        },
+        "monthly": {
+          "cold_storage_after_days": 90,
+          "cron": "0 5 1 * ? *",
+          "delete_after_days": 1095
+        },
+        "weekly": {
+          "cold_storage_after_days": 90,
+          "cron": "0 4 ? * 1 *",
+          "delete_after_days": 365
+        }
+      },
+      "rds": null,
+      "timezone": "UTC"
+    },
+    "cloudfront": {},
+    "container": {
+      "app": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {},
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "DATABASE_URL": {
+              "options": {},
+              "shared": false,
+              "type": "rds_database_url"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "sm",
+          "user": {}
+        },
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      "batch": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {},
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": null,
+        "vpc": null
+      }
+    },
+    "dsql": {
+      "deletion_protection": false
+    },
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "db",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "ext"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": {
+      "backup": {
+        "retention_days": 35
+      },
+      "database": null,
+      "managed": false,
+      "max_capacity": 2.0,
+      "min_capacity": 0.5,
+      "password_strategy": "aws-managed",
+      "rotation_duration": null,
+      "rotation_schedule": null,
+      "secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db",
+      "security_group_id": "sg-123",
+      "snapshot_identifier": null,
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
+    },
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "ext-db",
+    "stage": "ext",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "stage": "ext"
+}

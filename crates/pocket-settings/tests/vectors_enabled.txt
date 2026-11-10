@@ -28,3 +28,10 @@ toml/cloudfront_signing_key.dev
 toml/cloudfront_spa_build.dev
 toml/cloudfront_spa_token.dev
 toml/django_deploy_hash.dev
+toml_vectors/db_backup.dev
+toml_vectors/db_backup.ext
+toml_vectors/db_backup.prod
+toml/rds.dev
+toml/rds_external_vpc.dev
+toml/rds_external_vpc.prod
+toml/rds.prod

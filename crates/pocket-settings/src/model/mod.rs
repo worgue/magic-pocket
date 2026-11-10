@@ -2,6 +2,7 @@
 
 pub mod cloudfront;
 pub mod container;
+pub mod db;
 pub mod django;
 pub mod general;
 pub mod s3;
@@ -24,6 +25,10 @@ pub use container::{
     Alert, ApiGateway, BuildBackend, BuildConfig, Container, ContainerIam, LambdaHandler,
     ManagedSecretSpec, ManagedSecretType, Platform, Secrets, Sqs, StoreType, UserSecretSpec,
     UserSecretType,
+};
+pub use db::{
+    Backup, Dsql, DsqlBackupPlan, DsqlDailyRule, DsqlMonthlyRule, DsqlWeeklyRule, PasswordStrategy,
+    Rds, RdsBackup, RdsBackupPlan, RdsMonthlyRule, RdsWeeklyRule,
 };
 pub use django::{CacheStore, Django, DjangoCache, DjangoStorage, PublishMode, StorageStore};
 pub use general::{Efs, GeneralSettings, Iam, Vpc};
@@ -55,9 +60,6 @@ const UNPORTED_SECTIONS: &[(&str, bool)] = &[
     ("neon", false),
     ("tidb", false),
     ("upstash", false),
-    ("dsql", false),
-    ("rds", false),
-    ("backup", false),
     ("ses", false),
     ("inbound", true),
     ("scheduler", false),
@@ -72,6 +74,12 @@ pub struct Settings {
     pub vpc: Option<Vpc>,
     #[serde(default)]
     pub container: OrderedMap<Container>,
+    #[serde(default)]
+    pub dsql: Option<Dsql>,
+    #[serde(default)]
+    pub rds: Option<Rds>,
+    #[serde(default)]
+    pub backup: Option<Backup>,
     #[serde(default)]
     pub s3: Option<S3>,
     #[serde(default)]
@@ -117,6 +125,12 @@ impl Settings {
         for (name, c) in self.container.iter_mut() {
             c.validate(&child(&containers, name))?;
         }
+        if let Some(rds) = &self.rds {
+            rds.validate(&path(&["rds"]))?;
+        }
+        if let Some(backup) = &self.backup {
+            backup.validate(&path(&["backup"]))?;
+        }
         if let Some(s3) = &self.s3 {
             s3.validate(&path(&["s3"]))?;
         }
@@ -126,6 +140,9 @@ impl Settings {
         }
         self.check_container_names()?;
         self.check_container_secrets_consistency()?;
+        self.check_backup_targets()?;
+        self.check_rds_vpc()?;
+        self.check_rds_database_url_requires_vpc()?;
         self.check_cloudfront_requires_s3()?;
         Ok(())
     }
@@ -140,7 +157,85 @@ impl Settings {
                 }
             }
         }
+        if self.rds.is_some() {
+            for (name, c) in self.container.iter() {
+                if c.vpc.is_none() {
+                    out.push(crate::Advisory {
+                        message: format!(
+                            "container.{name} は use_vpc=false のため、この stage の [rds] \
+                             (private subnet 内) に到達できません。この container には \
+                             POCKET_RDS_* / DATABASE_URL (RDS) を注入しません。この container \
+                             が RDS を使わないなら問題ありません"
+                        ),
+                    });
+                }
+            }
+        }
         out
+    }
+
+    fn check_backup_targets(&self) -> Result<(), SettingsError> {
+        let Some(backup) = &self.backup else {
+            return Ok(());
+        };
+        let err = |m: &str| Err(SettingsError::value(Vec::new(), m));
+        if backup.dsql.is_some() && self.dsql.is_none() {
+            return err("[backup.dsql] には [dsql] の宣言が必要です。");
+        }
+        if backup.rds.is_some() {
+            let Some(rds) = &self.rds else {
+                return err("[backup.rds] には [rds] の宣言が必要です。");
+            };
+            if !rds.managed {
+                return err(
+                    "[backup.rds] は managed = true の [rds] でのみ使用できます \
+                     (既存クラスタ参照 (managed = false) のバックアップは 参照元スタックの責務)。",
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// check_rds_vpc と check_rds_requires_container_vpc
+    fn check_rds_vpc(&self) -> Result<(), SettingsError> {
+        let Some(vpc) = self.rds.as_ref().and_then(|r| r.vpc.as_ref()) else {
+            return Ok(());
+        };
+        if vpc.manage && vpc.zone_suffixes.len() < 2 {
+            return Err(SettingsError::value(
+                Vec::new(),
+                "rds requires vpc with at least 2 zone_suffixes (DB Subnet Group needs 2+ AZs)",
+            ));
+        }
+        if !self.container.values().any(|c| c.vpc.is_some()) {
+            return Err(SettingsError::value(
+                Vec::new(),
+                "rds requires container with VPC",
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_rds_database_url_requires_vpc(&self) -> Result<(), SettingsError> {
+        for (name, c) in self.container.iter() {
+            let Some(secrets) = &c.secrets else { continue };
+            if c.vpc.is_some() {
+                continue;
+            }
+            for (key, spec) in secrets.managed.iter() {
+                if spec.r#type == ManagedSecretType::RdsDatabaseUrl {
+                    return Err(SettingsError::value(
+                        Vec::new(),
+                        format!(
+                            "container.{name} は use_vpc=false のため [rds] に到達できず、\
+                             secrets.managed.{key} (rds_database_url) は使えません。\
+                             use_vpc=true にするか、この宣言を外してください"
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// key を宣言している (container 名, spec)。container 名順

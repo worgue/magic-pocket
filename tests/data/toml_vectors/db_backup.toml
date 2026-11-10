@@ -1,0 +1,52 @@
+# [dsql] / [rds] / [backup] の全 field。stage ごとに managed / 既存参照を切り替える
+[general]
+region = "ap-northeast-1"
+project_name = "db"
+stages = ["dev", "prod", "ext"]
+
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+secrets = { managed = { DATABASE_URL = { type = "rds_database_url" } } }
+
+[container.batch]
+dockerfile_path = "Dockerfile"
+use_vpc = false
+
+[dsql]
+
+[rds]
+
+[prod.dsql]
+deletion_protection = true
+
+[prod.rds]
+backup = { retention_days = 14 }
+min_capacity = 1
+max_capacity = 8.5
+snapshot_identifier = "snap-1"
+database = "appdb"
+rotation_schedule = "rate(30 days)"
+rotation_duration = "3h"
+
+[prod.backup]
+deletable = true
+timezone = "Asia/Tokyo"
+rds = { weekly = { delete_after_days = 180 } }
+
+[prod.backup.dsql]
+daily = { cron = "0 1 * * ? *", delete_after_days = 7 }
+weekly = { cold_storage_after_days = 0 }
+monthly = { delete_after_days = 400, cold_storage_after_days = 30 }
+
+[ext.rds]
+managed = false
+secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db"
+security_group_id = "sg-123"
+password_strategy = "aws-managed"
+
+[ext.backup]
+dsql = {}
