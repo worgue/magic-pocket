@@ -20,6 +20,18 @@ fn env_str_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(ENV_STR_PATTERN).expect("pattern"))
 }
 
+/// `EnvStr` の値の検証 (型エラーとして返す)
+pub(crate) fn check_env_str(value: &str, path: &[PathSeg]) -> Result<(), SettingsError> {
+    if env_str_re().is_match(value) {
+        return Ok(());
+    }
+    Err(SettingsError {
+        path: path.to_vec(),
+        kind: crate::ErrorKind::Type,
+        message: format!("String should match pattern '{ENV_STR_PATTERN}'"),
+    })
+}
+
 /// dict の key の検証エラー。pydantic と同じく path は `<key>` の後ろに `[key]`
 fn check_env_str_keys<V>(map: &OrderedMap<V>, path: &[PathSeg]) -> Result<(), SettingsError> {
     for key in map.keys() {

@@ -77,7 +77,8 @@ impl Settings {
         mark_datetimes(&mut data);
         let mut settings: Settings = serde_path_to_error::deserialize(data).map_err(from_serde)?;
         settings.validate()?;
-        Ok((settings, Vec::new()))
+        let advisories = settings.advisories();
+        Ok((settings, advisories))
     }
 }
 
@@ -388,6 +389,12 @@ mod tests {
             (&format!("{BASE}[s3]\nlifecycle_rules = [{{ id = \"a\", prefix = \"\" }}]\n"), "dev", vec![PathSeg::Key("s3".into()), PathSeg::Key("lifecycle_rules".into()), PathSeg::Index(0)], Value),
             (&format!("{BASE}[container.a]\nuse_vpc = true\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[container.Bad]\ndockerfile_path = \"D\"\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[cloudfront.w]\nroutes = [{{ is_default = true, origin_path = \"/a\" }}]\n"), "dev", Vec::new(), Value),
+            (&format!("{BASE}[s3]\n[cloudfront.w]\nroutes = [{{ is_default = true }}]\n"), "dev", vec![PathSeg::Key("cloudfront".into()), PathSeg::Key("w".into()), PathSeg::Key("routes".into()), PathSeg::Index(0)], Value),
+            (&format!("{BASE}[s3]\n[cloudfront.w]\nroutes = []\n"), "dev", path(&["cloudfront", "w"]), Value),
+            (&format!("{BASE}[s3]\n[cloudfront.w]\nroutes = [{{ is_default = true, origin_path = \"/a\" }}]\nwaf = {{ rate_limits = [{{ limit = 5 }}] }}\n"), "dev", vec![PathSeg::Key("cloudfront".into()), PathSeg::Key("w".into()), PathSeg::Key("waf".into()), PathSeg::Key("rate_limits".into()), PathSeg::Index(0), PathSeg::Key("limit".into())], Type),
+            (&format!("{BASE}[s3]\n[cloudfront.w]\nroutes = [{{ is_default = true, origin_path = \"/a\" }}]\nwaf = {{ allow_rules = [{{ header = \"bad-h\" }}] }}\n"), "dev", vec![PathSeg::Key("cloudfront".into()), PathSeg::Key("w".into()), PathSeg::Key("waf".into()), PathSeg::Key("allow_rules".into()), PathSeg::Index(0), PathSeg::Key("header".into())], Type),
+            (&format!("{BASE}[s3]\n[cloudfront.w]\nroutes = [{{ is_default = true, origin_path = \"/a\", signed = true }}]\n"), "dev", Vec::new(), Value),
             (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nplatform = \"x\"\n"), "dev", path(&["container", "a", "platform"]), Type),
             (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nhandlers = {{ w = {{ command = \"c\", sqs = {{}} }} }}\n"), "dev", path(&["container", "a", "handlers", "w", "sqs"]), Value),
             (&format!("{BASE}[container.a]\ndockerfile_path = \"D\"\nhandlers = {{ w = {{ command = \"c\", timeout = \"30\" }} }}\n"), "dev", path(&["container", "a", "handlers", "w", "timeout"]), Type),
@@ -400,6 +407,26 @@ mod tests {
             let e = load_err(text, stage);
             assert_eq!((&e.path, e.kind), (want_path, *want_kind), "{text}: {e}");
         }
+    }
+
+    #[test]
+    fn test_double_prefix_advisory() {
+        let text = format!(
+            "{BASE}[s3]\n[cloudfront.w]\nroutes = [{{ is_default = true, origin_path = \"/spa\" }}, \
+             {{ path_pattern = \"/static/*\", origin_path = \"/static\" }}]\n"
+        );
+        let ctx = LoadContext {
+            project_name_fallback: "prj".to_string(),
+            ..Default::default()
+        };
+        let (_, advisories) = Settings::from_parts(&text, "dev", &ctx).unwrap();
+        assert_eq!(advisories.len(), 1);
+        assert_eq!(
+            advisories[0].message,
+            "S3 route origin_path = \"/static\" が path_pattern = \"/static/*\" と重複し、S3 key が \
+             二重 prefix (static/static/...) になります。 origin_path を省略すると単一 prefix \
+             (static/...) になり、S3 を直接操作する運用で prefix が直感的になります。"
+        );
     }
 
     #[test]

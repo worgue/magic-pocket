@@ -338,3 +338,34 @@ pub enum StrOrInt {
     Str(String),
     Int(i64),
 }
+
+ranged_int_fn!(waf_limit, opt_waf_limit, Some(10), Some(2_000_000_000));
+
+/// Python の `repr(str)` (エラー文の `%r`)。quote は `'`、`'` を含み `"` を含まなければ `"`
+pub(crate) fn py_repr(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::new();
+    out.push(quote);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                out.push_str(&format!("\\x{:02x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}

@@ -1,0 +1,89 @@
+# cloudfront 一式の全 field (route の種類・WAF・secret 参照) と stage 上書き
+[general]
+region = "ap-northeast-1"
+project_name = "cf"
+stages = ["dev", "prod"]
+
+[s3]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.secrets.managed]
+SIGNING_KEY = { type = "cloudfront_signing_key" }
+TOKEN_SECRET = { type = "spa_token_secret" }
+BASIC_AUTH = { type = "basic_auth_credential", options = { username = "admin" } }
+
+[container.app.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = {}
+
+[cloudfront.web]
+domain = "www.example.com"
+hosted_zone_id_override = "Z1"
+redirect_from = [{ domain = "example.com" }, { domain = "old.example.com", hosted_zone_id_override = "Z2" }]
+signing_key = "SIGNING_KEY"
+token_secret = "TOKEN_SECRET"
+basic_auth = "BASIC_AUTH"
+managed_assets = "fonts"
+enable_origin_verify = true
+
+[[cloudfront.web.routes]]
+is_default = true
+is_spa = true
+spa_fallback_html = "app.html"
+origin_path = "/spa"
+require_token = true
+login_path = "/login"
+build = { dir = "frontend/dist", cmd = "just frontend-build" }
+delete_stale = false
+
+[[cloudfront.web.routes]]
+type = "lambda"
+path_pattern = "/api/*"
+handler = "app.wsgi"
+
+[[cloudfront.web.routes]]
+path_pattern = "/assets/*"
+ref = "assets"
+versioning = "content_hash"
+versioned_max_age = 3600
+upload_dir = "build/assets"
+
+[[cloudfront.web.routes]]
+path_pattern = "/static/*"
+ref = "static"
+versioning = "object_hash"
+map = "maps/static.map"
+sources = [
+    { name = "data", dir = "data", exclude = ["*.tmp"] },
+    { name = "code", dir = "build", prefix = "app/", include = ["**/*.js"], hashed = false },
+]
+
+[[cloudfront.web.routes]]
+path_pattern = "/media/*"
+signed = true
+origin_path = "/uploads"
+
+[[cloudfront.web.routes]]
+path_pattern = "/deploy/*"
+versioning = "deploy_hash"
+upload_dir = "build/deploy"
+
+[cloudfront.web.waf]
+managed_rule_groups = ["AWSManagedRulesCommonRuleSet"]
+allow_rules = [{ path = "/healthz" }, { header = "SMOKE_ALLOW" }, { path = "/api/hook*", header = "HOOK_ALLOW" }]
+rate_limits = [{ limit = 100 }, { limit = 2000, window_sec = 60, action = "count", path = "/api/*" }]
+
+[cloudfront.admin]
+[[cloudfront.admin.routes]]
+is_default = true
+origin_path = "/admin"
+
+[cloudfront.admin.waf]
+enable_ip_set = false
+rate_limits = [{ limit = 10 }]
+
+# routes は配列ごと置き換わる
+[prod.cloudfront.admin]
+routes = [{ is_default = true, origin_path = "/admin-prod" }]

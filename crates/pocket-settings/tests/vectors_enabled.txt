@@ -14,3 +14,17 @@ toml/awscontainer_pocket_secrets.prod
 toml/awscontainer_secrets_ssm.prod
 toml/staticfiles_link.dev
 toml/staticfiles_publish_command.dev
+toml_vectors/cloudfront_full.dev
+toml_vectors/cloudfront_full.prod
+toml/cloudfront_api_default.dev
+toml/cloudfront_api_route.dev
+toml/cloudfront_deploy_hash.dev
+toml/cloudfront_object_hash.dev
+toml/cloudfront_object_hash_no_domain.dev
+toml/cloudfront_s3_route_bucket_policy.dev
+toml/cloudfront_s3_route_double_prefix.dev
+toml/cloudfront_s3_route_no_origin_path.dev
+toml/cloudfront_signing_key.dev
+toml/cloudfront_spa_build.dev
+toml/cloudfront_spa_token.dev
+toml/django_deploy_hash.dev
