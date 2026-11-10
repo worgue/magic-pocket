@@ -1,0 +1,89 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["sandbox", "dev", "stg", "prod"]
+
+[general.django_fallback.storages]
+
+[general.django_fallback.storages.default]
+store = "filesystem"
+
+[general.django_fallback.storages.management]
+store = "filesystem"
+location = "management"
+
+[general.django_fallback.storages.staticfiles]
+store = "filesystem"
+static = true
+
+[s3]
+
+
+[container.main]
+dockerfile_path = "__runtime__"
+
+[container.main.django.settings]
+
+[container.main.django.settings.TEST_NESTED.first]
+
+[container.main.django.settings.TEST_NESTED.first.second.third]
+NAME = "key"
+
+[container.main.django.storages]
+
+[container.main.django.storages.default]
+store = "s3"
+location = "media"
+
+[container.main.django.storages.staticfiles]
+store = "s3"
+location = "static"
+static = true
+manifest = true
+
+[container.main.django.caches]
+
+[container.main.django.caches.default]
+store = "efs"
+
+[container.main.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[container.main.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[container.main.handlers.sqsmanagement]
+command = "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+timeout = 60
+
+[container.main.handlers.sqsmanagement.sqs.dead_letter_alert]
+email = "alerts@example.com"
+
+[cloudfront.main]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/main" },
+]
+
+[dev.container]
+
+[dev.container.main.envs]
+DJANGO_ENV_PATH = "project/env/env.dev"
+
+[dev.container.main.handlers]
+
+[dev.container.main.handlers.wsgi.apigateway]
+domain = "api.project.com"
+
+[dev.neon]
+project_name = "dev-testprj"
+
+[prod.container]
+
+[prod.container.main.envs]
+DJANGO_ENV_PATH = "project/env/env.prod"
+
+[prod.container.main.handlers]
+
+[prod.container.main.handlers.wsgi.apigateway]
+domain = "api.project.com"

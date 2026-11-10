@@ -1,0 +1,22 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+
+[container.main]
+dockerfile_path = "__runtime__"
+
+[container.main.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[container.main.handlers.wsgi.apigateway]
+
+
+[cloudfront.main]
+routes = [
+    { is_default = true, is_spa = true, origin_path = "/main" },
+    { path_pattern = "/api/*", type = "lambda", handler = "main.wsgi" },
+]

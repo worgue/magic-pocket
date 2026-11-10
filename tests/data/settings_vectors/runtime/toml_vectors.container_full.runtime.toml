@@ -1,0 +1,139 @@
+[general]
+region = "ap-northeast-1"
+project_name = "ctr"
+stages = ["dev", "prod"]
+
+[container.web]
+dockerfile_path = "__runtime__"
+ecr_name = "shared-web"
+
+[container.web.envs]
+APP_ENV = "web"
+EMPTY = ""
+
+[container.web.secrets]
+store = "ssm"
+pocket_key_format = "{project}-{stage}"
+extra_resources = ["arn:aws:ssm:ap-northeast-1:123456789012:parameter/extra"]
+require_list_secrets = true
+
+[container.web.secrets.managed.SECRET_KEY]
+type = "password"
+shared = true
+
+[container.web.secrets.managed.SECRET_KEY.options]
+length = 50
+
+[container.web.secrets.managed.DATABASE_URL]
+type = "auto_database_url"
+
+[container.web.secrets.managed.BASIC_AUTH]
+type = "basic_auth_credential"
+
+[container.web.secrets.managed.BASIC_AUTH.options]
+username = "admin"
+password = "pw"
+
+[container.web.secrets.managed.SIGNING]
+type = "cloudfront_signing_key"
+
+[container.web.secrets.managed.SIGNING.options]
+pem_base64_environ_suffix = "_PEM"
+
+[container.web.secrets.user.EXTERNAL_API]
+name = "external/api"
+store = "sm"
+
+[container.web.secrets.user.NEON_URL]
+type = "neon_database_url"
+
+[container.web.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+timeout = 29
+memory_size = 1024
+reserved_concurrency = 5
+
+[container.web.handlers.wsgi.apigateway]
+domain = "api.example.com"
+create_records = false
+hosted_zone_id_override = "Z123"
+
+[container.web.handlers.wsgi.envs]
+MODE = "wsgi"
+
+[container.web.handlers.management]
+command = "pocket.django.lambda_handlers.management_command_handler"
+timeout = 600
+
+[container.web.handlers.worker]
+command = "pocket.django.lambda_handlers.sqs_management_command_handler"
+
+[container.web.handlers.worker.sqs]
+batch_size = 5
+message_retention_period = 3600
+maximum_concurrency = 4
+dead_letter_max_receive_count = 3
+dead_letter_message_retention_period = 7200
+report_batch_item_failures = false
+
+[container.web.handlers.worker.sqs.dead_letter_alert]
+email = "ops@example.com"
+
+[container.web.handlers.events]
+command = "app.events"
+
+[container.web.handlers.events.sqs.dead_letter_alert]
+eventbridge = true
+
+[container.web.handlers.quiet]
+command = "app.quiet"
+
+[container.web.handlers.quiet.sqs.dead_letter_alert]
+enabled = false
+
+[container.web.django.settings]
+ALLOWED_HOSTS = ["*"]
+
+[container.web.django.storages]
+
+[container.web.django.storages.default]
+store = "s3"
+location = "media"
+
+[container.web.django.storages.staticfiles]
+store = "s3"
+location = "static"
+static = true
+manifest = true
+
+[container.api]
+dockerfile_path = "__runtime__"
+
+[container.api.secrets]
+store = "ssm"
+pocket_key_format = "{project}-{stage}"
+
+[container.api.secrets.managed.SECRET_KEY]
+type = "password"
+shared = true
+
+[container.api.secrets.managed.SECRET_KEY.options]
+length = 50
+
+[container.api.secrets.user.NEON_URL]
+type = "neon_database_url"
+
+[container.api.handlers.main]
+command = "bootstrap"
+
+[container.batch]
+dockerfile_path = "__runtime__"
+
+[prod.container]
+
+[prod.container.web.handlers]
+
+[prod.container.web.handlers.wsgi]
+memory_size = 2048
+
+[prod.container.api]

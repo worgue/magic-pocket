@@ -10,7 +10,7 @@
 mod error;
 mod load;
 pub mod model;
-mod types;
+pub mod types;
 
 pub use error::{ErrorKind, PathSeg, SettingsError};
 pub use load::{Advisory, LoadContext};

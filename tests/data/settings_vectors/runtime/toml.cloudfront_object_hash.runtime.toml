@@ -1,0 +1,37 @@
+[general]
+region = "ap-northeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[s3]
+
+
+[container.main]
+dockerfile_path = "__runtime__"
+
+[container.main.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[container.main.handlers.wsgi.apigateway]
+
+
+[container.main.django.storages]
+
+[container.main.django.storages.default]
+store = "filesystem"
+
+[container.main.django.storages.staticfiles]
+store = "s3"
+static = true
+distribution = "web"
+route = "static"
+
+[cloudfront.web]
+domain = "cdn.example.com"
+routes = [
+    { type = "lambda", handler = "main.wsgi", is_default = true },
+    { path_pattern = "/static/*", ref = "static", versioning = "object_hash", sources = [
+    { name = "data", dir = "data", exclude = ["*.tmp"] },
+    { name = "code", dir = "build", hashed = false, prefix = "app/" },
+] },
+]

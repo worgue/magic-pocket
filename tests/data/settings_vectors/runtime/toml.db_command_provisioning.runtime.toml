@@ -1,0 +1,25 @@
+[general]
+region = "ap-southeast-1"
+project_name = "testprj"
+stages = ["dev"]
+
+[tidb]
+provisioning = "command"
+
+[neon]
+project_name = "dev-testprj"
+provisioning = "command"
+
+[upstash]
+provisioning = "command"
+
+[container.main]
+dockerfile_path = "__runtime__"
+
+[container.main.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+
+[container.main.secrets.user]
+
+[container.main.secrets.user.DATABASE_URL]
+type = "tidb_database_url"

@@ -13,13 +13,24 @@ fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-fn enabled_vectors() -> Vec<String> {
-    let list = include_str!("vectors_enabled.txt");
-    list.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(str::to_string)
-        .collect()
+/// vector の一覧 (tests/data/settings_vectors 配下の .json、相対 path から .json を除いたもの)
+fn all_vectors(root: &std::path::Path) -> Vec<String> {
+    fn walk(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).expect("vector の dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                walk(&path, base, out);
+            } else if path.extension().is_some_and(|e| e == "json") {
+                let rel = path.strip_prefix(base).expect("相対 path");
+                out.push(rel.with_extension("").to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+    let base = root.join("tests/data/settings_vectors");
+    let mut out = Vec::new();
+    walk(&base, &base, &mut out);
+    out.sort();
+    out
 }
 
 fn context(v: &serde_json::Value) -> LoadContext {
@@ -42,7 +53,7 @@ fn context(v: &serde_json::Value) -> LoadContext {
 #[test]
 fn settings_vectors_match_python() {
     let root = repo_root();
-    let names = enabled_vectors();
+    let names = all_vectors(&root);
     assert!(!names.is_empty());
     let mut failures = Vec::new();
     for name in &names {

@@ -42,6 +42,10 @@
   `timeout = 30` / `deletion_protection = true` と書いてください。整数を小数の項目に書く
   (`min_capacity = 1`) のは引き続き受理します。`[neon]` / `[tidb]` / `[upstash]` は環境変数から
   文字列で読むため対象外です。Rust 版 CLI と設定の解釈を一致させるための変更です
+- Rust lib `magic-pocket-rs` (runtime) と `pocket-rs static` が pocket.toml を Python 版と同じ解釈・同じ検証で
+  読むようになりました (新しい crate `magic-pocket-settings`)。これまでは必要な key だけを緩く読んでいたため、
+  `pocket deploy` が拒否する設定 (未知の key・型違い・`sqs.dead_letter_alert` の書き忘れ等) も読めていましたが、
+  今後は同じ設定エラーになります。deploy できている pocket.toml の読み込みは変わりません
 - `pocket-rs static` と Rust lib `magic-pocket-rs` が複数の `object_hash` route を扱う順を、cloudfront 名の
   辞書順から pocket.toml に書いた順に変えました (Python 版と同じ順)
 - CLI の Python 版 → Rust 版の移行方針を docs に明記しました。Rust に移したコマンド (`pocket static` 系) の

@@ -1,7 +1,8 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use magic_pocket_settings::model as settings_model;
+use magic_pocket_settings::{LoadContext, Settings};
 
 use crate::error::{PocketError, Result};
 
@@ -72,22 +73,14 @@ pub struct StaticRouteConfig {
 
 /// `versioning = "object_hash"` の route に載せるローカルファイルの集合 (Python の
 /// `settings.StaticSource`)。name / dir / prefix の形の検査は publish 側 (CLI) で行う
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StaticSourceConfig {
     pub name: String,
     pub dir: String,
-    #[serde(default)]
     pub prefix: String,
-    #[serde(default)]
     pub include: Vec<String>,
-    #[serde(default)]
     pub exclude: Vec<String>,
-    #[serde(default = "default_true")]
     pub hashed: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 /// pocket.toml のうち `pocket-rs static` (publish 側) が使う部分。runtime の
@@ -108,15 +101,7 @@ pub struct StaticConfig {
 /// Python の `pocket.utils.route_logical_name` と同じ導出。
 /// path を "/" で分け、"*" と空を除き、各要素を英数字だけにして "-" で繋ぐ (空なら "root")
 pub fn route_logical_name(path_pattern: &str) -> String {
-    if path_pattern.is_empty() {
-        return "root".to_string();
-    }
-    let parts: Vec<String> = path_pattern
-        .split('/')
-        .filter(|p| !p.is_empty() && *p != "*")
-        .map(|p| p.chars().filter(|c| c.is_alphanumeric()).collect())
-        .collect();
-    parts.join("-")
+    settings_model::cloudfront::route_logical_name(path_pattern)
 }
 
 /// Python の `RouteContext.url_prefix` と同じ導出 (`/static/*` → `/static/`)
@@ -169,130 +154,6 @@ pub struct SqsConfig {
     pub name: String,
 }
 
-// --- TOML の中間デシリアライズ型 ---
-
-#[derive(Debug, Deserialize)]
-struct GeneralToml {
-    region: String,
-    project_name: Option<String>,
-    #[serde(default = "default_namespace")]
-    namespace: String,
-    #[serde(default = "default_prefix_template")]
-    prefix_template: String,
-    #[allow(dead_code)]
-    stages: Vec<String>,
-}
-
-fn default_namespace() -> String {
-    "pocket".to_string()
-}
-
-fn default_prefix_template() -> String {
-    "{stage}-{project}-{namespace}-".to_string()
-}
-
-#[derive(Debug, Deserialize)]
-struct ContainerToml {
-    secrets: Option<SecretsToml>,
-    #[serde(default)]
-    handlers: HashMap<String, HandlerToml>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SecretsToml {
-    #[serde(default = "default_store")]
-    store: String,
-    #[serde(default = "default_pocket_key_format")]
-    pocket_key_format: String,
-    #[serde(default)]
-    managed: HashMap<String, ManagedSecretToml>,
-    #[serde(default)]
-    user: HashMap<String, UserSecretToml>,
-}
-
-fn default_store() -> String {
-    "sm".to_string()
-}
-
-fn default_pocket_key_format() -> String {
-    "{stage}-{project}-{namespace}".to_string()
-}
-
-#[derive(Debug, Deserialize)]
-struct ManagedSecretToml {
-    #[serde(rename = "type")]
-    secret_type: String,
-    #[serde(default)]
-    options: HashMap<String, toml::Value>,
-    /// true なら project 共有 store に保存 (同名宣言の値共有)。既定は container store
-    #[serde(default)]
-    shared: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct UserSecretToml {
-    /// 明示パス。省略時は `type` から正準パスを導出する。
-    #[serde(default)]
-    name: Option<String>,
-    /// type 基準 (stored mode): 省略した `name` を `/{pocket_key}-user/{type}` へ導出する。
-    #[serde(default, rename = "type")]
-    secret_type: Option<String>,
-    store: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct HandlerToml {
-    apigateway: Option<ApiGatewayToml>,
-    sqs: Option<toml::Value>,
-    #[serde(default)]
-    #[allow(dead_code)]
-    timeout: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ApiGatewayToml {
-    domain: Option<String>,
-}
-
-/// `[cloudfront.<name>]` のうち runtime が必要とするキーのみ読む
-/// (routes 等は CLI 専用なので無視する)
-#[derive(Debug, Deserialize)]
-struct CloudFrontToml {
-    domain: Option<String>,
-    #[serde(default)]
-    enable_origin_verify: bool,
-    waf: Option<WafToml>,
-    /// routes のうち runtime が見るのは versioning / ref / path_pattern だけ
-    /// (他のキーは無視する)
-    #[serde(default)]
-    routes: Vec<RouteToml>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RouteToml {
-    #[serde(default)]
-    path_pattern: String,
-    #[serde(default, rename = "ref")]
-    route_ref: Option<String>,
-    #[serde(default)]
-    versioning: Option<String>,
-    // 以下は object_hash の publish 側 (CLI) が使う。runtime は読むだけで検査しない
-    // (publish を使わない設定でも読み込みが厳しくならないよう全部 default)
-    #[serde(default)]
-    origin_path: Option<String>,
-    #[serde(default = "default_versioned_max_age")]
-    versioned_max_age: u64,
-    #[serde(default)]
-    sources: Vec<StaticSourceConfig>,
-    #[serde(default)]
-    map: Option<String>,
-}
-
-/// Python の `settings.Route.versioned_max_age` の既定 (365 日)
-fn default_versioned_max_age() -> u64 {
-    60 * 60 * 24 * 365
-}
-
 /// Python の `RouteContext.key_prefix` と同じ導出。origin_path 指定時は OriginPath として
 /// 付くので origin_path + path_pattern の prefix、省略時は path_pattern の prefix だけ
 pub fn route_key_prefix(origin_path: &str, path_pattern: &str) -> String {
@@ -303,30 +164,6 @@ pub fn route_key_prefix(origin_path: &str, path_pattern: &str) -> String {
     } else {
         format!("{prefix}/")
     }
-}
-
-/// `[s3]` のうち runtime が必要とするキー
-#[derive(Debug, Deserialize)]
-struct S3Toml {
-    #[serde(default = "default_bucket_name_format")]
-    bucket_name_format: String,
-}
-
-fn default_bucket_name_format() -> String {
-    "{stage}-{project}-{namespace}".to_string()
-}
-
-#[derive(Debug, Deserialize)]
-struct WafToml {
-    #[serde(default)]
-    allow_rules: Vec<WafAllowRuleToml>,
-}
-
-#[derive(Debug, Deserialize)]
-struct WafAllowRuleToml {
-    /// managed secret のキー名 (path のみのルールでは None)
-    #[serde(default)]
-    header: Option<String>,
 }
 
 // --- パブリック関数 ---
@@ -382,22 +219,23 @@ pub fn load_config_from_general() -> Result<PocketConfig> {
     let toml_path = find_toml_path()?;
     let content = std::fs::read_to_string(&toml_path).map_err(PocketError::Io)?;
     let data: toml::Value = toml::from_str(&content).map_err(PocketError::TomlParse)?;
-
-    let general: GeneralToml = {
-        let general_val = data
-            .get("general")
-            .ok_or_else(|| PocketError::Config("missing [general] section".into()))?;
+    let general_val = data
+        .get("general")
+        .ok_or_else(|| PocketError::Config("missing [general] section".into()))?;
+    require_project_name(
         general_val
-            .clone()
-            .try_into()
-            .map_err(PocketError::TomlParse)?
-    };
-
-    let project_name = require_project_name(general.project_name)?;
+            .get("project_name")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+    )?;
+    let general: settings_model::GeneralSettings = general_val
+        .clone()
+        .try_into()
+        .map_err(PocketError::TomlParse)?;
 
     Ok(PocketConfig {
         region: general.region,
-        project_name,
+        project_name: general.project_name,
         namespace: general.namespace,
         prefix_template: general.prefix_template,
         stage: String::new(),
@@ -420,126 +258,105 @@ pub fn load_config_from_path(path: &Path, stage: &str) -> Result<PocketConfig> {
     load_config_from_str(&content, stage, env_container_name().as_deref())
 }
 
-/// pocket.toml の文字列を stage でマージし、general と project_name を取り出す
-/// (`load_config_from_str` と `load_static_config_from_str` の共通部)
-fn parse_stage(content: &str, stage: &str) -> Result<(toml::Value, GeneralToml, String)> {
-    let mut data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
-
-    // [general] 欠如を先に検出する (stages 取得の失敗を StageNotFound と
-    // 誤報告しないため)
-    if data.get("general").is_none() {
+/// pocket.toml を Python と同じ解釈・同じ検証で読む (`magic-pocket-settings`)。
+///
+/// `[general]` の欠落・未定義の stage・project_name の欠落は従来どおりの
+/// エラーにする。project_name は Rust runtime では pyproject.toml から導出できない
+/// ので必須。`[neon]` 等の credential は Python と同じく環境変数から補う。
+/// 検証を通った後の助言 (Python では stderr の警告) は tracing の warn で出す
+fn load_settings(content: &str, stage: &str) -> Result<Settings> {
+    let data: toml::Value = toml::from_str(content).map_err(PocketError::TomlParse)?;
+    let Some(general) = data.get("general") else {
         return Err(PocketError::Config("missing [general] section".into()));
-    }
-
-    // ステージが stages に含まれるか検証
-    let stages = data
-        .get("general")
-        .and_then(|g| g.get("stages"))
+    };
+    let stages: Vec<&str> = general
+        .get("stages")
         .and_then(|s| s.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect::<Vec<_>>()
-        })
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
-
-    if !stages.contains(&stage.to_string()) {
+    if !stages.contains(&stage) {
         return Err(PocketError::StageNotFound(stage.to_string()));
     }
-
-    // ステージマージ: data[stage] を data に deep merge
-    if let Some(stage_data) = data.get(stage).cloned() {
-        deep_merge(&mut data, &stage_data);
-    }
-
-    // ステージキーを削除
-    if let Some(table) = data.as_table_mut() {
-        for s in &stages {
-            table.remove(s.as_str());
-        }
-    }
-
-    // general セクションのデシリアライズ
-    let general: GeneralToml = {
-        let general_val = data
-            .get("general")
-            .ok_or_else(|| PocketError::Config("missing [general] section".into()))?;
-        general_val
-            .clone()
-            .try_into()
-            .map_err(PocketError::TomlParse)?
+    let ctx = LoadContext {
+        project_name_fallback: String::new(),
+        env: std::env::vars().collect::<BTreeMap<_, _>>(),
+        runtime_version: None,
     };
-
-    let project_name = require_project_name(general.project_name.clone())?;
-    Ok((data, general, project_name))
+    let (settings, advisories) = Settings::from_parts(content, stage, &ctx)
+        .map_err(|e| PocketError::Config(e.to_string()))?;
+    if settings.general.project_name.is_empty() {
+        require_project_name(None)?;
+    }
+    for advisory in advisories {
+        tracing::warn!("{}", advisory.message);
+    }
+    Ok(settings)
 }
 
-/// Python の `format_vars` と同じ `{stage}` / `{project}` / `{namespace}` の展開
+/// `{stage}` / `{project}` / `{namespace}` の展開 (Python の `format_vars`)
 fn format_vars(s: &str, stage: &str, project_name: &str, namespace: &str) -> String {
     s.replace("{stage}", stage)
         .replace("{project}", project_name)
         .replace("{namespace}", namespace)
 }
 
-/// `[cloudfront.<name>]` をパースして (name 一覧, table 一覧, object_hash route 一覧) を返す。
-/// name は distribution ドメインの env 注入用 (順序は決定的にするため sorted)。
-/// enable_origin_verify / waf.allow_rules は自動注入 managed secret の導出に使う
-/// (値は CFn stack output / secret store から引くのでここでは宣言だけ読む)
-fn parse_cloudfront(
-    data: &toml::Value,
-) -> Result<(Vec<String>, Vec<CloudFrontToml>, Vec<StaticRouteConfig>)> {
-    let mut cloudfront_names: Vec<String> = Vec::new();
-    let mut cloudfront_tables: Vec<CloudFrontToml> = Vec::new();
-    let mut static_routes: Vec<StaticRouteConfig> = Vec::new();
-    if let Some(table) = data.get("cloudfront").and_then(|v| v.as_table()) {
-        // toml::Table は BTreeMap なので name 順に並ぶ
-        for (name, c_val) in table {
-            cloudfront_names.push(name.clone());
-            let c: CloudFrontToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
-            for r in &c.routes {
-                if r.versioning.as_deref() != Some("object_hash") {
-                    continue;
-                }
-                let route_name = route_logical_name(&r.path_pattern);
-                let map_path = r
-                    .map
-                    .clone()
-                    .unwrap_or_else(|| format!("pocket_static/{name}-{route_name}.map"));
-                static_routes.push(StaticRouteConfig {
-                    cloudfront: name.clone(),
-                    cloudfront_domain: c.domain.clone(),
-                    route_ref: r.route_ref.clone(),
-                    url_prefix: route_url_prefix(&r.path_pattern),
-                    meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
-                    key_prefix: route_key_prefix(
-                        r.origin_path.as_deref().unwrap_or(""),
-                        &r.path_pattern,
-                    ),
-                    map_path,
-                    versioned_max_age: r.versioned_max_age,
-                    sources: r.sources.clone(),
-                    route_name,
-                });
+/// `[cloudfront.<name>]` の name 一覧 (sorted) と object_hash route 一覧
+/// (cloudfront は toml に書いた順、route は定義順)
+fn static_routes(settings: &Settings) -> (Vec<String>, Vec<StaticRouteConfig>) {
+    let mut names: Vec<String> = settings.cloudfront.keys().cloned().collect();
+    names.sort();
+    let mut routes = Vec::new();
+    for (name, cf) in settings.cloudfront.iter() {
+        for r in &cf.routes {
+            if r.versioning != Some(settings_model::Versioning::ObjectHash) {
+                continue;
             }
-            cloudfront_tables.push(c);
+            let route_name = route_logical_name(&r.path_pattern);
+            let map_path = r
+                .map
+                .clone()
+                .unwrap_or_else(|| format!("pocket_static/{name}-{route_name}.map"));
+            routes.push(StaticRouteConfig {
+                cloudfront: name.clone(),
+                cloudfront_domain: cf.domain.clone(),
+                route_ref: Some(r.r#ref.clone()).filter(|r| !r.is_empty()),
+                url_prefix: route_url_prefix(&r.path_pattern),
+                meta_prefix: format!(".pocket/static/{name}/{route_name}/"),
+                key_prefix: route_key_prefix(
+                    r.origin_path.as_deref().unwrap_or(""),
+                    &r.path_pattern,
+                ),
+                map_path,
+                versioned_max_age: r.versioned_max_age.max(0) as u64,
+                sources: r
+                    .sources
+                    .iter()
+                    .map(|s| StaticSourceConfig {
+                        name: s.name.clone(),
+                        dir: s.dir.clone(),
+                        prefix: s.prefix.clone(),
+                        include: s.include.clone(),
+                        exclude: s.exclude.clone(),
+                        hashed: s.hashed,
+                    })
+                    .collect(),
+                route_name,
+            });
         }
     }
-    cloudfront_names.sort();
-    Ok((cloudfront_names, cloudfront_tables, static_routes))
+    (names, routes)
 }
 
 /// `[s3]` の bucket 名 (Python の `S3.bucket_name(format_vars)` と同じ展開)
-fn parse_s3_bucket_name(
-    data: &toml::Value,
-    format_vars: impl Fn(&str) -> String,
-) -> Result<Option<String>> {
-    match data.get("s3") {
-        Some(v) => {
-            let s3: S3Toml = v.clone().try_into().map_err(PocketError::TomlParse)?;
-            Ok(Some(format_vars(&s3.bucket_name_format)))
-        }
-        None => Ok(None),
-    }
+fn s3_bucket_name(settings: &Settings, stage: &str) -> Option<String> {
+    settings.s3.as_ref().map(|s3| {
+        format_vars(
+            s3.bucket_name_format.as_str(),
+            stage,
+            &settings.general.project_name,
+            &settings.general.namespace,
+        )
+    })
 }
 
 /// pocket.toml のうち `pocket-rs static` が使う部分を読む (container を選ばない)
@@ -550,19 +367,32 @@ pub fn load_static_config_from_path(path: &Path, stage: &str) -> Result<StaticCo
 
 /// TOML 文字列から [`StaticConfig`] を構築する
 pub fn load_static_config_from_str(content: &str, stage: &str) -> Result<StaticConfig> {
-    let (data, general, project_name) = parse_stage(content, stage)?;
-    let format_vars =
-        |s: &str| -> String { format_vars(s, stage, &project_name, &general.namespace) };
-    let (cloudfront_names, _, static_routes) = parse_cloudfront(&data)?;
-    let s3_bucket_name = parse_s3_bucket_name(&data, format_vars)?;
+    let settings = load_settings(content, stage)?;
+    let (cloudfront_names, static_routes) = static_routes(&settings);
+    let s3_bucket_name = s3_bucket_name(&settings, stage);
     Ok(StaticConfig {
-        region: general.region,
-        project_name,
+        region: settings.general.region,
+        project_name: settings.general.project_name,
         stage: stage.to_string(),
         cloudfront_names,
         s3_bucket_name,
         static_routes,
     })
+}
+
+fn store_type(s: settings_model::StoreType) -> StoreType {
+    match s {
+        settings_model::StoreType::Sm => StoreType::Sm,
+        settings_model::StoreType::Ssm => StoreType::Ssm,
+    }
+}
+
+/// enum の値を toml / JSON に書く文字列で取り出す (`password` 等)
+fn serde_name<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// TOML 文字列から PocketConfig を構築する
@@ -574,51 +404,41 @@ pub fn load_config_from_str(
     stage: &str,
     container: Option<&str>,
 ) -> Result<PocketConfig> {
-    let (data, general, project_name) = parse_stage(content, stage)?;
+    let settings = load_settings(content, stage)?;
+    pocket_config_from_settings(&settings, stage, container)
+}
+
+/// [`Settings`] から runtime が使う [`PocketConfig`] を導出する
+fn pocket_config_from_settings(
+    settings: &Settings,
+    stage: &str,
+    container: Option<&str>,
+) -> Result<PocketConfig> {
+    let general = &settings.general;
+    let project_name = general.project_name.clone();
     let format_vars =
         |s: &str| -> String { format_vars(s, stage, &project_name, &general.namespace) };
-
     let resource_prefix = format_vars(&general.prefix_template);
-    let slug = format!("{}-{}", stage, project_name);
-
-    // 旧 [awscontainer] (0.29.0 で廃止) は移行案内付きで明示エラー
-    if data.get("awscontainer").is_some() {
-        return Err(PocketError::Config(
-            "[awscontainer] は廃止されました。[container.<name>] の dict 形式に \
-             移行してください (CHANGELOG 0.29.0 参照)。"
-                .into(),
-        ));
-    }
-
-    // [container.<name>] セクション群をパースする
-    let container_tables: Vec<(String, ContainerToml)> = match data.get("container") {
-        Some(v) => {
-            let table = v.as_table().ok_or_else(|| {
-                PocketError::Config("[container] must be a table of containers".into())
-            })?;
-            let mut parsed = Vec::new();
-            for (name, c_val) in table {
-                let c: ContainerToml = c_val.clone().try_into().map_err(PocketError::TomlParse)?;
-                parsed.push((name.clone(), c));
-            }
-            parsed
-        }
-        None => Vec::new(),
-    };
+    let slug = settings.slug();
 
     // 自 container の選択 (POCKET_CONTAINER env > 単一 container)
     let container_name = match container {
         Some(name) => {
-            if !container_tables.iter().any(|(n, _)| n == name) {
+            if !settings.container.contains_key(name) {
                 return Err(PocketError::Config(format!(
                     "container `{name}` は設定にありません"
                 )));
             }
             name.to_string()
         }
-        None => match container_tables.len() {
+        None => match settings.container.len() {
             0 => String::new(),
-            1 => container_tables[0].0.clone(),
+            1 => settings
+                .container
+                .keys()
+                .next()
+                .cloned()
+                .unwrap_or_default(),
             _ => {
                 return Err(PocketError::Config(
                     "複数の container が定義されています。POCKET_CONTAINER \
@@ -629,56 +449,37 @@ pub fn load_config_from_str(
         },
     };
 
-    let build_handlers =
-        |c_name: &str, handlers: HashMap<String, HandlerToml>| -> HashMap<String, HandlerConfig> {
-            handlers
-                .into_iter()
-                .map(|(key, h)| {
-                    let apigateway = h
-                        .apigateway
-                        .map(|ag| ApiGatewayConfig { domain: ag.domain });
-                    let sqs = if h.sqs.is_some() {
-                        // Python 側 SqsContext.from_settings と同じ導出:
-                        // {prefix}{container}-{handler}
-                        let queue_name = format!("{resource_prefix}{c_name}-{key}");
-                        Some(SqsConfig { name: queue_name })
-                    } else {
-                        None
-                    };
-                    (key, HandlerConfig { apigateway, sqs })
-                })
-                .collect()
-        };
-
     let mut containers_config: HashMap<String, HashMap<String, HandlerConfig>> = HashMap::new();
-    let mut own_secrets_toml: Option<SecretsToml> = None;
-    // secrets を宣言するいずれかの container の (store, pocket_key_format)。
-    // Python の project_secrets_base 相当 (全 container での一致は settings 側で
-    // 検証済みなので最初に見つかった宣言でよい)
-    let mut declared_store_format: Option<(String, String)> = None;
-    for (name, c) in container_tables {
-        if let Some(sc) = &c.secrets {
-            declared_store_format
-                .get_or_insert_with(|| (sc.store.clone(), sc.pocket_key_format.clone()));
-        }
-        if name == container_name {
-            own_secrets_toml = c.secrets;
-        }
-        containers_config.insert(name.clone(), build_handlers(&name, c.handlers));
+    for (c_name, c) in settings.container.iter() {
+        let handlers = c
+            .handlers
+            .iter()
+            .map(|(key, h)| {
+                let apigateway = h.apigateway.as_ref().map(|ag| ApiGatewayConfig {
+                    domain: ag.domain.clone(),
+                });
+                // Python 側 SqsContext.from_settings と同じ導出: {prefix}{container}-{handler}
+                let sqs = h.sqs.as_ref().map(|_| SqsConfig {
+                    name: format!("{resource_prefix}{c_name}-{key}"),
+                });
+                (key.clone(), HandlerConfig { apigateway, sqs })
+            })
+            .collect();
+        containers_config.insert(c_name.clone(), handlers);
     }
     let handlers_config = containers_config
         .get(&container_name)
         .cloned()
         .unwrap_or_default();
 
-    let (cloudfront_names, cloudfront_tables, static_routes) = parse_cloudfront(&data)?;
-    let s3_bucket_name = parse_s3_bucket_name(&data, format_vars)?;
+    let (cloudfront_names, static_routes) = static_routes(settings);
+    let s3_bucket_name = s3_bucket_name(settings, stage);
 
     // 自動注入 managed secret (Python の pocket.context._injected_managed_specs と
     // 同じ導出)。enable_origin_verify の検証用 secret と waf.allow_rules の header
     // secret は shared store の managed 扱いで runtime env に載せる
     let mut injected: Vec<(String, ManagedSecretSpec)> = Vec::new();
-    if cloudfront_tables.iter().any(|c| c.enable_origin_verify) {
+    if settings.cloudfront.values().any(|c| c.enable_origin_verify) {
         injected.push((
             ORIGIN_VERIFY_SECRET_KEY.to_string(),
             ManagedSecretSpec {
@@ -687,8 +488,9 @@ pub fn load_config_from_str(
             },
         ));
     }
-    let waf_headers: BTreeSet<String> = cloudfront_tables
-        .iter()
+    let waf_headers: BTreeSet<String> = settings
+        .cloudfront
+        .values()
         .filter_map(|c| c.waf.as_ref())
         .flat_map(|w| w.allow_rules.iter())
         .filter_map(|r| r.header.clone())
@@ -708,15 +510,21 @@ pub fn load_config_from_str(
     // ({stage}-{project}-{namespace})、無印の managed は container パス
     // ({stage}-{project}-{name}-{namespace}) に保存される (Python 側と同じ導出)。
     // store / pocket_key_format は自 container の宣言 > 宣言のある container からの
-    // 継承 > 既定値 (Python の project_secrets_base 相当)。自 container に secrets
-    // 宣言が無くても、自動注入があれば shared view を作る。
-    let (base_store, base_format) = match &own_secrets_toml {
-        Some(sc) => (sc.store.clone(), sc.pocket_key_format.clone()),
-        None => {
-            declared_store_format.unwrap_or_else(|| (default_store(), default_pocket_key_format()))
-        }
+    // 継承 > 既定値 (Python の project_secrets_base 相当。全 container での一致は
+    // 検証済み)。自 container に secrets 宣言が無くても、自動注入があれば shared
+    // view を作る。
+    let own_secrets = settings
+        .container
+        .get(&container_name)
+        .and_then(|c| c.secrets.as_ref());
+    let base = own_secrets.or_else(|| settings.container.values().find_map(|c| c.secrets.as_ref()));
+    let (store, base_format) = match base {
+        Some(sc) => (
+            store_type(sc.store),
+            sc.pocket_key_format.as_str().to_string(),
+        ),
+        None => (StoreType::Sm, "{stage}-{project}-{namespace}".to_string()),
     };
-    let store = parse_store_type(&base_store);
     let project_key = format_vars(&base_format);
     let container_key = base_format
         .replace("{stage}", stage)
@@ -729,55 +537,45 @@ pub fn load_config_from_str(
     let mut unshared_managed = HashMap::new();
     let mut shared_managed = HashMap::new();
     let mut user = HashMap::new();
-    if let Some(sc) = own_secrets_toml {
-        for (k, v) in sc.managed {
+    if let Some(sc) = own_secrets {
+        for (k, v) in sc.managed.iter() {
             let options = v
                 .options
-                .into_iter()
+                .iter()
                 .map(|(ok, ov)| {
                     let s = match ov {
-                        toml::Value::String(s) => s,
-                        other => other.to_string(),
+                        magic_pocket_settings::types::StrOrInt::Str(s) => s.clone(),
+                        magic_pocket_settings::types::StrOrInt::Int(i) => i.to_string(),
                     };
-                    (ok, s)
+                    (ok.clone(), s)
                 })
                 .collect();
             let spec = ManagedSecretSpec {
-                secret_type: v.secret_type,
+                secret_type: serde_name(&v.r#type),
                 options,
             };
             if v.shared {
-                shared_managed.insert(k, spec);
+                shared_managed.insert(k.clone(), spec);
             } else {
-                unshared_managed.insert(k, spec);
+                unshared_managed.insert(k.clone(), spec);
             }
         }
-        for (k, v) in sc.user {
-            let spec_store = v.store.as_deref().map(parse_store_type);
+        for (k, v) in sc.user.iter() {
+            let spec_store = v.store.map(store_type);
             // name は type 基準の正準パスへ解決してから保持する
             // (Python の SecretsContext.from_settings と同じ resolve)。
             // 正準パスは project 側の pocket_key から導出する。
-            // 同時指定は Python (check_user_name_type_exclusive) と同じく排他エラー。
-            let name = match (v.name, v.secret_type) {
-                (Some(_), Some(_)) => {
-                    return Err(PocketError::Config(format!(
-                        "user secret `{k}`: `name` and `type` are mutually \
-                         exclusive (name = 明示参照 / type = stored mode)"
-                    )));
-                }
-                (Some(n), None) => format_vars(&n),
+            // name と type の排他・どちらか必須は設定の検証で保証済み
+            let name = match (&v.name, &v.r#type) {
+                (Some(n), _) => format_vars(n),
                 (None, Some(t)) => {
                     let effective_store = spec_store.clone().unwrap_or(store.clone());
-                    user_secret_path(&project_key, &t, &effective_store)
+                    user_secret_path(&project_key, &serde_name(t), &effective_store)
                 }
-                (None, None) => {
-                    return Err(PocketError::Config(format!(
-                        "user secret `{k}` must have either `name` or `type`"
-                    )));
-                }
+                (None, None) => unreachable!("UserSecretSpec は name か type を持つ"),
             };
             user.insert(
-                k,
+                k.clone(),
                 UserSecretSpec {
                     name,
                     store: spec_store,
@@ -812,10 +610,10 @@ pub fn load_config_from_str(
     let shared_secrets_config = make_config(project_key, shared_managed, user);
 
     Ok(PocketConfig {
-        region: general.region,
-        project_name,
-        namespace: general.namespace,
-        prefix_template: general.prefix_template,
+        region: general.region.clone(),
+        project_name: project_name.clone(),
+        namespace: general.namespace.clone(),
+        prefix_template: general.prefix_template.clone(),
         stage: stage.to_string(),
         slug,
         resource_prefix,
@@ -830,13 +628,6 @@ pub fn load_config_from_str(
     })
 }
 
-fn parse_store_type(s: &str) -> StoreType {
-    match s {
-        "ssm" => StoreType::Ssm,
-        _ => StoreType::Sm,
-    }
-}
-
 /// stored user secret の正準名を type 基準で導出する。
 ///
 /// Python 側 `pocket.context.user_secret_path` と一致させる。provisioning identity を
@@ -848,25 +639,6 @@ fn user_secret_path(pocket_key: &str, segment: &str, store: &StoreType) -> Strin
     match store {
         StoreType::Ssm => format!("/{prefix}/{segment}"),
         StoreType::Sm => format!("{prefix}/{segment}"),
-    }
-}
-
-/// toml::Value に対する再帰的 deep merge
-/// source の値を target に上書きマージする
-fn deep_merge(target: &mut toml::Value, source: &toml::Value) {
-    match (target, source) {
-        (toml::Value::Table(ref mut t_map), toml::Value::Table(s_map)) => {
-            for (key, s_val) in s_map {
-                if let Some(t_val) = t_map.get_mut(key) {
-                    deep_merge(t_val, s_val);
-                } else {
-                    t_map.insert(key.clone(), s_val.clone());
-                }
-            }
-        }
-        (target, source) => {
-            *target = source.clone();
-        }
     }
 }
 
@@ -903,7 +675,7 @@ domain = "api.example.com"
 [container.main.handlers.worker]
 command = "handler.worker"
 timeout = 600
-sqs = {}
+sqs = { dead_letter_alert = { enabled = false } }
 "#;
 
     const STAGE_OVERRIDE_TOML: &str = r#"
@@ -947,7 +719,7 @@ apigateway = {}
 
 [container.v2.handlers.worker]
 command = "admin-v2"
-sqs = {}
+sqs = { dead_letter_alert = { enabled = false } }
 "#;
 
     #[test]
@@ -1084,8 +856,10 @@ stages = ["dev"]
 
 [cloudfront.web]
 domain = "example.com"
+routes = [{ is_default = true, origin_path = "/spa" }]
 
 [cloudfront.admin]
+routes = [{ is_default = true, origin_path = "/admin" }]
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
         // env 注入を決定的にするため sorted
@@ -1227,8 +1001,11 @@ dockerfile_path = "Dockerfile"
 command = "app"
 apigateway = {}
 
+[s3]
+
 [cloudfront.web]
 enable_origin_verify = true
+routes = [{ is_default = true, type = "lambda", handler = "main.wsgi" }]
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
         // container store 側 view は作られない
@@ -1253,10 +1030,14 @@ stages = ["dev"]
 [container.main]
 dockerfile_path = "Dockerfile"
 
+[s3]
+
 [cloudfront.web]
 enable_origin_verify = false
+routes = [{ is_default = true, origin_path = "/spa" }]
 
 [cloudfront.admin]
+routes = [{ is_default = true, origin_path = "/admin" }]
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
         assert!(config.secrets.is_none());
@@ -1276,6 +1057,15 @@ stages = ["dev"]
 [container.main]
 dockerfile_path = "Dockerfile"
 
+[container.main.handlers.wsgi]
+command = "app"
+apigateway = {}
+
+[s3]
+
+[cloudfront.web]
+routes = [{ is_default = true, origin_path = "/spa" }]
+
 [cloudfront.web.waf]
 allow_rules = [
     { header = "ZULU_TOKEN" },
@@ -1285,6 +1075,7 @@ allow_rules = [
 
 [cloudfront.admin]
 enable_origin_verify = true
+routes = [{ is_default = true, type = "lambda", handler = "main.wsgi" }]
 
 [cloudfront.admin.waf]
 allow_rules = [{ header = "ZULU_TOKEN" }]
@@ -1326,8 +1117,15 @@ SECRET_KEY = { type = "password" }
 [container.v2]
 dockerfile_path = "v2/Dockerfile"
 
+[container.v2.handlers.wsgi]
+command = "app"
+apigateway = {}
+
+[s3]
+
 [cloudfront.web]
 enable_origin_verify = true
+routes = [{ is_default = true, type = "lambda", handler = "v2.wsgi" }]
 "#;
         let config = load_config_from_str(toml, "dev", Some("v2")).unwrap();
         assert!(config.secrets.is_none());
@@ -1354,8 +1152,15 @@ dockerfile_path = "Dockerfile"
 SHARED_KEY = { type = "password", shared = true }
 LOCAL_KEY = { type = "password" }
 
+[container.main.handlers.wsgi]
+command = "app"
+apigateway = {}
+
+[s3]
+
 [cloudfront.web]
 enable_origin_verify = true
+routes = [{ is_default = true, type = "lambda", handler = "main.wsgi" }]
 "#;
         let config = load_config_from_str(toml, "dev", None).unwrap();
         let container_store = config.secrets.unwrap();
@@ -1428,6 +1233,7 @@ project_name = "myapp"
 stages = ["sandbox"]
 
 [neon]
+project_name = "myapp-neon"
 provisioning = "command"
 
 [container.main]
@@ -1540,7 +1346,7 @@ dockerfile_path = "Dockerfile"
 DATABASE_URL = { name = "my-secret", type = "neon_database_url" }
 "#;
         let err = load_config_from_str(toml, "dev", None).unwrap_err();
-        assert!(err.to_string().contains("mutually"), "got {err}");
+        assert!(err.to_string().contains("排他"), "got {err}");
     }
 
     #[test]
@@ -1561,40 +1367,5 @@ stages = ["dev"]
         // 以前は stages 取得失敗が StageNotFound と誤報告されていた
         let err = load_config_from_str("[dev]\n", "dev", None).unwrap_err();
         assert!(err.to_string().contains("missing [general] section"));
-    }
-
-    #[test]
-    fn test_deep_merge() {
-        let mut target: toml::Value = toml::from_str(
-            r#"
-[a]
-x = 1
-y = 2
-[a.nested]
-foo = "bar"
-"#,
-        )
-        .unwrap();
-
-        let source: toml::Value = toml::from_str(
-            r#"
-[a]
-y = 3
-z = 4
-[a.nested]
-baz = "qux"
-"#,
-        )
-        .unwrap();
-
-        deep_merge(&mut target, &source);
-
-        let a = target.get("a").unwrap();
-        assert_eq!(a.get("x").unwrap().as_integer(), Some(1));
-        assert_eq!(a.get("y").unwrap().as_integer(), Some(3)); // overridden
-        assert_eq!(a.get("z").unwrap().as_integer(), Some(4)); // added
-        let nested = a.get("nested").unwrap();
-        assert_eq!(nested.get("foo").unwrap().as_str(), Some("bar")); // kept
-        assert_eq!(nested.get("baz").unwrap().as_str(), Some("qux")); // added
     }
 }

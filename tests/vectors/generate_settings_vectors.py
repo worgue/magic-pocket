@@ -10,6 +10,11 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 環境変数を vector の context だけに差し替えて行う。project_name の既定は一時
 ディレクトリに置いた pyproject.toml から取らせる。
 
+各入力から `pocket runtime-config` と同じ規則で作った pocket.runtime.toml
+(`runtime/` 配下。生成元の版のマーカーは付けない) も入力にする (Lambda の runtime
+が読む形を固定するため)。Python が読めない runtime.toml は vector にせず、理由を
+stderr に出す。
+
 `--check` は書かずに、commit 済みの vector と一致するか (不足・余分を含む) を見る。
 """
 
@@ -24,12 +29,14 @@ from pathlib import Path
 from unittest import mock
 
 import click
+from pocket_cli.cli.runtime_config_cli import _clean_data, _to_toml
 
 from pocket.settings import Settings
 from pocket.utils import mask_secret_values, tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests/data/settings_vectors"
+RUNTIME_DIR = OUT_DIR / "runtime"
 
 # 入力の group 名と glob (repo root からの相対)
 INPUT_GROUPS = (
@@ -80,12 +87,24 @@ def isolated_load(toml_path: Path, context: dict) -> Iterator[None]:
             os.chdir(cwd)
 
 
-def build_vector(toml_path: Path, stage: str, context: dict) -> dict:
+def runtime_toml_text(toml_path: Path) -> str:
+    """`pocket runtime-config` と同じ規則の pocket.runtime.toml (版のマーカー無し)"""
+    data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
+    return _to_toml(_clean_data(data)).strip() + "\n"
+
+
+def build_vector(
+    toml_path: Path, stage: str, context: dict, input_path: Path | None = None
+) -> dict:
+    """toml_path を読んだ vector。
+
+    input_path は vector に書く入力の path (既定は toml_path)。
+    """
     with isolated_load(toml_path, context):
         settings = Settings.from_toml(stage=stage)
     dumped = settings.model_dump(mode="json")
     return {
-        "input": toml_path.relative_to(REPO_ROOT).as_posix(),
+        "input": (input_path or toml_path).relative_to(REPO_ROOT).as_posix(),
         "stage": stage,
         "context": context,
         "settings": dumped,
@@ -97,20 +116,49 @@ def render(vector: dict) -> str:
     return json.dumps(vector, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
-def expected_files() -> dict[Path, str]:
+def expected_files() -> tuple[dict[Path, str], list[str]]:
+    """(書くファイル, vector にしなかった runtime.toml とその理由)"""
     files: dict[Path, str] = {}
+    skipped: list[str] = []
     for group, name, path in iter_inputs():
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        for stage in data["general"]["stages"]:
+        stages = data["general"]["stages"]
+        for stage in stages:
             vector = build_vector(path, stage, DEFAULT_CONTEXT)
             files[OUT_DIR / group / ("%s.%s.json" % (name, stage))] = render(vector)
-    return files
+        runtime_path = RUNTIME_DIR / ("%s.%s.runtime.toml" % (group, name))
+        runtime_text = runtime_toml_text(path)
+        runtime_files: dict[Path, str] = {}
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / runtime_path.name
+            tmp_path.write_text(runtime_text, encoding="utf-8")
+            current = ""
+            try:
+                for stage in stages:
+                    current = stage
+                    vector = build_vector(
+                        tmp_path, stage, DEFAULT_CONTEXT, input_path=runtime_path
+                    )
+                    out = RUNTIME_DIR / ("%s.%s.%s.json" % (group, name, stage))
+                    runtime_files[out] = render(vector)
+            except ValueError as e:
+                # ValidationError / TOMLDecodeError も ValueError
+                reason = " ".join(str(e).split())[:200]
+                skipped.append("%s (%s): %s" % (runtime_path.name, current, reason))
+                continue
+        files[runtime_path] = runtime_text
+        files.update(runtime_files)
+    return files, skipped
+
+
+def existing_files() -> set[Path]:
+    return set(OUT_DIR.rglob("*.json")) | set(RUNTIME_DIR.glob("*.runtime.toml"))
 
 
 def diff_files(expected: dict[Path, str]) -> list[str]:
     """commit 済みの vector との差 (相対 path と理由)"""
     problems = []
-    existing = set(OUT_DIR.rglob("*.json"))
+    existing = existing_files()
     for path, text in sorted(expected.items()):
         rel = path.relative_to(REPO_ROOT)
         if not path.is_file():
@@ -125,7 +173,13 @@ def diff_files(expected: dict[Path, str]) -> list[str]:
 @click.command()
 @click.option("--check", is_flag=True, help="書かずに commit 済みの vector と比べる")
 def main(check: bool):
-    expected = expected_files()
+    expected, skipped = expected_files()
+    if skipped:
+        click.echo(
+            "Python が読めない runtime.toml は vector にしていません:\n  "
+            + "\n  ".join(skipped),
+            err=True,
+        )
     if check:
         problems = diff_files(expected)
         if problems:
@@ -134,7 +188,7 @@ def main(check: bool):
                 + "\n  ".join(problems)
             )
         return
-    for path in set(OUT_DIR.rglob("*.json")) - set(expected):
+    for path in existing_files() - set(expected):
         path.unlink()
     for path, text in expected.items():
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -1765,6 +1765,7 @@ dependencies = [
  "axum",
  "flate2",
  "hex",
+ "magic-pocket-settings",
  "percent-encoding",
  "serde",
  "serde_json",
