@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import re
 import sys
@@ -20,11 +21,14 @@ else:
 # iam (managed_policy_arns / inline_policies) は Lambda execution role を組む
 # provision 専用で runtime は参照しない。IAM Condition のようにキーへ ":" を含む
 # 任意の dict を抱えるため、runtime toml の表面積から外しておく。
+#
+# 除外してよいのは、runtime の Settings / Context が値も検証も参照しないキーだけ。
+# use_vpc と [vpc] は runtime の Context (EFS の mount 先 / RDS / rds_database_url
+# の検証) が使うので残す (use_vpc だけ消すと auto 扱いで VPC 内になり意味が変わる)。
 _CONTAINER_REMOVE_KEYS = {
     "platform",
     "build",
     "permissions_boundary",
-    "use_vpc",
     "iam",
 }
 
@@ -34,18 +38,21 @@ _CONTAINER_DUMMY_VALUES = {
 }
 
 # cloudfront の各エントリから除外するキー
+# signing_key は runtime の Django storage が署名 URL を作るのに使う (値は managed
+# secret の key 名で秘密値ではない) ので残す。
 _CLOUDFRONT_REMOVE_KEYS = {
     "managed_assets",
     "hosted_zone_id_override",
     "redirect_from",
-    "signing_key",
     "token_secret",
 }
 
 # route から除外するキー
+# delete_stale は build / upload_dir を持つ route でだけ書けるので、それらと一緒に消す。
 _ROUTE_REMOVE_KEYS = {
     "build",
     "upload_dir",
+    "delete_stale",
     "require_token",
     "login_path",
 }
@@ -53,11 +60,6 @@ _ROUTE_REMOVE_KEYS = {
 # container.<name>.django から除外するキー
 _DJANGO_REMOVE_KEYS = {
     "project_dir",
-}
-
-# トップレベルから除外するセクション
-_TOPLEVEL_REMOVE_KEYS = {
-    "vpc",
 }
 
 
@@ -93,7 +95,6 @@ def _clean_section(section: dict) -> None:
 def _clean_data(data: dict) -> dict:
     """pocket.toml のデータからランタイムに不要な設定を除外する"""
     result = copy.deepcopy(data)
-    _remove_keys(result, _TOPLEVEL_REMOVE_KEYS)
     _clean_section(result)
     for stage in result.get("general", {}).get("stages", []):
         if stage in result:
@@ -187,6 +188,10 @@ def _format_inline_value(value) -> str:
         return str(value)
     if isinstance(value, str):
         return _toml_string(value)
+    # tomllib が返す日時 (offset / local datetime・date・time)。isoformat は TOML の
+    # 表記と互換 (repr は `datetime.datetime(...)` になり不正 TOML)。
+    if isinstance(value, (datetime.date, datetime.time)):
+        return value.isoformat()
     # inline table / 配列は再帰。IAM の Condition のようにネストした dict を
     # repr() で吐くと Python 表記 ({'k': 'v'}) になり不正 TOML になる。
     if isinstance(value, dict):

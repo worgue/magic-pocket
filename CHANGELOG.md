@@ -37,6 +37,14 @@
   `[cloudfront.<name>].domain` (alias) を宣言していても CloudFront の既定ドメイン (`*.cloudfront.net`) で
   URL を組んでいたため、画面と別 origin になっていました。alias を優先し、無いときだけ
   `POCKET_CLOUDFRONT_<NAME>_DOMAIN` を使うようにしました (Django の `_resolve_cloudfront_domain` と同じ順)
+- `pocket runtime-config` (deploy 時の自動生成を含む) が、runtime が読めない `pocket.runtime.toml` を
+  作る場合があり、該当する構成では Lambda の INIT で失敗していました。次の構成が対象です。
+  - `[rds]` を使う構成、EFS の Django cache (`store = "efs"`) を使う構成、`[<stage>.vpc]` で
+    vpc を上書きする構成: `[vpc]` / `use_vpc` を消していました。runtime が使うので残します
+  - `signed = true` の route: `signing_key` を消していました。Django storage の署名 URL に使うので残します
+  - `delete_stale` を書いた route: `build` / `upload_dir` と一緒に消すようにしました
+  - 日時の値 (`[general.django_fallback.settings]` 等): TOML の日時として書くようにしました
+  [pocket runtime-config](https://worgue.github.io/magic-pocket/guide/configuration/#pocket-runtime-config)
 
 ### Changed
 - **破壊的変更**: pocket.toml の値を別の型へ暗黙に変換しなくなりました。`timeout = "30"` (文字列 → 整数)、

@@ -84,7 +84,17 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a"
+          ]
+        }
       },
       "web": {
         "build": {
@@ -280,7 +290,17 @@
             }
           }
         },
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -343,7 +363,17 @@
     "stage": "dev",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a"
+      ]
+    }
   },
   "settings": {
     "backup": null,
@@ -418,7 +448,17 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a"
+          ]
+        }
       },
       "web": {
         "build": {
@@ -614,7 +654,17 @@
             }
           }
         },
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -677,7 +727,17 @@
     "stage": "dev",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a"
+      ]
+    }
   },
   "stage": "dev"
 }

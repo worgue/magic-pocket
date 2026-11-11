@@ -1033,6 +1033,8 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
 ### pocket runtime-config
 
 `pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を生成します。
+除外するのは runtime (Lambda の INIT で読む Settings / Context) が値も検証も参照しない設定だけで、
+`[vpc]` / `use_vpc`（EFS の mount 先・RDS の接続に使う）や `signing_key`（Django storage の署名 URL に使う）は残ります。
 
 ```bash
 # 標準出力に出力

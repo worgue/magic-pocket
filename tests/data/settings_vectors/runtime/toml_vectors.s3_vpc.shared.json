@@ -1,0 +1,213 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj",
+    "runtime_version": null
+  },
+  "input": "tests/data/settings_vectors/runtime/toml_vectors.s3_vpc.runtime.toml",
+  "masked": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "s3vpc",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "shared"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{project}-{stage}-assets",
+      "cors": {
+        "cloudfront": "web",
+        "methods": [
+          "GET",
+          "PUT"
+        ]
+      },
+      "lifecycle_rules": [
+        {
+          "expiration_days": 1,
+          "id": "tmp",
+          "noncurrent_version_expiration_days": null,
+          "prefix": "tmp/"
+        },
+        {
+          "expiration_days": null,
+          "id": "old",
+          "noncurrent_version_expiration_days": 30,
+          "prefix": ""
+        }
+      ],
+      "versioning": true
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "shared-s3vpc",
+    "stage": "shared",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": false,
+      "nat_gateway": true,
+      "ref": "shared",
+      "sharable": false,
+      "zone_suffixes": []
+    }
+  },
+  "settings": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "s3vpc",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "shared"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{project}-{stage}-assets",
+      "cors": {
+        "cloudfront": "web",
+        "methods": [
+          "GET",
+          "PUT"
+        ]
+      },
+      "lifecycle_rules": [
+        {
+          "expiration_days": 1,
+          "id": "tmp",
+          "noncurrent_version_expiration_days": null,
+          "prefix": "tmp/"
+        },
+        {
+          "expiration_days": null,
+          "id": "old",
+          "noncurrent_version_expiration_days": 30,
+          "prefix": ""
+        }
+      ],
+      "versioning": true
+    },
+    "scheduler": null,
+    "ses": null,
+    "slug": "shared-s3vpc",
+    "stage": "shared",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": false,
+      "nat_gateway": true,
+      "ref": "shared",
+      "sharable": false,
+      "zone_suffixes": []
+    }
+  },
+  "stage": "shared"
+}

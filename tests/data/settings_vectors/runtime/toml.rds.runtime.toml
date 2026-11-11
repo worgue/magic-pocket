@@ -12,6 +12,10 @@ store = "filesystem"
 store = "filesystem"
 static = true
 
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
 [rds]
 
 

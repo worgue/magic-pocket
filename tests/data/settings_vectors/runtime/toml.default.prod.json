@@ -156,7 +156,20 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": {
+            "access_point_path": "/lambda",
+            "local_mount_path": "/mnt/efs"
+          },
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "sandbox",
+          "sharable": false,
+          "zone_suffixes": [
+            "c"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -237,7 +250,20 @@
     "stage": "prod",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": {
+        "access_point_path": "/lambda",
+        "local_mount_path": "/mnt/efs"
+      },
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "sandbox",
+      "sharable": false,
+      "zone_suffixes": [
+        "c"
+      ]
+    }
   },
   "settings": {
     "backup": null,
@@ -384,7 +410,20 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": {
+            "access_point_path": "/lambda",
+            "local_mount_path": "/mnt/efs"
+          },
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "sandbox",
+          "sharable": false,
+          "zone_suffixes": [
+            "c"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -465,7 +504,20 @@
     "stage": "prod",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": {
+        "access_point_path": "/lambda",
+        "local_mount_path": "/mnt/efs"
+      },
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "sandbox",
+      "sharable": false,
+      "zone_suffixes": [
+        "c"
+      ]
+    }
   },
   "stage": "prod"
 }

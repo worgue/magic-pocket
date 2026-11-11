@@ -16,6 +16,13 @@ location = "management"
 store = "filesystem"
 static = true
 
+[vpc]
+ref = "sandbox"
+zone_suffixes = ["c"]
+
+[vpc.efs]
+
+
 [s3]
 
 

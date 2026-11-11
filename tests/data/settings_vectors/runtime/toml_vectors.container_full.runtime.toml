@@ -3,6 +3,10 @@ region = "ap-northeast-1"
 project_name = "ctr"
 stages = ["dev", "prod"]
 
+[vpc]
+ref = "main"
+zone_suffixes = ["a"]
+
 [container.web]
 dockerfile_path = "__runtime__"
 ecr_name = "shared-web"
@@ -108,6 +112,7 @@ manifest = true
 
 [container.api]
 dockerfile_path = "__runtime__"
+use_vpc = false
 
 [container.api.secrets]
 store = "ssm"
@@ -128,6 +133,7 @@ command = "bootstrap"
 
 [container.batch]
 dockerfile_path = "__runtime__"
+use_vpc = true
 
 [prod.container]
 
@@ -137,3 +143,4 @@ dockerfile_path = "__runtime__"
 memory_size = 2048
 
 [prod.container.api]
+use_vpc = true

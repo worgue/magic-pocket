@@ -1,0 +1,74 @@
+[general]
+namespace = "myorg"
+prefix_template = "{project}-{stage}-"
+region = "us-west-2"
+project_name = "vectorprj"
+stages = ["dev", "prod", "stg"]
+s3_fallback_bucket_name = "fallback-bucket"
+
+[general.django_fallback]
+project_dir = "src"
+
+[general.django_fallback.storages.default]
+store = "s3"
+location = "media"
+
+[general.django_fallback.storages.default.options]
+querystring_auth = false
+max_age = 60
+
+[general.django_fallback.storages.staticfiles]
+store = "s3"
+distribution = "web"
+route = "static"
+static = true
+manifest = true
+publish = "command"
+link = true
+
+[general.django_fallback.storages.management]
+store = "filesystem"
+location = "management"
+distribution = ""
+
+[general.django_fallback.caches.default]
+store = "redis"
+location_subdir = "{stage}-cache"
+
+[general.django_fallback.caches.local]
+store = "efs"
+
+[general.django_fallback.settings]
+ALLOWED_HOSTS = ["a.example.com", "b.example.com"]
+TIMEOUT = 1.5
+DEBUG = false
+UTC_AT = 1979-05-27T07:32:00+00:00
+OFFSET_AT = 1979-05-27T00:32:00.500000-07:00
+ZERO_OFFSET_AT = 1979-05-27T07:32:00+00:00
+LOCAL_AT = 1979-05-27T07:32:00.123456
+LOCAL_DATE = 1979-05-27
+LOCAL_TIME = 07:32:00.250000
+NOT_A_NUMBER = nan
+INFINITE = -inf
+
+[general.django_fallback.settings.NESTED.first]
+second = [1, { third = "x" }]
+
+[iam]
+external_roles = true
+namespace = "platform"
+
+[prod.general]
+
+[prod.general.django_fallback.settings]
+ALLOWED_HOSTS = ["prod.example.com"]
+DEBUG = true
+
+[prod.general.django_fallback.settings.NESTED.first]
+other = "y"
+
+[prod.iam]
+external_roles = false
+
+[stg.general]
+namespace = "stg-ns"

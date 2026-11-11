@@ -43,7 +43,18 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -112,7 +123,18 @@
       "secret_arn": null,
       "security_group_id": null,
       "snapshot_identifier": null,
-      "vpc": null
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
     },
     "s3": null,
     "scheduler": null,
@@ -121,7 +143,18 @@
     "stage": "prod",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
   },
   "settings": {
     "backup": null,
@@ -155,7 +188,18 @@
         "permissions_boundary": null,
         "platform": "linux/amd64",
         "secrets": null,
-        "vpc": null
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
       }
     },
     "dsql": null,
@@ -224,7 +268,18 @@
       "secret_arn": null,
       "security_group_id": null,
       "snapshot_identifier": null,
-      "vpc": null
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
     },
     "s3": null,
     "scheduler": null,
@@ -233,7 +288,18 @@
     "stage": "prod",
     "tidb": null,
     "upstash": null,
-    "vpc": null
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
   },
   "stage": "prod"
 }

@@ -1,0 +1,80 @@
+[general]
+region = "ap-northeast-1"
+project_name = "db"
+stages = ["dev", "prod", "ext"]
+
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
+[container.app]
+dockerfile_path = "__runtime__"
+
+[container.app.secrets.managed]
+
+[container.app.secrets.managed.DATABASE_URL]
+type = "rds_database_url"
+
+[container.batch]
+dockerfile_path = "__runtime__"
+use_vpc = false
+
+[dsql]
+
+
+[rds]
+
+
+[dev.rds]
+password_strategy = "static"
+
+[prod.dsql]
+deletion_protection = true
+
+[prod.rds]
+min_capacity = 1
+max_capacity = 8.5
+snapshot_identifier = "snap-1"
+database = "appdb"
+rotation_schedule = "rate(30 days)"
+rotation_duration = "3h"
+
+[prod.rds.backup]
+retention_days = 14
+
+[prod.backup]
+deletable = true
+timezone = "Asia/Tokyo"
+
+[prod.backup.rds.weekly]
+cron = "0 2 ? * 7 *"
+delete_after_days = 180
+
+[prod.backup.rds.monthly]
+cron = "0 2 1 * ? *"
+delete_after_days = 730
+
+[prod.backup.dsql.daily]
+cron = "0 1 * * ? *"
+delete_after_days = 100
+cold_storage_after_days = 10
+
+[prod.backup.dsql.weekly]
+cron = "0 2 ? * 1 *"
+delete_after_days = 120
+cold_storage_after_days = 0
+
+[prod.backup.dsql.monthly]
+cron = "0 3 1 * ? *"
+delete_after_days = 400
+cold_storage_after_days = 30
+
+[ext.rds]
+managed = false
+secret_arn = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:db"
+security_group_id = "sg-123"
+password_strategy = "aws-managed"
+
+[ext.backup]
+
+[ext.backup.dsql]

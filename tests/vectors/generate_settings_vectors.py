@@ -16,8 +16,9 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 
 各入力から `pocket runtime-config` と同じ規則で作った pocket.runtime.toml
 (`runtime/` 配下。生成元の版のマーカーは付けない) も入力にする (Lambda の runtime
-が読む形を固定するため)。Python が読めない runtime.toml は vector にせず、理由を
-stderr に出す。
+が読む形を固定するため)。Python が読めない runtime.toml があれば、理由を挙げて
+失敗する (`pocket runtime-config` が Lambda の INIT で落ちる runtime.toml を
+生成している = 生成側の不具合)。
 
 エラーの vector: `tests/data/toml_errors/<名前>.toml` (1 ファイル 1 欠陥。stage は
 先頭の `# stage: <名前>` コメント、無ければ `[general] stages` の先頭) を Python で
@@ -152,10 +153,10 @@ def render(vector: dict) -> str:
     return json.dumps(vector, sort_keys=True, ensure_ascii=False, indent=2) + "\n"
 
 
-def expected_files() -> tuple[dict[Path, str], list[str]]:
-    """(書くファイル, vector にしなかった runtime.toml とその理由)"""
+def expected_files() -> dict[Path, str]:
+    """書くファイル。Python が読めない runtime.toml があれば理由を挙げて失敗する。"""
     files: dict[Path, str] = {}
-    skipped: list[str] = []
+    unreadable: list[str] = []
     for group, name, path in iter_inputs():
         text = path.read_text(encoding="utf-8")
         data = tomllib.loads(text)
@@ -182,11 +183,17 @@ def expected_files() -> tuple[dict[Path, str], list[str]]:
             except ValueError as e:
                 # ValidationError / TOMLDecodeError も ValueError
                 reason = " ".join(str(e).split())[:200]
-                skipped.append("%s (%s): %s" % (runtime_path.name, current, reason))
+                unreadable.append("%s (%s): %s" % (runtime_path.name, current, reason))
                 continue
         files[runtime_path] = runtime_text
         files.update(runtime_files)
-    return files, skipped
+    if unreadable:
+        raise click.ClickException(
+            "Python が読めない runtime.toml を生成しています "
+            "(pocket runtime-config の除外規則を見直してください):\n  "
+            + "\n  ".join(unreadable)
+        )
+    return files
 
 
 def _error_kind(error_type: str) -> str:
@@ -291,14 +298,8 @@ def diff_files(expected: dict[Path, str]) -> list[str]:
 @click.command()
 @click.option("--check", is_flag=True, help="書かずに commit 済みの vector と比べる")
 def main(check: bool):
-    expected, skipped = expected_files()
+    expected = expected_files()
     expected.update(expected_error_files())
-    if skipped:
-        click.echo(
-            "Python が読めない runtime.toml は vector にしていません:\n  "
-            + "\n  ".join(skipped),
-            err=True,
-        )
     if check:
         problems = diff_files(expected)
         if problems:
