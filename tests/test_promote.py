@@ -11,7 +11,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.container import Container, StaleRuntimeTomlError
+from pocket_cli.resources.container import Container
 
 from pocket.context import Context, is_working_tree_dirty
 
@@ -146,48 +146,6 @@ def test_deploy_init_default_builds(use_toml, tmp_path, monkeypatch):
 
     ac.deploy_init()
     assert calls == {"sync": True}
-
-
-@mock_aws
-def test_deploy_init_stops_on_stale_runtime_toml(use_toml, tmp_path, monkeypatch):
-    """残った pocket.runtime.toml があれば build の前に止まる。
-
-    CLI が生成しなくなったので残ったものは更新されず、image に入ると runtime が
-    pocket.toml より優先して古い設定を読むため。
-    """
-    context = _make_context(use_toml, tmp_path)
-    ac = Container(context.container["main"])
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
-
-    calls = {}
-    monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))
-
-    with pytest.raises(StaleRuntimeTomlError, match="pocket.runtime.toml"):
-        ac.deploy_init()
-    assert calls == {}
-
-
-@mock_aws
-def test_deploy_init_promote_ignores_stale_runtime_toml(
-    use_toml, tmp_path, monkeypatch
-):
-    """promote は build しないので、残った pocket.runtime.toml を検査しない。"""
-    context = _make_context(use_toml, tmp_path)
-    context.container["main"].promote_commit_hash = "abc123"
-    ac = Container(context.container["main"])
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
-
-    calls = {}
-    monkeypatch.setattr(
-        Ecr,
-        "retag",
-        lambda self, src, dest: calls.__setitem__("retag", (src, dest)),
-    )
-
-    ac.deploy_init()
-    assert calls == {"retag": ("abc123", "dev")}
 
 
 def test_is_working_tree_dirty(monkeypatch):

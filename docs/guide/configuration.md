@@ -1017,7 +1017,7 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
       します
     - `backend = "docker"` / `"depot"` は生の permission のまま image に入るため、
       build 前にコンテキストを走査して該当ファイルを警告します。ただし runtime が
-      INIT フェーズで読む `pocket.toml` / `pocket.runtime.toml` は該当 container が
+      INIT フェーズで読む `pocket.toml` は該当 container が
       確実に INIT 失敗するため、警告でなく**エラーで deploy を中断**します
       (0.31.0 から。`chmod 644` で修正、image に COPY しないなら .dockerignore へ)
     - 自前の Dockerfile では COPY に `--chmod` を付けて build 段で正規化するのが
@@ -1031,21 +1031,17 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
 ### pocket.runtime.toml の廃止 { #pocket-runtime-toml }
 
 以前の版は、`pocket.toml` からビルド専用の設定を除いた `pocket.runtime.toml` を
-`pocket deploy` / `pocket build` のたびに生成していました。runtime は `pocket.toml` を
-そのまま読めるので、生成をやめ、`pocket runtime-config` コマンドも削除しました。
-image には `pocket.toml` を COPY してください。
+`pocket deploy` / `pocket build` のたびに生成し、Lambda 上では `pocket.toml` より優先して
+読んでいました。今の版は生成せず、runtime も `pocket.runtime.toml` を読みません
+（`pocket runtime-config` コマンドも削除しました）。runtime が読むのは `pocket.toml` だけです。
 
-!!! warning "残っている `pocket.runtime.toml` は削除する"
-    以前の版の `pocket deploy` は、作業ディレクトリ（`container.main.django.project_dir` を
-    設定していればその中）に `pocket.runtime.toml` を生成していました。Lambda 上にこの
-    ファイルがあると、Python の runtime は `pocket.toml` より優先して読みます（以前の版で
-    作った image との互換のために残している動作です）。今の版は生成も更新もしないので、
-    残ったファイルが `COPY . .` で image に入ると、runtime は古い設定のまま動きます。
-    これを防ぐため、`pocket deploy` / `pocket build` は残っているファイルを見つけると
-    build の前にエラーで止まります。ファイルを削除して再実行してください。
+!!! warning "Dockerfile が `pocket.runtime.toml` だけを COPY している場合"
+    `COPY pocket.runtime.toml ./` と書いていて `pocket.toml` を COPY していない構成は、
+    image に `pocket.toml` が入らず、Lambda の INIT で失敗します。`COPY pocket.toml ./` に
+    書き換えてください。`COPY . .` の構成は変更不要です。
 
-    Dockerfile で `COPY pocket.runtime.toml ./` と書いている場合は、`COPY pocket.toml ./` に
-    書き換えてください。
+    作業ディレクトリ（`container.main.django.project_dir` を設定していればその中）に残っている
+    `pocket.runtime.toml` は使われないので、削除してください。
 
 !!! info "生成物は `.gitignore` 推奨"
     `pocket django deploystatic` の中間ビルド成果物 `pocket_cache/`

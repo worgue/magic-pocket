@@ -7,19 +7,17 @@
 ## [Unreleased]
 
 ### Changed
-- **破壊的変更**: `pocket deploy` / `pocket build` は `pocket.runtime.toml` を生成しなくなりました。
-  runtime は `pocket.toml` をそのまま読みます。移行は次のとおりです。
-    - 作業ディレクトリ (`django.project_dir` を設定していればその中にも) に残っている
-      `pocket.runtime.toml` を削除してください。残っていると `pocket deploy` / `pocket build` は
-      build の前にエラーで止まります (更新されないファイルが image に入り、runtime が
-      `pocket.toml` より優先して古い設定を読むのを防ぐため)。
+- **破壊的変更**: `pocket.runtime.toml` を廃止しました。`pocket deploy` / `pocket build` は生成せず、
+  runtime も読みません (これまでは Lambda 上にあれば `pocket.toml` より優先して読んでいました)。
+  runtime が読むのは `pocket.toml` だけです。移行は次のとおりです。
     - Dockerfile で `COPY pocket.runtime.toml ./` と書いている場合は `COPY pocket.toml ./` に
-      書き換えてください。`COPY . .` の構成と、すでに `pocket.toml` を COPY している構成は
-      変更不要です。
-    - `.gitignore` / `.dockerignore` の `pocket.runtime.toml` の行は外せます。
+      書き換えてください。**`pocket.toml` が image に入っていないと Lambda の INIT で失敗します。**
+      `COPY . .` の構成と、すでに `pocket.toml` を COPY している構成は変更不要です。
+    - 作業ディレクトリ (`django.project_dir` を設定していればその中にも) に残っている
+      `pocket.runtime.toml` は使われないので削除してください。`.gitignore` / `.dockerignore` の
+      行も外せます。
+    - `magic-pocket` (runtime) と `magic-pocket-cli` は同じ版に揃えて上げてください。
 
-    image 内に `pocket.runtime.toml` があれば優先して読む runtime の動作は、以前の版で作った
-    image のために残しています。
     [pocket.runtime.toml の廃止](https://worgue.github.io/magic-pocket/guide/configuration/#pocket-runtime-toml)
 
 ### Removed

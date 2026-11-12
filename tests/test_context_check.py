@@ -120,14 +120,14 @@ def test_init_critical_pocket_toml_raises(tmp_path):
         warn_files_without_world_read(tmp_path)
 
 
-def test_init_critical_runtime_toml_in_subdir_raises(tmp_path):
-    """pocket.runtime.toml は配置先 (django project_dir 等) を問わずエラー"""
+def test_init_critical_toml_in_subdir_raises(tmp_path):
+    """pocket.toml は配置先 (django project_dir 等) を問わずエラー"""
     _context(tmp_path)
     sub = tmp_path / "mysite"
     sub.mkdir()
-    (sub / "pocket.runtime.toml").write_text("[general]")
-    (sub / "pocket.runtime.toml").chmod(0o600)
-    with pytest.raises(RuntimeError, match="pocket.runtime.toml"):
+    (sub / "pocket.toml").write_text("[general]")
+    (sub / "pocket.toml").chmod(0o600)
+    with pytest.raises(RuntimeError, match="pocket.toml"):
         warn_files_without_world_read(tmp_path)
 
 

@@ -5,7 +5,7 @@ Lambda の実行ユーザーは非 root (sbx_user) のため、other-read の無
 読めず、全 handler が INIT フェーズで失敗する (wsgi も同居するためサイトごと
 500)。表面のエラーは Runtime.Unknown で原因に辿り着きにくいので、build 前に
 context を走査して legible に警告する。runtime が INIT で読む
-pocket.toml / pocket.runtime.toml はエラーに昇格する。
+pocket.toml はエラーに昇格する。
 
 codebuild backend は source zip 作成時に mode を 0644/0755 へ正規化する
 (_add_source_file) ため対象外。docker / depot backend は context を生の
@@ -33,9 +33,9 @@ _MAX_LISTED = 10
 _warned_files: list[str] = []
 
 # runtime が INIT フェーズで読む設定ファイル。other-read が無いまま COPY される
-# と確実に INIT 失敗する (Rust runtime は pocket.toml を上方探索、Python runtime
-# は pocket.runtime.toml を読む) ため、警告でなくエラーに昇格する。
-_INIT_CRITICAL_NAMES = frozenset({"pocket.toml", "pocket.runtime.toml"})
+# と確実に INIT 失敗する (Python / Rust の runtime とも pocket.toml を上方探索する)
+# ため、警告でなくエラーに昇格する。
+_INIT_CRITICAL_NAMES = frozenset({"pocket.toml"})
 
 
 def find_files_without_world_read(context_dir: Path) -> list[str]:
@@ -56,7 +56,7 @@ def warn_files_without_world_read(context_dir: Path) -> list[str]:
 
     一般ファイルを error にしないのは、Dockerfile 側で `COPY --chmod` や
     `RUN chmod` により image 内で正規化している構成では false positive に
-    なるため。ただし runtime が INIT で読む pocket.toml / pocket.runtime.toml
+    なるため。ただし runtime が INIT で読む pocket.toml
     (_INIT_CRITICAL_NAMES) は該当 container が確実に INIT で死ぬうえ、非 secret
     の設定ファイルで local を `chmod 644` して困る構成が無いため error とする。
     """

@@ -63,4 +63,4 @@ EventBridge Scheduler ──(1 日 1 回)──▶ SQS ──▶ Lambda worker �
   `frontend/build` を再ビルドしません (`just front-build` を先に実行してください)
 - **ビルドコンテキストのファイルは other-read が必要です。** mode 600 のファイルが
   イメージに入ると、Lambda の非 root 実行ユーザーが読めず INIT で失敗します
-  (0.31.0 以降、`pocket.toml` / `pocket.runtime.toml` については deploy 時にエラーで止まります)
+  (0.31.0 以降、`pocket.toml` については deploy 時にエラーで止まります)

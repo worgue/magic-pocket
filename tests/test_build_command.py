@@ -9,7 +9,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.container import Container, StaleRuntimeTomlError
+from pocket_cli.resources.container import Container
 
 from pocket.context import Context, get_commit_hash
 
@@ -75,10 +75,7 @@ def test_ecr_build_and_push_tag_override():
 
 @mock_aws
 def test_awscontainer_build_delegates_to_ecr(use_toml, tmp_path, monkeypatch):
-    """AwsContainer.build は ensure_exists + build_and_push(tag)。
-
-    残った pocket.runtime.toml があれば build の前に止まる。
-    """
+    """AwsContainer.build は ensure_exists + build_and_push(tag)。"""
     toml_path = tmp_path / "pocket.toml"
     toml_path.write_text(
         """
@@ -110,10 +107,3 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
     ac.build("abc123")
     assert calls["ensure"] is True
     assert calls["tag"] == "abc123"
-
-    calls.clear()
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
-    with pytest.raises(StaleRuntimeTomlError):
-        ac.build("abc123")
-    assert calls == {}
