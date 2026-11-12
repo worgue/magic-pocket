@@ -22,12 +22,6 @@ else:
 # 失敗とみなして非ゼロ終了する (migrate 失敗が緑で通る "false green" を防ぐ)。
 MANAGE_HANDLER_SUCCESS_SENTINEL = "POCKET_MANAGE_HANDLER_SUCCESS"
 
-# 以前の CLI が pocket.runtime.toml の先頭に刻んでいたコメント。runtime はもう読まない。
-# リリース済みの magic-pocket-cli (0.47.0 以前) がこの名前を import するので残す
-# (CLI の環境には新しい magic-pocket が入りうる)。
-GENERATOR_VERSION_MARKER = "# magic-pocket-cli generator version:"
-
-
 # context / settings の表示用 dump で値を伏せるキー名。api_key (Neon/Upstash)、
 # private_key (TiDB)、token_secret (CloudFront signed URL)、password
 # (basic_auth_credential options) 等、pocket.toml / env 由来の credential が対象。

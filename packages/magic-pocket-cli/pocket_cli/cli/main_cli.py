@@ -31,7 +31,6 @@ from pocket_cli.cli import (
     neon_cli,
     permissions_cli,
     rds_cli,
-    runtime_config_cli,
     s3_cli,
     static_cli,
     status_cli,
@@ -131,7 +130,6 @@ main.add_command(deploy_cli.promote)
 main.add_command(destroy_cli.destroy)
 main.add_command(status_cli.status)
 main.add_command(django_cli.django if django_cli else _django_unavailable_command())
-main.add_command(runtime_config_cli.runtime_config)
 main.add_command(migrate_cli.migrate)
 main.add_command(permissions_cli.permissions)
 main.add_command(waf_cli.waf)

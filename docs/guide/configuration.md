@@ -1028,30 +1028,19 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
     COPY --chmod=755 . .
     ```
 
-### pocket runtime-config
+### pocket.runtime.toml の廃止 { #pocket-runtime-toml }
 
-!!! warning "廃止予定"
-    `pocket runtime-config` は廃止予定です。runtime は `pocket.toml` をそのまま読めるので、
-    image には `pocket.toml` を COPY してください。`pocket deploy` / `pocket build` は
-    `pocket.runtime.toml` を生成しません。
-
-`pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を生成します。
-
-```bash
-# 標準出力に出力
-pocket runtime-config
-
-# ファイルに出力
-pocket runtime-config pocket.runtime.toml
-```
-
-Lambda 上に `pocket.runtime.toml` があると、runtime は `pocket.toml` より優先して読みます
-（以前の版で作った image との互換のために残している動作です）。
+以前の版は、`pocket.toml` からビルド専用の設定を除いた `pocket.runtime.toml` を
+`pocket deploy` / `pocket build` のたびに生成していました。runtime は `pocket.toml` を
+そのまま読めるので、生成をやめ、`pocket runtime-config` コマンドも削除しました。
+image には `pocket.toml` を COPY してください。
 
 !!! warning "残っている `pocket.runtime.toml` は削除する"
     以前の版の `pocket deploy` は、作業ディレクトリ（`container.main.django.project_dir` を
-    設定していればその中）に `pocket.runtime.toml` を生成していました。今の版は生成も更新も
-    しないので、残ったファイルが `COPY . .` で image に入ると、runtime は古い設定のまま動きます。
+    設定していればその中）に `pocket.runtime.toml` を生成していました。Lambda 上にこの
+    ファイルがあると、Python の runtime は `pocket.toml` より優先して読みます（以前の版で
+    作った image との互換のために残している動作です）。今の版は生成も更新もしないので、
+    残ったファイルが `COPY . .` で image に入ると、runtime は古い設定のまま動きます。
     これを防ぐため、`pocket deploy` / `pocket build` は残っているファイルを見つけると
     build の前にエラーで止まります。ファイルを削除して再実行してください。
 

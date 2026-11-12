@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import yaml as yaml_lib
-from pocket_cli.cli.runtime_config_cli import _clean_data
 from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 from pytest import raises
 
@@ -101,15 +100,6 @@ def test_context_from_toml(use_toml):
     assert route.sources[1].prefix == "app/"
     assert route.sources[1].hashed is False
     assert cf.bucket_policy_prefix == "/static"
-
-
-def test_runtime_toml_keeps_sources(use_toml):
-    """runtime.toml でも object_hash の検証 (sources 必須) が通る形で残す。"""
-    use_toml("tests/data/toml/cloudfront_object_hash.toml")
-    data = settings.Settings.from_toml(stage="dev")
-    cleaned = _clean_data(data.model_dump(mode="json", exclude_none=True))
-    route = [r for r in cleaned["cloudfront"]["web"]["routes"] if r.get("ref")][0]
-    assert route["sources"][0]["name"] == "data"
 
 
 def test_django_storage_backend_is_object_hash(use_toml):

@@ -1,5 +1,4 @@
 /target/
-/pocket.runtime.toml
 /pocket_cache/
 /frontend/build/
 /frontend/node_modules/

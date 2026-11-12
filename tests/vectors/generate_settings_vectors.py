@@ -14,12 +14,6 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 環境変数を vector の context だけに差し替えて行う。project_name の既定は一時
 ディレクトリに置いた pyproject.toml から取らせる。
 
-各入力から `pocket runtime-config` と同じ規則で作った pocket.runtime.toml
-(`runtime/` 配下。生成元の版のマーカーは付けない) も入力にする (Lambda の runtime
-が読む形を固定するため)。Python が読めない runtime.toml があれば、理由を挙げて
-失敗する (`pocket runtime-config` が Lambda の INIT で落ちる runtime.toml を
-生成している = 生成側の不具合)。
-
 エラーの vector: `tests/data/toml_errors/<名前>.toml` (1 ファイル 1 欠陥。stage は
 先頭の `# stage: <名前>` コメント、無ければ `[general] stages` の先頭) を Python で
 読んだときのエラーを `<名前>.expected.json` に書く。エラーがちょうど 1 件でない
@@ -41,7 +35,6 @@ from pathlib import Path
 from unittest import mock
 
 import click
-from pocket_cli.cli.runtime_config_cli import _clean_data, _to_toml
 from pydantic import ValidationError
 
 from pocket.settings import Settings
@@ -49,7 +42,6 @@ from pocket.utils import mask_secret_values, tomllib
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUT_DIR = REPO_ROOT / "tests/data/settings_vectors"
-RUNTIME_DIR = OUT_DIR / "runtime"
 ERRORS_DIR = REPO_ROOT / "tests/data/toml_errors"
 
 # discriminated union のタグ (pydantic のエラーの loc に入る)
@@ -122,24 +114,13 @@ def isolated_load(toml_path: Path, context: dict) -> Iterator[None]:
             os.chdir(cwd)
 
 
-def runtime_toml_text(toml_path: Path) -> str:
-    """`pocket runtime-config` と同じ規則の pocket.runtime.toml (版のマーカー無し)"""
-    data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-    return _to_toml(_clean_data(data)).strip() + "\n"
-
-
-def build_vector(
-    toml_path: Path, stage: str, context: dict, input_path: Path | None = None
-) -> dict:
-    """toml_path を読んだ vector。
-
-    input_path は vector に書く入力の path (既定は toml_path)。
-    """
+def build_vector(toml_path: Path, stage: str, context: dict) -> dict:
+    """toml_path を読んだ vector。"""
     with isolated_load(toml_path, context):
         settings = Settings.from_toml(stage=stage)
     dumped = settings.model_dump(mode="json")
     return {
-        "input": (input_path or toml_path).relative_to(REPO_ROOT).as_posix(),
+        "input": toml_path.relative_to(REPO_ROOT).as_posix(),
         "stage": stage,
         "context": context,
         "settings": dumped,
@@ -152,45 +133,15 @@ def render(vector: dict) -> str:
 
 
 def expected_files() -> dict[Path, str]:
-    """書くファイル。Python が読めない runtime.toml があれば理由を挙げて失敗する。"""
+    """書くファイル。"""
     files: dict[Path, str] = {}
-    unreadable: list[str] = []
     for group, name, path in iter_inputs():
         text = path.read_text(encoding="utf-8")
         data = tomllib.loads(text)
         context = input_context(text)
-        stages = data["general"]["stages"]
-        for stage in stages:
+        for stage in data["general"]["stages"]:
             vector = build_vector(path, stage, context)
             files[OUT_DIR / group / ("%s.%s.json" % (name, stage))] = render(vector)
-        runtime_path = RUNTIME_DIR / ("%s.%s.runtime.toml" % (group, name))
-        runtime_text = runtime_toml_text(path)
-        runtime_files: dict[Path, str] = {}
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp) / runtime_path.name
-            tmp_path.write_text(runtime_text, encoding="utf-8")
-            current = ""
-            try:
-                for stage in stages:
-                    current = stage
-                    vector = build_vector(
-                        tmp_path, stage, context, input_path=runtime_path
-                    )
-                    out = RUNTIME_DIR / ("%s.%s.%s.json" % (group, name, stage))
-                    runtime_files[out] = render(vector)
-            except ValueError as e:
-                # ValidationError / TOMLDecodeError も ValueError
-                reason = " ".join(str(e).split())[:200]
-                unreadable.append("%s (%s): %s" % (runtime_path.name, current, reason))
-                continue
-        files[runtime_path] = runtime_text
-        files.update(runtime_files)
-    if unreadable:
-        raise click.ClickException(
-            "Python が読めない runtime.toml を生成しています "
-            "(pocket runtime-config の除外規則を見直してください):\n  "
-            + "\n  ".join(unreadable)
-        )
     return files
 
 
@@ -270,11 +221,7 @@ def expected_error_files() -> dict[Path, str]:
 
 
 def existing_files() -> set[Path]:
-    return (
-        set(OUT_DIR.rglob("*.json"))
-        | set(RUNTIME_DIR.glob("*.runtime.toml"))
-        | set(ERRORS_DIR.glob("*.expected.json"))
-    )
+    return set(OUT_DIR.rglob("*.json")) | set(ERRORS_DIR.glob("*.expected.json"))
 
 
 def diff_files(expected: dict[Path, str]) -> list[str]:

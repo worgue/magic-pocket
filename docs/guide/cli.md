@@ -342,7 +342,6 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` / `django` | Python 版 `pocket` | |
-| `runtime-config` | Python 版 `pocket` | 廃止予定。Rust 版には移植しない |
 
 移植が進んだらこの表を更新します。
 
@@ -374,22 +373,6 @@ pocket-rs settings --stage=dev
 ```
 
 `--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです（`[neon]` 等の credential は環境変数と `.env` から読みます）。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
-
-### pocket runtime-config
-
-**廃止予定です。** runtime は `pocket.toml` をそのまま読めるので、image には `pocket.toml` を COPY してください。`pocket deploy` / `pocket build` は `pocket.runtime.toml` を生成しません。
-
-`pocket.toml` からビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を出力します。
-
-```bash
-# 標準出力に出力
-pocket runtime-config
-
-# ファイルに出力
-pocket runtime-config pocket.runtime.toml
-```
-
-詳細は「[設定ファイル - pocket runtime-config](configuration.md#pocket-runtime-config)」を参照してください。
 
 ---
 

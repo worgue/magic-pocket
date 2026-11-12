@@ -138,22 +138,3 @@ def test_non_critical_files_stay_warning(tmp_path, capsys):
     (tmp_path / "pyproject.toml").chmod(0o600)
     assert warn_files_without_world_read(tmp_path) == ["pyproject.toml"]
     assert "chmod 644" in capsys.readouterr().err.replace("\n", "")
-
-
-def test_generate_runtime_config_forces_world_read(tmp_path, monkeypatch):
-    """生成した pocket.runtime.toml は strict umask 下でも other-read を持つ"""
-    import os
-
-    from pocket_cli.cli.runtime_config_cli import generate_runtime_config
-
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "pocket.toml").write_text(
-        '[general]\nproject_name = "x"\nstages = ["dev"]\nregion = "ap-northeast-1"\n'
-    )
-    old_umask = os.umask(0o077)
-    try:
-        out = tmp_path / "pocket.runtime.toml"
-        generate_runtime_config(out)
-    finally:
-        os.umask(old_umask)
-    assert out.stat().st_mode & 0o044 == 0o044
