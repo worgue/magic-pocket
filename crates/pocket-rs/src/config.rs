@@ -280,7 +280,6 @@ fn load_settings(content: &str, stage: &str) -> Result<Settings> {
     let ctx = LoadContext {
         project_name_fallback: String::new(),
         env: std::env::vars().collect::<BTreeMap<_, _>>(),
-        runtime_version: None,
     };
     let (settings, advisories) = Settings::from_parts(content, stage, &ctx)
         .map_err(|e| PocketError::Config(e.to_string()))?;

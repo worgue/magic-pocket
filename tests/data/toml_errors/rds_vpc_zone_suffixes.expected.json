@@ -7,8 +7,7 @@
       "UPSTASH_API_KEY": "vector-upstash-api-key",
       "UPSTASH_EMAIL": "vector@example.com"
     },
-    "project_name_fallback": "vector-prj",
-    "runtime_version": "0.47.0"
+    "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml_errors/rds_vpc_zone_suffixes.toml",
   "kind": "Value",

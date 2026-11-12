@@ -6,7 +6,31 @@
 
 ## [Unreleased]
 
+### Changed
+- **破壊的変更**: `pocket deploy` / `pocket build` は `pocket.runtime.toml` を生成しなくなりました。
+  runtime は `pocket.toml` をそのまま読みます。移行は次のとおりです。
+    - 作業ディレクトリ (`django.project_dir` を設定していればその中にも) に残っている
+      `pocket.runtime.toml` を削除してください。残っていると `pocket deploy` / `pocket build` は
+      build の前にエラーで止まります (更新されないファイルが image に入り、runtime が
+      `pocket.toml` より優先して古い設定を読むのを防ぐため)。
+    - Dockerfile で `COPY pocket.runtime.toml ./` と書いている場合は `COPY pocket.toml ./` に
+      書き換えてください。`COPY . .` の構成と、すでに `pocket.toml` を COPY している構成は
+      変更不要です。
+    - `.gitignore` / `.dockerignore` の `pocket.runtime.toml` の行は外せます。
+
+    image 内に `pocket.runtime.toml` があれば優先して読む runtime の動作は、以前の版で作った
+    image のために残しています。
+    [pocket runtime-config](https://worgue.github.io/magic-pocket/guide/configuration/#pocket-runtime-config)
+
+### Deprecated
+- `pocket runtime-config` は廃止予定です (実行すると案内を stderr に出します)。Rust 版 `pocket-rs` には
+  移植しません。
+
 ### Removed
+- runtime が `pocket.runtime.toml` の生成元 (CLI) の版と自身の版を照合する検査を削除しました。
+  `pocket.toml` の新しい機能を使うときは、これまでどおりプロジェクトの `magic-pocket` を CLI と
+  同じ版以上に上げてください。
+  [実行環境](https://worgue.github.io/magic-pocket/guide/runtime/)
 - Python 版の `pocket static` (`hash generate` / `publish` / `adopt` / `purge` / `status`) を削除し、
   静的系を Rust 版 `pocket-rs static ...` に一本化しました。サブコマンド・オプション・出力と
   map / release / current の形式は同じなので、`pocket static ...` を `pocket-rs static ...` に

@@ -44,7 +44,6 @@ import click
 from pocket_cli.cli.runtime_config_cli import _clean_data, _to_toml
 from pydantic import ValidationError
 
-from pocket import __version__ as runtime_version
 from pocket.settings import Settings
 from pocket.utils import mask_secret_values, tomllib
 
@@ -78,7 +77,6 @@ DEFAULT_CONTEXT: dict = {
         "UPSTASH_EMAIL": "vector@example.com",
         "UPSTASH_API_KEY": "vector-upstash-api-key",
     },
-    "runtime_version": None,
 }
 
 
@@ -264,10 +262,9 @@ def build_error_vector(toml_path: Path, context: dict) -> dict:
 
 
 def expected_error_files() -> dict[Path, str]:
-    context = {**DEFAULT_CONTEXT, "runtime_version": runtime_version}
     files: dict[Path, str] = {}
     for path in sorted(ERRORS_DIR.glob("*.toml")):
-        vector = build_error_vector(path, context)
+        vector = build_error_vector(path, DEFAULT_CONTEXT)
         files[path.with_suffix(".expected.json")] = render(vector)
     return files
 

@@ -341,7 +341,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
-| `context` / `runtime-config` / `django` | Python 版 `pocket` | |
+| `context` / `django` | Python 版 `pocket` | |
+| `runtime-config` | Python 版 `pocket` | 廃止予定。Rust 版には移植しない |
 
 移植が進んだらこの表を更新します。
 
@@ -376,7 +377,9 @@ pocket-rs settings --stage=dev
 
 ### pocket runtime-config
 
-Lambda ランタイム用の `pocket.runtime.toml` を生成します。ビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）が除外されます。
+**廃止予定です。** runtime は `pocket.toml` をそのまま読めるので、image には `pocket.toml` を COPY してください。`pocket deploy` / `pocket build` は `pocket.runtime.toml` を生成しません。
+
+`pocket.toml` からビルド専用設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を出力します。
 
 ```bash
 # 標準出力に出力
@@ -472,8 +475,8 @@ pocket django promote --stage=dev --commit-hash=<full-sha>
 pocket django promote --stage=stg --commit-hash=<full-sha>
 ```
 
-- **イメージはステージ非依存です。** `pocket.runtime.toml` は全ステージの設定を含んで
-  イメージに焼き込まれ、ステージは Lambda の `POCKET_STAGE` 環境変数で実行時に解決
+- **イメージはステージ非依存です。** `pocket.toml` は全ステージの設定を含んで
+  イメージに入り、ステージは Lambda の `POCKET_STAGE` 環境変数で実行時に解決
   されます。`build --stage=dev` の `--stage` は ECR リポジトリ等の対象を決めるだけで、
   生成されるイメージ自体はどのステージでも動きます。
 - **ステージ間で ECR リポジトリを共有するには** [`[container.main].ecr_name`](configuration.md#container)

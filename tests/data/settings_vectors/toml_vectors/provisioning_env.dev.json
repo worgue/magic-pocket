@@ -5,8 +5,7 @@
       "PROJECT_NAME": "from-env",
       "upstash_api_key": "lower-case-key"
     },
-    "project_name_fallback": "vector-prj",
-    "runtime_version": null
+    "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml_vectors/provisioning_env.toml",
   "masked": {

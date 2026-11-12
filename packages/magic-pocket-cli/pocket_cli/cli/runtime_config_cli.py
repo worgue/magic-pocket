@@ -5,12 +5,11 @@ import datetime
 import json
 import re
 import sys
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import click
 
-from pocket.utils import GENERATOR_VERSION_MARKER, get_toml_path
+from pocket.utils import get_toml_path
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -201,14 +200,6 @@ def _format_inline_value(value) -> str:
     return repr(value)
 
 
-def _generator_version() -> str | None:
-    """生成元 (magic-pocket-cli) のバージョン。取得できなければ None (刻印しない)。"""
-    try:
-        return version("magic-pocket-cli")
-    except PackageNotFoundError:
-        return None
-
-
 class RuntimeConfigGenerationError(Exception):
     """生成した pocket.runtime.toml が不正な TOML だった。"""
 
@@ -231,27 +222,17 @@ def _check_valid_toml(toml_str: str) -> None:
 
 
 def _runtime_config_str() -> str:
-    """pocket.runtime.toml の内容を生成する (stdout / ファイル出力の共通実装)。
-
-    生成元 (CLI) バージョンを先頭コメントに刻む。旧 runtime (tomllib) は無視するので
-    後方互換を壊さず、新 runtime だけが読んで版突合 (Settings.check_generator_version)
-    に使う。CLI 版 > runtime 版のとき legible error にリフレーミングされる (層2)。
-    stdout 経由 (`pocket runtime-config > pocket.runtime.toml`) でもマーカーが
-    欠けないよう、生成は本関数に一本化する。
-    """
+    """pocket.runtime.toml の内容を生成する (stdout / ファイル出力の共通実装)。"""
     toml_path = get_toml_path()
     data = tomllib.loads(toml_path.read_text())
     cleaned = _clean_data(data)
     toml_str = _to_toml(cleaned).strip() + "\n"
-    generator_version = _generator_version()
-    if generator_version:
-        toml_str = "%s %s\n%s" % (GENERATOR_VERSION_MARKER, generator_version, toml_str)
     _check_valid_toml(toml_str)
     return toml_str
 
 
 def generate_runtime_config(output_path: Path) -> None:
-    """pocket.runtime.toml を生成する（プログラムから呼び出し用）
+    """pocket.runtime.toml をファイルに書く。
 
     runtime が INIT で読むファイルのため、strict な umask 環境でも
     other-read を保証する (context_check がエラーにする条件を自ら作らない)。
@@ -263,13 +244,20 @@ def generate_runtime_config(output_path: Path) -> None:
 @click.command("runtime-config")
 @click.argument("output", default="-")
 def runtime_config(output: str):
-    """Lambda ランタイム用の pocket.toml を生成する
+    """(廃止予定) Lambda ランタイム用の pocket.toml を生成する
 
     ビルド時のみ必要な設定（dockerfile_path, managed_assets 等）を
-    除外した pocket.toml を出力する。Dockerfile 内で使用する。
+    除外した pocket.toml を出力する。runtime は pocket.toml をそのまま読めるので、
+    image には pocket.toml を COPY すれば足りる。
 
     OUTPUT: 出力先ファイルパス（省略時は標準出力）
     """
+    click.echo(
+        "pocket runtime-config は廃止予定です。runtime は pocket.toml をそのまま"
+        "読めるので、image には pocket.toml を COPY してください "
+        "(pocket deploy / build は pocket.runtime.toml を生成しなくなりました)。",
+        err=True,
+    )
     if output == "-":
         click.echo(_runtime_config_str(), nl=False)
     else:

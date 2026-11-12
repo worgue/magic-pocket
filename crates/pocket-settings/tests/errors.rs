@@ -26,7 +26,6 @@ fn context(v: &serde_json::Value) -> LoadContext {
             .expect("project_name_fallback")
             .to_string(),
         env,
-        runtime_version: v["runtime_version"].as_str().map(str::to_string),
     }
 }
 

@@ -12,9 +12,6 @@ use crate::model::provisioning::{check_section_keys, fill_from_env, reject_skip_
 use crate::model::{Settings, TOP_LEVEL_KEYS};
 use crate::types::mark_datetimes;
 
-/// runtime.toml の生成元 (CLI) の版を示すコメント (Python の `GENERATOR_VERSION_MARKER`)
-const GENERATOR_VERSION_MARKER: &str = "# magic-pocket-cli generator version:";
-
 /// 読み込みに使うファイル以外の入力。純粋層 (`Settings::from_parts`) はこれだけを見る
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LoadContext {
@@ -23,9 +20,6 @@ pub struct LoadContext {
     pub project_name_fallback: String,
     /// 環境変数と `.env` を合わせたもの (`[neon]` 等の credential 用)
     pub env: BTreeMap<String, String>,
-    /// 読み手の runtime の版。runtime.toml の生成元がこれより新しければ止める。
-    /// None なら照合しない
-    pub runtime_version: Option<String>,
 }
 
 /// 検証は通ったが知らせたいこと (Python では stderr に出す警告)
@@ -53,7 +47,6 @@ impl Settings {
         let ctx = LoadContext {
             project_name_fallback: project_name_fallback(&cwd),
             env,
-            runtime_version: None,
         };
         Settings::from_parts(&text, stage, &ctx)
     }
@@ -64,7 +57,6 @@ impl Settings {
         stage: &str,
         ctx: &LoadContext,
     ) -> Result<(Settings, Vec<Advisory>), SettingsError> {
-        check_generator_version(toml_text, ctx.runtime_version.as_deref())?;
         let mut data: toml::Table =
             toml::from_str(toml_text).map_err(|e| SettingsError::syntax(e.to_string()))?;
         let stages = stages(&data)?;
@@ -193,42 +185,6 @@ fn find_upward(start: &Path, name: &str) -> Option<PathBuf> {
         .ancestors()
         .map(|dir| dir.join(name))
         .find(|p| p.is_file())
-}
-
-/// Python の `version_tuple`: 各パートの先頭の数字だけを採る
-fn version_tuple(version: &str) -> Vec<u64> {
-    version
-        .split('.')
-        .map(|part| {
-            let digits: String = part.chars().take_while(|c| c.is_ascii_digit()).collect();
-            digits.parse().unwrap_or(0)
-        })
-        .collect()
-}
-
-fn check_generator_version(text: &str, runtime: Option<&str>) -> Result<(), SettingsError> {
-    let Some(runtime) = runtime else {
-        return Ok(());
-    };
-    let generator = text.lines().find_map(|line| {
-        let rest = line.trim().strip_prefix(GENERATOR_VERSION_MARKER)?.trim();
-        (!rest.is_empty()).then(|| rest.to_string())
-    });
-    let Some(generator) = generator else {
-        return Ok(());
-    };
-    if version_tuple(&generator) > version_tuple(runtime) {
-        return Err(SettingsError::value(
-            Vec::new(),
-            format!(
-                "pocket.runtime.toml は magic-pocket-cli {generator} が生成しましたが、この \
-                 runtime (magic-pocket) は {runtime} です。新しい pocket.toml 機能を古い \
-                 runtime が解釈できず Lambda init が失敗します。上げてください: \
-                 uv add 'magic-pocket[django]>={generator}'"
-            ),
-        ));
-    }
-    Ok(())
 }
 
 /// `[general] stages`。前処理 (key・stage の検査) がこれを使うので先に取り出す
@@ -563,12 +519,5 @@ mod tests {
                 ("upstash_email".to_string(), "new@example.com".to_string()),
             ])
         );
-    }
-
-    #[test]
-    fn test_version_tuple_matches_python() {
-        assert_eq!(version_tuple("0.10.0"), vec![0, 10, 0]);
-        assert_eq!(version_tuple("1.2.3rc1"), vec![1, 2, 3]);
-        assert!(version_tuple("0.10.0") > version_tuple("0.9.9"));
     }
 }

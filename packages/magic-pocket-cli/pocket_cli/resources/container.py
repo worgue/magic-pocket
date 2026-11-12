@@ -8,7 +8,6 @@ import boto3
 from pocket import context
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
-from pocket_cli.cli.runtime_config_cli import generate_runtime_config
 from pocket_cli.mediator import Mediator
 from pocket_cli.resources.aws.builders import Builder, create_builder
 from pocket_cli.resources.aws.cloudformation import ContainerStack
@@ -31,6 +30,10 @@ class NotCreatedYetError(Exception):
 
 class NoApiEndpointError(Exception):
     pass
+
+
+class StaleRuntimeTomlError(Exception):
+    """生成をやめた pocket.runtime.toml が作業ツリーに残っている。"""
 
 
 class Container:
@@ -88,10 +91,8 @@ class Container:
         """指定 tag (commit hash 等) で image を build & push する (deploy はしない)。
 
         build once 用。`:stage` タグは付けない。昇格は deploy 側で行う。
-        pocket.runtime.toml は Dockerfile の COPY で image に焼き込まれるため、
-        deploy_init と同様に build 前へ生成する。
         """
-        generate_runtime_config(self._runtime_toml_path())
+        self._check_no_stale_runtime_toml()
         ecr = self.ecr
         ecr.ensure_exists()
         ecr.build_and_push(tag=tag)
@@ -178,23 +179,44 @@ class Container:
         # 複数 container が deep merge で共存できるよう container 名で nest する
         return {"ecr": {self.context.name: {"repository_name": self.context.ecr_name}}}
 
-    def _runtime_toml_path(self) -> Path:
-        """pocket.runtime.toml の出力先を返す。
+    def _stale_runtime_toml_paths(self) -> list[Path]:
+        """以前の CLI が pocket.runtime.toml を生成していた場所のうち、残っているもの。
 
-        django.project_dir が設定されていればその中に、
-        なければ CWD に配置する。
+        生成先は CWD と、django.project_dir が設定されていればその中だった。
         """
+        candidates = [Path("pocket.runtime.toml")]
         if self.context.django and self.context.django.project_dir:
-            return Path(self.context.django.project_dir) / "pocket.runtime.toml"
-        return Path("pocket.runtime.toml")
+            candidates.append(
+                Path(self.context.django.project_dir) / "pocket.runtime.toml"
+            )
+        return [path for path in candidates if path.exists()]
+
+    def _check_no_stale_runtime_toml(self):
+        """残っている pocket.runtime.toml があれば build の前に止める。
+
+        CLI はこのファイルを生成しなくなったので、残っているものは更新されない。
+        image に入ると runtime が pocket.toml より優先して読み、古い設定のまま動く。
+        """
+        stale = self._stale_runtime_toml_paths()
+        if not stale:
+            return
+        raise StaleRuntimeTomlError(
+            "古い pocket.runtime.toml が残っています: %s\n"
+            "pocket deploy / build はこのファイルを生成しなくなりました。"
+            "image に入ると runtime が pocket.toml より優先して読み、"
+            "古い設定のまま動きます。"
+            "削除してから再実行してください。\n"
+            "Dockerfile で pocket.runtime.toml を COPY している場合は、pocket.toml を "
+            "COPY するように書き換えてください。"
+            % ", ".join(str(path) for path in stale)
+        )
 
     def deploy_init(self):
         if self.context.promote_commit_hash:
             # 昇格 (promote): 既存 :<hash> image へ :<stage> タグを移す。build しない。
-            # runtime config は build 時に image へ焼き込み済みのため生成もしない。
             self.ecr.retag(self.context.promote_commit_hash, self.context.stage)
         else:
-            generate_runtime_config(self._runtime_toml_path())
+            self._check_no_stale_runtime_toml()
             self.ecr.sync()
         if self.context.vpc and not self.context.vpc.manage:
             vpc_stack = Vpc(self.context.vpc).stack

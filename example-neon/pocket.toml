@@ -50,7 +50,6 @@ DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 DATABASE_URL = { type = "neon_database_url" }
 
 [sandbox.cloudfront.web]
-# deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
 # 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。
 domain = "neon.sandbox.magic-pocket.example.com"
 routes = [

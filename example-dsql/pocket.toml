@@ -71,7 +71,6 @@ handler = "main.worker"
 message = { type = "post_message", note = "scheduled" }
 
 [sandbox.cloudfront.web]
-# deploy は pocket.toml の domain を読む (runtime.toml だけでは alias/Route53 が None 化する)。
 # 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。
 domain = "dsql.sandbox.magic-pocket.example.com"
 routes = [

@@ -1003,10 +1003,9 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
     COPY backend/src/ .
     ```
 
-    Lambda 上でランタイム設定が必要です。
-    `pocket deploy` 時にビルド専用設定を除外した `pocket.runtime.toml` が自動生成され、
-    Docker ビルドコンテキストに配置されます。
-    Dockerfile で `COPY pocket.runtime.toml ./` としてコピーしてください。
+    Lambda 上の runtime は `pocket.toml` を読みます (作業ディレクトリから上方向に探します)。
+    ソースの一部だけを COPY する Dockerfile では、`COPY pocket.toml ./` を足して
+    `pocket.toml` を image に入れてください。
 
 !!! warning "ビルドコンテキストのファイル permission"
     Lambda の実行ユーザーは非 root のため、other-read の無いファイル（編集操作の
@@ -1031,9 +1030,12 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
 
 ### pocket runtime-config
 
+!!! warning "廃止予定"
+    `pocket runtime-config` は廃止予定です。runtime は `pocket.toml` をそのまま読めるので、
+    image には `pocket.toml` を COPY してください。`pocket deploy` / `pocket build` は
+    `pocket.runtime.toml` を生成しません。
+
 `pocket.toml` からビルド専用の設定（`dockerfile_path`, `managed_assets`, `build`, `upload_dir` 等）を除外した TOML を生成します。
-除外するのは runtime (Lambda の INIT で読む Settings / Context) が値も検証も参照しない設定だけで、
-`[vpc]` / `use_vpc`（EFS の mount 先・RDS の接続に使う）や `signing_key`（Django storage の署名 URL に使う）は残ります。
 
 ```bash
 # 標準出力に出力
@@ -1043,28 +1045,25 @@ pocket runtime-config
 pocket runtime-config pocket.runtime.toml
 ```
 
-`pocket deploy` 時にはビルド前に自動生成され、Lambda image に `COPY` されます。
-手動実行は生成内容の確認やデバッグ用途で使えます。
+Lambda 上に `pocket.runtime.toml` があると、runtime は `pocket.toml` より優先して読みます
+（以前の版で作った image との互換のために残している動作です）。
 
-Lambda 上では `pocket.runtime.toml` が `pocket.toml` より優先して読み込まれます。
+!!! warning "残っている `pocket.runtime.toml` は削除する"
+    以前の版の `pocket deploy` は、作業ディレクトリ（`container.main.django.project_dir` を
+    設定していればその中）に `pocket.runtime.toml` を生成していました。今の版は生成も更新も
+    しないので、残ったファイルが `COPY . .` で image に入ると、runtime は古い設定のまま動きます。
+    これを防ぐため、`pocket deploy` / `pocket build` は残っているファイルを見つけると
+    build の前にエラーで止まります。ファイルを削除して再実行してください。
 
-!!! warning "生成物は `.gitignore` 推奨"
-    `pocket deploy` (および `pocket django deploy`) は以下のファイルを再生成
-    します。**いずれも `pocket.toml` から都度組み立て直す副産物なので、git
-    管理は不要**です。誤コミットを防ぐため `.gitignore` に登録しておいて
-    ください。
+    Dockerfile で `COPY pocket.runtime.toml ./` と書いている場合は、`COPY pocket.toml ./` に
+    書き換えてください。
 
-    | パス | 内容 |
-    |------|------|
-    | `pocket.runtime.toml` | `pocket.toml` の runtime 用 sanitized 版。`container.main.django.project_dir` が設定されていれば `{project_dir}/pocket.runtime.toml` に出力 |
-    | `pocket_cache/` | `pocket django deploystatic` の中間ビルド成果物 (`static_build/<stage>/`)。S3 アップロード後は不要 |
-
-    `.gitignore` の例:
+!!! info "生成物は `.gitignore` 推奨"
+    `pocket django deploystatic` の中間ビルド成果物 `pocket_cache/`
+    (`static_build/<stage>/`) は S3 アップロード後は不要で、git 管理も不要です。
+    `.gitignore` に登録しておいてください。
 
     ```gitignore
-    # magic-pocket: deploy のたび再生成される副産物 (git 管理不要)
-    /pocket.runtime.toml
-    /src/pocket.runtime.toml   # project_dir = "src" の場合
     /pocket_cache/
     ```
 

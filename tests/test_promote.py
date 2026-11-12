@@ -11,7 +11,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.container import Container
+from pocket_cli.resources.container import Container, StaleRuntimeTomlError
 
 from pocket.context import Context, is_working_tree_dirty
 
@@ -110,8 +110,7 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
 def test_deploy_init_promotes_without_build(use_toml, tmp_path, monkeypatch):
     """promote_commit_hash 設定時の deploy_init は retag のみ。
 
-    build (ecr.sync) も runtime config 生成も行わない (image は build 時に
-    焼き込み済みのため)。
+    build (ecr.sync) は行わない。
     """
     context = _make_context(use_toml, tmp_path)
     assert context.container["main"]
@@ -119,10 +118,6 @@ def test_deploy_init_promotes_without_build(use_toml, tmp_path, monkeypatch):
     ac = Container(context.container["main"])
 
     calls = {}
-    monkeypatch.setattr(
-        "pocket_cli.resources.container.generate_runtime_config",
-        lambda path: calls.__setitem__("runtime_config", True),
-    )
     monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))
     monkeypatch.setattr(
         Ecr,
@@ -136,16 +131,12 @@ def test_deploy_init_promotes_without_build(use_toml, tmp_path, monkeypatch):
 
 @mock_aws
 def test_deploy_init_default_builds(use_toml, tmp_path, monkeypatch):
-    """promote_commit_hash 未設定 (通常 deploy) は従来どおり runtime config + sync。"""
+    """promote_commit_hash 未設定 (通常 deploy) は build (ecr.sync) する。"""
     context = _make_context(use_toml, tmp_path)
     assert context.container["main"]
     ac = Container(context.container["main"])
 
     calls = {}
-    monkeypatch.setattr(
-        "pocket_cli.resources.container.generate_runtime_config",
-        lambda path: calls.__setitem__("runtime_config", True),
-    )
     monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))
     monkeypatch.setattr(
         Ecr,
@@ -154,7 +145,49 @@ def test_deploy_init_default_builds(use_toml, tmp_path, monkeypatch):
     )
 
     ac.deploy_init()
-    assert calls == {"runtime_config": True, "sync": True}
+    assert calls == {"sync": True}
+
+
+@mock_aws
+def test_deploy_init_stops_on_stale_runtime_toml(use_toml, tmp_path, monkeypatch):
+    """残った pocket.runtime.toml があれば build の前に止まる。
+
+    CLI が生成しなくなったので残ったものは更新されず、image に入ると runtime が
+    pocket.toml より優先して古い設定を読むため。
+    """
+    context = _make_context(use_toml, tmp_path)
+    ac = Container(context.container["main"])
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
+
+    calls = {}
+    monkeypatch.setattr(Ecr, "sync", lambda self: calls.__setitem__("sync", True))
+
+    with pytest.raises(StaleRuntimeTomlError, match="pocket.runtime.toml"):
+        ac.deploy_init()
+    assert calls == {}
+
+
+@mock_aws
+def test_deploy_init_promote_ignores_stale_runtime_toml(
+    use_toml, tmp_path, monkeypatch
+):
+    """promote は build しないので、残った pocket.runtime.toml を検査しない。"""
+    context = _make_context(use_toml, tmp_path)
+    context.container["main"].promote_commit_hash = "abc123"
+    ac = Container(context.container["main"])
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
+
+    calls = {}
+    monkeypatch.setattr(
+        Ecr,
+        "retag",
+        lambda self, src, dest: calls.__setitem__("retag", (src, dest)),
+    )
+
+    ac.deploy_init()
+    assert calls == {"retag": ("abc123", "dev")}
 
 
 def test_is_working_tree_dirty(monkeypatch):

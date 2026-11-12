@@ -9,7 +9,7 @@ import boto3
 import pytest
 from moto import mock_aws
 from pocket_cli.resources.aws.ecr import Ecr
-from pocket_cli.resources.container import Container
+from pocket_cli.resources.container import Container, StaleRuntimeTomlError
 
 from pocket.context import Context, get_commit_hash
 
@@ -75,10 +75,9 @@ def test_ecr_build_and_push_tag_override():
 
 @mock_aws
 def test_awscontainer_build_delegates_to_ecr(use_toml, tmp_path, monkeypatch):
-    """AwsContainer.build は runtime config 生成 + ensure_exists + build_and_push(tag)。
+    """AwsContainer.build は ensure_exists + build_and_push(tag)。
 
-    pocket.runtime.toml は Dockerfile の COPY で image に焼き込まれるため、
-    deploy_init と同様に build 前の生成が必須 (欠けると stale な設定が焼かれる)。
+    残った pocket.runtime.toml があれば build の前に止まる。
     """
     toml_path = tmp_path / "pocket.toml"
     toml_path.write_text(
@@ -102,10 +101,6 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
 
     calls = {}
     monkeypatch.setattr(
-        "pocket_cli.resources.container.generate_runtime_config",
-        lambda path: calls.__setitem__("runtime_config", path),
-    )
-    monkeypatch.setattr(
         Ecr, "ensure_exists", lambda self: calls.__setitem__("ensure", True)
     )
     monkeypatch.setattr(
@@ -115,4 +110,10 @@ command = "pocket.django.lambda_handlers.wsgi_handler"
     ac.build("abc123")
     assert calls["ensure"] is True
     assert calls["tag"] == "abc123"
-    assert "runtime_config" in calls
+
+    calls.clear()
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pocket.runtime.toml").write_text("[general]\n")
+    with pytest.raises(StaleRuntimeTomlError):
+        ac.build("abc123")
+    assert calls == {}

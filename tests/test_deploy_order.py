@@ -23,10 +23,6 @@ def test_awscontainer_deploy_init_does_not_hang_without_vpc(use_toml, monkeypatc
 
     # deploy_init の副作用をスキップ
     monkeypatch.setattr(
-        "pocket_cli.resources.container.generate_runtime_config",
-        lambda _: None,
-    )
-    monkeypatch.setattr(
         "pocket_cli.resources.aws.ecr.Ecr.sync",
         lambda self: None,
     )

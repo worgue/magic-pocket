@@ -7,8 +7,7 @@
       "UPSTASH_API_KEY": "vector-upstash-api-key",
       "UPSTASH_EMAIL": "vector@example.com"
     },
-    "project_name_fallback": "vector-prj",
-    "runtime_version": null
+    "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/settings_vectors/runtime/toml.staticfiles_publish_command.runtime.toml",
   "masked": {

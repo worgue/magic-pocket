@@ -95,8 +95,7 @@ uv add --dev magic-pocket-cli
 !!! tip "事前にgit commitしておくと安心"
     `settings.py` が上書きされるので、差分を確認しやすくなります。
     `.gitignore` には次のエントリも追加しておきましょう (deploy のたびに
-    再生成される副産物の誤コミットを防ぐため。詳細は
-    [設定ファイル - pocket runtime-config](guide/configuration.md#pocket-runtime-config)):
+    再生成される副産物の誤コミットを防ぐため):
 
     ```gitignore
     # ローカル開発用
@@ -104,7 +103,6 @@ uv add --dev magic-pocket-cli
     .env
 
     # magic-pocket: deploy のたび再生成される副産物
-    /pocket.runtime.toml
     /pocket_cache/
     ```
 
