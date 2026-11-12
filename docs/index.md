@@ -1,6 +1,6 @@
 # Magic Pocket
 
-**magic-pocket** は、Django / Rust (Loco) プロジェクトを AWS Lambda + データベース (Neon / TiDB / RDS Aurora) + S3 にデプロイするためのCLIツールです。
+**magic-pocket** は、Django / Rust (axum) プロジェクトを AWS Lambda + データベース (Neon / TiDB / RDS Aurora) + S3 にデプロイするためのCLIツールです。
 
 設定ファイル `pocket.toml` を書くだけで、コマンド1つでインフラ構築からデプロイまで完了します。
 

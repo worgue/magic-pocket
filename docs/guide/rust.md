@@ -1,15 +1,11 @@
-# Rust 連携（Loco / 素の axum）
+# Rust 連携（axum）
 
 Rust アプリケーションでは、`magic-pocket-rs` crate を使って環境変数をセットアップします。
 Django の `set_envs()` に相当する機能を Rust で提供します。
 
-ここで使う仕組み（`lambda_http` で axum Router を Lambda ハンドラーにする・`set_envs()`
-でシークレット/リソース情報を注入する・`pocket.toml` の `handlers.command` でバイナリを
-指定する）は **Loco 固有ではなく、`lambda_http` を使う任意の axum アプリで共通**です。
-Loco を使わない素の axum バイナリでも、同じ `pocket.toml` と Dockerfile でそのまま
-デプロイできます（→[Lambda エントリポイント](#lambda)に両方の例）。デプロイは
-フレームワークを問わず plain `pocket deploy` で完結します（Loco 専用のデプロイ
-コマンドはありません）。
+使う仕組みは 3 つです: `lambda_http` で axum Router を Lambda ハンドラーにする、
+`set_envs()` でシークレット / リソース情報を注入する、`pocket.toml` の
+`handlers.command` でバイナリを指定する。デプロイは plain `pocket deploy` で完結します。
 
 ---
 
@@ -22,13 +18,10 @@ Loco を使わない素の axum バイナリでも、同じ `pocket.toml` と Do
 magic-pocket-rs = { git = "https://github.com/worgue/magic-pocket.git" }
 lambda_http = "0.14"
 tokio = { version = "1", features = ["full"] }
-# Loco を使う場合のみ:
-loco-rs = "0.14"
-# 素の axum の場合は axum を直接:
-# axum = "0.8"
+axum = "0.8"
 ```
 
-Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換しますが、axum では [`lambda_http`](https://crates.io/crates/lambda_http) が axum Router を直接 Lambda ハンドラーとして使えます（Loco の Router も素の axum の Router も同じ）。フレームワーク側で完結するため、Lambda Web Adapter のような外部 Extension は不要です。
+Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換しますが、axum では [`lambda_http`](https://crates.io/crates/lambda_http) が axum Router を直接 Lambda ハンドラーとして使えます。フレームワーク側で完結するため、Lambda Web Adapter のような外部 Extension は不要です。
 
 !!! warning "アプリ側で `aws-sdk-*` を直接使うときは default feature を外す"
     `aws-sdk-*` crate の default feature (`rustls`) は legacy TLS スタック (rustls 0.21 系) を引き込み、脆弱性アドバイザリの対象である `rustls-webpki` 0.101.x が依存ツリーに残ります。`magic-pocket-rs` 本体は外して宣言していますが、Cargo の feature は依存全体で合算されるため、アプリ側で 1 箇所でも default のまま使うと元に戻ります。次の形で宣言してください。
@@ -43,41 +36,8 @@ Django では `apig-wsgi` が WSGI アプリを Lambda ハンドラーに変換�
 
 ## Lambda エントリポイント
 
-`src/bin/lambda.rs` を作成します。共通するのは「`set_envs()` で環境変数を注入 →
-axum Router を組み立てて `lambda_http::run(router)` に渡す」という流れで、Router の
-作り方だけがフレームワークで変わります。
-
-### Loco の場合
-
-```rust
-use loco_rs::boot::{create_app, StartMode};
-use loco_rs::config::Config;
-use loco_rs::environment::Environment;
-
-use myapp::app::App;
-use myapp::migration::Migrator;
-
-#[tokio::main]
-async fn main() -> Result<(), lambda_http::Error> {
-    magic_pocket_rs::set_envs().await.unwrap();
-
-    let environment: Environment = "production".parse().unwrap();
-    let config = Config::new(&environment)?;
-    let boot = create_app::<App, Migrator>(
-        StartMode::ServerOnly,
-        &environment,
-        config,
-    )
-    .await?;
-
-    lambda_http::run(boot.router.expect("no router")).await
-}
-```
-
-### 素の axum の場合
-
-Loco を使わず axum の Router を直接組む場合も、`set_envs()` → `lambda_http::run()` の
-流れは同じです。
+`src/bin/lambda.rs` を作成します。`set_envs()` で環境変数を注入し、axum Router を
+組み立てて `lambda_http::run(router)` に渡します。
 
 ```rust
 use axum::{routing::get, Router};
@@ -91,11 +51,6 @@ async fn main() -> Result<(), lambda_http::Error> {
     lambda_http::run(router).await
 }
 ```
-
-この場合 `Cargo.toml` の `loco-rs` は不要で、`axum` を直接依存に加えます。以降の
-`set_envs()` / `pocket.toml` / Dockerfile はフレームワークを問わず共通です
-（後述の「注意点」の `production.yaml` / static 設定は Loco 固有なので素の axum では
-不要）。
 
 ---
 
@@ -227,7 +182,7 @@ command = "myapp-lambda"
 apigateway = {}
 
 [container.main.secrets.managed]
-LOCO_SECRET_KEY = { type = "password", options = { length = 50 } }
+SECRET_KEY = { type = "password", options = { length = 50 } }
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
@@ -273,53 +228,10 @@ RUN cargo build --release --bin myapp-lambda
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/myapp-lambda /usr/local/bin/
-COPY --from=builder /app/config /app/config
-COPY pocket.runtime.toml /app/pocket.runtime.toml
+# pocket.toml は set_envs() が実行時に読むため image に含める
+COPY --from=builder /app/pocket.toml /app/pocket.toml
 WORKDIR /app
 CMD ["myapp-lambda"]
 ```
 
 `command` は Docker の CMD をオーバーライドするため、Dockerfile では `CMD` のみを使用し `ENTRYPOINT` は設定しないことを推奨します。詳細は「[設定ファイル - container.main.handlers](configuration.md#containerhandlers)」を参照してください。
-
----
-
-## 注意点
-
-以下は Loco の設定ファイル（`production.yaml`）に関する注意で、**Loco 固有**です。
-素の axum アプリでは該当しません。
-
-### production.yaml の環境変数クォート
-
-magic-pocket が生成するシークレット（`type = "password"`）には `*`, `!`, `#` 等の YAML 特殊文字が含まれる場合があります。Loco の設定テンプレートでは環境変数を**必ずクォートで囲んで**ください。
-
-```yaml
-# NG - SECRET_KEY に * が含まれると YAML パースが壊れる
-secret: {{ get_env(name="SECRET_KEY") }}
-
-# OK
-secret: "{{ get_env(name="SECRET_KEY") }}"
-database:
-  uri: "{{ get_env(name="DATABASE_URL") }}"
-```
-
-### static ミドルウェアの無効化
-
-Loco のデフォルト `production.yaml` には `static.must_exist: true` で `frontend/dist` を参照する設定があります。Lambda コンテナにフロントエンドを含めない場合は無効にしてください。
-
-```yaml
-static:
-  enable: false
-```
-
-### DB 接続タイムアウト
-
-Neon がアプリケーションと異なるリージョンにある場合、デフォルトの接続タイムアウトでは不足する場合があります。クロスリージョン接続では余裕を持った値を設定してください。
-
-```yaml
-database:
-  connect_timeout: 5000
-  idle_timeout: 5000
-```
-
-!!! tip "Neon のリージョン選択"
-    Neon プロジェクトは Lambda と同じリージョン（または近いリージョン）に作成することを推奨します。レイテンシと接続タイムアウトの問題を回避できます。

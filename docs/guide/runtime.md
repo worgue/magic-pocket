@@ -186,7 +186,7 @@ class SpaTokenCookieMiddleware(BaseMiddleware):
 `MIDDLEWARE` で指定するパスを subclass 側に差し替えれば、デフォルトの
 挙動はそのまま保ちつつ拡張できます。
 
-### Rust (Loco)
+### Rust
 
 Rust アプリケーションでは `pocket-spa-auth` crate を使用できます。
 

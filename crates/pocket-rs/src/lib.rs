@@ -15,12 +15,12 @@ use tracing::info;
 
 /// シークレットと AWS リソース情報をすべて環境変数にセットする
 ///
-/// Loco boot 前に呼び出す:
+/// アプリの起動前に呼び出す:
 /// ```no_run
 /// #[tokio::main]
 /// async fn main() {
 ///     magic_pocket_rs::set_envs().await.unwrap();
-///     // Loco boot...
+///     // Router の組み立てと起動...
 /// }
 /// ```
 pub async fn set_envs() -> Result<()> {

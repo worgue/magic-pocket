@@ -543,7 +543,6 @@ DSQL に組み込みの自動バックアップ（PITR や日次スナップシ�
 !!! warning "互換性に関する注意"
     DSQL は PostgreSQL 互換ですが、完全な互換ではありません。
     Django ORM のマイグレーション、contrib（auth, admin 等）、およびほとんどの 3rd パーティライブラリは正常に動作しません。
-    Loco も同様です。
     アプリケーションが DSQL の制約を理解した上で、直接 SQL を実行する用途に適しています。
 
 !!! info "認証方式"
@@ -2126,7 +2125,7 @@ middleware の挙動:
 
 Rust container には pocket-rs 同梱の axum middleware (feature `axum`) を使います。
 挙動は Django 版と同じで、secret の env 注入は `set_envs()` が自動で行います。
-組み込み方は「[Rust 連携](loco.md#origin-verify-middleware)」を参照してください。
+組み込み方は「[Rust 連携](rust.md#origin-verify-middleware)」を参照してください。
     rotate 直後は、新 header を受け取る warm Lambda がまだ旧 env を保持する一瞬の窓で
     403 になり得ます (cold start で解消)。無停止 rotation が必要な場合は別途検討します。
 
