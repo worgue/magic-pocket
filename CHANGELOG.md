@@ -19,6 +19,11 @@
     - `magic-pocket` (runtime) と `magic-pocket-cli` は同じ版に揃えて上げてください。
 
     [pocket.runtime.toml の廃止](https://worgue.github.io/magic-pocket/guide/configuration/#pocket-runtime-toml)
+- **破壊的変更**: `[neon]` / `[tidb]` / `[upstash]` に credential を field 名
+  (`api_key` / `public_key` / `private_key` / `email`) で書くとエラーになるようにしました。
+  これまでは値が読まれずに黙って捨てられ、環境変数の値か未設定のまま使われていました。
+  toml に書く場合は `neon_api_key` / `tidb_public_key` / `tidb_private_key` / `upstash_email` /
+  `upstash_api_key` と書いてください (通常は環境変数 `NEON_API_KEY` 等または `.env` で渡します)。
 
 ### Removed
 - **破壊的変更**: `pocket runtime-config` コマンドを削除しました。`pocket.runtime.toml` を自分で生成して

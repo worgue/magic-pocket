@@ -11,7 +11,7 @@
   },
   "input": "tests/data/toml_errors/pre_env_backed_key_typo.toml",
   "kind": "Value",
-  "message": "invalid key projectname in [neon] of pocket.toml\n  有効なキー: ['api_key', 'branch_name', 'neon_api_key', 'parent_branch_name', 'pg_version', 'project_name', 'provisioning']",
+  "message": "invalid key projectname in [neon] of pocket.toml\n  有効なキー: ['branch_name', 'neon_api_key', 'parent_branch_name', 'pg_version', 'project_name', 'provisioning']",
   "path": [],
   "stage": "dev"
 }

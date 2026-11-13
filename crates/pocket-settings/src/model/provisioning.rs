@@ -14,7 +14,7 @@ use crate::error::{path, SettingsError};
 use crate::types::FormatStr;
 
 /// section ごとの (field 名, alias)。alias のある field は toml でも alias で書く
-/// (Python は field 名で書いた値を黙って捨てる。互換のため同じにする)
+/// (field 名で書くと [`check_section_keys`] が alias を案内して拒否する)
 /// (field 名, alias)
 type EnvField = (&'static str, Option<&'static str>);
 
@@ -64,11 +64,26 @@ pub(crate) fn check_section_keys(data: &toml::Table) -> Result<(), SettingsError
         };
         let mut valid: Vec<&str> = fields
             .iter()
-            .flat_map(|(name, alias)| std::iter::once(*name).chain(*alias))
+            .map(|(name, alias)| alias.unwrap_or(name))
             .collect();
         valid.sort();
         valid.dedup();
         for key in t.keys() {
+            if let Some(alias) = fields
+                .iter()
+                .find(|(name, _)| *name == key.as_str())
+                .and_then(|(_, alias)| *alias)
+            {
+                return Err(SettingsError::value(
+                    Vec::new(),
+                    format!(
+                        "[{section}] {key} は toml では {alias} と書きます \
+                         (field 名で書いた値は読まれません)\n  \
+                         通常は環境変数 {} または .env で渡してください",
+                        alias.to_uppercase()
+                    ),
+                ));
+            }
             if key != SKIP_CHECK_EXISTING && !valid.contains(&key.as_str()) {
                 let listed: Vec<String> = valid.iter().map(|k| format!("'{k}'")).collect();
                 return Err(SettingsError::value(

@@ -10,8 +10,6 @@ branch_name = "{stage}-{project}"
 parent_branch_name = "main"
 # strict の対象外なので整数の文字列も受ける
 pg_version = "16"
-# field 名 (api_key) で書いた値は Python と同じく捨てられ、環境の NEON_API_KEY が入る
-api_key = "ignored"
 
 [tidb]
 project = "p1"

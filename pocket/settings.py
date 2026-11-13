@@ -2196,20 +2196,33 @@ class Settings(BaseModel):
         dotenv source は読まれるため、Settings 経由でも同じ)。
         そこで model_config は extra="ignore" のまま、toml 側のキーだけをここで
         検証し、forbid 相当の typo 検出を得る。
+
+        alias を持つ field (credential) は toml でも alias で書く。BaseSettings は
+        field 名で書いた値を読まずに捨てるため、field 名は alias を案内して拒否する。
         """
         for section, model in (("neon", Neon), ("tidb", TiDb), ("upstash", Upstash)):
             section_data = data.get(section)
             if not isinstance(section_data, dict):
                 continue
             valid_keys = set()
+            aliases: dict[str, str] = {}
             for name, field in model.model_fields.items():
-                valid_keys.add(name)
                 if field.alias:
                     valid_keys.add(field.alias)
+                    aliases[name] = field.alias
+                else:
+                    valid_keys.add(name)
             # 廃止済みキーは通し、各モデルの _reject_legacy_skip_check_existing に
             # 移行手順つきのエラーを出させる (ここで弾くと案内が失われる)
             valid_keys.add("skip_check_existing")
             for key in section_data:
+                if key in aliases:
+                    alias = aliases[key]
+                    raise ValueError(
+                        f"[{section}] {key} は toml では {alias} と書きます"
+                        f" (field 名で書いた値は読まれません)\n"
+                        f"  通常は環境変数 {alias.upper()} または .env で渡してください"
+                    )
                 if key not in valid_keys:
                     raise ValueError(
                         f"invalid key {key} in [{section}] of pocket.toml\n"
