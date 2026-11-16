@@ -88,7 +88,7 @@ async fn build_images(
         .as_ref()
         .context("general context is not configured")?;
     let state_bucket = format!("{}state", resource_prefix(context, general));
-    ensure_state_bucket(
+    let state_bucket_region = ensure_state_bucket(
         &s3_client(sdk, &general.region),
         &state_bucket,
         &general.region,
@@ -136,7 +136,9 @@ async fn build_images(
                 let clients = Clients {
                     codebuild: aws_sdk_codebuild::Client::new(&region_config),
                     iam: aws_sdk_iam::Client::new(&region_config),
-                    s3: s3_client(sdk, &c.region),
+                    // bucket が general.region 以外にあっても届くよう、実際の region で呼ぶ
+                    // (boto3 は 301 を追うが Rust SDK は追わない)
+                    s3: s3_client(sdk, &state_bucket_region),
                 };
                 CodeBuildBuilder::new(&settings, &clients)
                     .build_and_push(&req, account_id)
@@ -278,13 +280,29 @@ async fn ensure_repository(ecr: &aws_sdk_ecr::Client, name: &str) -> Result<Stri
     Ok(uri)
 }
 
-/// state bucket が無ければ作る (全公開ブロック)
-async fn ensure_state_bucket(s3: &aws_sdk_s3::Client, bucket: &str, region: &str) -> Result<()> {
+/// state bucket が無ければ作る (全公開ブロック)。bucket のある region を返す。
+///
+/// 既存の bucket が `region` 以外にあると HeadBucket は 301 を返す (boto3 は自動で追う)。
+/// そのときも「ある」とみなし、応答の `x-amz-bucket-region` の region を返す
+async fn ensure_state_bucket(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    region: &str,
+) -> Result<String> {
     match s3.head_bucket().bucket(bucket).send().await {
-        Ok(_) => return Ok(()),
+        Ok(res) => return Ok(res.bucket_region().unwrap_or(region).to_string()),
         Err(e) => {
-            let not_found = e.raw_response().is_some_and(|r| r.status().as_u16() == 404);
-            if !not_found {
+            let raw = e.raw_response();
+            let status = raw.map(|r| r.status().as_u16());
+            if status == Some(301) {
+                let actual = raw
+                    .and_then(|r| r.headers().get("x-amz-bucket-region"))
+                    .with_context(|| {
+                        format!("bucket {bucket} は別 region にありますが、region を特定できません")
+                    })?;
+                return Ok(actual.to_string());
+            }
+            if status != Some(404) {
                 return Err(e).with_context(|| format!("S3 head_bucket ({bucket}) に失敗しました"));
             }
         }
@@ -340,7 +358,7 @@ async fn ensure_state_bucket(s3: &aws_sdk_s3::Client, bucket: &str, region: &str
         .send()
         .await
         .with_context(|| format!("S3 put_public_access_block ({bucket}) に失敗しました"))?;
-    Ok(())
+    Ok(region.to_string())
 }
 
 fn print_auth_guide(message: &str) {
