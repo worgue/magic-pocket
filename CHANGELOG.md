@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Added
+- `pocket-rs build` を追加しました。Python 版 `pocket build` と同じく、作業ツリーを build して
+  git commit hash を tag に ECR へ push します（backend の `codebuild` / `docker` / `depot`、
+  CodeBuild の project・IAM role・source の置き場も同じ名前）。Python 版も残ります。
+  昇格（`promote`）は引き続き Python 版 `pocket promote` を使います。
+  [pocket-rs build](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-build)
+
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 
 ### Added
