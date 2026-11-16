@@ -1,11 +1,13 @@
 //! `pocket-rs`: magic-pocket の Rust 版 CLI。
 //!
 //! object_hash route の publish / adopt / purge / status / hash generate と、
-//! 設定・Context の表示 (`settings` / `context`)、版の表示 (`version`) を行う。
+//! 設定・Context の表示 (`settings` / `context`)、版の表示 (`version`)、image の build
+//! (`build`) を行う。
 //! サブコマンド・引数・出力は旧 Python 版 `pocket static ...` (削除済み) を引き継いでいる。
 //! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
 mod context;
+mod image_build;
 mod mapfile;
 mod publisher;
 mod release;
@@ -49,6 +51,18 @@ enum Top {
     },
     /// 版を 1 行で出力する (`--version` と違い、版の番号だけを出す)
     Version,
+    /// 作業ツリーを build し、git commit hash を tag にして ECR へ push する (deploy はしない)
+    ///
+    /// tag は COMMIT_HASH 環境変数があればそれを、無ければ `git rev-parse HEAD` を使う。
+    /// commit hash と image 内容の一致が前提のため、working tree が dirty ならエラーで止まる
+    Build {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// working tree が dirty でも build する (ローカル検証用)
+        #[arg(long)]
+        allow_dirty: bool,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -225,6 +239,9 @@ async fn run(cli: Cli) -> Result<()> {
         Top::Static { command } => command,
         Top::Settings { stage } => return print_settings(&stage),
         Top::Context { stage } => return context::print_context(&stage).await,
+        Top::Build { stage, allow_dirty } => {
+            return image_build::run_build(&stage, allow_dirty).await
+        }
         Top::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             return Ok(());

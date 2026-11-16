@@ -98,6 +98,7 @@ pocket build --stage=dev
 | `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
 
 Django の導入は不要です。Rust / axum でも同じコマンドを使います。
+Rust 版 [`pocket-rs build`](#pocket-rs-build) も同じ動作です。
 ビルド後は `pocket promote --stage=<stage> --commit-hash=<sha>` で反映します。
 Django の static / migration 処理も必要な場合は `pocket django promote` を使います。
 
@@ -338,7 +339,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | コマンド | 実装 | 補足 |
 |---|---|---|
 | `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
-| `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
+| `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
+| `deploy` / `destroy` / `promote` / `status` | Python 版 `pocket` | |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
@@ -390,6 +392,26 @@ pocket-rs context --stage=dev
 - Secrets Manager: `store = "sm"` の managed secret の ARN を引く。まだ作られていなければ warning を出して ARN を省いた Context を出す（削除予定の secret は Python 版と同じく restore してから読む）
 
 どちらも要らない設定なら AWS の認証情報は不要です。`DEPLOY_HASH` は環境変数 → git の short hash の順に決まります（Python 版と同じ）。
+
+### pocket-rs build {#pocket-rs-build}
+
+現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして ECR へ push します。デプロイは行いません。動作とオプションは Python 版 [`pocket build`](#pocket-build) と同じです。
+
+```bash
+pocket-rs build --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ（省略すると `POCKET_DEPLOY_STAGE`） |
+| `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
+
+- タグは `COMMIT_HASH` 環境変数 → `git rev-parse HEAD` の順に決まります。作業ツリーに未コミットの変更があるとエラーで止まります
+- ビルドコンテキストは pocket.toml のディレクトリで、`dockerfile_path` はそこからの相対パスです
+- `[container.<name>] build` の backend（`codebuild` / `docker` / `depot`）は Python 版と同じものを使います。CodeBuild の project・IAM role・source の置き場（state bucket）も Python 版と同じ名前なので、同じ stage を Python 版と Rust 版のどちらから build しても構いません
+- `docker` / `depot` では build 前に、other-read の無いファイルを警告します（`pocket.toml` はエラー）。`codebuild` は source zip の作成時に mode を 0644 / 0755 にそろえます
+
+昇格（`promote`）はまだ Python 版 `pocket promote` を使います。
 
 ### pocket-rs version {#pocket-rs-version}
 

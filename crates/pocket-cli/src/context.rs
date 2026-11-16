@@ -18,6 +18,17 @@ use magic_pocket_settings::{mask_secret_values, pyjson, Settings};
 use tokio::runtime::Handle;
 
 pub async fn print_context(stage: &str) -> Result<()> {
+    let (context, _toml_dir) = load_context(stage)?;
+    let masked = mask_secret_values(&context.to_json());
+    println!("{}", pyjson::dumps_indent2(&masked));
+    Ok(())
+}
+
+/// pocket.toml を探して stage の Context を作る (Python の `Context.from_toml`)。
+///
+/// 読み込み中の advisory と構築中の log / warning は stderr に出す。戻り値の 2 つ目は
+/// pocket.toml のディレクトリ (相対パスの基準)。tokio の multi-thread runtime 上で呼ぶ
+pub fn load_context(stage: &str) -> Result<(Context, PathBuf)> {
     let toml_path = find_toml_path()?;
     let (settings, advisories) = Settings::load(&toml_path, stage)?;
     for advisory in advisories {
@@ -29,7 +40,7 @@ pub async fn print_context(stage: &str) -> Result<()> {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_default();
-    let external = AwsExternal::new(Handle::current(), base_dir);
+    let external = AwsExternal::new(Handle::current(), base_dir.clone());
     let inputs = ContextInputs {
         env: &env,
         external: &external,
@@ -41,9 +52,7 @@ pub async fn print_context(stage: &str) -> Result<()> {
     for m in messages {
         eprintln!("{}", m.message);
     }
-    let masked = mask_secret_values(&context.to_json());
-    println!("{}", pyjson::dumps_indent2(&masked));
-    Ok(())
+    Ok((context, base_dir))
 }
 
 struct AwsExternal {
