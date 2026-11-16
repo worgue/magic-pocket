@@ -46,6 +46,23 @@
 
 ---
 
+## 相対パスの基準 {#relative-paths}
+
+pocket.toml に書く相対パスは、**pocket.toml のあるディレクトリ**からのパスです。pocket.toml は
+カレントディレクトリから上へ探すので、プロジェクトの下位ディレクトリからコマンドを実行しても
+同じファイルを指します。
+
+| 設定 | 使われ方 |
+|---|---|
+| `[container.<name>] dockerfile_path` | Docker ビルドコンテキスト（= pocket.toml のディレクトリ）内の Dockerfile |
+| `[[cloudfront.<name>.routes]] build` | `cmd` は pocket.toml のディレクトリで実行し、`dir` もそこからのパス |
+| `[[cloudfront.<name>.routes]] upload_dir` | アップロードするディレクトリ |
+| `[[cloudfront.<name>.routes]] sources` / `map` | object_hash の入力と map（`pocket-rs static`） |
+| `[cloudfront.<name>] managed_assets` | ステージ別アセットのディレクトリ |
+| `[container.<name>.django] project_dir` | `pocket django deploy` 等が `manage.py collectstatic` を実行するディレクトリ |
+
+credential を書く `.env`（`NEON_API_KEY` 等）だけは、カレントディレクトリのものを読みます。
+
 ## general（必須）
 
 全ステージ共通の設定です。
@@ -983,8 +1000,11 @@ compute_type = "BUILD_GENERAL1_MEDIUM"
     `pocket destroy` では削除されません（警告を表示してスキップします）。不要になった場合は手動で削除してください。
 
 !!! info "Docker ビルドコンテキスト"
-    Docker ビルドコンテキストは **pocket.toml のあるディレクトリ**（= `pocket deploy` を実行するディレクトリ）です。
+    Docker ビルドコンテキストは **pocket.toml のあるディレクトリ**です。
     `dockerfile_path` はそこからの相対パスで指定します。
+    pocket.toml はカレントディレクトリから上へ探すので、下位ディレクトリ（例: `frontend/`）から
+    `pocket deploy` / `pocket build` を実行しても、ビルドコンテキストと Dockerfile は同じです
+    （[相対パスの基準](#relative-paths)）。
 
     uv workspace でフロントエンドとバックエンドを分けている場合、pocket.toml を**プロジェクトルート**に配置すると、
     ルートの `uv.lock` を Dockerfile 内で直接参照できます。

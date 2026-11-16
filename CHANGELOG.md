@@ -13,6 +13,15 @@
 - `pocket-rs version` を追加しました（版の番号だけを 1 行で出します）。
 
 ### Changed
+- `pocket deploy` / `pocket build` 等で、pocket.toml に書く相対パスとビルドコンテキストの基準を
+  **pocket.toml のあるディレクトリ**に揃えました（これまではカレントディレクトリ基準でした）。
+  対象はビルドコンテキストと `dockerfile_path`、route の `build`（`cmd` の実行ディレクトリと `dir`）と
+  `upload_dir`、`managed_assets`、django の `project_dir`（collectstatic の実行ディレクトリ）です。
+  pocket.toml はカレントディレクトリから上へ探すため、下位ディレクトリ（例: `frontend/`）から
+  実行すると、これまでは別のディレクトリを context にしたり `open Dockerfile: no such file or directory`
+  で落ちたりしていました。リポジトリ直下（pocket.toml のディレクトリ）から実行している場合の挙動は
+  変わりません。`.env` は引き続きカレントディレクトリのものを読みます。
+  [相対パスの基準](https://worgue.github.io/magic-pocket/guide/configuration/#relative-paths)
 - **破壊的変更**: `pocket.runtime.toml` を廃止しました。`pocket deploy` / `pocket build` は生成せず、
   runtime も読みません (これまでは Lambda 上にあれば `pocket.toml` より優先して読んでいました)。
   runtime が読むのは `pocket.toml` だけです。移行は次のとおりです。

@@ -31,6 +31,7 @@ class DepotBuilder:
         self,
         *,
         target: str,
+        context_dir: Path,
         dockerfile_path: str,
         platform: str,
     ) -> None:
@@ -38,22 +39,23 @@ class DepotBuilder:
 
         # context は生の permission のまま image に入るため build 前に検査する
         # (codebuild backend は zip 時に正規化されるので不要)
-        warn_files_without_world_read(Path(".").resolve())
+        warn_files_without_world_read(context_dir)
 
         print("ECR にログインします...")
         docker.login_ecr(region_name=self.region)
 
         print("Depot でイメージをビルドします...")
         print("  target: %s" % target)
+        print("  context: %s" % context_dir)
         print("  dockerfile: %s" % dockerfile_path)
         print("  platform: %s" % platform)
 
         cmd = [
             "depot",
             "build",
-            ".",
+            str(context_dir),
             "--file",
-            dockerfile_path,
+            str(context_dir / dockerfile_path),
             "--tag",
             target,
             "--platform",

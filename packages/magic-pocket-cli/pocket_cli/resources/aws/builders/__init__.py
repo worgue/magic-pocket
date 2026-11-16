@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from pocket.context import BuildContext
 
 
@@ -11,9 +13,15 @@ class Builder(Protocol):
         self,
         *,
         target: str,
+        context_dir: Path,
         dockerfile_path: str,
         platform: str,
-    ) -> None: ...
+    ) -> None:
+        """context_dir (= pocket.toml のディレクトリ) を context に build する。
+
+        dockerfile_path は context_dir からの相対パス。
+        """
+        ...
 
     def delete(self) -> None:
         """ビルドバックエンドのリソースを削除（不要なら何もしない）"""

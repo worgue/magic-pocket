@@ -17,13 +17,15 @@ class DockerBuilder:
         self,
         *,
         target: str,
+        context_dir: Path,
         dockerfile_path: str,
         platform: str,
     ) -> None:
         # context は生の permission のまま image に入るため build 前に検査する
         # (codebuild backend は zip 時に正規化されるので不要)
-        warn_files_without_world_read(Path(".").resolve())
+        warn_files_without_world_read(context_dir)
         print("Building docker image...")
+        print("  context: %s" % context_dir)
         print("  dockerpath: %s" % dockerfile_path)
         print("  tags: %s" % target)
         print("  platforms: %s" % platform)
@@ -31,8 +33,8 @@ class DockerBuilder:
         docker.login_ecr(region_name=self.region)
         print("Pushing docker image...")
         docker.build(
-            ".",
-            file=str(dockerfile_path),
+            str(context_dir),
+            file=str(context_dir / dockerfile_path),
             tags=target,
             platforms=[platform],
             provenance=False,

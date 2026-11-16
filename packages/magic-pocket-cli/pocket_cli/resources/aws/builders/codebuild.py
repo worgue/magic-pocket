@@ -87,10 +87,12 @@ class CodeBuildBuilder:
         self,
         *,
         target: str,
+        context_dir: Path,
         dockerfile_path: str,
         platform: str,
     ) -> None:
         print("CodeBuild でイメージをビルドします...")
+        print("  context: %s" % context_dir)
         print("  target: %s" % target)
         print("  dockerfile: %s" % dockerfile_path)
         print("  platform: %s" % platform)
@@ -103,7 +105,7 @@ class CodeBuildBuilder:
         # project の serviceRole を新ロールへ付け替えた後なので、旧名ロールは孤児
         if not self.external_roles:
             self._delete_role(self._legacy_role_name)
-        self._upload_source(dockerfile_path)
+        self._upload_source(context_dir)
 
         build_id = self._start_build(
             target=target,
@@ -192,11 +194,10 @@ class CodeBuildBuilder:
 
     # --- ソースアップロード ---
 
-    def _upload_source(self, dockerfile_path: str) -> None:
+    def _upload_source(self, context_dir: Path) -> None:
         import tempfile
 
         print("  ソースをS3にアップロード中...")
-        context_dir = Path(".").resolve()
         spec = load_dockerignore(context_dir)
 
         # SpooledTemporaryFile: 50MB までメモリ、超えたらディスクへ自動退避

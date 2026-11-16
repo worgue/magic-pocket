@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import boto3
 from pydantic import BaseModel, Field, computed_field
 
+from pocket_cli.paths import project_dir
+
 if TYPE_CHECKING:
     from pocket_cli.resources.aws.builders import Builder
 
@@ -108,6 +110,7 @@ class Ecr:
             raise ValueError("builder is not configured")
         self._builder.build_and_push(
             target=target,
+            context_dir=project_dir(),
             dockerfile_path=self.dockerfile_path,
             platform=self.platform,
         )

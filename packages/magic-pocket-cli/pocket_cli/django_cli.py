@@ -18,6 +18,7 @@ from pocket_cli.cli import interaction
 from pocket_cli.cli.build_cli import build
 from pocket_cli.cli.deploy_cli import run_deploy, run_promote
 from pocket_cli.cli.removed_flags import removed_skip_check_existing
+from pocket_cli.paths import project_dir, project_path
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.s3 import S3
 
@@ -305,7 +306,7 @@ def get_deploystatic_local_storage(stage: str):
         raise DeploystaticConfigError(
             "BACKEND %s is not supported" % storage["BACKEND"]
         )
-    local_build_static_root = Path.cwd() / "pocket_cache" / "static_build" / stage
+    local_build_static_root = project_dir() / "pocket_cache" / "static_build" / stage
     return {
         "BACKEND": local_backend,
         "OPTIONS": {"location": str(local_build_static_root)},
@@ -390,8 +391,9 @@ def collectstatic_locally(stage: str, *, link: bool = False):
     if link:
         args.append("--link")
     cmd = _build_python_command(args)
-    project_dir = _get_project_dir(stage)
-    run(cmd, check=True, cwd=project_dir, env=_collectstatic_env(stage))  # noqa: S603 shell=False + 制御された引数
+    django_dir = _get_project_dir(stage)
+    cwd = project_path(django_dir) if django_dir else project_dir()
+    run(cmd, check=True, cwd=cwd, env=_collectstatic_env(stage))  # noqa: S603 shell=False + 制御された引数
     clear_staticfiles_override_env()
 
 

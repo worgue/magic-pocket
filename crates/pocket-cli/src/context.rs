@@ -6,7 +6,7 @@
 //! 引かない設定なら AWS の認証情報は要らない)。
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
@@ -24,7 +24,12 @@ pub async fn print_context(stage: &str) -> Result<()> {
         eprintln!("{}", advisory.message);
     }
     let env: BTreeMap<String, String> = std::env::vars().collect();
-    let external = AwsExternal::new(Handle::current());
+    // managed_assets 等の相対パスは pocket.toml のディレクトリ基準
+    let base_dir = toml_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_default();
+    let external = AwsExternal::new(Handle::current(), base_dir);
     let inputs = ContextInputs {
         env: &env,
         external: &external,
@@ -44,13 +49,16 @@ pub async fn print_context(stage: &str) -> Result<()> {
 struct AwsExternal {
     handle: Handle,
     config: OnceLock<SdkConfig>,
+    /// pocket.toml のディレクトリ (dir_files の相対パスの基準)
+    base_dir: PathBuf,
 }
 
 impl AwsExternal {
-    fn new(handle: Handle) -> Self {
+    fn new(handle: Handle, base_dir: PathBuf) -> Self {
         Self {
             handle,
             config: OnceLock::new(),
+            base_dir,
         }
     }
 
@@ -132,11 +140,11 @@ impl ExternalInputs for AwsExternal {
     }
 
     fn dir_files(&self, dir: &str) -> Option<Vec<String>> {
-        let path = Path::new(dir);
+        let path = self.base_dir.join(dir);
         if !path.is_dir() {
             return None;
         }
-        let entries = std::fs::read_dir(path).ok()?;
+        let entries = std::fs::read_dir(&path).ok()?;
         Some(
             entries
                 .filter_map(|e| e.ok())

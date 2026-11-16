@@ -20,7 +20,7 @@ class _FakeBuilder:
     def __init__(self):
         self.targets = []
 
-    def build_and_push(self, *, target, dockerfile_path, platform):
+    def build_and_push(self, *, target, context_dir, dockerfile_path, platform):
         self.targets.append(target)
 
     def delete(self):

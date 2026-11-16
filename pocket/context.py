@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import re
 from functools import cached_property
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, computed_field, model_validator
@@ -26,6 +25,7 @@ from .utils import (
     camel_logical_name,
     echo,
     get_hosted_zone_id_from_domain,
+    get_toml_path,
     is_runtime,
     route_logical_name,
 )
@@ -1522,12 +1522,14 @@ class CloudFrontContext(BaseModel):
     def managed_asset_files(self) -> list[str]:
         """managed_assets ディレクトリから配信するファイル名のリストを返す。
 
+        managed_assets は pocket.toml のディレクトリからの相対パス。
         {managed_assets}/{stage}/ があればそれを使い、
         なければ {managed_assets}/default/ にフォールバックする。
         """
         if not self.managed_assets:
             return []
-        base = Path(self.managed_assets)
+        # 相対パスは pocket.toml のディレクトリ基準 (CLI の upload と同じ)
+        base = get_toml_path().resolve().parent / self.managed_assets
         stage_dir = base / self.stage
         if stage_dir.is_dir():
             asset_dir = stage_dir

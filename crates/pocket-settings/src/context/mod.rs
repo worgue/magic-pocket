@@ -69,7 +69,8 @@ pub trait ExternalInputs {
     /// `git rev-parse --short HEAD` の出力 (前後の空白を除く)。失敗なら `None`
     fn git_short_hash(&self) -> Option<String>;
 
-    /// dir 直下のファイル名 (列挙順は OS のまま)。dir でなければ `None`
+    /// dir (pocket.toml のディレクトリからの相対パス) 直下のファイル名 (列挙順は
+    /// OS のまま)。dir でなければ `None`
     fn dir_files(&self, dir: &str) -> Option<Vec<String>>;
 }
 

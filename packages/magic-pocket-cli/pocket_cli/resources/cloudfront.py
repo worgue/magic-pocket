@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from pocket.resources.base import ResourceStatus
 from pocket.utils import echo
+from pocket_cli.paths import project_dir, project_path
 from pocket_cli.resources.aws.cloudformation import CloudFrontStack
 from pocket_cli.resources.aws.s3_utils import delete_bucket_with_contents
 
@@ -243,7 +244,7 @@ class CloudFront:
         """managed_assets のファイルを S3 に同期する (全件 upload + 不要削除)。"""
         if not self.context.managed_assets:
             return
-        base = Path(self.context.managed_assets)
+        base = project_path(self.context.managed_assets)
         stage_dir = base / self.context.stage
         if stage_dir.is_dir():
             asset_dir = stage_dir
@@ -296,7 +297,13 @@ class CloudFront:
                 try:
                     # route.build_cmd は pocket.toml の build.cmd (設定者 =
                     # デプロイ実行者)。意図的な shell 実行のため S602 / semgrep を抑制。
-                    subprocess.run(route.build_cmd, shell=True, check=True)  # noqa: S602  # nosemgrep
+                    # 相対パスは pocket.toml のディレクトリ基準なので cwd もそこにする
+                    subprocess.run(  # noqa: S602
+                        route.build_cmd,
+                        shell=True,  # nosemgrep
+                        check=True,
+                        cwd=project_dir(),
+                    )
                 except subprocess.CalledProcessError as e:
                     echo.danger(
                         "build コマンドが失敗しました (exit %d): %s"
@@ -384,7 +391,7 @@ class CloudFront:
         """route の upload_dir 配下のファイルを {S3 key: ローカル path} で返す。"""
         if not route.upload_dir:
             raise RuntimeError("route.upload_dir is not set")
-        local_dir = Path(route.upload_dir)
+        local_dir = project_path(route.upload_dir)
         files: dict[str, Path] = {}
         for file in local_dir.rglob("*"):
             if file.is_dir():

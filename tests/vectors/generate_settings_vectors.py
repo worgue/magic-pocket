@@ -28,7 +28,9 @@ managed_assets のディレクトリ) は固定の fake に差し替え、Python
 vector の `external` に同梱する (Rust は同じ値を注入する)。SM の managed secret は
 各入力の先頭の stage だけ「作成済み」とし、2 番目以降は未作成 (PocketSecretIsNotReady)
 にする。managed_assets を持つ入力では cwd の一時ディレクトリに
-`<managed_assets>/default/robots.txt` を置く。`masked_text` は `pocket context` の
+`<managed_assets>/default/robots.txt` を置く (managed_assets は pocket.toml の
+ディレクトリ基準なので、Context の読み込みでは一時ディレクトリを pocket.toml の
+場所として扱う)。`masked_text` は `pocket context` の
 stdout (マスク後の `json.dumps(indent=2)`) と同じ文字列で、key の順まで固定する。
 
 `--check` は書かずに、commit 済みの vector と一致するか (不足・余分を含む) を見る。
@@ -190,6 +192,7 @@ def fake_external(secret_ready: bool) -> Iterator[dict]:
         mock.patch("pocket.context.SecretsManager", FakeSecretsManager),
         mock.patch("pocket.utils.get_hosted_zones", lambda: FAKE_HOSTED_ZONES),
         mock.patch("subprocess.run", fake_run),
+        mock.patch("pocket.context.get_toml_path", lambda: Path.cwd() / "pocket.toml"),
     ):
         yield {
             "hosted_zones": FAKE_HOSTED_ZONES,
