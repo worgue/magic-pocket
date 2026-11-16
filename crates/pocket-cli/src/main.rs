@@ -1,10 +1,11 @@
 //! `pocket-rs`: magic-pocket の Rust 版 CLI。
 //!
 //! object_hash route の publish / adopt / purge / status / hash generate と、
-//! 設定の表示 (`settings`) を行う。
+//! 設定・Context の表示 (`settings` / `context`)、版の表示 (`version`) を行う。
 //! サブコマンド・引数・出力は旧 Python 版 `pocket static ...` (削除済み) を引き継いでいる。
 //! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
+mod context;
 mod mapfile;
 mod publisher;
 mod release;
@@ -36,6 +37,12 @@ enum Top {
     },
     /// Settings を JSON で出力する (pocket.toml のみ、AWS 不要)。secret はマスク
     Settings {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// Context を JSON で出力する (AWS API 呼び出しを伴う)。secret はマスク
+    Context {
         /// stage 名
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
@@ -217,6 +224,7 @@ async fn run(cli: Cli) -> Result<()> {
     let command = match cli.command {
         Top::Static { command } => command,
         Top::Settings { stage } => return print_settings(&stage),
+        Top::Context { stage } => return context::print_context(&stage).await,
         Top::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             return Ok(());

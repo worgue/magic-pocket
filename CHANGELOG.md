@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Added
+- `pocket-rs context` を追加しました。Python 版 `pocket context` と同じ Context の JSON（secret はマスク）を出します。
+  Python 版も残りますが、今後の新機能は Rust 版だけに入ります。
+  [pocket-rs context](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-context)
+- `pocket-rs version` を追加しました（版の番号だけを 1 行で出します）。
+
 ### Changed
 - **破壊的変更**: `pocket.runtime.toml` を廃止しました。`pocket deploy` / `pocket build` は生成せず、
   runtime も読みません (これまでは Lambda 上にあれば `pocket.toml` より優先して読んでいました)。

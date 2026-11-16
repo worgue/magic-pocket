@@ -341,7 +341,9 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `deploy` / `destroy` / `build` / `promote` / `status` | Python 版 `pocket` | |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
-| `context` / `django` | Python 版 `pocket` | |
+| `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
+| `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
+| `django` | Python 版 `pocket` | |
 
 移植が進んだらこの表を更新します。
 
@@ -373,6 +375,29 @@ pocket-rs settings --stage=dev
 ```
 
 `--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです（`[neon]` 等の credential は環境変数と `.env` から読みます）。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
+
+### pocket-rs context {#pocket-rs-context}
+
+設定から deploy 用の値（リソース名・ARN・hosted zone ID・`DEPLOY_HASH` 等）を導出した Context を JSON で出力します。secret の値は `settings` と同じく `****` に伏せます。
+
+```bash
+pocket-rs context --stage=dev
+```
+
+`--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。導出は Python 版 `pocket context` と同じで、出力も同じです。AWS には読み取りのために接続します。
+
+- Route53 の hosted zone 一覧: `domain` を持つ cloudfront / redirect_from / apigateway の hosted zone ID を引く（`hosted_zone_id_override` を書いた箇所は引かない）
+- Secrets Manager: `store = "sm"` の managed secret の ARN を引く。まだ作られていなければ warning を出して ARN を省いた Context を出す（削除予定の secret は Python 版と同じく restore してから読む）
+
+どちらも要らない設定なら AWS の認証情報は不要です。`DEPLOY_HASH` は環境変数 → git の short hash の順に決まります（Python 版と同じ）。
+
+### pocket-rs version {#pocket-rs-version}
+
+版の番号だけを 1 行で出力します（`pocket-rs --version` は `pocket-rs X.Y.Z` の形）。
+
+```bash
+pocket-rs version
+```
 
 ---
 
