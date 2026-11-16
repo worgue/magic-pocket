@@ -1,0 +1,129 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "",
+      "PROJECT_NAME": "from-env",
+      "upstash_api_key": "lower-case-key"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/provisioning_env.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"provenv\",\n    \"stages\": [\n      \"dev\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {},\n  \"secrets\": null,\n  \"neon\": {\n    \"pg_version\": 15,\n    \"api_key\": \"****\",\n    \"project_name\": \"from-env\",\n    \"branch_name\": \"main\",\n    \"branch_name_specified\": false,\n    \"stage\": \"dev\",\n    \"parent_branch_name\": null,\n    \"name\": \"provenv\",\n    \"role_name\": \"provenv\",\n    \"provisioning\": \"deploy\"\n  },\n  \"tidb\": {\n    \"public_key\": null,\n    \"private_key\": null,\n    \"tidb_project\": null,\n    \"cluster_name\": \"provenv\",\n    \"database_name\": \"provenv_dev\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"provenv\",\n    \"provisioning\": \"deploy\"\n  },\n  \"upstash\": {\n    \"email\": null,\n    \"api_key\": \"****\",\n    \"database_name\": \"provenv-dev\",\n    \"budget\": 20,\n    \"provisioning\": \"deploy\"\n  },\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-provenv-pocket-\",\n  \"project_name\": \"provenv\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "external_role_prefix": "dev-provenv-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "provenv",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": {
+      "api_key": "",
+      "branch_name": "main",
+      "branch_name_specified": false,
+      "name": "provenv",
+      "parent_branch_name": null,
+      "pg_version": 15,
+      "project_name": "from-env",
+      "provisioning": "deploy",
+      "role_name": "provenv",
+      "stage": "dev"
+    },
+    "project_name": "provenv",
+    "rds": null,
+    "s3": null,
+    "scheduler": {},
+    "secrets": null,
+    "ses": null,
+    "stage": "dev",
+    "tidb": {
+      "cluster_name": "provenv",
+      "database_name": "provenv_dev",
+      "private_key": null,
+      "project_name": "provenv",
+      "provisioning": "deploy",
+      "public_key": null,
+      "region": "ap-northeast-1",
+      "tidb_project": null
+    },
+    "upstash": {
+      "api_key": "lower-case-key",
+      "budget": 20,
+      "database_name": "provenv-dev",
+      "email": null,
+      "provisioning": "deploy"
+    }
+  },
+  "stage": "dev"
+}

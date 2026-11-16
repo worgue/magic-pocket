@@ -543,7 +543,7 @@ pub fn route_logical_name(path_pattern: &str) -> String {
 }
 
 /// 非英数字を境界にした CamelCase (Python の `camel_logical_name`)
-fn camel_logical_name(key: &str) -> String {
+pub(crate) fn camel_logical_name(key: &str) -> String {
     key.split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|p| !p.is_empty())
         .map(|p| {

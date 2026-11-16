@@ -1,0 +1,625 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "example-dsql/pocket.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"pocket-example-dsql\",\n    \"stages\": [\n      \"sandbox\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": {\n        \"store\": \"ssm\",\n        \"managed\": {\n          \"SECRET_KEY\": {\n            \"type\": \"password\",\n            \"options\": {\n              \"length\": 50\n            },\n            \"shared\": false\n          }\n        },\n        \"user\": {},\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-northeast-1\",\n        \"pocket_key\": \"sandbox-pocket-example-dsql-main-pocket\",\n        \"stage\": \"sandbox\",\n        \"project_name\": \"pocket-example-dsql\",\n        \"allowed_sm_resources\": [],\n        \"allowed_ssm_resources\": [\n          \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*\"\n        ]\n      },\n      \"shared_secrets\": null,\n      \"dockerfile_path\": \"Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {\n        \"inbox\": {\n          \"name\": \"inbox\",\n          \"region\": \"ap-northeast-1\",\n          \"resource_name\": \"sandbox-pocket-example-dsql-pock-df065f0823\",\n          \"queue_name\": \"sandbox-pocket-example-dsql-pocket-main-mail\",\n          \"config\": {\n            \"domain\": \"inbound.dsql.sandbox.magic-pocket.example.com\",\n            \"manage_dns\": true,\n            \"hosted_zone_id_override\": null,\n            \"recipients\": [\n              \"test@inbound.dsql.sandbox.magic-pocket.example.com\"\n            ],\n            \"handler\": \"main.mail\",\n            \"rule_set\": null,\n            \"enabled\": true,\n            \"tls_policy\": \"Require\",\n            \"scan_enabled\": true,\n            \"raw_prefix\": \"raw/\",\n            \"metadata_prefix\": \"metadata/\",\n            \"import_prefix\": \"imports/\",\n            \"retention_days\": 30,\n            \"delivery_alert\": {\n              \"enabled\": true,\n              \"email\": \"alerts@example.com\",\n              \"eventbridge\": false\n            }\n          },\n          \"bucket_name\": \"sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}\",\n          \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823\",\n          \"queue_arn\": \"arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-mail\",\n          \"runtime_config\": {\n            \"region\": \"ap-northeast-1\",\n            \"bucket\": \"sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}\",\n            \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823\",\n            \"raw_prefix\": \"raw/\",\n            \"metadata_prefix\": \"metadata/\",\n            \"import_prefix\": \"imports/\",\n            \"recipients\": [\n              \"test@inbound.dsql.sandbox.magic-pocket.example.com\"\n            ]\n          }\n        }\n      },\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-northeast-1\",\n      \"slug\": \"sandbox-pocket-example-dsql\",\n      \"stage\": \"sandbox\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"sandbox-pocket-example-dsql-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket-example-dsql-lambda\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": {\n            \"domain\": null,\n            \"create_records\": true,\n            \"hosted_zone_id_override\": null,\n            \"disable_execute_api_endpoint\": false,\n            \"hosted_zone_id\": null\n          },\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"sandbox-pocket-example-dsql-pocket-main-wsgi\",\n          \"log_group_name\": \"/aws/lambda/sandbox-pocket-example-dsql-pocket-main-wsgi\",\n          \"export_api_domain\": \"sandbox-pocket-example-dsql-main-wsgi-api-domain\",\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        },\n        \"worker\": {\n          \"command\": \"pocket-example-dsql-worker\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": {\n            \"retain\": false,\n            \"batch_size\": 10,\n            \"message_retention_period\": 345600,\n            \"maximum_concurrency\": 2,\n            \"dead_letter_max_receive_count\": 5,\n            \"dead_letter_message_retention_period\": 1209600,\n            \"report_batch_item_failures\": true,\n            \"name\": \"sandbox-pocket-example-dsql-pocket-main-worker\",\n            \"visibility_timeout\": 180,\n            \"dead_letter_alert\": {\n              \"email\": \"alerts@example.com\",\n              \"eventbridge\": false,\n              \"topic_name\": \"sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert\",\n              \"alarm_name\": \"sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert\"\n            }\n          },\n          \"key\": \"worker\",\n          \"function_name\": \"sandbox-pocket-example-dsql-pocket-main-worker\",\n          \"log_group_name\": \"/aws/lambda/sandbox-pocket-example-dsql-pocket-main-worker\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"WorkerCertificate\"\n        },\n        \"mail\": {\n          \"command\": \"pocket-example-dsql-mail-worker\",\n          \"timeout\": 60,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": {\n            \"retain\": true,\n            \"batch_size\": 10,\n            \"message_retention_period\": 1209600,\n            \"maximum_concurrency\": 2,\n            \"dead_letter_max_receive_count\": 5,\n            \"dead_letter_message_retention_period\": 1209600,\n            \"report_batch_item_failures\": true,\n            \"name\": \"sandbox-pocket-example-dsql-pocket-main-mail\",\n            \"visibility_timeout\": 360,\n            \"dead_letter_alert\": {\n              \"email\": \"alerts@example.com\",\n              \"eventbridge\": false,\n              \"topic_name\": \"sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert\",\n              \"alarm_name\": \"sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert\"\n            }\n          },\n          \"key\": \"mail\",\n          \"function_name\": \"sandbox-pocket-example-dsql-pocket-main-mail\",\n          \"log_group_name\": \"/aws/lambda/sandbox-pocket-example-dsql-pocket-main-mail\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"MailCertificate\"\n        }\n      },\n      \"ecr_name\": \"sandbox-pocket-example-dsql-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": true,\n      \"use_ses\": false,\n      \"use_route53\": true,\n      \"use_sqs\": true,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": true,\n      \"external_role_prefix\": \"sandbox-pocket-example-dsql-myorg-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"depot\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [],\n      \"allowed_ssm_resources\": [\n        \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*\"\n      ],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {\n        \"inbox\": {\n          \"region\": \"ap-northeast-1\",\n          \"bucket\": \"sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}\",\n          \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823\",\n          \"raw_prefix\": \"raw/\",\n          \"metadata_prefix\": \"metadata/\",\n          \"import_prefix\": \"imports/\",\n          \"recipients\": [\n            \"test@inbound.dsql.sandbox.magic-pocket.example.com\"\n          ]\n        }\n      }\n    }\n  },\n  \"secrets\": {\n    \"store\": \"ssm\",\n    \"managed\": {},\n    \"user\": {},\n    \"extra_resources\": [],\n    \"require_list_secrets\": false,\n    \"region\": \"ap-northeast-1\",\n    \"pocket_key\": \"sandbox-pocket-example-dsql-pocket\",\n    \"stage\": \"sandbox\",\n    \"project_name\": \"pocket-example-dsql\",\n    \"allowed_sm_resources\": [],\n    \"allowed_ssm_resources\": []\n  },\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": null,\n  \"dsql\": {\n    \"region\": \"ap-northeast-1\",\n    \"tag_name\": \"sandbox-pocket-example-dsql-pocket-dsql\",\n    \"backup_vault_name\": \"sandbox-pocket-example-dsql-pocket-backup\",\n    \"backup_role_name\": \"sandbox-pocket-example-dsql-myorg-backup-role\",\n    \"deletion_protection\": false,\n    \"backup\": null,\n    \"endpoint_secret_name\": \"/sandbox-pocket-example-dsql-pocket-user/dsql_endpoint\",\n    \"endpoint_secret_store\": \"ssm\",\n    \"permissions_boundary\": null,\n    \"external_roles\": true\n  },\n  \"rds\": null,\n  \"backup\": {\n    \"region\": \"ap-northeast-1\",\n    \"vault_name\": \"sandbox-pocket-example-dsql-pocket-backup\",\n    \"role_name\": \"sandbox-pocket-example-dsql-myorg-backup-role\",\n    \"deletable\": false,\n    \"timezone\": \"UTC\",\n    \"plans\": [],\n    \"cleanup_plan_names\": [\n      \"sandbox-pocket-example-dsql-pocket-backup-dsql\",\n      \"sandbox-pocket-example-dsql-pocket-dsql-backup\"\n    ],\n    \"legacy_plan_names\": [\n      \"sandbox-pocket-example-dsql-pocket-dsql-backup\"\n    ],\n    \"permissions_boundary\": null,\n    \"external_roles\": true\n  },\n  \"ses\": null,\n  \"inbound\": {\n    \"inbox\": {\n      \"name\": \"inbox\",\n      \"region\": \"ap-northeast-1\",\n      \"resource_name\": \"sandbox-pocket-example-dsql-pock-df065f0823\",\n      \"queue_name\": \"sandbox-pocket-example-dsql-pocket-main-mail\",\n      \"config\": {\n        \"domain\": \"inbound.dsql.sandbox.magic-pocket.example.com\",\n        \"manage_dns\": true,\n        \"hosted_zone_id_override\": null,\n        \"recipients\": [\n          \"test@inbound.dsql.sandbox.magic-pocket.example.com\"\n        ],\n        \"handler\": \"main.mail\",\n        \"rule_set\": null,\n        \"enabled\": true,\n        \"tls_policy\": \"Require\",\n        \"scan_enabled\": true,\n        \"raw_prefix\": \"raw/\",\n        \"metadata_prefix\": \"metadata/\",\n        \"import_prefix\": \"imports/\",\n        \"retention_days\": 30,\n        \"delivery_alert\": {\n          \"enabled\": true,\n          \"email\": \"alerts@example.com\",\n          \"eventbridge\": false\n        }\n      },\n      \"bucket_name\": \"sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}\",\n      \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823\",\n      \"queue_arn\": \"arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-mail\",\n      \"runtime_config\": {\n        \"region\": \"ap-northeast-1\",\n        \"bucket\": \"sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}\",\n        \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823\",\n        \"raw_prefix\": \"raw/\",\n        \"metadata_prefix\": \"metadata/\",\n        \"import_prefix\": \"imports/\",\n        \"recipients\": [\n          \"test@inbound.dsql.sandbox.magic-pocket.example.com\"\n        ]\n      }\n    }\n  },\n  \"inbound_domain\": {\n    \"inbound.dsql.sandbox.magic-pocket.example.com\": {\n      \"domain\": \"inbound.dsql.sandbox.magic-pocket.example.com\",\n      \"region\": \"ap-northeast-1\",\n      \"stack_name\": \"sandbox-pocket-example-dsql-pock-f6e05bca8f\",\n      \"manage_dns\": true,\n      \"hosted_zone_id_override\": null,\n      \"mx_value\": \"10 inbound-smtp.ap-northeast-1.amazonaws.com\"\n    }\n  },\n  \"s3\": {\n    \"region\": \"ap-northeast-1\",\n    \"bucket_name\": \"sandbox-pocket-example-dsql-pocket\",\n    \"cors\": null,\n    \"versioning\": false,\n    \"lifecycle_rules\": []\n  },\n  \"cloudfront\": {\n    \"web\": {\n      \"name\": \"web\",\n      \"region\": \"ap-northeast-1\",\n      \"s3_region\": \"ap-northeast-1\",\n      \"stage\": \"sandbox\",\n      \"domain\": \"dsql.sandbox.magic-pocket.example.com\",\n      \"hosted_zone_id_override\": null,\n      \"slug\": \"sandbox-pocket-example-dsql-web\",\n      \"bucket_name\": \"sandbox-pocket-example-dsql-pocket\",\n      \"resource_prefix\": \"sandbox-pocket-example-dsql-pocket-\",\n      \"redirect_from\": [],\n      \"routes\": [\n        {\n          \"type\": \"lambda\",\n          \"handler\": \"main.wsgi\",\n          \"path_pattern\": \"/api/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": true,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"api/\",\n          \"url_prefix\": \"/api/\",\n          \"static_meta_prefix\": \".pocket/static/web/api/\",\n          \"map_path\": \"pocket_static/web-api.map\",\n          \"name\": \"api\",\n          \"yaml_key\": \"Api\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": true,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"200.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"frontend/build\",\n          \"delete_stale\": true,\n          \"origin_path\": \"/spa\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"spa/\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/web/root/\",\n          \"map_path\": \"pocket_static/web-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        }\n      ],\n      \"signing_key\": null,\n      \"token_secret\": null,\n      \"basic_auth\": null,\n      \"api_origins\": {\n        \"main.wsgi\": \"sandbox-pocket-example-dsql-main-wsgi-api-domain\"\n      },\n      \"managed_assets\": null,\n      \"deploy_hash\": \"\",\n      \"waf\": null,\n      \"enable_origin_verify\": false,\n      \"yaml_key\": \"SandboxPocketExampleDsqlWeb\",\n      \"bucket_policy_prefix\": \"/spa\",\n      \"default_route\": {\n        \"type\": \"s3\",\n        \"handler\": null,\n        \"path_pattern\": \"\",\n        \"is_default\": true,\n        \"is_spa\": true,\n        \"versioning\": null,\n        \"spa_fallback_html\": \"200.html\",\n        \"versioned_max_age\": 31536000,\n        \"ref\": \"\",\n        \"signed\": false,\n        \"build_cmd\": null,\n        \"upload_dir\": \"frontend/build\",\n        \"delete_stale\": true,\n        \"origin_path\": \"/spa\",\n        \"require_token\": false,\n        \"login_path\": \"/api/auth/login\",\n        \"cloudfront_name\": \"web\",\n        \"sources\": [],\n        \"map\": null,\n        \"is_lambda\": false,\n        \"is_content_hash\": false,\n        \"is_deploy_hash\": false,\n        \"is_object_hash\": false,\n        \"key_prefix\": \"spa/\",\n        \"url_prefix\": \"/\",\n        \"static_meta_prefix\": \".pocket/static/web/root/\",\n        \"map_path\": \"pocket_static/web-root.map\",\n        \"name\": \"root\",\n        \"yaml_key\": \"Root\"\n      },\n      \"uploadable_routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": true,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"200.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"frontend/build\",\n          \"delete_stale\": true,\n          \"origin_path\": \"/spa\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"spa/\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/web/root/\",\n          \"map_path\": \"pocket_static/web-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        }\n      ],\n      \"extra_s3_routes\": [],\n      \"extra_lambda_routes\": [\n        {\n          \"type\": \"lambda\",\n          \"handler\": \"main.wsgi\",\n          \"path_pattern\": \"/api/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": true,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"api/\",\n          \"url_prefix\": \"/api/\",\n          \"static_meta_prefix\": \".pocket/static/web/api/\",\n          \"map_path\": \"pocket_static/web-api.map\",\n          \"name\": \"api\",\n          \"yaml_key\": \"Api\"\n        }\n      ],\n      \"has_lambda_route\": true,\n      \"has_redirect_from\": false,\n      \"managed_asset_files\": [],\n      \"hosted_zone_id\": \"ZSANDBOX\"\n    }\n  },\n  \"scheduler\": {\n    \"main\": {\n      \"schedules\": [\n        {\n          \"key\": \"daily_message\",\n          \"scheduler\": \"pocket.sqs_scheduler\",\n          \"handler\": \"worker\",\n          \"schedule_expression\": \"rate(1 day)\",\n          \"name\": \"sandbox-pocket-example-dsql-pocket-daily-message\",\n          \"yaml_key\": \"DailyMessage\",\n          \"input_json\": \"{\\\"type\\\": \\\"post_message\\\", \\\"note\\\": \\\"scheduled\\\"}\",\n          \"is_django_management\": false,\n          \"is_sqs\": true\n        }\n      ],\n      \"role_name\": \"sandbox-pocket-example-dsql-myorg-scheduler-role\",\n      \"invoked_function_arns\": [],\n      \"sqs_queue_arns\": [\n        \"arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-worker\"\n      ],\n      \"has_schedules\": true\n    }\n  },\n  \"external_roles\": true,\n  \"external_role_prefix\": \"sandbox-pocket-example-dsql-myorg-\",\n  \"project_name\": \"pocket-example-dsql\",\n  \"stage\": \"sandbox\"\n}",
+  "result": {
+    "backup": {
+      "cleanup_plan_names": [
+        "sandbox-pocket-example-dsql-pocket-backup-dsql",
+        "sandbox-pocket-example-dsql-pocket-dsql-backup"
+      ],
+      "deletable": false,
+      "external_roles": true,
+      "legacy_plan_names": [
+        "sandbox-pocket-example-dsql-pocket-dsql-backup"
+      ],
+      "permissions_boundary": null,
+      "plans": [],
+      "region": "ap-northeast-1",
+      "role_name": "sandbox-pocket-example-dsql-myorg-backup-role",
+      "timezone": "UTC",
+      "vault_name": "sandbox-pocket-example-dsql-pocket-backup"
+    },
+    "cloudfront": {
+      "web": {
+        "api_origins": {
+          "main.wsgi": "sandbox-pocket-example-dsql-main-wsgi-api-domain"
+        },
+        "basic_auth": null,
+        "bucket_name": "sandbox-pocket-example-dsql-pocket",
+        "bucket_policy_prefix": "/spa",
+        "default_route": {
+          "build_cmd": null,
+          "cloudfront_name": "web",
+          "delete_stale": true,
+          "handler": null,
+          "is_content_hash": false,
+          "is_default": true,
+          "is_deploy_hash": false,
+          "is_lambda": false,
+          "is_object_hash": false,
+          "is_spa": true,
+          "key_prefix": "spa/",
+          "login_path": "/api/auth/login",
+          "map": null,
+          "map_path": "pocket_static/web-root.map",
+          "name": "root",
+          "origin_path": "/spa",
+          "path_pattern": "",
+          "ref": "",
+          "require_token": false,
+          "signed": false,
+          "sources": [],
+          "spa_fallback_html": "200.html",
+          "static_meta_prefix": ".pocket/static/web/root/",
+          "type": "s3",
+          "upload_dir": "frontend/build",
+          "url_prefix": "/",
+          "versioned_max_age": 31536000,
+          "versioning": null,
+          "yaml_key": "Root"
+        },
+        "deploy_hash": "",
+        "domain": "dsql.sandbox.magic-pocket.example.com",
+        "enable_origin_verify": false,
+        "extra_lambda_routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": "main.wsgi",
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": true,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "api/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-api.map",
+            "name": "api",
+            "origin_path": "",
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/api/",
+            "type": "lambda",
+            "upload_dir": null,
+            "url_prefix": "/api/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Api"
+          }
+        ],
+        "extra_s3_routes": [],
+        "has_lambda_route": true,
+        "has_redirect_from": false,
+        "hosted_zone_id": "ZSANDBOX",
+        "hosted_zone_id_override": null,
+        "managed_asset_files": [],
+        "managed_assets": null,
+        "name": "web",
+        "redirect_from": [],
+        "region": "ap-northeast-1",
+        "resource_prefix": "sandbox-pocket-example-dsql-pocket-",
+        "routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": "main.wsgi",
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": true,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "api/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-api.map",
+            "name": "api",
+            "origin_path": "",
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/api/",
+            "type": "lambda",
+            "upload_dir": null,
+            "url_prefix": "/api/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Api"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": true,
+            "key_prefix": "spa/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-root.map",
+            "name": "root",
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "200.html",
+            "static_meta_prefix": ".pocket/static/web/root/",
+            "type": "s3",
+            "upload_dir": "frontend/build",
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          }
+        ],
+        "s3_region": "ap-northeast-1",
+        "signing_key": null,
+        "slug": "sandbox-pocket-example-dsql-web",
+        "stage": "sandbox",
+        "token_secret": null,
+        "uploadable_routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": true,
+            "key_prefix": "spa/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-root.map",
+            "name": "root",
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "200.html",
+            "static_meta_prefix": ".pocket/static/web/root/",
+            "type": "s3",
+            "upload_dir": "frontend/build",
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          }
+        ],
+        "waf": null,
+        "yaml_key": "SandboxPocketExampleDsqlWeb"
+      }
+    },
+    "container": {
+      "main": {
+        "allowed_sm_resources": [],
+        "allowed_ssm_resources": [
+          "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*"
+        ],
+        "build": {
+          "backend": "depot",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": "sandbox-pocket-example-dsql-pocket-main-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "sandbox-pocket-example-dsql-myorg-",
+        "external_roles": true,
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "MailCertificate",
+            "command": "pocket-example-dsql-mail-worker",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "sandbox-pocket-example-dsql-pocket-main-mail",
+            "key": "mail",
+            "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-mail",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "alarm_name": "sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert",
+                "email": "alerts@example.com",
+                "eventbridge": false,
+                "topic_name": "sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert"
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 1209600,
+              "name": "sandbox-pocket-example-dsql-pocket-main-mail",
+              "report_batch_item_failures": true,
+              "retain": true,
+              "visibility_timeout": 360
+            },
+            "timeout": 60
+          },
+          "worker": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "WorkerCertificate",
+            "command": "pocket-example-dsql-worker",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "sandbox-pocket-example-dsql-pocket-main-worker",
+            "key": "worker",
+            "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-worker",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "alarm_name": "sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert",
+                "email": "alerts@example.com",
+                "eventbridge": false,
+                "topic_name": "sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert"
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "name": "sandbox-pocket-example-dsql-pocket-main-worker",
+              "report_batch_item_failures": true,
+              "retain": false,
+              "visibility_timeout": 180
+            },
+            "timeout": 30
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "disable_execute_api_endpoint": false,
+              "domain": null,
+              "hosted_zone_id": null,
+              "hosted_zone_id_override": null
+            },
+            "cloudformation_cert_ref_name": "WsgiCertificate",
+            "command": "pocket-example-dsql-lambda",
+            "envs": {},
+            "export_api_domain": "sandbox-pocket-example-dsql-main-wsgi-api-domain",
+            "function_name": "sandbox-pocket-example-dsql-pocket-main-wsgi",
+            "key": "wsgi",
+            "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-wsgi",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {
+          "inbox": {
+            "bucket_name": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+            "config": {
+              "delivery_alert": {
+                "email": "alerts@example.com",
+                "enabled": true,
+                "eventbridge": false
+              },
+              "domain": "inbound.dsql.sandbox.magic-pocket.example.com",
+              "enabled": true,
+              "handler": "main.mail",
+              "hosted_zone_id_override": null,
+              "import_prefix": "imports/",
+              "manage_dns": true,
+              "metadata_prefix": "metadata/",
+              "raw_prefix": "raw/",
+              "recipients": [
+                "test@inbound.dsql.sandbox.magic-pocket.example.com"
+              ],
+              "retention_days": 30,
+              "rule_set": null,
+              "scan_enabled": true,
+              "tls_policy": "Require"
+            },
+            "name": "inbox",
+            "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-mail",
+            "queue_name": "sandbox-pocket-example-dsql-pocket-main-mail",
+            "region": "ap-northeast-1",
+            "resource_name": "sandbox-pocket-example-dsql-pock-df065f0823",
+            "runtime_config": {
+              "bucket": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+              "import_prefix": "imports/",
+              "metadata_prefix": "metadata/",
+              "raw_prefix": "raw/",
+              "recipients": [
+                "test@inbound.dsql.sandbox.magic-pocket.example.com"
+              ],
+              "region": "ap-northeast-1",
+              "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823"
+            },
+            "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823"
+          }
+        },
+        "inbound_runtime_config": {
+          "inbox": {
+            "bucket": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+            "import_prefix": "imports/",
+            "metadata_prefix": "metadata/",
+            "raw_prefix": "raw/",
+            "recipients": [
+              "test@inbound.dsql.sandbox.magic-pocket.example.com"
+            ],
+            "region": "ap-northeast-1",
+            "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823"
+          }
+        },
+        "lambda_architecture": "x86_64",
+        "name": "main",
+        "namespace": "pocket",
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-northeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "sandbox-pocket-example-dsql-pocket-",
+        "secrets": {
+          "allowed_sm_resources": [],
+          "allowed_ssm_resources": [
+            "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*"
+          ],
+          "extra_resources": [],
+          "managed": {
+            "SECRET_KEY": {
+              "options": {
+                "length": 50
+              },
+              "shared": false,
+              "type": "password"
+            }
+          },
+          "pocket_key": "sandbox-pocket-example-dsql-main-pocket",
+          "project_name": "pocket-example-dsql",
+          "region": "ap-northeast-1",
+          "require_list_secrets": false,
+          "stage": "sandbox",
+          "store": "ssm",
+          "user": {}
+        },
+        "shared_secrets": null,
+        "signing_key_imports": {},
+        "slug": "sandbox-pocket-example-dsql",
+        "stage": "sandbox",
+        "use_efs": false,
+        "use_route53": true,
+        "use_s3": true,
+        "use_ses": false,
+        "use_sqs": true,
+        "vpc": null
+      }
+    },
+    "dsql": {
+      "backup": null,
+      "backup_role_name": "sandbox-pocket-example-dsql-myorg-backup-role",
+      "backup_vault_name": "sandbox-pocket-example-dsql-pocket-backup",
+      "deletion_protection": false,
+      "endpoint_secret_name": "/sandbox-pocket-example-dsql-pocket-user/dsql_endpoint",
+      "endpoint_secret_store": "ssm",
+      "external_roles": true,
+      "permissions_boundary": null,
+      "region": "ap-northeast-1",
+      "tag_name": "sandbox-pocket-example-dsql-pocket-dsql"
+    },
+    "external_role_prefix": "sandbox-pocket-example-dsql-myorg-",
+    "external_roles": true,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "pocket-example-dsql",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "sandbox"
+      ]
+    },
+    "inbound": {
+      "inbox": {
+        "bucket_name": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+        "config": {
+          "delivery_alert": {
+            "email": "alerts@example.com",
+            "enabled": true,
+            "eventbridge": false
+          },
+          "domain": "inbound.dsql.sandbox.magic-pocket.example.com",
+          "enabled": true,
+          "handler": "main.mail",
+          "hosted_zone_id_override": null,
+          "import_prefix": "imports/",
+          "manage_dns": true,
+          "metadata_prefix": "metadata/",
+          "raw_prefix": "raw/",
+          "recipients": [
+            "test@inbound.dsql.sandbox.magic-pocket.example.com"
+          ],
+          "retention_days": 30,
+          "rule_set": null,
+          "scan_enabled": true,
+          "tls_policy": "Require"
+        },
+        "name": "inbox",
+        "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-mail",
+        "queue_name": "sandbox-pocket-example-dsql-pocket-main-mail",
+        "region": "ap-northeast-1",
+        "resource_name": "sandbox-pocket-example-dsql-pock-df065f0823",
+        "runtime_config": {
+          "bucket": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+          "import_prefix": "imports/",
+          "metadata_prefix": "metadata/",
+          "raw_prefix": "raw/",
+          "recipients": [
+            "test@inbound.dsql.sandbox.magic-pocket.example.com"
+          ],
+          "region": "ap-northeast-1",
+          "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823"
+        },
+        "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823"
+      }
+    },
+    "inbound_domain": {
+      "inbound.dsql.sandbox.magic-pocket.example.com": {
+        "domain": "inbound.dsql.sandbox.magic-pocket.example.com",
+        "hosted_zone_id_override": null,
+        "manage_dns": true,
+        "mx_value": "10 inbound-smtp.ap-northeast-1.amazonaws.com",
+        "region": "ap-northeast-1",
+        "stack_name": "sandbox-pocket-example-dsql-pock-f6e05bca8f"
+      }
+    },
+    "neon": null,
+    "project_name": "pocket-example-dsql",
+    "rds": null,
+    "s3": {
+      "bucket_name": "sandbox-pocket-example-dsql-pocket",
+      "cors": null,
+      "lifecycle_rules": [],
+      "region": "ap-northeast-1",
+      "versioning": false
+    },
+    "scheduler": {
+      "main": {
+        "has_schedules": true,
+        "invoked_function_arns": [],
+        "role_name": "sandbox-pocket-example-dsql-myorg-scheduler-role",
+        "schedules": [
+          {
+            "handler": "worker",
+            "input_json": "{\"type\": \"post_message\", \"note\": \"scheduled\"}",
+            "is_django_management": false,
+            "is_sqs": true,
+            "key": "daily_message",
+            "name": "sandbox-pocket-example-dsql-pocket-daily-message",
+            "schedule_expression": "rate(1 day)",
+            "scheduler": "pocket.sqs_scheduler",
+            "yaml_key": "DailyMessage"
+          }
+        ],
+        "sqs_queue_arns": [
+          "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-worker"
+        ]
+      }
+    },
+    "secrets": {
+      "allowed_sm_resources": [],
+      "allowed_ssm_resources": [],
+      "extra_resources": [],
+      "managed": {},
+      "pocket_key": "sandbox-pocket-example-dsql-pocket",
+      "project_name": "pocket-example-dsql",
+      "region": "ap-northeast-1",
+      "require_list_secrets": false,
+      "stage": "sandbox",
+      "store": "ssm",
+      "user": {}
+    },
+    "ses": null,
+    "stage": "sandbox",
+    "tidb": null,
+    "upstash": null
+  },
+  "stage": "sandbox"
+}

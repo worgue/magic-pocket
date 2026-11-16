@@ -7,9 +7,12 @@
 //! - [`Settings::load`]: ファイルと環境 (cwd・環境変数) から読む
 //! - [`Settings::from_parts`]: toml の本文と [`LoadContext`] だけから読む (vector はこちら)
 
+#[cfg(feature = "context")]
+pub mod context;
 mod error;
 mod load;
 pub mod model;
+pub mod pyjson;
 pub mod types;
 
 pub use error::{ErrorKind, PathSeg, SettingsError};

@@ -7,7 +7,6 @@
 
 mod mapfile;
 mod publisher;
-mod pyjson;
 mod release;
 mod sources;
 
@@ -41,6 +40,8 @@ enum Top {
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
     },
+    /// 版を 1 行で出力する (`--version` と違い、版の番号だけを出す)
+    Version,
 }
 
 #[derive(Args, Clone)]
@@ -208,7 +209,7 @@ fn print_settings(stage: &str) -> Result<()> {
         eprintln!("{}", advisory.message);
     }
     let masked = magic_pocket_settings::mask_secret_values(&settings.to_json());
-    println!("{}", pyjson::dumps_indent2(&masked));
+    println!("{}", magic_pocket_settings::pyjson::dumps_indent2(&masked));
     Ok(())
 }
 
@@ -216,6 +217,10 @@ async fn run(cli: Cli) -> Result<()> {
     let command = match cli.command {
         Top::Static { command } => command,
         Top::Settings { stage } => return print_settings(&stage),
+        Top::Version => {
+            println!("{}", env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
     };
     match command {
         StaticCommand::Publish {

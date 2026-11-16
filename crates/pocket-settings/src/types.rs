@@ -275,6 +275,19 @@ impl<V> OrderedMap<V> {
         self.0.is_empty()
     }
 
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut V> {
+        self.0.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    /// Python の `d[key] = value` (既存の key は位置を保って値だけ差し替える)
+    pub fn insert(&mut self, key: impl Into<String>, value: V) {
+        let key = key.into();
+        match self.get_mut(&key) {
+            Some(slot) => *slot = value,
+            None => self.0.push((key, value)),
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }

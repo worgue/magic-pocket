@@ -1,0 +1,268 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml/scheduler.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-southeast-1\",\n    \"project_name\": \"testprj\",\n    \"stages\": [\n      \"dev\",\n      \"prod\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": null,\n      \"shared_secrets\": null,\n      \"dockerfile_path\": \"tests/sampleprj/Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-southeast-1\",\n      \"slug\": \"dev-testprj\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-testprj-pocket-\",\n      \"handlers\": {\n        \"management\": {\n          \"command\": \"pocket.django.lambda_handlers.management_command_handler\",\n          \"timeout\": 300,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-southeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"management\",\n          \"function_name\": \"dev-testprj-pocket-main-management\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-management\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"ManagementCertificate\"\n        },\n        \"worker\": {\n          \"command\": \"pocket.lambda_handlers.worker_handler\",\n          \"timeout\": 60,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-southeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"worker\",\n          \"function_name\": \"dev-testprj-pocket-main-worker\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-worker\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"WorkerCertificate\"\n        },\n        \"sqsworker\": {\n          \"command\": \"pocket.django.lambda_handlers.sqs_management_command_report_failures_handler\",\n          \"timeout\": 60,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-southeast-1\",\n          \"apigateway\": null,\n          \"sqs\": {\n            \"retain\": false,\n            \"batch_size\": 10,\n            \"message_retention_period\": 345600,\n            \"maximum_concurrency\": 2,\n            \"dead_letter_max_receive_count\": 5,\n            \"dead_letter_message_retention_period\": 1209600,\n            \"report_batch_item_failures\": true,\n            \"name\": \"dev-testprj-pocket-main-sqsworker\",\n            \"visibility_timeout\": 360,\n            \"dead_letter_alert\": {\n              \"email\": \"alerts@example.com\",\n              \"eventbridge\": false,\n              \"topic_name\": \"dev-testprj-pocket-main-sqsworker-dead-letter-alert\",\n              \"alarm_name\": \"dev-testprj-pocket-main-sqsworker-dead-letter-alert\"\n            }\n          },\n          \"key\": \"sqsworker\",\n          \"function_name\": \"dev-testprj-pocket-main-sqsworker\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-sqsworker\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"SqsworkerCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-testprj-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": true,\n      \"use_ses\": false,\n      \"use_route53\": false,\n      \"use_sqs\": true,\n      \"use_efs\": false,\n      \"permissions_boundary\": \"arn:aws:iam::123456789012:policy/test-boundary\",\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-testprj-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": null,\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": null,\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": {\n    \"region\": \"ap-southeast-1\",\n    \"bucket_name\": \"dev-testprj-pocket\",\n    \"cors\": null,\n    \"versioning\": false,\n    \"lifecycle_rules\": []\n  },\n  \"cloudfront\": {},\n  \"scheduler\": {\n    \"main\": {\n      \"schedules\": [\n        {\n          \"key\": \"cleanup\",\n          \"scheduler\": \"pocket.sqs_scheduler\",\n          \"handler\": \"sqsworker\",\n          \"schedule_expression\": \"rate(15 minutes)\",\n          \"name\": \"dev-testprj-pocket-cleanup\",\n          \"yaml_key\": \"Cleanup\",\n          \"input_json\": \"{\\\"command\\\": \\\"clearsessions\\\", \\\"args\\\": [], \\\"kwargs\\\": {}}\",\n          \"is_django_management\": false,\n          \"is_sqs\": true\n        },\n        {\n          \"key\": \"rotate_logs\",\n          \"scheduler\": \"pocket.lambda_scheduler\",\n          \"handler\": \"worker\",\n          \"schedule_expression\": \"rate(1 hour)\",\n          \"name\": \"dev-testprj-pocket-rotate-logs\",\n          \"yaml_key\": \"RotateLogs\",\n          \"input_json\": \"{\\\"task\\\": \\\"rotate_logs\\\"}\",\n          \"is_django_management\": false,\n          \"is_sqs\": false\n        },\n        {\n          \"key\": \"daily_digest\",\n          \"scheduler\": \"pocket.django.management_lambda_scheduler\",\n          \"handler\": \"management\",\n          \"schedule_expression\": \"cron(0 18 * * ? *)\",\n          \"name\": \"dev-testprj-pocket-daily-digest\",\n          \"yaml_key\": \"DailyDigest\",\n          \"input_json\": \"{\\\"manage\\\": \\\"send_daily_digest --verbose\\\"}\",\n          \"is_django_management\": true,\n          \"is_sqs\": false\n        }\n      ],\n      \"role_name\": \"dev-testprj-pocket-main-scheduler\",\n      \"invoked_function_arns\": [\n        \"arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-management\",\n        \"arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-worker\"\n      ],\n      \"sqs_queue_arns\": [\n        \"arn:aws:sqs:ap-southeast-1:${AWS::AccountId}:dev-testprj-pocket-main-sqsworker\"\n      ],\n      \"has_schedules\": true\n    }\n  },\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-testprj-pocket-\",\n  \"project_name\": \"testprj\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {
+      "main": {
+        "allowed_sm_resources": [],
+        "allowed_ssm_resources": [],
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "tests/sampleprj/Dockerfile",
+        "ecr_name": "dev-testprj-pocket-main-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "dev-testprj-pocket-",
+        "external_roles": false,
+        "handlers": {
+          "management": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "ManagementCertificate",
+            "command": "pocket.django.lambda_handlers.management_command_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-testprj-pocket-main-management",
+            "key": "management",
+            "log_group_name": "/aws/lambda/dev-testprj-pocket-main-management",
+            "memory_size": 512,
+            "region": "ap-southeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 300
+          },
+          "sqsworker": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "SqsworkerCertificate",
+            "command": "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-testprj-pocket-main-sqsworker",
+            "key": "sqsworker",
+            "log_group_name": "/aws/lambda/dev-testprj-pocket-main-sqsworker",
+            "memory_size": 512,
+            "region": "ap-southeast-1",
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "alarm_name": "dev-testprj-pocket-main-sqsworker-dead-letter-alert",
+                "email": "alerts@example.com",
+                "eventbridge": false,
+                "topic_name": "dev-testprj-pocket-main-sqsworker-dead-letter-alert"
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "name": "dev-testprj-pocket-main-sqsworker",
+              "report_batch_item_failures": true,
+              "retain": false,
+              "visibility_timeout": 360
+            },
+            "timeout": 60
+          },
+          "worker": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "WorkerCertificate",
+            "command": "pocket.lambda_handlers.worker_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-testprj-pocket-main-worker",
+            "key": "worker",
+            "log_group_name": "/aws/lambda/dev-testprj-pocket-main-worker",
+            "memory_size": 512,
+            "region": "ap-southeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 60
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {},
+        "inbound_runtime_config": {},
+        "lambda_architecture": "x86_64",
+        "name": "main",
+        "namespace": "pocket",
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/test-boundary",
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-southeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "dev-testprj-pocket-",
+        "secrets": null,
+        "shared_secrets": null,
+        "signing_key_imports": {},
+        "slug": "dev-testprj",
+        "stage": "dev",
+        "use_efs": false,
+        "use_route53": false,
+        "use_s3": true,
+        "use_ses": false,
+        "use_sqs": true,
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "external_role_prefix": "dev-testprj-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "testprj",
+      "region": "ap-southeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "testprj",
+    "rds": null,
+    "s3": {
+      "bucket_name": "dev-testprj-pocket",
+      "cors": null,
+      "lifecycle_rules": [],
+      "region": "ap-southeast-1",
+      "versioning": false
+    },
+    "scheduler": {
+      "main": {
+        "has_schedules": true,
+        "invoked_function_arns": [
+          "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-management",
+          "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-worker"
+        ],
+        "role_name": "dev-testprj-pocket-main-scheduler",
+        "schedules": [
+          {
+            "handler": "sqsworker",
+            "input_json": "{\"command\": \"clearsessions\", \"args\": [], \"kwargs\": {}}",
+            "is_django_management": false,
+            "is_sqs": true,
+            "key": "cleanup",
+            "name": "dev-testprj-pocket-cleanup",
+            "schedule_expression": "rate(15 minutes)",
+            "scheduler": "pocket.sqs_scheduler",
+            "yaml_key": "Cleanup"
+          },
+          {
+            "handler": "worker",
+            "input_json": "{\"task\": \"rotate_logs\"}",
+            "is_django_management": false,
+            "is_sqs": false,
+            "key": "rotate_logs",
+            "name": "dev-testprj-pocket-rotate-logs",
+            "schedule_expression": "rate(1 hour)",
+            "scheduler": "pocket.lambda_scheduler",
+            "yaml_key": "RotateLogs"
+          },
+          {
+            "handler": "management",
+            "input_json": "{\"manage\": \"send_daily_digest --verbose\"}",
+            "is_django_management": true,
+            "is_sqs": false,
+            "key": "daily_digest",
+            "name": "dev-testprj-pocket-daily-digest",
+            "schedule_expression": "cron(0 18 * * ? *)",
+            "scheduler": "pocket.django.management_lambda_scheduler",
+            "yaml_key": "DailyDigest"
+          }
+        ],
+        "sqs_queue_arns": [
+          "arn:aws:sqs:ap-southeast-1:${AWS::AccountId}:dev-testprj-pocket-main-sqsworker"
+        ]
+      }
+    },
+    "secrets": null,
+    "ses": null,
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null
+  },
+  "stage": "dev"
+}

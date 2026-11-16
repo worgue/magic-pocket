@@ -1,0 +1,118 @@
+# Context の導出の網羅 (settings の vector では値の既定以外を見ない部分):
+# container store / shared store の分け方、efs cache、deploy_hash の storage、
+# signing key の import (int の id_environ_suffix)、external_roles、inbound の接続、
+# 環境変数 (DEPLOY_HASH / permissions boundary) の優先順位
+# vector-env: DEPLOY_HASH=env-hash-1
+# vector-env: POCKET_PERMISSIONS_BOUNDARY_ARN=arn:aws:iam::123456789012:policy/env-boundary
+# vector-env: NEON_API_KEY=ctx-neon-key
+[general]
+region = "ap-northeast-1"
+project_name = "ctx"
+stages = ["dev", "live"]
+
+[iam]
+external_roles = true
+namespace = "myorg"
+
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+efs = { local_mount_path = "/mnt/data" }
+
+[s3]
+versioning = true
+cors = { methods = ["GET"], cloudfront = "web" }
+lifecycle_rules = [{ id = "tmp", prefix = "tmp/", expiration_days = 1 }]
+
+[container.web]
+dockerfile_path = "web/Dockerfile"
+
+[container.web.secrets]
+store = "sm"
+extra_resources = ["plain-name", "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x", "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"]
+
+[container.web.secrets.managed]
+SECRET_KEY = { type = "password", shared = true }
+DATABASE_URL = { type = "neon_database_url" }
+SIGNING = { type = "cloudfront_signing_key", options = { id_environ_suffix = 1 } }
+
+[container.web.secrets.user]
+EXTERNAL_API = { name = "{stage}/external/api" }
+PARAM = { name = "plain/param", store = "ssm" }
+TIDB_URL = { type = "tidb_database_url", store = "ssm" }
+
+[container.web.handlers.wsgi]
+command = "pocket.django.lambda_handlers.wsgi_handler"
+apigateway = { domain = "api.project.com" }
+
+[container.web.handlers.mail]
+command = "app.mail"
+sqs = { dead_letter_alert = { email = "ops@example.com" } }
+
+[container.web.django.storages]
+default = { store = "s3", distribution = "web", route = "media" }
+staticfiles = { store = "s3", static = true, distribution = "web", route = "static" }
+
+[container.web.django.caches]
+default = { store = "efs", location_subdir = "{stage}/cache" }
+local = { store = "locmem" }
+
+[container.worker]
+dockerfile_path = "worker/Dockerfile"
+use_vpc = false
+permissions_boundary = "arn:aws:iam::123456789012:policy/worker-boundary"
+envs = { DEPLOY_HASH = "pinned" }
+
+[container.worker.secrets]
+store = "sm"
+managed = { SECRET_KEY = { type = "password", shared = true } }
+
+[container.worker.handlers.jobs]
+command = "app.jobs"
+sqs = { dead_letter_alert = { enabled = false } }
+
+[neon]
+project_name = "ctx-neon"
+branch_name = "{stage}-{project}"
+
+[cloudfront.web]
+domain = "www.example.com"
+signing_key = "SIGNING"
+
+[[cloudfront.web.routes]]
+is_default = true
+signed = true
+origin_path = "/spa"
+
+[[cloudfront.web.routes]]
+path_pattern = "/media/*"
+ref = "media"
+
+[[cloudfront.web.routes]]
+type = "lambda"
+path_pattern = "/api/*"
+handler = "web.wsgi"
+
+[[cloudfront.web.routes]]
+path_pattern = "/static/*"
+ref = "static"
+versioning = "deploy_hash"
+
+[inbound.support]
+domain = "mail.example.com"
+recipients = ["support@mail.example.com"]
+handler = "web.mail"
+retention_days = 30
+delivery_alert = { email = "ops@example.com" }
+
+[scheduler.schedules.drain]
+rate = "5 minutes"
+handler = "worker.jobs"
+scheduler = "pocket.sqs_scheduler"
+message = { command = "drain", label = "日本語" }
+
+[live.container.web.secrets]
+store = "ssm"
+
+[live.container.worker.secrets]
+store = "ssm"

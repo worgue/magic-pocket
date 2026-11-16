@@ -1,0 +1,188 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml/ses_custom_region.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"testprj\",\n    \"stages\": [\n      \"dev\",\n      \"prod\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": null,\n      \"shared_secrets\": null,\n      \"dockerfile_path\": \"tests/sampleprj/Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-northeast-1\",\n      \"slug\": \"dev-testprj\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-testprj-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket.django.lambda_handlers.wsgi_handler\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"dev-testprj-pocket-main-wsgi\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-wsgi\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        },\n        \"management\": {\n          \"command\": \"pocket.django.lambda_handlers.management_command_handler\",\n          \"timeout\": 600,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"management\",\n          \"function_name\": \"dev-testprj-pocket-main-management\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-management\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"ManagementCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-testprj-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": false,\n      \"use_ses\": true,\n      \"use_route53\": false,\n      \"use_sqs\": false,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-testprj-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": null,\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": null,\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": {\n    \"from_email\": \"noreply@example.com\",\n    \"region\": \"us-east-1\",\n    \"configuration_set\": \"my-config-set\"\n  },\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-testprj-pocket-\",\n  \"project_name\": \"testprj\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {
+      "main": {
+        "allowed_sm_resources": [],
+        "allowed_ssm_resources": [],
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "tests/sampleprj/Dockerfile",
+        "ecr_name": "dev-testprj-pocket-main-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "dev-testprj-pocket-",
+        "external_roles": false,
+        "handlers": {
+          "management": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "ManagementCertificate",
+            "command": "pocket.django.lambda_handlers.management_command_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-testprj-pocket-main-management",
+            "key": "management",
+            "log_group_name": "/aws/lambda/dev-testprj-pocket-main-management",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 600
+          },
+          "wsgi": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "WsgiCertificate",
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-testprj-pocket-main-wsgi",
+            "key": "wsgi",
+            "log_group_name": "/aws/lambda/dev-testprj-pocket-main-wsgi",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {},
+        "inbound_runtime_config": {},
+        "lambda_architecture": "x86_64",
+        "name": "main",
+        "namespace": "pocket",
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-northeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "dev-testprj-pocket-",
+        "secrets": null,
+        "shared_secrets": null,
+        "signing_key_imports": {},
+        "slug": "dev-testprj",
+        "stage": "dev",
+        "use_efs": false,
+        "use_route53": false,
+        "use_s3": false,
+        "use_ses": true,
+        "use_sqs": false,
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "external_role_prefix": "dev-testprj-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "testprj",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "testprj",
+    "rds": null,
+    "s3": null,
+    "scheduler": {},
+    "secrets": null,
+    "ses": {
+      "configuration_set": "my-config-set",
+      "from_email": "noreply@example.com",
+      "region": "us-east-1"
+    },
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null
+  },
+  "stage": "dev"
+}

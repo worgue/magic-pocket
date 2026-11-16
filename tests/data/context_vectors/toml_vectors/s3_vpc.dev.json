@@ -1,0 +1,134 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/s3_vpc.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"s3vpc\",\n    \"stages\": [\n      \"dev\",\n      \"prod\",\n      \"shared\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {},\n  \"secrets\": null,\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": null,\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": {\n    \"region\": \"ap-northeast-1\",\n    \"bucket_name\": \"s3vpc-dev-assets\",\n    \"cors\": {\n      \"methods\": [\n        \"GET\",\n        \"PUT\"\n      ],\n      \"cloudfront_names\": [\n        \"web\"\n      ]\n    },\n    \"versioning\": true,\n    \"lifecycle_rules\": [\n      {\n        \"id\": \"tmp\",\n        \"prefix\": \"tmp/\",\n        \"expiration_days\": 1,\n        \"noncurrent_version_expiration_days\": null\n      },\n      {\n        \"id\": \"old\",\n        \"prefix\": \"\",\n        \"expiration_days\": null,\n        \"noncurrent_version_expiration_days\": 30\n      }\n    ]\n  },\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-s3vpc-pocket-\",\n  \"project_name\": \"s3vpc\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {},
+    "container": {},
+    "dsql": null,
+    "external_role_prefix": "dev-s3vpc-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "s3vpc",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "shared"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "s3vpc",
+    "rds": null,
+    "s3": {
+      "bucket_name": "s3vpc-dev-assets",
+      "cors": {
+        "cloudfront_names": [
+          "web"
+        ],
+        "methods": [
+          "GET",
+          "PUT"
+        ]
+      },
+      "lifecycle_rules": [
+        {
+          "expiration_days": 1,
+          "id": "tmp",
+          "noncurrent_version_expiration_days": null,
+          "prefix": "tmp/"
+        },
+        {
+          "expiration_days": null,
+          "id": "old",
+          "noncurrent_version_expiration_days": 30,
+          "prefix": ""
+        }
+      ],
+      "region": "ap-northeast-1",
+      "versioning": true
+    },
+    "scheduler": {},
+    "secrets": null,
+    "ses": null,
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null
+  },
+  "stage": "dev"
+}

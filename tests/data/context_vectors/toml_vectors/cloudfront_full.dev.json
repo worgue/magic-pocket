@@ -1,0 +1,999 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {
+      "fonts/default": [
+        "robots.txt"
+      ]
+    },
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {
+      "dev-cf-app-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf",
+      "dev-cf-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+    }
+  },
+  "input": "tests/data/toml_vectors/cloudfront_full.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"cf\",\n    \"stages\": [\n      \"dev\",\n      \"prod\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"app\": {\n      \"name\": \"app\",\n      \"vpc\": null,\n      \"secrets\": {\n        \"store\": \"sm\",\n        \"managed\": {\n          \"SIGNING_KEY\": {\n            \"type\": \"cloudfront_signing_key\",\n            \"options\": {},\n            \"shared\": false\n          },\n          \"TOKEN_SECRET\": {\n            \"type\": \"spa_token_secret\",\n            \"options\": {},\n            \"shared\": false\n          },\n          \"BASIC_AUTH\": {\n            \"type\": \"basic_auth_credential\",\n            \"options\": {\n              \"username\": \"admin\"\n            },\n            \"shared\": false\n          }\n        },\n        \"user\": {},\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-northeast-1\",\n        \"pocket_key\": \"dev-cf-app-pocket\",\n        \"stage\": \"dev\",\n        \"project_name\": \"cf\",\n        \"allowed_sm_resources\": [\n          \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf\"\n        ],\n        \"allowed_ssm_resources\": []\n      },\n      \"shared_secrets\": {\n        \"store\": \"sm\",\n        \"managed\": {\n          \"POCKET_ORIGIN_VERIFY_SECRET\": {\n            \"type\": \"origin_verify_secret\",\n            \"options\": {},\n            \"shared\": false\n          },\n          \"HOOK_ALLOW\": {\n            \"type\": \"waf_allow_secret\",\n            \"options\": {},\n            \"shared\": false\n          },\n          \"SMOKE_ALLOW\": {\n            \"type\": \"waf_allow_secret\",\n            \"options\": {},\n            \"shared\": false\n          }\n        },\n        \"user\": {},\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-northeast-1\",\n        \"pocket_key\": \"dev-cf-pocket\",\n        \"stage\": \"dev\",\n        \"project_name\": \"cf\",\n        \"allowed_sm_resources\": [\n          \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf\"\n        ],\n        \"allowed_ssm_resources\": []\n      },\n      \"dockerfile_path\": \"Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {\n        \"SIGNING_KEY_ID\": \"dev-cf-web-public-key-id\"\n      },\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-northeast-1\",\n      \"slug\": \"dev-cf\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-cf-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket.django.lambda_handlers.wsgi_handler\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": {\n            \"domain\": null,\n            \"create_records\": true,\n            \"hosted_zone_id_override\": null,\n            \"disable_execute_api_endpoint\": false,\n            \"hosted_zone_id\": null\n          },\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"dev-cf-pocket-app-wsgi\",\n          \"log_group_name\": \"/aws/lambda/dev-cf-pocket-app-wsgi\",\n          \"export_api_domain\": \"dev-cf-app-wsgi-api-domain\",\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-cf-pocket-app-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": true,\n      \"use_ses\": false,\n      \"use_route53\": true,\n      \"use_sqs\": false,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-cf-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [\n        \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf\",\n        \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf\"\n      ],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": {\n    \"store\": \"sm\",\n    \"managed\": {\n      \"POCKET_ORIGIN_VERIFY_SECRET\": {\n        \"type\": \"origin_verify_secret\",\n        \"options\": {},\n        \"shared\": false\n      },\n      \"HOOK_ALLOW\": {\n        \"type\": \"waf_allow_secret\",\n        \"options\": {},\n        \"shared\": false\n      },\n      \"SMOKE_ALLOW\": {\n        \"type\": \"waf_allow_secret\",\n        \"options\": {},\n        \"shared\": false\n      }\n    },\n    \"user\": {},\n    \"extra_resources\": [],\n    \"require_list_secrets\": false,\n    \"region\": \"ap-northeast-1\",\n    \"pocket_key\": \"dev-cf-pocket\",\n    \"stage\": \"dev\",\n    \"project_name\": \"cf\",\n    \"allowed_sm_resources\": [\n      \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf\"\n    ],\n    \"allowed_ssm_resources\": []\n  },\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": null,\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": {\n    \"region\": \"ap-northeast-1\",\n    \"bucket_name\": \"dev-cf-pocket\",\n    \"cors\": null,\n    \"versioning\": false,\n    \"lifecycle_rules\": []\n  },\n  \"cloudfront\": {\n    \"web\": {\n      \"name\": \"web\",\n      \"region\": \"ap-northeast-1\",\n      \"s3_region\": \"ap-northeast-1\",\n      \"stage\": \"dev\",\n      \"domain\": \"www.example.com\",\n      \"hosted_zone_id_override\": \"Z1\",\n      \"slug\": \"dev-cf-web\",\n      \"bucket_name\": \"dev-cf-pocket\",\n      \"resource_prefix\": \"dev-cf-pocket-\",\n      \"redirect_from\": [\n        {\n          \"domain\": \"example.com\",\n          \"hosted_zone_id_override\": null,\n          \"yaml_key\": \"ExampleCom\",\n          \"hosted_zone_id\": \"ZEXAMPLE\"\n        },\n        {\n          \"domain\": \"old.example.com\",\n          \"hosted_zone_id_override\": \"Z2\",\n          \"yaml_key\": \"OldExampleCom\",\n          \"hosted_zone_id\": \"Z2\"\n        }\n      ],\n      \"routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": true,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"app.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": \"just frontend-build\",\n          \"upload_dir\": \"frontend/dist\",\n          \"delete_stale\": false,\n          \"origin_path\": \"/spa\",\n          \"require_token\": true,\n          \"login_path\": \"/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"spa/\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/web/root/\",\n          \"map_path\": \"pocket_static/web-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        },\n        {\n          \"type\": \"lambda\",\n          \"handler\": \"app.wsgi\",\n          \"path_pattern\": \"/api/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": true,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"api/\",\n          \"url_prefix\": \"/api/\",\n          \"static_meta_prefix\": \".pocket/static/web/api/\",\n          \"map_path\": \"pocket_static/web-api.map\",\n          \"name\": \"api\",\n          \"yaml_key\": \"Api\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/assets/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"content_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 3600,\n          \"ref\": \"assets\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/assets\",\n          \"delete_stale\": false,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": true,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"assets/\",\n          \"url_prefix\": \"/assets/\",\n          \"static_meta_prefix\": \".pocket/static/web/assets/\",\n          \"map_path\": \"pocket_static/web-assets.map\",\n          \"name\": \"assets\",\n          \"yaml_key\": \"Assets\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/static/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"object_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"static\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": false,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [\n            {\n              \"name\": \"data\",\n              \"dir\": \"data\",\n              \"prefix\": \"\",\n              \"include\": [],\n              \"exclude\": [\n                \"*.tmp\"\n              ],\n              \"hashed\": true\n            },\n            {\n              \"name\": \"code\",\n              \"dir\": \"build\",\n              \"prefix\": \"app/\",\n              \"include\": [\n                \"**/*.js\"\n              ],\n              \"exclude\": [],\n              \"hashed\": false\n            }\n          ],\n          \"map\": \"maps/static.map\",\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": true,\n          \"key_prefix\": \"static/\",\n          \"url_prefix\": \"/static/\",\n          \"static_meta_prefix\": \".pocket/static/web/static/\",\n          \"map_path\": \"maps/static.map\",\n          \"name\": \"static\",\n          \"yaml_key\": \"Static\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/media/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": true,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"/uploads\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"uploads/media/\",\n          \"url_prefix\": \"/media/\",\n          \"static_meta_prefix\": \".pocket/static/web/media/\",\n          \"map_path\": \"pocket_static/web-media.map\",\n          \"name\": \"media\",\n          \"yaml_key\": \"Media\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/deploy/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"deploy_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/deploy\",\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": true,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"deploy/\",\n          \"url_prefix\": \"/deploy/\",\n          \"static_meta_prefix\": \".pocket/static/web/deploy/\",\n          \"map_path\": \"pocket_static/web-deploy.map\",\n          \"name\": \"deploy\",\n          \"yaml_key\": \"Deploy\"\n        }\n      ],\n      \"signing_key\": \"SIGNING_KEY\",\n      \"token_secret\": \"****\",\n      \"basic_auth\": \"BASIC_AUTH\",\n      \"api_origins\": {\n        \"app.wsgi\": \"dev-cf-app-wsgi-api-domain\"\n      },\n      \"managed_assets\": \"fonts\",\n      \"deploy_hash\": \"abc1234\",\n      \"waf\": {\n        \"enable_ip_set\": true,\n        \"managed_rule_groups\": [\n          \"AWSManagedRulesCommonRuleSet\"\n        ],\n        \"allow_rules\": [\n          {\n            \"path\": \"/healthz\",\n            \"header\": null,\n            \"path_positional_constraint\": \"EXACTLY\",\n            \"path_search_string\": \"/healthz\"\n          },\n          {\n            \"path\": null,\n            \"header\": \"SMOKE_ALLOW\",\n            \"path_positional_constraint\": \"EXACTLY\",\n            \"path_search_string\": \"\"\n          },\n          {\n            \"path\": \"/api/hook*\",\n            \"header\": \"HOOK_ALLOW\",\n            \"path_positional_constraint\": \"STARTS_WITH\",\n            \"path_search_string\": \"/api/hook\"\n          }\n        ],\n        \"rate_limits\": [\n          {\n            \"path\": null,\n            \"limit\": 100,\n            \"window_sec\": 300,\n            \"action\": \"block\",\n            \"path_positional_constraint\": \"EXACTLY\",\n            \"path_search_string\": \"\"\n          },\n          {\n            \"path\": \"/api/*\",\n            \"limit\": 2000,\n            \"window_sec\": 60,\n            \"action\": \"count\",\n            \"path_positional_constraint\": \"STARTS_WITH\",\n            \"path_search_string\": \"/api/\"\n          }\n        ],\n        \"header_secret_keys\": [\n          \"HOOK_ALLOW\",\n          \"SMOKE_ALLOW\"\n        ]\n      },\n      \"enable_origin_verify\": true,\n      \"yaml_key\": \"DevCfWeb\",\n      \"bucket_policy_prefix\": \"\",\n      \"default_route\": {\n        \"type\": \"s3\",\n        \"handler\": null,\n        \"path_pattern\": \"\",\n        \"is_default\": true,\n        \"is_spa\": true,\n        \"versioning\": null,\n        \"spa_fallback_html\": \"app.html\",\n        \"versioned_max_age\": 31536000,\n        \"ref\": \"\",\n        \"signed\": false,\n        \"build_cmd\": \"just frontend-build\",\n        \"upload_dir\": \"frontend/dist\",\n        \"delete_stale\": false,\n        \"origin_path\": \"/spa\",\n        \"require_token\": true,\n        \"login_path\": \"/login\",\n        \"cloudfront_name\": \"web\",\n        \"sources\": [],\n        \"map\": null,\n        \"is_lambda\": false,\n        \"is_content_hash\": false,\n        \"is_deploy_hash\": false,\n        \"is_object_hash\": false,\n        \"key_prefix\": \"spa/\",\n        \"url_prefix\": \"/\",\n        \"static_meta_prefix\": \".pocket/static/web/root/\",\n        \"map_path\": \"pocket_static/web-root.map\",\n        \"name\": \"root\",\n        \"yaml_key\": \"Root\"\n      },\n      \"uploadable_routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": true,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"app.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": \"just frontend-build\",\n          \"upload_dir\": \"frontend/dist\",\n          \"delete_stale\": false,\n          \"origin_path\": \"/spa\",\n          \"require_token\": true,\n          \"login_path\": \"/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"spa/\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/web/root/\",\n          \"map_path\": \"pocket_static/web-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/assets/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"content_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 3600,\n          \"ref\": \"assets\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/assets\",\n          \"delete_stale\": false,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": true,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"assets/\",\n          \"url_prefix\": \"/assets/\",\n          \"static_meta_prefix\": \".pocket/static/web/assets/\",\n          \"map_path\": \"pocket_static/web-assets.map\",\n          \"name\": \"assets\",\n          \"yaml_key\": \"Assets\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/deploy/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"deploy_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/deploy\",\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": true,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"deploy/\",\n          \"url_prefix\": \"/deploy/\",\n          \"static_meta_prefix\": \".pocket/static/web/deploy/\",\n          \"map_path\": \"pocket_static/web-deploy.map\",\n          \"name\": \"deploy\",\n          \"yaml_key\": \"Deploy\"\n        }\n      ],\n      \"extra_s3_routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/assets/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"content_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 3600,\n          \"ref\": \"assets\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/assets\",\n          \"delete_stale\": false,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": true,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"assets/\",\n          \"url_prefix\": \"/assets/\",\n          \"static_meta_prefix\": \".pocket/static/web/assets/\",\n          \"map_path\": \"pocket_static/web-assets.map\",\n          \"name\": \"assets\",\n          \"yaml_key\": \"Assets\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/static/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"object_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"static\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": false,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [\n            {\n              \"name\": \"data\",\n              \"dir\": \"data\",\n              \"prefix\": \"\",\n              \"include\": [],\n              \"exclude\": [\n                \"*.tmp\"\n              ],\n              \"hashed\": true\n            },\n            {\n              \"name\": \"code\",\n              \"dir\": \"build\",\n              \"prefix\": \"app/\",\n              \"include\": [\n                \"**/*.js\"\n              ],\n              \"exclude\": [],\n              \"hashed\": false\n            }\n          ],\n          \"map\": \"maps/static.map\",\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": true,\n          \"key_prefix\": \"static/\",\n          \"url_prefix\": \"/static/\",\n          \"static_meta_prefix\": \".pocket/static/web/static/\",\n          \"map_path\": \"maps/static.map\",\n          \"name\": \"static\",\n          \"yaml_key\": \"Static\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/media/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": true,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"/uploads\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"uploads/media/\",\n          \"url_prefix\": \"/media/\",\n          \"static_meta_prefix\": \".pocket/static/web/media/\",\n          \"map_path\": \"pocket_static/web-media.map\",\n          \"name\": \"media\",\n          \"yaml_key\": \"Media\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/deploy/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"deploy_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": \"build/deploy\",\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": true,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"deploy/\",\n          \"url_prefix\": \"/deploy/\",\n          \"static_meta_prefix\": \".pocket/static/web/deploy/\",\n          \"map_path\": \"pocket_static/web-deploy.map\",\n          \"name\": \"deploy\",\n          \"yaml_key\": \"Deploy\"\n        }\n      ],\n      \"extra_lambda_routes\": [\n        {\n          \"type\": \"lambda\",\n          \"handler\": \"app.wsgi\",\n          \"path_pattern\": \"/api/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": true,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"api/\",\n          \"url_prefix\": \"/api/\",\n          \"static_meta_prefix\": \".pocket/static/web/api/\",\n          \"map_path\": \"pocket_static/web-api.map\",\n          \"name\": \"api\",\n          \"yaml_key\": \"Api\"\n        }\n      ],\n      \"has_lambda_route\": true,\n      \"has_redirect_from\": true,\n      \"managed_asset_files\": [\n        \"robots.txt\"\n      ],\n      \"hosted_zone_id\": \"Z1\"\n    },\n    \"admin\": {\n      \"name\": \"admin\",\n      \"region\": \"ap-northeast-1\",\n      \"s3_region\": \"ap-northeast-1\",\n      \"stage\": \"dev\",\n      \"domain\": null,\n      \"hosted_zone_id_override\": null,\n      \"slug\": \"dev-cf-admin\",\n      \"bucket_name\": \"dev-cf-pocket\",\n      \"resource_prefix\": \"dev-cf-pocket-\",\n      \"redirect_from\": [],\n      \"routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"/admin\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"admin\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"admin/\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/admin/root/\",\n          \"map_path\": \"pocket_static/admin-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        }\n      ],\n      \"signing_key\": null,\n      \"token_secret\": null,\n      \"basic_auth\": null,\n      \"api_origins\": {},\n      \"managed_assets\": null,\n      \"deploy_hash\": \"\",\n      \"waf\": {\n        \"enable_ip_set\": false,\n        \"managed_rule_groups\": [],\n        \"allow_rules\": [],\n        \"rate_limits\": [\n          {\n            \"path\": null,\n            \"limit\": 10,\n            \"window_sec\": 300,\n            \"action\": \"block\",\n            \"path_positional_constraint\": \"EXACTLY\",\n            \"path_search_string\": \"\"\n          }\n        ],\n        \"header_secret_keys\": []\n      },\n      \"enable_origin_verify\": false,\n      \"yaml_key\": \"DevCfAdmin\",\n      \"bucket_policy_prefix\": \"/admin\",\n      \"default_route\": {\n        \"type\": \"s3\",\n        \"handler\": null,\n        \"path_pattern\": \"\",\n        \"is_default\": true,\n        \"is_spa\": false,\n        \"versioning\": null,\n        \"spa_fallback_html\": \"index.html\",\n        \"versioned_max_age\": 31536000,\n        \"ref\": \"\",\n        \"signed\": false,\n        \"build_cmd\": null,\n        \"upload_dir\": null,\n        \"delete_stale\": true,\n        \"origin_path\": \"/admin\",\n        \"require_token\": false,\n        \"login_path\": \"/api/auth/login\",\n        \"cloudfront_name\": \"admin\",\n        \"sources\": [],\n        \"map\": null,\n        \"is_lambda\": false,\n        \"is_content_hash\": false,\n        \"is_deploy_hash\": false,\n        \"is_object_hash\": false,\n        \"key_prefix\": \"admin/\",\n        \"url_prefix\": \"/\",\n        \"static_meta_prefix\": \".pocket/static/admin/root/\",\n        \"map_path\": \"pocket_static/admin-root.map\",\n        \"name\": \"root\",\n        \"yaml_key\": \"Root\"\n      },\n      \"uploadable_routes\": [],\n      \"extra_s3_routes\": [],\n      \"extra_lambda_routes\": [],\n      \"has_lambda_route\": false,\n      \"has_redirect_from\": false,\n      \"managed_asset_files\": [],\n      \"hosted_zone_id\": null\n    }\n  },\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-cf-pocket-\",\n  \"project_name\": \"cf\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {
+      "admin": {
+        "api_origins": {},
+        "basic_auth": null,
+        "bucket_name": "dev-cf-pocket",
+        "bucket_policy_prefix": "/admin",
+        "default_route": {
+          "build_cmd": null,
+          "cloudfront_name": "admin",
+          "delete_stale": true,
+          "handler": null,
+          "is_content_hash": false,
+          "is_default": true,
+          "is_deploy_hash": false,
+          "is_lambda": false,
+          "is_object_hash": false,
+          "is_spa": false,
+          "key_prefix": "admin/",
+          "login_path": "/api/auth/login",
+          "map": null,
+          "map_path": "pocket_static/admin-root.map",
+          "name": "root",
+          "origin_path": "/admin",
+          "path_pattern": "",
+          "ref": "",
+          "require_token": false,
+          "signed": false,
+          "sources": [],
+          "spa_fallback_html": "index.html",
+          "static_meta_prefix": ".pocket/static/admin/root/",
+          "type": "s3",
+          "upload_dir": null,
+          "url_prefix": "/",
+          "versioned_max_age": 31536000,
+          "versioning": null,
+          "yaml_key": "Root"
+        },
+        "deploy_hash": "",
+        "domain": null,
+        "enable_origin_verify": false,
+        "extra_lambda_routes": [],
+        "extra_s3_routes": [],
+        "has_lambda_route": false,
+        "has_redirect_from": false,
+        "hosted_zone_id": null,
+        "hosted_zone_id_override": null,
+        "managed_asset_files": [],
+        "managed_assets": null,
+        "name": "admin",
+        "redirect_from": [],
+        "region": "ap-northeast-1",
+        "resource_prefix": "dev-cf-pocket-",
+        "routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "admin",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "admin/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/admin-root.map",
+            "name": "root",
+            "origin_path": "/admin",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/admin/root/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          }
+        ],
+        "s3_region": "ap-northeast-1",
+        "signing_key": null,
+        "slug": "dev-cf-admin",
+        "stage": "dev",
+        "token_secret": null,
+        "uploadable_routes": [],
+        "waf": {
+          "allow_rules": [],
+          "enable_ip_set": false,
+          "header_secret_keys": [],
+          "managed_rule_groups": [],
+          "rate_limits": [
+            {
+              "action": "block",
+              "limit": 10,
+              "path": null,
+              "path_positional_constraint": "EXACTLY",
+              "path_search_string": "",
+              "window_sec": 300
+            }
+          ]
+        },
+        "yaml_key": "DevCfAdmin"
+      },
+      "web": {
+        "api_origins": {
+          "app.wsgi": "dev-cf-app-wsgi-api-domain"
+        },
+        "basic_auth": "BASIC_AUTH",
+        "bucket_name": "dev-cf-pocket",
+        "bucket_policy_prefix": "",
+        "default_route": {
+          "build_cmd": "just frontend-build",
+          "cloudfront_name": "web",
+          "delete_stale": false,
+          "handler": null,
+          "is_content_hash": false,
+          "is_default": true,
+          "is_deploy_hash": false,
+          "is_lambda": false,
+          "is_object_hash": false,
+          "is_spa": true,
+          "key_prefix": "spa/",
+          "login_path": "/login",
+          "map": null,
+          "map_path": "pocket_static/web-root.map",
+          "name": "root",
+          "origin_path": "/spa",
+          "path_pattern": "",
+          "ref": "",
+          "require_token": true,
+          "signed": false,
+          "sources": [],
+          "spa_fallback_html": "app.html",
+          "static_meta_prefix": ".pocket/static/web/root/",
+          "type": "s3",
+          "upload_dir": "frontend/dist",
+          "url_prefix": "/",
+          "versioned_max_age": 31536000,
+          "versioning": null,
+          "yaml_key": "Root"
+        },
+        "deploy_hash": "abc1234",
+        "domain": "www.example.com",
+        "enable_origin_verify": true,
+        "extra_lambda_routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": "app.wsgi",
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": true,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "api/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-api.map",
+            "name": "api",
+            "origin_path": "",
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/api/",
+            "type": "lambda",
+            "upload_dir": null,
+            "url_prefix": "/api/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Api"
+          }
+        ],
+        "extra_s3_routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": true,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "assets/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-assets.map",
+            "name": "assets",
+            "origin_path": "",
+            "path_pattern": "/assets/*",
+            "ref": "assets",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/assets/",
+            "type": "s3",
+            "upload_dir": "build/assets",
+            "url_prefix": "/assets/",
+            "versioned_max_age": 3600,
+            "versioning": "content_hash",
+            "yaml_key": "Assets"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": true,
+            "is_spa": false,
+            "key_prefix": "static/",
+            "login_path": "/api/auth/login",
+            "map": "maps/static.map",
+            "map_path": "maps/static.map",
+            "name": "static",
+            "origin_path": "",
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [
+              {
+                "dir": "data",
+                "exclude": [
+                  "*.tmp"
+                ],
+                "hashed": true,
+                "include": [],
+                "name": "data",
+                "prefix": ""
+              },
+              {
+                "dir": "build",
+                "exclude": [],
+                "hashed": false,
+                "include": [
+                  "**/*.js"
+                ],
+                "name": "code",
+                "prefix": "app/"
+              }
+            ],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/static/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/static/",
+            "versioned_max_age": 31536000,
+            "versioning": "object_hash",
+            "yaml_key": "Static"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "uploads/media/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-media.map",
+            "name": "media",
+            "origin_path": "/uploads",
+            "path_pattern": "/media/*",
+            "ref": "",
+            "require_token": false,
+            "signed": true,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/media/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/media/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Media"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": true,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "deploy/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-deploy.map",
+            "name": "deploy",
+            "origin_path": "",
+            "path_pattern": "/deploy/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/deploy/",
+            "type": "s3",
+            "upload_dir": "build/deploy",
+            "url_prefix": "/deploy/",
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash",
+            "yaml_key": "Deploy"
+          }
+        ],
+        "has_lambda_route": true,
+        "has_redirect_from": true,
+        "hosted_zone_id": "Z1",
+        "hosted_zone_id_override": "Z1",
+        "managed_asset_files": [
+          "robots.txt"
+        ],
+        "managed_assets": "fonts",
+        "name": "web",
+        "redirect_from": [
+          {
+            "domain": "example.com",
+            "hosted_zone_id": "ZEXAMPLE",
+            "hosted_zone_id_override": null,
+            "yaml_key": "ExampleCom"
+          },
+          {
+            "domain": "old.example.com",
+            "hosted_zone_id": "Z2",
+            "hosted_zone_id_override": "Z2",
+            "yaml_key": "OldExampleCom"
+          }
+        ],
+        "region": "ap-northeast-1",
+        "resource_prefix": "dev-cf-pocket-",
+        "routes": [
+          {
+            "build_cmd": "just frontend-build",
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": true,
+            "key_prefix": "spa/",
+            "login_path": "/login",
+            "map": null,
+            "map_path": "pocket_static/web-root.map",
+            "name": "root",
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": true,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "app.html",
+            "static_meta_prefix": ".pocket/static/web/root/",
+            "type": "s3",
+            "upload_dir": "frontend/dist",
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": "app.wsgi",
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": true,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "api/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-api.map",
+            "name": "api",
+            "origin_path": "",
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/api/",
+            "type": "lambda",
+            "upload_dir": null,
+            "url_prefix": "/api/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Api"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": true,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "assets/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-assets.map",
+            "name": "assets",
+            "origin_path": "",
+            "path_pattern": "/assets/*",
+            "ref": "assets",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/assets/",
+            "type": "s3",
+            "upload_dir": "build/assets",
+            "url_prefix": "/assets/",
+            "versioned_max_age": 3600,
+            "versioning": "content_hash",
+            "yaml_key": "Assets"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": true,
+            "is_spa": false,
+            "key_prefix": "static/",
+            "login_path": "/api/auth/login",
+            "map": "maps/static.map",
+            "map_path": "maps/static.map",
+            "name": "static",
+            "origin_path": "",
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [
+              {
+                "dir": "data",
+                "exclude": [
+                  "*.tmp"
+                ],
+                "hashed": true,
+                "include": [],
+                "name": "data",
+                "prefix": ""
+              },
+              {
+                "dir": "build",
+                "exclude": [],
+                "hashed": false,
+                "include": [
+                  "**/*.js"
+                ],
+                "name": "code",
+                "prefix": "app/"
+              }
+            ],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/static/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/static/",
+            "versioned_max_age": 31536000,
+            "versioning": "object_hash",
+            "yaml_key": "Static"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "uploads/media/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-media.map",
+            "name": "media",
+            "origin_path": "/uploads",
+            "path_pattern": "/media/*",
+            "ref": "",
+            "require_token": false,
+            "signed": true,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/media/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/media/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Media"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": true,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "deploy/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-deploy.map",
+            "name": "deploy",
+            "origin_path": "",
+            "path_pattern": "/deploy/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/deploy/",
+            "type": "s3",
+            "upload_dir": "build/deploy",
+            "url_prefix": "/deploy/",
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash",
+            "yaml_key": "Deploy"
+          }
+        ],
+        "s3_region": "ap-northeast-1",
+        "signing_key": "SIGNING_KEY",
+        "slug": "dev-cf-web",
+        "stage": "dev",
+        "token_secret": "TOKEN_SECRET",
+        "uploadable_routes": [
+          {
+            "build_cmd": "just frontend-build",
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": true,
+            "key_prefix": "spa/",
+            "login_path": "/login",
+            "map": null,
+            "map_path": "pocket_static/web-root.map",
+            "name": "root",
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": true,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "app.html",
+            "static_meta_prefix": ".pocket/static/web/root/",
+            "type": "s3",
+            "upload_dir": "frontend/dist",
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": false,
+            "handler": null,
+            "is_content_hash": true,
+            "is_default": false,
+            "is_deploy_hash": false,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "assets/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-assets.map",
+            "name": "assets",
+            "origin_path": "",
+            "path_pattern": "/assets/*",
+            "ref": "assets",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/assets/",
+            "type": "s3",
+            "upload_dir": "build/assets",
+            "url_prefix": "/assets/",
+            "versioned_max_age": 3600,
+            "versioning": "content_hash",
+            "yaml_key": "Assets"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": true,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "deploy/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-deploy.map",
+            "name": "deploy",
+            "origin_path": "",
+            "path_pattern": "/deploy/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/deploy/",
+            "type": "s3",
+            "upload_dir": "build/deploy",
+            "url_prefix": "/deploy/",
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash",
+            "yaml_key": "Deploy"
+          }
+        ],
+        "waf": {
+          "allow_rules": [
+            {
+              "header": null,
+              "path": "/healthz",
+              "path_positional_constraint": "EXACTLY",
+              "path_search_string": "/healthz"
+            },
+            {
+              "header": "SMOKE_ALLOW",
+              "path": null,
+              "path_positional_constraint": "EXACTLY",
+              "path_search_string": ""
+            },
+            {
+              "header": "HOOK_ALLOW",
+              "path": "/api/hook*",
+              "path_positional_constraint": "STARTS_WITH",
+              "path_search_string": "/api/hook"
+            }
+          ],
+          "enable_ip_set": true,
+          "header_secret_keys": [
+            "HOOK_ALLOW",
+            "SMOKE_ALLOW"
+          ],
+          "managed_rule_groups": [
+            "AWSManagedRulesCommonRuleSet"
+          ],
+          "rate_limits": [
+            {
+              "action": "block",
+              "limit": 100,
+              "path": null,
+              "path_positional_constraint": "EXACTLY",
+              "path_search_string": "",
+              "window_sec": 300
+            },
+            {
+              "action": "count",
+              "limit": 2000,
+              "path": "/api/*",
+              "path_positional_constraint": "STARTS_WITH",
+              "path_search_string": "/api/",
+              "window_sec": 60
+            }
+          ]
+        },
+        "yaml_key": "DevCfWeb"
+      }
+    },
+    "container": {
+      "app": {
+        "allowed_sm_resources": [
+          "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf",
+          "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+        ],
+        "allowed_ssm_resources": [],
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": "dev-cf-pocket-app-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "dev-cf-pocket-",
+        "external_roles": false,
+        "handlers": {
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "disable_execute_api_endpoint": false,
+              "domain": null,
+              "hosted_zone_id": null,
+              "hosted_zone_id_override": null
+            },
+            "cloudformation_cert_ref_name": "WsgiCertificate",
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "export_api_domain": "dev-cf-app-wsgi-api-domain",
+            "function_name": "dev-cf-pocket-app-wsgi",
+            "key": "wsgi",
+            "log_group_name": "/aws/lambda/dev-cf-pocket-app-wsgi",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {},
+        "inbound_runtime_config": {},
+        "lambda_architecture": "x86_64",
+        "name": "app",
+        "namespace": "pocket",
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-northeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "dev-cf-pocket-",
+        "secrets": {
+          "allowed_sm_resources": [
+            "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf"
+          ],
+          "allowed_ssm_resources": [],
+          "extra_resources": [],
+          "managed": {
+            "BASIC_AUTH": {
+              "options": {
+                "username": "admin"
+              },
+              "shared": false,
+              "type": "basic_auth_credential"
+            },
+            "SIGNING_KEY": {
+              "options": {},
+              "shared": false,
+              "type": "cloudfront_signing_key"
+            },
+            "TOKEN_SECRET": {
+              "options": {},
+              "shared": false,
+              "type": "spa_token_secret"
+            }
+          },
+          "pocket_key": "dev-cf-app-pocket",
+          "project_name": "cf",
+          "region": "ap-northeast-1",
+          "require_list_secrets": false,
+          "stage": "dev",
+          "store": "sm",
+          "user": {}
+        },
+        "shared_secrets": {
+          "allowed_sm_resources": [
+            "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+          ],
+          "allowed_ssm_resources": [],
+          "extra_resources": [],
+          "managed": {
+            "HOOK_ALLOW": {
+              "options": {},
+              "shared": false,
+              "type": "waf_allow_secret"
+            },
+            "POCKET_ORIGIN_VERIFY_SECRET": {
+              "options": {},
+              "shared": false,
+              "type": "origin_verify_secret"
+            },
+            "SMOKE_ALLOW": {
+              "options": {},
+              "shared": false,
+              "type": "waf_allow_secret"
+            }
+          },
+          "pocket_key": "dev-cf-pocket",
+          "project_name": "cf",
+          "region": "ap-northeast-1",
+          "require_list_secrets": false,
+          "stage": "dev",
+          "store": "sm",
+          "user": {}
+        },
+        "signing_key_imports": {
+          "SIGNING_KEY_ID": "dev-cf-web-public-key-id"
+        },
+        "slug": "dev-cf",
+        "stage": "dev",
+        "use_efs": false,
+        "use_route53": true,
+        "use_s3": true,
+        "use_ses": false,
+        "use_sqs": false,
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "external_role_prefix": "dev-cf-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "cf",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "cf",
+    "rds": null,
+    "s3": {
+      "bucket_name": "dev-cf-pocket",
+      "cors": null,
+      "lifecycle_rules": [],
+      "region": "ap-northeast-1",
+      "versioning": false
+    },
+    "scheduler": {},
+    "secrets": {
+      "allowed_sm_resources": [
+        "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+      ],
+      "allowed_ssm_resources": [],
+      "extra_resources": [],
+      "managed": {
+        "HOOK_ALLOW": {
+          "options": {},
+          "shared": false,
+          "type": "waf_allow_secret"
+        },
+        "POCKET_ORIGIN_VERIFY_SECRET": {
+          "options": {},
+          "shared": false,
+          "type": "origin_verify_secret"
+        },
+        "SMOKE_ALLOW": {
+          "options": {},
+          "shared": false,
+          "type": "waf_allow_secret"
+        }
+      },
+      "pocket_key": "dev-cf-pocket",
+      "project_name": "cf",
+      "region": "ap-northeast-1",
+      "require_list_secrets": false,
+      "stage": "dev",
+      "store": "sm",
+      "user": {}
+    },
+    "ses": null,
+    "stage": "dev",
+    "tidb": null,
+    "upstash": null
+  },
+  "stage": "dev"
+}

@@ -1783,10 +1783,12 @@ dependencies = [
 name = "magic-pocket-settings"
 version = "0.1.0"
 dependencies = [
+ "magic-pocket-settings",
  "regex",
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "sha2",
  "thiserror",
  "toml",
 ]

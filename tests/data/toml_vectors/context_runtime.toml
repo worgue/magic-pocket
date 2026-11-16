@@ -1,0 +1,43 @@
+# Lambda 上 (AWS_LAMBDA_FUNCTION_NAME あり) では git を呼ばず DEPLOY_HASH = unknown。
+# permissions boundary は container に無ければ inbound の接続時に
+# FORGE_PERMISSIONS_BOUNDARY_ARN を使う
+# vector-env: AWS_LAMBDA_FUNCTION_NAME=fn
+# vector-env: FORGE_PERMISSIONS_BOUNDARY_ARN=arn:aws:iam::123456789012:policy/forge
+[general]
+region = "us-east-1"
+project_name = "rt"
+stages = ["dev"]
+
+[s3]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.handlers.mail]
+command = "app.mail"
+sqs = { dead_letter_alert = { eventbridge = true } }
+
+[container.app.handlers.mail2]
+command = "app.mail"
+sqs = { dead_letter_alert = { enabled = false } }
+
+[cloudfront.web]
+
+[[cloudfront.web.routes]]
+is_default = true
+versioning = "deploy_hash"
+origin_path = "/site"
+
+[inbound.a]
+domain = "b.example.com"
+recipients = ["x@b.example.com"]
+handler = "app.mail"
+retention_days = 14
+delivery_alert = { email = "ops@example.com" }
+
+[inbound.b]
+domain = "b.example.com"
+recipients = ["y@b.example.com"]
+handler = "app.mail2"
+retention_days = 14
+delivery_alert = { email = "ops@example.com" }

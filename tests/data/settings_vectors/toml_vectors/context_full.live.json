@@ -1,0 +1,900 @@
+{
+  "context": {
+    "env": {
+      "DEPLOY_HASH": "env-hash-1",
+      "NEON_API_KEY": "ctx-neon-key",
+      "POCKET_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/env-boundary"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_vectors/context_full.toml",
+  "masked": {
+    "backup": null,
+    "cloudfront": {
+      "web": {
+        "basic_auth": null,
+        "domain": "www.example.com",
+        "enable_origin_verify": false,
+        "hosted_zone_id_override": null,
+        "managed_assets": null,
+        "redirect_from": [],
+        "routes": [
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": true,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": true,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/media/*",
+            "ref": "media",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": "web.wsgi",
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "lambda",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash"
+          }
+        ],
+        "signing_key": "SIGNING",
+        "token_secret": null,
+        "waf": null
+      }
+    },
+    "container": {
+      "web": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": {
+          "caches": {
+            "default": {
+              "location_subdir": "{stage}/cache",
+              "store": "efs"
+            },
+            "local": {
+              "location_subdir": "{stage}",
+              "store": "locmem"
+            }
+          },
+          "project_dir": null,
+          "settings": {},
+          "storages": {
+            "default": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "media",
+              "static": false,
+              "store": "s3"
+            },
+            "staticfiles": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "static",
+              "static": true,
+              "store": "s3"
+            }
+          }
+        },
+        "dockerfile_path": "web/Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "command": "app.mail",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": "ops@example.com",
+                "enabled": true,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "domain": "api.project.com",
+              "hosted_zone_id_override": null
+            },
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [
+            "plain-name",
+            "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x",
+            "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+          ],
+          "managed": {
+            "DATABASE_URL": {
+              "options": {},
+              "shared": false,
+              "type": "neon_database_url"
+            },
+            "SECRET_KEY": {
+              "options": {},
+              "shared": true,
+              "type": "password"
+            },
+            "SIGNING": {
+              "options": {
+                "id_environ_suffix": 1
+              },
+              "shared": false,
+              "type": "cloudfront_signing_key"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {
+            "EXTERNAL_API": {
+              "name": "{stage}/external/api",
+              "store": null,
+              "type": null
+            },
+            "PARAM": {
+              "name": "plain/param",
+              "store": "ssm",
+              "type": null
+            },
+            "TIDB_URL": {
+              "name": null,
+              "store": "ssm",
+              "type": "tidb_database_url"
+            }
+          }
+        },
+        "vpc": {
+          "efs": {
+            "access_point_path": "/lambda",
+            "local_mount_path": "/mnt/data"
+          },
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      "worker": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "worker/Dockerfile",
+        "ecr_name": null,
+        "envs": {
+          "DEPLOY_HASH": "pinned"
+        },
+        "handlers": {
+          "jobs": {
+            "apigateway": null,
+            "command": "app.jobs",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": null,
+                "enabled": false,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/worker-boundary",
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "SECRET_KEY": {
+              "options": {},
+              "shared": true,
+              "type": "password"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {}
+        },
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "ctx",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "live"
+      ]
+    },
+    "iam": {
+      "external_roles": true,
+      "namespace": "myorg"
+    },
+    "inbound": {
+      "support": {
+        "delivery_alert": {
+          "email": "ops@example.com",
+          "enabled": true,
+          "eventbridge": false
+        },
+        "domain": "mail.example.com",
+        "enabled": true,
+        "handler": "web.mail",
+        "hosted_zone_id_override": null,
+        "import_prefix": "imports/",
+        "manage_dns": true,
+        "metadata_prefix": "metadata/",
+        "raw_prefix": "raw/",
+        "recipients": [
+          "support@mail.example.com"
+        ],
+        "retention_days": 30,
+        "rule_set": null,
+        "scan_enabled": true,
+        "tls_policy": "Require"
+      }
+    },
+    "neon": {
+      "api_key": "****",
+      "branch_name": "{stage}-{project}",
+      "parent_branch_name": null,
+      "pg_version": 15,
+      "project_name": "ctx-neon",
+      "provisioning": "deploy"
+    },
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": {
+        "cloudfront": "web",
+        "methods": [
+          "GET"
+        ]
+      },
+      "lifecycle_rules": [
+        {
+          "expiration_days": 1,
+          "id": "tmp",
+          "noncurrent_version_expiration_days": null,
+          "prefix": "tmp/"
+        }
+      ],
+      "versioning": true
+    },
+    "scheduler": {
+      "schedules": {
+        "drain": {
+          "cron": null,
+          "handler": "worker.jobs",
+          "message": {
+            "command": "drain",
+            "label": "日本語"
+          },
+          "rate": "5 minutes",
+          "schedule_expression": "rate(5 minutes)",
+          "scheduler": "pocket.sqs_scheduler"
+        }
+      }
+    },
+    "ses": null,
+    "slug": "live-ctx",
+    "stage": "live",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": {
+        "access_point_path": "/lambda",
+        "local_mount_path": "/mnt/data"
+      },
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "settings": {
+    "backup": null,
+    "cloudfront": {
+      "web": {
+        "basic_auth": null,
+        "domain": "www.example.com",
+        "enable_origin_verify": false,
+        "hosted_zone_id_override": null,
+        "managed_assets": null,
+        "redirect_from": [],
+        "routes": [
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": true,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": "/spa",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": true,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/media/*",
+            "ref": "media",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": "web.wsgi",
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/api/*",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "lambda",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": null
+          },
+          {
+            "build": null,
+            "delete_stale": null,
+            "handler": null,
+            "is_default": false,
+            "is_spa": false,
+            "login_path": "/api/auth/login",
+            "map": null,
+            "origin_path": null,
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "type": "s3",
+            "upload_dir": null,
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash"
+          }
+        ],
+        "signing_key": "SIGNING",
+        "token_secret": null,
+        "waf": null
+      }
+    },
+    "container": {
+      "web": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": {
+          "caches": {
+            "default": {
+              "location_subdir": "{stage}/cache",
+              "store": "efs"
+            },
+            "local": {
+              "location_subdir": "{stage}",
+              "store": "locmem"
+            }
+          },
+          "project_dir": null,
+          "settings": {},
+          "storages": {
+            "default": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "media",
+              "static": false,
+              "store": "s3"
+            },
+            "staticfiles": {
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "static",
+              "static": true,
+              "store": "s3"
+            }
+          }
+        },
+        "dockerfile_path": "web/Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "command": "app.mail",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": "ops@example.com",
+                "enabled": true,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "domain": "api.project.com",
+              "hosted_zone_id_override": null
+            },
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [
+            "plain-name",
+            "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x",
+            "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+          ],
+          "managed": {
+            "DATABASE_URL": {
+              "options": {},
+              "shared": false,
+              "type": "neon_database_url"
+            },
+            "SECRET_KEY": {
+              "options": {},
+              "shared": true,
+              "type": "password"
+            },
+            "SIGNING": {
+              "options": {
+                "id_environ_suffix": 1
+              },
+              "shared": false,
+              "type": "cloudfront_signing_key"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {
+            "EXTERNAL_API": {
+              "name": "{stage}/external/api",
+              "store": null,
+              "type": null
+            },
+            "PARAM": {
+              "name": "plain/param",
+              "store": "ssm",
+              "type": null
+            },
+            "TIDB_URL": {
+              "name": null,
+              "store": "ssm",
+              "type": "tidb_database_url"
+            }
+          }
+        },
+        "vpc": {
+          "efs": {
+            "access_point_path": "/lambda",
+            "local_mount_path": "/mnt/data"
+          },
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      },
+      "worker": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "worker/Dockerfile",
+        "ecr_name": null,
+        "envs": {
+          "DEPLOY_HASH": "pinned"
+        },
+        "handlers": {
+          "jobs": {
+            "apigateway": null,
+            "command": "app.jobs",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": null,
+                "enabled": false,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/worker-boundary",
+        "platform": "linux/amd64",
+        "secrets": {
+          "extra_resources": [],
+          "managed": {
+            "SECRET_KEY": {
+              "options": {},
+              "shared": true,
+              "type": "password"
+            }
+          },
+          "pocket_key_format": "{stage}-{project}-{namespace}",
+          "require_list_secrets": false,
+          "store": "ssm",
+          "user": {}
+        },
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "ctx",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "live"
+      ]
+    },
+    "iam": {
+      "external_roles": true,
+      "namespace": "myorg"
+    },
+    "inbound": {
+      "support": {
+        "delivery_alert": {
+          "email": "ops@example.com",
+          "enabled": true,
+          "eventbridge": false
+        },
+        "domain": "mail.example.com",
+        "enabled": true,
+        "handler": "web.mail",
+        "hosted_zone_id_override": null,
+        "import_prefix": "imports/",
+        "manage_dns": true,
+        "metadata_prefix": "metadata/",
+        "raw_prefix": "raw/",
+        "recipients": [
+          "support@mail.example.com"
+        ],
+        "retention_days": 30,
+        "rule_set": null,
+        "scan_enabled": true,
+        "tls_policy": "Require"
+      }
+    },
+    "neon": {
+      "api_key": "ctx-neon-key",
+      "branch_name": "{stage}-{project}",
+      "parent_branch_name": null,
+      "pg_version": 15,
+      "project_name": "ctx-neon",
+      "provisioning": "deploy"
+    },
+    "rds": null,
+    "s3": {
+      "bucket_name_format": "{stage}-{project}-{namespace}",
+      "cors": {
+        "cloudfront": "web",
+        "methods": [
+          "GET"
+        ]
+      },
+      "lifecycle_rules": [
+        {
+          "expiration_days": 1,
+          "id": "tmp",
+          "noncurrent_version_expiration_days": null,
+          "prefix": "tmp/"
+        }
+      ],
+      "versioning": true
+    },
+    "scheduler": {
+      "schedules": {
+        "drain": {
+          "cron": null,
+          "handler": "worker.jobs",
+          "message": {
+            "command": "drain",
+            "label": "日本語"
+          },
+          "rate": "5 minutes",
+          "schedule_expression": "rate(5 minutes)",
+          "scheduler": "pocket.sqs_scheduler"
+        }
+      }
+    },
+    "ses": null,
+    "slug": "live-ctx",
+    "stage": "live",
+    "tidb": null,
+    "upstash": null,
+    "vpc": {
+      "efs": {
+        "access_point_path": "/lambda",
+        "local_mount_path": "/mnt/data"
+      },
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "stage": "live"
+}

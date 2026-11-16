@@ -1,0 +1,476 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "example-tidb/pocket.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"pocket-example\",\n    \"stages\": [\n      \"dev\",\n      \"sandbox\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": {\n        \"store\": \"ssm\",\n        \"managed\": {\n          \"SECRET_KEY\": {\n            \"type\": \"password\",\n            \"options\": {\n              \"length\": 50\n            },\n            \"shared\": false\n          },\n          \"DJANGO_SUPERUSER_PASSWORD\": {\n            \"type\": \"password\",\n            \"options\": {\n              \"length\": 16\n            },\n            \"shared\": false\n          }\n        },\n        \"user\": {},\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-northeast-1\",\n        \"pocket_key\": \"sandbox-pocket-example-main-pocket\",\n        \"stage\": \"sandbox\",\n        \"project_name\": \"pocket-example\",\n        \"allowed_sm_resources\": [],\n        \"allowed_ssm_resources\": [\n          \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-main-pocket/*\"\n        ]\n      },\n      \"shared_secrets\": {\n        \"store\": \"ssm\",\n        \"managed\": {},\n        \"user\": {\n          \"DATABASE_URL\": {\n            \"name\": \"/sandbox-pocket-example-pocket-user/tidb_database_url\",\n            \"type\": \"tidb_database_url\",\n            \"store\": null\n          }\n        },\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-northeast-1\",\n        \"pocket_key\": \"sandbox-pocket-example-pocket\",\n        \"stage\": \"sandbox\",\n        \"project_name\": \"pocket-example\",\n        \"allowed_sm_resources\": [],\n        \"allowed_ssm_resources\": [\n          \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url\"\n        ]\n      },\n      \"dockerfile_path\": \"pocket.Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": {\n        \"storages\": {\n          \"default\": {\n            \"store\": \"filesystem\",\n            \"location\": null,\n            \"static\": false,\n            \"manifest\": false,\n            \"options\": {},\n            \"distribution\": null,\n            \"route\": null,\n            \"deploy_hash\": false,\n            \"deploy_hash_prefix\": null,\n            \"object_hash\": false,\n            \"publish\": \"deploy\",\n            \"link\": false\n          },\n          \"staticfiles\": {\n            \"store\": \"s3\",\n            \"location\": null,\n            \"static\": true,\n            \"manifest\": false,\n            \"options\": {},\n            \"distribution\": \"web\",\n            \"route\": \"static\",\n            \"deploy_hash\": true,\n            \"deploy_hash_prefix\": \"/static/\",\n            \"object_hash\": false,\n            \"publish\": \"deploy\",\n            \"link\": false\n          }\n        },\n        \"caches\": {\n          \"default\": {\n            \"store\": \"locmem\",\n            \"location_subdir\": \"{stage}\",\n            \"location\": null\n          }\n        },\n        \"settings\": {},\n        \"project_dir\": null\n      },\n      \"region\": \"ap-northeast-1\",\n      \"slug\": \"sandbox-pocket-example\",\n      \"stage\": \"sandbox\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"sandbox-pocket-example-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket.django.lambda_handlers.wsgi_handler\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": {\n            \"domain\": null,\n            \"create_records\": true,\n            \"hosted_zone_id_override\": null,\n            \"disable_execute_api_endpoint\": false,\n            \"hosted_zone_id\": null\n          },\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"sandbox-pocket-example-pocket-main-wsgi\",\n          \"log_group_name\": \"/aws/lambda/sandbox-pocket-example-pocket-main-wsgi\",\n          \"export_api_domain\": \"sandbox-pocket-example-main-wsgi-api-domain\",\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        },\n        \"management\": {\n          \"command\": \"pocket.django.lambda_handlers.management_command_handler\",\n          \"timeout\": 600,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"management\",\n          \"function_name\": \"sandbox-pocket-example-pocket-main-management\",\n          \"log_group_name\": \"/aws/lambda/sandbox-pocket-example-pocket-main-management\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"ManagementCertificate\"\n        }\n      },\n      \"ecr_name\": \"sandbox-pocket-example-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": true,\n      \"use_ses\": false,\n      \"use_route53\": true,\n      \"use_sqs\": false,\n      \"use_efs\": false,\n      \"permissions_boundary\": \"arn:aws:iam::123456789012:policy/example-permissions-boundary\",\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"sandbox-pocket-example-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"depot\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [],\n      \"allowed_ssm_resources\": [\n        \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-main-pocket/*\",\n        \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url\"\n      ],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": {\n    \"store\": \"ssm\",\n    \"managed\": {},\n    \"user\": {\n      \"DATABASE_URL\": {\n        \"name\": \"/sandbox-pocket-example-pocket-user/tidb_database_url\",\n        \"type\": \"tidb_database_url\",\n        \"store\": null\n      }\n    },\n    \"extra_resources\": [],\n    \"require_list_secrets\": false,\n    \"region\": \"ap-northeast-1\",\n    \"pocket_key\": \"sandbox-pocket-example-pocket\",\n    \"stage\": \"sandbox\",\n    \"project_name\": \"pocket-example\",\n    \"allowed_sm_resources\": [],\n    \"allowed_ssm_resources\": [\n      \"arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url\"\n    ]\n  },\n  \"neon\": null,\n  \"tidb\": {\n    \"public_key\": \"****\",\n    \"private_key\": \"****\",\n    \"tidb_project\": null,\n    \"cluster_name\": \"pocket-example\",\n    \"database_name\": \"pocket_example_sandbox\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"pocket-example\",\n    \"provisioning\": \"command\"\n  },\n  \"upstash\": null,\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": {\n    \"region\": \"ap-northeast-1\",\n    \"bucket_name\": \"sandbox-pocket-example-pocket\",\n    \"cors\": null,\n    \"versioning\": false,\n    \"lifecycle_rules\": []\n  },\n  \"cloudfront\": {\n    \"web\": {\n      \"name\": \"web\",\n      \"region\": \"ap-northeast-1\",\n      \"s3_region\": \"ap-northeast-1\",\n      \"stage\": \"sandbox\",\n      \"domain\": \"tidb.sandbox.magic-pocket.example.com\",\n      \"hosted_zone_id_override\": null,\n      \"slug\": \"sandbox-pocket-example-web\",\n      \"bucket_name\": \"sandbox-pocket-example-pocket\",\n      \"resource_prefix\": \"sandbox-pocket-example-pocket-\",\n      \"redirect_from\": [],\n      \"routes\": [\n        {\n          \"type\": \"lambda\",\n          \"handler\": \"main.wsgi\",\n          \"path_pattern\": \"\",\n          \"is_default\": true,\n          \"is_spa\": false,\n          \"versioning\": null,\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": true,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": false,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"\",\n          \"url_prefix\": \"/\",\n          \"static_meta_prefix\": \".pocket/static/web/root/\",\n          \"map_path\": \"pocket_static/web-root.map\",\n          \"name\": \"root\",\n          \"yaml_key\": \"Root\"\n        },\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/static/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"deploy_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"static\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"/static\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": true,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"static/static/\",\n          \"url_prefix\": \"/static/\",\n          \"static_meta_prefix\": \".pocket/static/web/static/\",\n          \"map_path\": \"pocket_static/web-static.map\",\n          \"name\": \"static\",\n          \"yaml_key\": \"Static\"\n        }\n      ],\n      \"signing_key\": null,\n      \"token_secret\": null,\n      \"basic_auth\": null,\n      \"api_origins\": {\n        \"main.wsgi\": \"sandbox-pocket-example-main-wsgi-api-domain\"\n      },\n      \"managed_assets\": null,\n      \"deploy_hash\": \"abc1234\",\n      \"waf\": null,\n      \"enable_origin_verify\": false,\n      \"yaml_key\": \"SandboxPocketExampleWeb\",\n      \"bucket_policy_prefix\": \"/static\",\n      \"default_route\": {\n        \"type\": \"lambda\",\n        \"handler\": \"main.wsgi\",\n        \"path_pattern\": \"\",\n        \"is_default\": true,\n        \"is_spa\": false,\n        \"versioning\": null,\n        \"spa_fallback_html\": \"index.html\",\n        \"versioned_max_age\": 31536000,\n        \"ref\": \"\",\n        \"signed\": false,\n        \"build_cmd\": null,\n        \"upload_dir\": null,\n        \"delete_stale\": true,\n        \"origin_path\": \"\",\n        \"require_token\": false,\n        \"login_path\": \"/api/auth/login\",\n        \"cloudfront_name\": \"web\",\n        \"sources\": [],\n        \"map\": null,\n        \"is_lambda\": true,\n        \"is_content_hash\": false,\n        \"is_deploy_hash\": false,\n        \"is_object_hash\": false,\n        \"key_prefix\": \"\",\n        \"url_prefix\": \"/\",\n        \"static_meta_prefix\": \".pocket/static/web/root/\",\n        \"map_path\": \"pocket_static/web-root.map\",\n        \"name\": \"root\",\n        \"yaml_key\": \"Root\"\n      },\n      \"uploadable_routes\": [],\n      \"extra_s3_routes\": [\n        {\n          \"type\": \"s3\",\n          \"handler\": null,\n          \"path_pattern\": \"/static/*\",\n          \"is_default\": false,\n          \"is_spa\": false,\n          \"versioning\": \"deploy_hash\",\n          \"spa_fallback_html\": \"index.html\",\n          \"versioned_max_age\": 31536000,\n          \"ref\": \"static\",\n          \"signed\": false,\n          \"build_cmd\": null,\n          \"upload_dir\": null,\n          \"delete_stale\": true,\n          \"origin_path\": \"/static\",\n          \"require_token\": false,\n          \"login_path\": \"/api/auth/login\",\n          \"cloudfront_name\": \"web\",\n          \"sources\": [],\n          \"map\": null,\n          \"is_lambda\": false,\n          \"is_content_hash\": false,\n          \"is_deploy_hash\": true,\n          \"is_object_hash\": false,\n          \"key_prefix\": \"static/static/\",\n          \"url_prefix\": \"/static/\",\n          \"static_meta_prefix\": \".pocket/static/web/static/\",\n          \"map_path\": \"pocket_static/web-static.map\",\n          \"name\": \"static\",\n          \"yaml_key\": \"Static\"\n        }\n      ],\n      \"extra_lambda_routes\": [],\n      \"has_lambda_route\": true,\n      \"has_redirect_from\": false,\n      \"managed_asset_files\": [],\n      \"hosted_zone_id\": \"ZSANDBOX\"\n    }\n  },\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"sandbox-pocket-example-pocket-\",\n  \"project_name\": \"pocket-example\",\n  \"stage\": \"sandbox\"\n}",
+  "result": {
+    "backup": null,
+    "cloudfront": {
+      "web": {
+        "api_origins": {
+          "main.wsgi": "sandbox-pocket-example-main-wsgi-api-domain"
+        },
+        "basic_auth": null,
+        "bucket_name": "sandbox-pocket-example-pocket",
+        "bucket_policy_prefix": "/static",
+        "default_route": {
+          "build_cmd": null,
+          "cloudfront_name": "web",
+          "delete_stale": true,
+          "handler": "main.wsgi",
+          "is_content_hash": false,
+          "is_default": true,
+          "is_deploy_hash": false,
+          "is_lambda": true,
+          "is_object_hash": false,
+          "is_spa": false,
+          "key_prefix": "",
+          "login_path": "/api/auth/login",
+          "map": null,
+          "map_path": "pocket_static/web-root.map",
+          "name": "root",
+          "origin_path": "",
+          "path_pattern": "",
+          "ref": "",
+          "require_token": false,
+          "signed": false,
+          "sources": [],
+          "spa_fallback_html": "index.html",
+          "static_meta_prefix": ".pocket/static/web/root/",
+          "type": "lambda",
+          "upload_dir": null,
+          "url_prefix": "/",
+          "versioned_max_age": 31536000,
+          "versioning": null,
+          "yaml_key": "Root"
+        },
+        "deploy_hash": "abc1234",
+        "domain": "tidb.sandbox.magic-pocket.example.com",
+        "enable_origin_verify": false,
+        "extra_lambda_routes": [],
+        "extra_s3_routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": true,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "static/static/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-static.map",
+            "name": "static",
+            "origin_path": "/static",
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/static/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/static/",
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash",
+            "yaml_key": "Static"
+          }
+        ],
+        "has_lambda_route": true,
+        "has_redirect_from": false,
+        "hosted_zone_id": "ZSANDBOX",
+        "hosted_zone_id_override": null,
+        "managed_asset_files": [],
+        "managed_assets": null,
+        "name": "web",
+        "redirect_from": [],
+        "region": "ap-northeast-1",
+        "resource_prefix": "sandbox-pocket-example-pocket-",
+        "routes": [
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": "main.wsgi",
+            "is_content_hash": false,
+            "is_default": true,
+            "is_deploy_hash": false,
+            "is_lambda": true,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-root.map",
+            "name": "root",
+            "origin_path": "",
+            "path_pattern": "",
+            "ref": "",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/root/",
+            "type": "lambda",
+            "upload_dir": null,
+            "url_prefix": "/",
+            "versioned_max_age": 31536000,
+            "versioning": null,
+            "yaml_key": "Root"
+          },
+          {
+            "build_cmd": null,
+            "cloudfront_name": "web",
+            "delete_stale": true,
+            "handler": null,
+            "is_content_hash": false,
+            "is_default": false,
+            "is_deploy_hash": true,
+            "is_lambda": false,
+            "is_object_hash": false,
+            "is_spa": false,
+            "key_prefix": "static/static/",
+            "login_path": "/api/auth/login",
+            "map": null,
+            "map_path": "pocket_static/web-static.map",
+            "name": "static",
+            "origin_path": "/static",
+            "path_pattern": "/static/*",
+            "ref": "static",
+            "require_token": false,
+            "signed": false,
+            "sources": [],
+            "spa_fallback_html": "index.html",
+            "static_meta_prefix": ".pocket/static/web/static/",
+            "type": "s3",
+            "upload_dir": null,
+            "url_prefix": "/static/",
+            "versioned_max_age": 31536000,
+            "versioning": "deploy_hash",
+            "yaml_key": "Static"
+          }
+        ],
+        "s3_region": "ap-northeast-1",
+        "signing_key": null,
+        "slug": "sandbox-pocket-example-web",
+        "stage": "sandbox",
+        "token_secret": null,
+        "uploadable_routes": [],
+        "waf": null,
+        "yaml_key": "SandboxPocketExampleWeb"
+      }
+    },
+    "container": {
+      "main": {
+        "allowed_sm_resources": [],
+        "allowed_ssm_resources": [
+          "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-main-pocket/*",
+          "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url"
+        ],
+        "build": {
+          "backend": "depot",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": {
+          "caches": {
+            "default": {
+              "location": null,
+              "location_subdir": "{stage}",
+              "store": "locmem"
+            }
+          },
+          "project_dir": null,
+          "settings": {},
+          "storages": {
+            "default": {
+              "deploy_hash": false,
+              "deploy_hash_prefix": null,
+              "distribution": null,
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "object_hash": false,
+              "options": {},
+              "publish": "deploy",
+              "route": null,
+              "static": false,
+              "store": "filesystem"
+            },
+            "staticfiles": {
+              "deploy_hash": true,
+              "deploy_hash_prefix": "/static/",
+              "distribution": "web",
+              "link": false,
+              "location": null,
+              "manifest": false,
+              "object_hash": false,
+              "options": {},
+              "publish": "deploy",
+              "route": "static",
+              "static": true,
+              "store": "s3"
+            }
+          }
+        },
+        "dockerfile_path": "pocket.Dockerfile",
+        "ecr_name": "sandbox-pocket-example-pocket-main-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "sandbox-pocket-example-pocket-",
+        "external_roles": false,
+        "handlers": {
+          "management": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "ManagementCertificate",
+            "command": "pocket.django.lambda_handlers.management_command_handler",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "sandbox-pocket-example-pocket-main-management",
+            "key": "management",
+            "log_group_name": "/aws/lambda/sandbox-pocket-example-pocket-main-management",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 600
+          },
+          "wsgi": {
+            "apigateway": {
+              "create_records": true,
+              "disable_execute_api_endpoint": false,
+              "domain": null,
+              "hosted_zone_id": null,
+              "hosted_zone_id_override": null
+            },
+            "cloudformation_cert_ref_name": "WsgiCertificate",
+            "command": "pocket.django.lambda_handlers.wsgi_handler",
+            "envs": {},
+            "export_api_domain": "sandbox-pocket-example-main-wsgi-api-domain",
+            "function_name": "sandbox-pocket-example-pocket-main-wsgi",
+            "key": "wsgi",
+            "log_group_name": "/aws/lambda/sandbox-pocket-example-pocket-main-wsgi",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": null,
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {},
+        "inbound_runtime_config": {},
+        "lambda_architecture": "x86_64",
+        "name": "main",
+        "namespace": "pocket",
+        "permissions_boundary": "arn:aws:iam::123456789012:policy/example-permissions-boundary",
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-northeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "sandbox-pocket-example-pocket-",
+        "secrets": {
+          "allowed_sm_resources": [],
+          "allowed_ssm_resources": [
+            "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-main-pocket/*"
+          ],
+          "extra_resources": [],
+          "managed": {
+            "DJANGO_SUPERUSER_PASSWORD": {
+              "options": {
+                "length": 16
+              },
+              "shared": false,
+              "type": "password"
+            },
+            "SECRET_KEY": {
+              "options": {
+                "length": 50
+              },
+              "shared": false,
+              "type": "password"
+            }
+          },
+          "pocket_key": "sandbox-pocket-example-main-pocket",
+          "project_name": "pocket-example",
+          "region": "ap-northeast-1",
+          "require_list_secrets": false,
+          "stage": "sandbox",
+          "store": "ssm",
+          "user": {}
+        },
+        "shared_secrets": {
+          "allowed_sm_resources": [],
+          "allowed_ssm_resources": [
+            "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url"
+          ],
+          "extra_resources": [],
+          "managed": {},
+          "pocket_key": "sandbox-pocket-example-pocket",
+          "project_name": "pocket-example",
+          "region": "ap-northeast-1",
+          "require_list_secrets": false,
+          "stage": "sandbox",
+          "store": "ssm",
+          "user": {
+            "DATABASE_URL": {
+              "name": "/sandbox-pocket-example-pocket-user/tidb_database_url",
+              "store": null,
+              "type": "tidb_database_url"
+            }
+          }
+        },
+        "signing_key_imports": {},
+        "slug": "sandbox-pocket-example",
+        "stage": "sandbox",
+        "use_efs": false,
+        "use_route53": true,
+        "use_s3": true,
+        "use_ses": false,
+        "use_sqs": false,
+        "vpc": null
+      }
+    },
+    "dsql": null,
+    "external_role_prefix": "sandbox-pocket-example-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "pocket-example",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "sandbox"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "pocket-example",
+    "rds": null,
+    "s3": {
+      "bucket_name": "sandbox-pocket-example-pocket",
+      "cors": null,
+      "lifecycle_rules": [],
+      "region": "ap-northeast-1",
+      "versioning": false
+    },
+    "scheduler": {},
+    "secrets": {
+      "allowed_sm_resources": [],
+      "allowed_ssm_resources": [
+        "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-pocket-user/tidb_database_url"
+      ],
+      "extra_resources": [],
+      "managed": {},
+      "pocket_key": "sandbox-pocket-example-pocket",
+      "project_name": "pocket-example",
+      "region": "ap-northeast-1",
+      "require_list_secrets": false,
+      "stage": "sandbox",
+      "store": "ssm",
+      "user": {
+        "DATABASE_URL": {
+          "name": "/sandbox-pocket-example-pocket-user/tidb_database_url",
+          "store": null,
+          "type": "tidb_database_url"
+        }
+      }
+    },
+    "ses": null,
+    "stage": "sandbox",
+    "tidb": {
+      "cluster_name": "pocket-example",
+      "database_name": "pocket_example_sandbox",
+      "private_key": "vector-tidb-private-key",
+      "project_name": "pocket-example",
+      "provisioning": "command",
+      "public_key": "vector-tidb-public-key",
+      "region": "ap-northeast-1",
+      "tidb_project": null
+    },
+    "upstash": null
+  },
+  "stage": "sandbox"
+}
