@@ -13,6 +13,15 @@
   昇格（`promote`）は引き続き Python 版 `pocket promote` を使います。
   [pocket-rs build](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-build)
 
+### Changed
+- **破壊的変更**: state bucket（`{stage}-{project}-{namespace}-state`）が `[general] region` と
+  別の region にあると、`pocket deploy` / `pocket build` / `pocket promote` / `pocket-rs build` が
+  エラーで止まるようにしました。これまでは boto3 が別 region の bucket へ自動で向き直るため、
+  既存の stage の `region` を変えたときに state bucket だけ旧 region に残っても気付けず、
+  build の backend を CodeBuild にした時点で分かりにくく失敗していました。
+  エラーが出たら state bucket を新しい region へ移してください（`pocket destroy` は止まりません）。
+  [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
+
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 
 ### Added

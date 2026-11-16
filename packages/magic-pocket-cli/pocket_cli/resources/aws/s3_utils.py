@@ -31,6 +31,20 @@ def bucket_exists(client: S3Client, bucket_name: str) -> bool:
         raise
 
 
+def bucket_region(client: S3Client, bucket_name: str) -> str:
+    """bucket のある region (HeadBucket の x-amz-bucket-region)。
+
+    client の region と違っても boto3 が 301 を追うので、応答のヘッダーで判定する。
+    """
+    res = client.head_bucket(Bucket=bucket_name)
+    region = res.get("BucketRegion") or res["ResponseMetadata"]["HTTPHeaders"].get(
+        "x-amz-bucket-region"
+    )
+    if not region:
+        raise RuntimeError("bucket %s の region を特定できません" % bucket_name)
+    return region
+
+
 def create_bucket(
     client: S3Client,
     bucket_name: str,

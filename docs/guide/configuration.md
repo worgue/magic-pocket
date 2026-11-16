@@ -98,6 +98,36 @@ stages = ["dev", "prod"]
     !!! warning "リージョンを変えるとリソース名は同じでもリージョンが異なります"
         S3 バケット、CloudFormation スタック、ECR リポジトリ等はすべて `region` に基づいて作成されます。ステージ間でリージョンが異なる場合、同名のリソースが別リージョンに存在することになります。
 
+### region を移すときの state bucket {#state-bucket-region}
+
+pocket は stage ごとに state bucket（`{stage}-{project}-{namespace}-state`。deploy の記録 `resources.json` と CodeBuild の source を置く）を `region` に作ります。**既存の stage の `region` を変えても state bucket は自動では移りません**。旧 region に残ったままだと、`pocket deploy` / `pocket build` / `pocket promote` / `pocket-rs build` は次のエラーで止まります。
+
+```
+state bucket dev-myapp-pocket-state は ap-northeast-1 にありますが、[general] region は ap-southeast-1 です。…
+```
+
+止めるのは、ずれを黙って使い続けると気付けないうえ、CodeBuild（source の bucket が build と同じ region にあることを求める）で分かりにくく失敗するためです。S3 の bucket 名は全 region で一意なので、移すには一度消して新しい region で作り直します。
+
+```bash
+B=dev-myapp-pocket-state      # エラーに出た bucket 名
+NEW=ap-southeast-1            # 新しい region (= [general] region)
+
+# 1. 記録を退避する (無ければ skip)
+aws s3 cp s3://$B/resources.json ./resources.json.bak
+# 2. 旧 region の bucket を消す (CodeBuild の source の残りも消える)
+aws s3 rb s3://$B --force
+# 3. 新しい region で作り直す。削除の伝播が終わるまで (最大 1 時間程度)
+#    OperationAborted で失敗するので、時間を置いて再実行する
+aws s3api create-bucket --bucket $B --region $NEW \
+  --create-bucket-configuration LocationConstraint=$NEW
+aws s3api put-public-access-block --bucket $B --public-access-block-configuration \
+  BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+# 4. 記録を戻す
+aws s3 cp ./resources.json.bak s3://$B/resources.json
+```
+
+`us-east-1` へ移す場合は `--create-bucket-configuration` を付けません。手順 2 から 4 の間はその stage の deploy ができないので、deploy の無い時間帯に行ってください。`resources.json` が無かった（bucket が空だった）場合は、手順 2 の後に deploy すれば新しい region に作られます。
+
 ### general.django_fallback
 
 ローカル環境で使うDjango設定を記述します。設定項目は [`container.main.django`](#containerdjango) と同じです。

@@ -1,8 +1,9 @@
 import json
 
 import boto3
+import pytest
 from moto import mock_aws
-from pocket_cli.resources.aws.state import StateStore
+from pocket_cli.resources.aws.state import StateBucketRegionError, StateStore
 
 
 @mock_aws
@@ -104,3 +105,19 @@ def test_record_merge_nested():
     cf = state["resources"]["cloudformation"]
     assert cf["container"]["stack_name"] == "my-stack"
     assert cf["vpc"]["stack_name"] == "my-vpc-stack"
+
+
+@mock_aws
+def test_ensure_bucket_rejects_bucket_in_other_region():
+    """region 移設で旧 region に残った state bucket は吸収せず止める"""
+    s3 = boto3.client("s3", region_name="ap-northeast-1")
+    s3.create_bucket(
+        Bucket="test-state-bucket",
+        CreateBucketConfiguration={"LocationConstraint": "ap-northeast-1"},
+    )
+    store = StateStore("test-state-bucket", "ap-southeast-1")
+    with pytest.raises(StateBucketRegionError) as e:
+        store.ensure_bucket()
+    message = str(e.value)
+    assert "ap-northeast-1 にありますが、[general] region は ap-southeast-1" in message
+    assert "#state-bucket-region" in message

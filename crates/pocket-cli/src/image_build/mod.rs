@@ -88,7 +88,7 @@ async fn build_images(
         .as_ref()
         .context("general context is not configured")?;
     let state_bucket = format!("{}state", resource_prefix(context, general));
-    let state_bucket_region = ensure_state_bucket(
+    ensure_state_bucket(
         &s3_client(sdk, &general.region),
         &state_bucket,
         &general.region,
@@ -136,9 +136,7 @@ async fn build_images(
                 let clients = Clients {
                     codebuild: aws_sdk_codebuild::Client::new(&region_config),
                     iam: aws_sdk_iam::Client::new(&region_config),
-                    // bucket が general.region 以外にあっても届くよう、実際の region で呼ぶ
-                    // (boto3 は 301 を追うが Rust SDK は追わない)
-                    s3: s3_client(sdk, &state_bucket_region),
+                    s3: s3_client(sdk, &general.region),
                 };
                 CodeBuildBuilder::new(&settings, &clients)
                     .build_and_push(&req, account_id)
@@ -280,27 +278,44 @@ async fn ensure_repository(ecr: &aws_sdk_ecr::Client, name: &str) -> Result<Stri
     Ok(uri)
 }
 
-/// state bucket が無ければ作る (全公開ブロック)。bucket のある region を返す。
+/// state bucket の region のずれを案内する docs (Python 版と同じ)
+const STATE_BUCKET_REGION_DOCS: &str =
+    "https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region";
+
+/// state bucket が `[general] region` と別の region にあるときのエラー (Python 版
+/// `StateBucketRegionError` と同じ文言)
+fn state_bucket_region_error(bucket: &str, actual: &str, expected: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "state bucket {bucket} は {actual} にありますが、[general] region は {expected} です。\
+         region を移したときに state bucket だけ旧 region に残っています。\
+         state bucket を {expected} へ移してから再実行してください (手順: {STATE_BUCKET_REGION_DOCS})。"
+    )
+}
+
+/// state bucket が無ければ作る (全公開ブロック)。
 ///
-/// 既存の bucket が `region` 以外にあると HeadBucket は 301 を返す (boto3 は自動で追う)。
-/// そのときも「ある」とみなし、応答の `x-amz-bucket-region` の region を返す
-async fn ensure_state_bucket(
-    s3: &aws_sdk_s3::Client,
-    bucket: &str,
-    region: &str,
-) -> Result<String> {
+/// 既存の bucket が `region` 以外にあればエラーにする。HeadBucket は別 region の bucket に
+/// 301 を返す (boto3 は自動で追うので Python 版では黙って吸収されていた)。吸収すると
+/// region 移設の取り残しに気付けず、CodeBuild (source bucket が project と同じ region に
+/// あることを求める) で分かりにくく落ちるため止める
+async fn ensure_state_bucket(s3: &aws_sdk_s3::Client, bucket: &str, region: &str) -> Result<()> {
     match s3.head_bucket().bucket(bucket).send().await {
-        Ok(res) => return Ok(res.bucket_region().unwrap_or(region).to_string()),
+        Ok(res) => {
+            return match res.bucket_region() {
+                Some(actual) if actual != region => {
+                    Err(state_bucket_region_error(bucket, actual, region))
+                }
+                _ => Ok(()),
+            };
+        }
         Err(e) => {
             let raw = e.raw_response();
             let status = raw.map(|r| r.status().as_u16());
             if status == Some(301) {
                 let actual = raw
                     .and_then(|r| r.headers().get("x-amz-bucket-region"))
-                    .with_context(|| {
-                        format!("bucket {bucket} は別 region にありますが、region を特定できません")
-                    })?;
-                return Ok(actual.to_string());
+                    .unwrap_or("別の region");
+                return Err(state_bucket_region_error(bucket, actual, region));
             }
             if status != Some(404) {
                 return Err(e).with_context(|| format!("S3 head_bucket ({bucket}) に失敗しました"));
@@ -358,7 +373,7 @@ async fn ensure_state_bucket(
         .send()
         .await
         .with_context(|| format!("S3 put_public_access_block ({bucket}) に失敗しました"))?;
-    Ok(region.to_string())
+    Ok(())
 }
 
 fn print_auth_guide(message: &str) {
@@ -384,6 +399,19 @@ fn print_auth_guide(message: &str) {
 mod tests {
     use super::runner::fake::FakeRunner;
     use super::*;
+
+    #[test]
+    fn region_error_matches_python() {
+        let message =
+            state_bucket_region_error("b-state", "ap-northeast-1", "ap-southeast-1").to_string();
+        assert_eq!(
+            message,
+            "state bucket b-state は ap-northeast-1 にありますが、[general] region は \
+             ap-southeast-1 です。region を移したときに state bucket だけ旧 region に残って\
+             います。state bucket を ap-southeast-1 へ移してから再実行してください (手順: \
+             https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)。"
+        );
+    }
 
     #[test]
     fn commit_hash_prefers_env() {

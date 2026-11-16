@@ -8,9 +8,26 @@ from botocore.exceptions import ClientError
 from pocket.settings import _deep_merge
 from pocket_cli.resources.aws.s3_utils import (
     bucket_exists,
+    bucket_region,
     create_bucket,
     delete_bucket_with_contents,
 )
+
+STATE_BUCKET_REGION_DOCS = (
+    "https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region"
+)
+
+
+class StateBucketRegionError(RuntimeError):
+    """state bucket が [general] region と別の region にある"""
+
+    def __init__(self, bucket_name: str, actual: str, expected: str):
+        super().__init__(
+            "state bucket %s は %s にありますが、[general] region は %s です。"
+            "region を移したときに state bucket だけ旧 region に残っています。"
+            "state bucket を %s へ移してから再実行してください (手順: %s)。"
+            % (bucket_name, actual, expected, expected, STATE_BUCKET_REGION_DOCS)
+        )
 
 
 class StateStore:
@@ -23,8 +40,17 @@ class StateStore:
         self._state: dict | None = None
 
     def ensure_bucket(self):
-        """state バケットが存在しなければ作成（全公開ブロック）"""
+        """state バケットが存在しなければ作成（全公開ブロック）。
+
+        既存の bucket が region 以外にあればエラーにする (StateBucketRegionError)。
+        boto3 は HeadBucket の 301 を自動で追うため、region 移設で bucket だけ旧 region
+        に残ったずれは黙って吸収される。吸収すると気付けず、CodeBuild (source bucket
+        が project と同じ region であることを求める) で分かりにくく落ちるため止める
+        """
         if bucket_exists(self.client, self.bucket_name):
+            actual = bucket_region(self.client, self.bucket_name)
+            if actual != self.region:
+                raise StateBucketRegionError(self.bucket_name, actual, self.region)
             return
         create_bucket(self.client, self.bucket_name, self.region)
         self.client.put_public_access_block(
