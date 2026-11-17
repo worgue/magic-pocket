@@ -17,7 +17,7 @@ use minijinja::value::{Kwargs, Serde, ValueKind};
 use minijinja::{AutoEscape, Environment, Error, ErrorKind, Output, State, Value};
 use serde_json::Value as Json;
 
-/// template の名前 (Python 版の `Stack.template_filename`)
+/// template の名前 (Python 版の `Stack.template_filename`。`.js` は CloudFront Function)
 pub const TEMPLATES: &[(&str, &str)] = &[
     (
         "cloudfront",
@@ -50,6 +50,48 @@ pub const TEMPLATES: &[(&str, &str)] = &[
         ),
     ),
     (
+        "cf_function_api_host.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_api_host.js"
+        ),
+    ),
+    (
+        "cf_function_basic_auth_prelude.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_basic_auth_prelude.js"
+        ),
+    ),
+    (
+        "cf_function_cache_control.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_cache_control.js"
+        ),
+    ),
+    (
+        "cf_function_deploy_hash_strip.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_deploy_hash_strip.js"
+        ),
+    ),
+    (
+        "cf_function_host_redirect_prelude.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_host_redirect_prelude.js"
+        ),
+    ),
+    (
+        "cf_function_spa_auth.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_spa_auth.js"
+        ),
+    ),
+    (
+        "cf_function_spa_fallback.js",
+        include_str!(
+            "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/cf_function_spa_fallback.js"
+        ),
+    ),
+    (
         "vpc",
         include_str!(
             "../../../../packages/magic-pocket-cli/pocket_cli/templates/cloudformation/vpc.yaml"
@@ -59,15 +101,19 @@ pub const TEMPLATES: &[(&str, &str)] = &[
 
 /// `cloudformation/<名前>.yaml` を `variables` で描画する
 pub fn render_template(name: &str, variables: &Json) -> Result<String> {
+    Ok(drop_control_lines(&render_source(name, variables)?))
+}
+
+/// template を描画したままの文字列 (CloudFront Function の `cf_function_*.js` 用)
+pub fn render_source(name: &str, variables: &Json) -> Result<String> {
     let env = environment()?;
     let template = env
         .get_template(name)
         .map_err(|e| anyhow!("template {name} がありません: {e}"))?;
-    let rendered = template
+    template
         .render(Value::from(Serde(variables)))
         .map_err(|e| anyhow!("{e:#}"))
-        .with_context(|| format!("template {name} の描画に失敗しました"))?;
-    Ok(drop_control_lines(&rendered))
+        .with_context(|| format!("template {name} の描画に失敗しました"))
 }
 
 fn environment() -> Result<Environment<'static>> {
@@ -168,7 +214,7 @@ fn drop_control_lines(rendered: &str) -> String {
 }
 
 /// Python の `str.splitlines()` (行の区切りは `\n` 以外も含む)
-fn split_lines(text: &str) -> Vec<&str> {
+pub fn split_lines(text: &str) -> Vec<&str> {
     const BREAKS: [char; 10] = [
         '\n', '\r', '\u{0b}', '\u{0c}', '\u{1c}', '\u{1d}', '\u{1e}', '\u{85}', '\u{2028}',
         '\u{2029}',

@@ -45,3 +45,89 @@ pub fn each_stack(mut f: impl FnMut(&Path, &Json)) {
         }
     }
 }
+
+mod fake {
+    //! vector に同梱された外部入力を返す fake (Context の構築用)
+
+    use std::collections::BTreeMap;
+
+    use magic_pocket_settings::context::{Context, ContextInputs, ExternalInputs, HostedZone};
+    use magic_pocket_settings::{LoadContext, Settings};
+    use serde_json::Value as Json;
+
+    struct FakeExternal<'a>(&'a Json);
+
+    impl ExternalInputs for FakeExternal<'_> {
+        fn hosted_zones(&self) -> Result<Vec<HostedZone>, String> {
+            Ok(self.0["hosted_zones"]
+                .as_array()
+                .expect("hosted_zones")
+                .iter()
+                .map(|z| HostedZone {
+                    name: z["Name"].as_str().expect("Name").to_string(),
+                    id: z["Id"].as_str().expect("Id").to_string(),
+                })
+                .collect())
+        }
+
+        fn managed_secret_arn(
+            &self,
+            pocket_key: &str,
+            _region: &str,
+        ) -> Result<Option<String>, String> {
+            Ok(self.0["secret_arns"][pocket_key]
+                .as_str()
+                .map(str::to_string))
+        }
+
+        fn git_short_hash(&self) -> Option<String> {
+            self.0["git_short_hash"].as_str().map(str::to_string)
+        }
+
+        fn dir_files(&self, dir: &str) -> Option<Vec<String>> {
+            let files = self.0["dir_files"][dir].as_array()?;
+            Some(
+                files
+                    .iter()
+                    .map(|f| f.as_str().expect("ファイル名").to_string())
+                    .collect(),
+            )
+        }
+    }
+
+    /// manifest の入力 (toml × stage) から Context を組む
+    pub fn context(repo_root: &std::path::Path, manifest: &Json) -> Context {
+        let input = repo_root.join(manifest["input"].as_str().expect("input"));
+        let toml_text = super::read_text(&input);
+        let stage = manifest["stage"].as_str().expect("stage");
+        let env: BTreeMap<String, String> = manifest["context"]["env"]
+            .as_object()
+            .expect("context.env")
+            .iter()
+            .map(|(k, v)| (k.clone(), v.as_str().expect("env の値").to_string()))
+            .collect();
+        let load = LoadContext {
+            project_name_fallback: manifest["context"]["project_name_fallback"]
+                .as_str()
+                .expect("project_name_fallback")
+                .to_string(),
+            env: env.clone(),
+        };
+        let (settings, _) = Settings::from_parts(&toml_text, stage, &load)
+            .unwrap_or_else(|e| panic!("{}: settings が読めません: {e}", input.display()));
+        let external = FakeExternal(&manifest["external"]);
+        let inputs = ContextInputs {
+            env: &env,
+            external: &external,
+        };
+        let (context, _) = Context::from_settings(&settings, &inputs)
+            .unwrap_or_else(|e| panic!("{}: Context を組めません: {e}", input.display()));
+        context
+    }
+}
+
+pub use fake::context;
+
+pub fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
