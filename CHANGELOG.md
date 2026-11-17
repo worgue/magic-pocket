@@ -27,6 +27,11 @@
   `pocket deploy` が `KeyError: 'DeletionTime'` で止まる不具合を修正しました。この状態の stack は
   FAILED と表示され、`pocket deploy` は状態名を添えたエラーで止まります（stack を削除してから
   再実行してください）。
+- `pocket status` が、secret の値を template に含む stack（WAF の `allow_rules` の header、
+  `signing_key`、`enable_origin_verify`）を deploy 済みでも `REQUIRE_UPDATE` と表示する不具合を修正しました。
+  status も deploy と同じく secret を store から読んで判定します（読むだけで作りません）。
+- `pocket status --show-info` が出す Context の JSON で、API key などの secret をマスクするようにしました
+  （これまでは平文で出ていました。`pocket context` と同じ扱いです）。
 
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 

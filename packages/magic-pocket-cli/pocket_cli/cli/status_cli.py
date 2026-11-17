@@ -1,9 +1,15 @@
+import json
+
 import click
 
 from pocket.context import Context
 from pocket.resources.aws.secretsmanager import PocketSecretIsNotReady
-from pocket.utils import echo
+from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.deploy_cli import get_resources
+from pocket_cli.mediator import Mediator
+from pocket_cli.resources.cloudfront import CloudFront
+from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.inbound import echo_inbound_details
 from pocket_cli.resources.neon import Neon
@@ -22,6 +28,17 @@ def skip_reason(resource) -> str | None:
             "(stack の状態確認・削除に Neon の資格情報は不要です)"
         )
     return None
+
+
+def load_template_secrets(resource, mediator: Mediator):
+    """template に入る secret の値を store から読む (読むだけで作らない)。
+
+    WAF の allow secret・CloudFront keys の公開鍵・CloudFront の origin verify secret は
+    template に焼き込まれるので、空のまま hash を計算すると deploy 済みの stack が
+    REQUIRE_UPDATE に見える。deploy と同じ値で判定する。
+    """
+    if isinstance(resource, (CloudFrontWaf, CloudFrontKeys, CloudFront)):
+        resource.prepare_deploy(mediator)
 
 
 def show_status_message(resource):
@@ -60,7 +77,12 @@ def show_info_message(resource):
         except PocketSecretIsNotReady:
             echo.warning("Please create pocket secrets first.")
             return
-    print(resource.context.model_dump_json(indent=2))
+    # `pocket context` と同じく secret (API key 等) はマスクする
+    print(
+        json.dumps(
+            mask_secret_values(resource.context.model_dump(mode="json")), indent=2
+        )
+    )
 
 
 @click.command()
@@ -69,11 +91,13 @@ def show_info_message(resource):
 def status(stage, show_info):
     context = Context.from_toml(stage=stage)
     resources = get_resources(context)
+    mediator = Mediator(context)
     for resource in resources:
         reason = skip_reason(resource)
         if reason:
             echo.warning(reason)
             continue
+        load_template_secrets(resource, mediator)
         show_status_message(resource)
         if show_info:
             show_info_message(resource)
