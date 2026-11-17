@@ -10,7 +10,7 @@
 pub(crate) mod codebuild;
 mod context_files;
 mod docker;
-mod runner;
+pub(crate) mod runner;
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -100,52 +100,75 @@ async fn build_images(
     let mut targets = Vec::new();
     for (name, c) in containers {
         eprintln!("Building container '{name}'...");
-        let region_config = regional_config(sdk, &c.region);
-        let ecr = aws_sdk_ecr::Client::new(&region_config);
-        let uri = ensure_repository(&ecr, &c.ecr_name).await?;
-        let req = BuildRequest {
-            target: format!("{uri}:{tag}"),
-            context_dir: context_dir.to_path_buf(),
-            dockerfile_path: c.dockerfile_path.clone(),
-            platform: platform_str(c),
-            region: c.region.clone(),
-        };
-        match c.build.backend {
-            BuildBackend::Docker => docker::docker_build_and_push(&req, &ecr, runner).await?,
-            BuildBackend::Depot => {
-                docker::depot_build_and_push(
-                    &req,
-                    c.build.depot_project_id.as_deref(),
-                    &ecr,
-                    runner,
-                )
-                .await?
-            }
-            BuildBackend::Codebuild => {
-                let settings = CodeBuildSettings {
-                    resource_prefix: c.resource_prefix.clone(),
-                    state_bucket: state_bucket.clone(),
-                    compute_type: c.build.compute_type.clone(),
-                    permissions_boundary: resolve_permissions_boundary(
-                        std::env::var("CODEBUILD_PERMISSIONS_BOUNDARY").ok(),
-                        c.permissions_boundary.as_deref(),
-                    ),
-                    external_roles: c.external_roles,
-                    external_role_prefix: c.external_role_prefix.clone(),
-                };
-                let clients = Clients {
-                    codebuild: aws_sdk_codebuild::Client::new(&region_config),
-                    iam: aws_sdk_iam::Client::new(&region_config),
-                    s3: s3_client(sdk, &general.region),
-                };
-                CodeBuildBuilder::new(&settings, &clients)
-                    .build_and_push(&req, account_id)
-                    .await?
-            }
-        }
+        build_container_image(
+            sdk,
+            c,
+            context_dir,
+            tag,
+            account_id,
+            &state_bucket,
+            &general.region,
+            runner,
+        )
+        .await?;
         targets.push(format!("{}:{tag}", c.ecr_name));
     }
     Ok(targets)
+}
+
+/// container 1 つの image を `tag` で build & push する (repository が無ければ作る)。
+///
+/// state bucket (CodeBuild backend の source 置き場) は呼び出し側が用意しておく
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn build_container_image(
+    sdk: &SdkConfig,
+    c: &ContainerContext,
+    context_dir: &std::path::Path,
+    tag: &str,
+    account_id: &str,
+    state_bucket: &str,
+    state_bucket_region: &str,
+    runner: &dyn Runner,
+) -> Result<()> {
+    let region_config = regional_config(sdk, &c.region);
+    let ecr = aws_sdk_ecr::Client::new(&region_config);
+    let uri = ensure_repository(&ecr, &c.ecr_name).await?;
+    let req = BuildRequest {
+        target: format!("{uri}:{tag}"),
+        context_dir: context_dir.to_path_buf(),
+        dockerfile_path: c.dockerfile_path.clone(),
+        platform: platform_str(c),
+        region: c.region.clone(),
+    };
+    match c.build.backend {
+        BuildBackend::Docker => docker::docker_build_and_push(&req, &ecr, runner).await?,
+        BuildBackend::Depot => {
+            docker::depot_build_and_push(&req, c.build.depot_project_id.as_deref(), &ecr, runner)
+                .await?
+        }
+        BuildBackend::Codebuild => {
+            let settings = CodeBuildSettings {
+                resource_prefix: c.resource_prefix.clone(),
+                state_bucket: state_bucket.to_string(),
+                compute_type: c.build.compute_type.clone(),
+                permissions_boundary: resolve_permissions_boundary(
+                    std::env::var("CODEBUILD_PERMISSIONS_BOUNDARY").ok(),
+                    c.permissions_boundary.as_deref(),
+                ),
+                external_roles: c.external_roles,
+                external_role_prefix: c.external_role_prefix.clone(),
+            };
+            let clients = Clients {
+                codebuild: aws_sdk_codebuild::Client::new(&region_config),
+                iam: aws_sdk_iam::Client::new(&region_config),
+                s3: s3_client(sdk, state_bucket_region),
+            };
+            CodeBuildBuilder::new(&settings, &clients)
+                .build_and_push(&req, account_id)
+                .await?
+        }
+    }
+    Ok(())
 }
 
 /// Python 版 `context_resource_prefix` (state bucket 名の prefix)

@@ -7,7 +7,7 @@
 
 mod alerts;
 mod aws;
-mod container;
+pub(crate) mod container;
 mod dsql;
 mod inbound;
 mod providers;
