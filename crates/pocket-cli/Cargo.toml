@@ -54,3 +54,5 @@ tempfile = "3"
 minijinja = { version = "3.1.0", features = ["preserve_order", "serde"] }
 # template が使う Python のメソッド (`.items()` / `.values()` / `.get()`)
 minijinja-contrib = { version = "3.1.0", features = ["pycompat"] }
+# stack の作成・更新・削除と状態の取得 (deploy / status / destroy)
+aws-sdk-cloudformation = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

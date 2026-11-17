@@ -1955,6 +1955,7 @@ version = "0.48.0"
 dependencies = [
  "anyhow",
  "aws-config",
+ "aws-sdk-cloudformation",
  "aws-sdk-codebuild",
  "aws-sdk-ecr",
  "aws-sdk-iam",
