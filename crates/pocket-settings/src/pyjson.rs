@@ -12,6 +12,13 @@ pub fn dumps_indent2(value: &Value) -> String {
     out
 }
 
+/// `json.dumps(value)` (1 行、`ensure_ascii`、区切りは `", "` / `": "`)
+pub fn dumps(value: &Value) -> String {
+    let mut out = String::new();
+    write_value(value, None, true, &mut out);
+    out
+}
+
 /// `json.dumps(value, ensure_ascii=False)` (区切りは `", "` / `": "`)
 pub fn dumps_unicode(value: &Value) -> String {
     let mut out = String::new();
@@ -183,6 +190,10 @@ mod tests {
             dumps_indent2(&v),
             "{\n  \"a\": [\n    1,\n    {\n      \"b\": \"\\u5199\\u771f \\ud83d\\ude00\"\n    }\n  ],\n  \
              \"e\": {},\n  \"l\": [],\n  \"n\": null,\n  \"t\": true\n}"
+        );
+        assert_eq!(
+            dumps(&v),
+            "{\"a\": [1, {\"b\": \"\\u5199\\u771f \\ud83d\\ude00\"}], \"e\": {}, \"l\": [], \"n\": null, \"t\": true}"
         );
         assert_eq!(
             dumps_unicode(&v),

@@ -12,6 +12,9 @@ mod mapfile;
 mod publisher;
 mod release;
 mod sources;
+// コマンドからの呼び出しは `status` の移植で入る (それまでは vector のテストだけが使う)
+#[allow(dead_code)]
+mod stack;
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;

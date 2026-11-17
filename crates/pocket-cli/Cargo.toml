@@ -49,3 +49,8 @@ aws-sdk-sts = { version = "1", default-features = false, features = ["default-ht
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 # source zip の一時置き場
 tempfile = "3"
+# CloudFormation template の描画 (Python 版と同じ Jinja2 の template を使う)。
+# preserve_order: dict の反復順を Python (挿入順) に合わせる
+minijinja = { version = "3.1.0", features = ["preserve_order", "serde"] }
+# template が使う Python のメソッド (`.items()` / `.values()` / `.get()`)
+minijinja-contrib = { version = "3.1.0", features = ["pycompat"] }

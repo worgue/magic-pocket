@@ -1971,6 +1971,8 @@ dependencies = [
  "magic-pocket-settings",
  "md-5",
  "mime_guess",
+ "minijinja",
+ "minijinja-contrib",
  "serde",
  "serde_json",
  "sha2",
@@ -2066,6 +2068,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7244eafd1e09e7c4e33043881997aa6ab6dffff3ed2cee3395a278980481d6e"
 dependencies = [
  "half",
+]
+
+[[package]]
+name = "minijinja"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "509eeb2603a84eccabb4d75f6ec8ba23b46bbf441aaeb863d6b83a5887fd51e4"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde",
+]
+
+[[package]]
+name = "minijinja-contrib"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64b62a39daf92d02b89f7888ab57f08d15d22dab862e5c95353253f91e9344f0"
+dependencies = [
+ "minijinja",
 ]
 
 [[package]]
