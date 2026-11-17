@@ -12,6 +12,11 @@
   CodeBuild の project・IAM role・source の置き場も同じ名前）。Python 版も残ります。
   昇格（`promote`）は引き続き Python 版 `pocket promote` を使います。
   [pocket-rs build](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-build)
+- `pocket-rs status` を追加しました。Python 版 `pocket status` と同じ順・文言で、deploy が管理する
+  リソースの状態を出します（`--show-info` も同じ）。AWS には読み取りだけで接続し、削除予定の
+  managed secret を restore しません。Lambda 関数と DSQL cluster の照会で権限不足が起きたときは、
+  `NOEXIST` と表示せずエラーで止まります。Python 版も残ります。
+  [pocket-rs status](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-status)
 
 ### Changed
 - **破壊的変更**: state bucket（`{stage}-{project}-{namespace}-state`）が `[general] region` と

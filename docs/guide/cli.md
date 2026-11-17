@@ -134,6 +134,13 @@ pocket promote --stage=stg --commit-hash=<full-sha>
 pocket status --stage=dev
 ```
 
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ |
+| `--show-info` | 各リソースの説明と Context の JSON（secret は `****` に伏せる）も出す |
+
+Rust 版は [`pocket-rs status`](#pocket-rs-status) です（同じ表示。今後の新機能は Rust 版だけに入ります）。
+
 ### pocket destroy
 
 ステージの全リソースを一括削除します。
@@ -340,7 +347,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 |---|---|---|
 | `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
-| `deploy` / `destroy` / `promote` / `status` | Python 版 `pocket` | |
+| `deploy` / `destroy` / `promote` | Python 版 `pocket` | |
+| `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
@@ -392,6 +400,28 @@ pocket-rs context --stage=dev
 - Secrets Manager: `store = "sm"` の managed secret の ARN を引く。まだ作られていなければ warning を出して ARN を省いた Context を出す（削除予定の secret は Python 版と同じく restore してから読む）
 
 どちらも要らない設定なら AWS の認証情報は不要です。`DEPLOY_HASH` は環境変数 → git の short hash の順に決まります（Python 版と同じ）。
+
+### pocket-rs status {#pocket-rs-status}
+
+deploy が管理するリソースの状態を一覧で出します。表示の順・文言は Python 版 [`pocket status`](#pocket-status) と同じです。
+
+```bash
+pocket-rs status --stage=dev
+pocket-rs status --stage=dev --show-info
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ（省略時は `POCKET_DEPLOY_STAGE`） |
+| `--show-info` | 各リソースの説明と Context の JSON（secret は `****` に伏せる）も出す |
+
+状態は `NOEXIST`（未作成）/ `REQUIRE_UPDATE`（設定と差がある）/ `PROGRESS`（作成・更新中）/ `COMPLETED` / `FAILED` のどれかです。状態の行と警告は stderr、`--show-info` の JSON と inbound の詳細は stdout に出ます。
+
+AWS には読み取りだけで接続し、何も書き込みません。Python 版との違いは次の 3 点です。
+
+- 削除予定の managed secret を restore しません（まだ無いものとして扱います）。Python 版 `pocket status` と `pocket-rs context` は restore してから読みます
+- Lambda 関数と DSQL cluster の照会で権限不足や throttling が起きたら、エラーで止まります。Python 版は「存在しない」と同じ扱いにするため、権限が足りないだけでも `NOEXIST` と表示されます
+- 同じ stack を何度も照会しないので、`pocket:template_hash` タグが無い stack への案内（`pocket migrate` を実行してください）は 1 回だけ出ます
 
 ### pocket-rs build {#pocket-rs-build}
 

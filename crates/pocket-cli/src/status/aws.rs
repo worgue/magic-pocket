@@ -858,9 +858,11 @@ impl<'a> AwsEvaluator<'a> {
             Err(e) if e.raw_response().is_some_and(|r| r.status().as_u16() == 404) => {
                 return Ok(ResourceStatus::NoExist)
             }
-            Err(_) => {
+            // 404 以外の応答 (403 など) は、他の account が同じ名前を使っている見込み
+            Err(e) if e.raw_response().is_some() => {
                 bail!("Bucket might be already used by other account. Try another bucket_prefix.")
             }
+            Err(e) => return Err(sdk_error("s3 head_bucket", &e)),
         }
         let block = match client.get_public_access_block().bucket(bucket).send().await {
             Ok(response) => response.public_access_block_configuration,
