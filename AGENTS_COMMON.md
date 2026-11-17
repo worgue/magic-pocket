@@ -128,6 +128,13 @@ uv run pyright
   どのコマンドがどちらかは `docs/guide/cli.md` の「コマンドごとの実装の所在」の表が正で、
   移植したら表を更新する。
   Rust lib (`crates/pocket-rs`) には CLI 用の依存を足さない (runtime の依存を増やさない)。
+- **CloudFormation template (`packages/magic-pocket-cli/pocket_cli/templates/cloudformation/`)**:
+  Python 版と Rust 版 (`crates/pocket-cli/src/stack/`) が同じファイルを描画する。stack の
+  `pocket:template_hash` タグは描画後のテキストの hash なので、**コメント 1 文字の変更でも
+  全利用者の stack が REQUIRE_UPDATE になる**。template や template に渡す変数を変えたら
+  `just vectors` で `tests/data/template_vectors` を作り直し、Rust 側を直して
+  `tests/test_template_vectors.py` と `cargo test -p magic-pocket-cli-rs` を両方 green にする。
+  template に渡す変数は値だけにする (メソッドを持つオブジェクトを渡さない。生成器が検査する)
 - **`magic-pocket-settings` (`crates/pocket-settings/`)**: pocket.toml の設定モデルの Rust 版
   (runtime lib と CLI の両方が使う)。Python の `pocket.settings` との一致は共有 test vector で固定している。
   **Python の設定モデル (`pocket/settings.py` 等) を変えたら `just vectors` で
