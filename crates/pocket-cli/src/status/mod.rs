@@ -15,7 +15,7 @@ mod rds;
 mod report;
 mod resource;
 mod s3;
-mod sink;
+pub(crate) mod sink;
 
 use anyhow::Result;
 

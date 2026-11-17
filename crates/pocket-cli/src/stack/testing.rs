@@ -128,6 +128,27 @@ mod fake {
 
 pub use fake::context;
 
+/// テストの中に書いた pocket.toml から Context を組む (AWS の外部入力は空)
+pub fn context_from_toml(toml_text: &str, stage: &str) -> magic_pocket_settings::context::Context {
+    let dir = std::env::temp_dir().join(format!(
+        "pocket-test-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    std::fs::create_dir_all(&dir).expect("一時ディレクトリ");
+    let input = dir.join("pocket.toml");
+    std::fs::write(&input, toml_text).expect("pocket.toml");
+    let manifest = serde_json::json!({
+        "input": input,
+        "stage": stage,
+        "context": {"env": {}, "project_name_fallback": "testprj"},
+        "external": {"hosted_zones": [], "secret_arns": {}, "dir_files": {}},
+    });
+    let context = context(std::path::Path::new("/"), &manifest);
+    std::fs::remove_dir_all(&dir).ok();
+    context
+}
+
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }

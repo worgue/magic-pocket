@@ -8,4 +8,5 @@
 
 pub mod generate;
 pub mod iam;
+pub mod mediator;
 pub mod secret_store;
