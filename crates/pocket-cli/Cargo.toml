@@ -56,3 +56,15 @@ minijinja = { version = "3.1.0", features = ["preserve_order", "serde"] }
 minijinja-contrib = { version = "3.1.0", features = ["pycompat"] }
 # stack の作成・更新・削除と状態の取得 (deploy / status / destroy)
 aws-sdk-cloudformation = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# `pocket-rs status` が読むリソース (Lambda / RDS / security group / EFS / DSQL /
+# SES の rule set / SNS の購読 / SSM)
+aws-sdk-lambda = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-rds = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ec2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-efs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-dsql = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ses = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-sns = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ssm = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# Neon / TiDB / Upstash の API (status)。TLS は aws-sdk と同じ rustls を使う
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }

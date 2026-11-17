@@ -7,6 +7,10 @@
 //! 状態の判定と待機の進め方は [`StackApi`] の上に書いてあり、AWS を呼ばずに
 //! テストできる。
 
+// 作成・更新・削除と完了待ちは deploy / destroy の移植で使う (今は `status` が読み取り側
+// だけを使う)。deploy が入ったら外す
+#![allow(dead_code)]
+
 use std::io::Write as _;
 use std::time::Duration;
 

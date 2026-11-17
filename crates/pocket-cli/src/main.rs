@@ -12,9 +12,8 @@ mod mapfile;
 mod publisher;
 mod release;
 mod sources;
-// コマンドからの呼び出しは `status` の移植で入る (それまでは vector のテストだけが使う)
-#[allow(dead_code)]
 mod stack;
+mod status;
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -51,6 +50,15 @@ enum Top {
         /// stage 名
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
+    },
+    /// deploy が管理する resource の状態を一覧で出す (AWS に何も書かない)
+    Status {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// 各 resource の説明と Context の JSON (secret はマスク) も出す
+        #[arg(long)]
+        show_info: bool,
     },
     /// 版を 1 行で出力する (`--version` と違い、版の番号だけを出す)
     Version,
@@ -242,6 +250,7 @@ async fn run(cli: Cli) -> Result<()> {
         Top::Static { command } => command,
         Top::Settings { stage } => return print_settings(&stage),
         Top::Context { stage } => return context::print_context(&stage).await,
+        Top::Status { stage, show_info } => return status::run(&stage, show_info).await,
         Top::Build { stage, allow_dirty } => {
             return image_build::run_build(&stage, allow_dirty).await
         }

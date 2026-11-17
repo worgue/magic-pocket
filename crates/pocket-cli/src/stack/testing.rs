@@ -131,3 +131,9 @@ pub use fake::context;
 pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
+
+/// vector (`<group>/<名前>.<stage>`) の入力から Context を組む
+pub fn vector_context(vector: &str) -> magic_pocket_settings::context::Context {
+    let manifest = read_json(&vectors_dir().join(vector).join("manifest.json"));
+    context(&repo_root(), &manifest)
+}

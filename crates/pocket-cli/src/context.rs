@@ -29,6 +29,16 @@ pub async fn print_context(stage: &str) -> Result<()> {
 /// 読み込み中の advisory と構築中の log / warning は stderr に出す。戻り値の 2 つ目は
 /// pocket.toml のディレクトリ (相対パスの基準)。tokio の multi-thread runtime 上で呼ぶ
 pub fn load_context(stage: &str) -> Result<(Context, PathBuf)> {
+    load(stage, true)
+}
+
+/// [`load_context`] と同じだが、AWS に何も書かない (削除予約中の managed secret を
+/// 復元せず、無いものとして扱う)。`status` 用
+pub fn load_context_read_only(stage: &str) -> Result<(Context, PathBuf)> {
+    load(stage, false)
+}
+
+fn load(stage: &str, restore_secrets: bool) -> Result<(Context, PathBuf)> {
     let toml_path = find_toml_path()?;
     let (settings, advisories) = Settings::load(&toml_path, stage)?;
     for advisory in advisories {
@@ -40,7 +50,7 @@ pub fn load_context(stage: &str) -> Result<(Context, PathBuf)> {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_default();
-    let external = AwsExternal::new(Handle::current(), base_dir.clone());
+    let external = AwsExternal::new(Handle::current(), base_dir.clone(), restore_secrets);
     let inputs = ContextInputs {
         env: &env,
         external: &external,
@@ -60,14 +70,17 @@ struct AwsExternal {
     config: OnceLock<SdkConfig>,
     /// pocket.toml のディレクトリ (dir_files の相対パスの基準)
     base_dir: PathBuf,
+    /// 削除予約中の managed secret を復元してから読むか
+    restore_secrets: bool,
 }
 
 impl AwsExternal {
-    fn new(handle: Handle, base_dir: PathBuf) -> Self {
+    fn new(handle: Handle, base_dir: PathBuf, restore_secrets: bool) -> Self {
         Self {
             handle,
             config: OnceLock::new(),
             base_dir,
+            restore_secrets,
         }
     }
 
@@ -100,7 +113,7 @@ impl ExternalInputs for AwsExternal {
     }
 
     /// Python の `SecretsManager._pocket_secrets_response` と同じく、削除予定
-    /// (InvalidRequest) の secret は restore してから読む
+    /// (InvalidRequest) の secret は restore してから読む (read only のときは無い扱い)
     fn managed_secret_arn(&self, pocket_key: &str, region: &str) -> Result<Option<String>, String> {
         let config = self
             .config()
@@ -122,6 +135,9 @@ impl ExternalInputs for AwsExternal {
                     return Err(format!(
                         "Secrets Manager get_secret_value ({pocket_key}) に失敗しました: {service:?}"
                     ));
+                }
+                if !self.restore_secrets {
+                    return Ok(None);
                 }
                 self.handle
                     .block_on(client.restore_secret().secret_id(pocket_key).send())

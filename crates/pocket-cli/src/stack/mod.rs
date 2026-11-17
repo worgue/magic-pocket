@@ -71,6 +71,6 @@ fn dump<T: serde::Serialize>(context: &T) -> Json {
 }
 
 #[cfg(test)]
-mod testing;
+pub mod testing;
 #[cfg(test)]
 mod vector_tests;
