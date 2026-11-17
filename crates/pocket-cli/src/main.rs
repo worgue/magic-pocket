@@ -9,6 +9,7 @@
 mod aws_util;
 mod context;
 mod deploy;
+mod ec2;
 mod image_build;
 mod mapfile;
 mod publisher;

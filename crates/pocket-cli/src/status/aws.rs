@@ -609,18 +609,9 @@ impl<'a> AwsEvaluator<'a> {
     }
 
     async fn rds_state_for_container(&self, rds: &RdsContext) -> Result<RdsState> {
-        let ec2 = aws_sdk_ec2::Client::new(&self.config(&rds.region));
-        let groups = ec2
-            .describe_security_groups()
-            .filters(
-                aws_sdk_ec2::types::Filter::builder()
-                    .name("tag:Name")
-                    .values(&rds.security_group_name)
-                    .build(),
-            )
-            .send()
-            .await
-            .map_err(|e| sdk_error("ec2 describe_security_groups", &e))?;
+        let security_group_id =
+            crate::ec2::security_group_id(&self.config(&rds.region), &rds.security_group_name)
+                .await?;
         let cluster = self.rds_cluster(rds).await?;
         let is_static = rds.password_strategy == PasswordStrategy::Static;
         let static_secret_arn = if is_static && rds.secret_store == StoreType::Sm {
@@ -629,11 +620,7 @@ impl<'a> AwsEvaluator<'a> {
             None
         };
         Ok(RdsState {
-            security_group_id: groups
-                .security_groups()
-                .first()
-                .and_then(|group| group.group_id())
-                .map(str::to_string),
+            security_group_id,
             endpoint: cluster.as_ref().and_then(|c| c.endpoint.clone()),
             port: cluster.as_ref().and_then(|c| c.port),
             master_user_secret_arn: cluster.and_then(|c| c.master_user_secret_arn),

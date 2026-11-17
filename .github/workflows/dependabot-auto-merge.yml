@@ -32,6 +32,9 @@ jobs:
   test-and-merge:
     needs: meta
     runs-on: ubuntu-latest
+    env:
+      # .cargo/config.toml の `jobs = 2` は開発用 VM の保護用。runner では上限を外す
+      CARGO_BUILD_JOBS: default
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -40,6 +43,8 @@ jobs:
       # PR では保存しない (PR ごとの cache が repo の上限を食い dev の cache を追い出すため)
       - uses: Swatinem/rust-cache@v2
         with:
+          # test.yml と揃える
+          prefix-key: v1-rust
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - uses: extractions/setup-just@v4

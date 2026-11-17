@@ -6,13 +6,20 @@ set positional-arguments
 # semgrep の版 (semgrep-all = ローカルと CI の test.yml で共用。上げたら just semgrep-all を一度回す)
 semgrep_version := "1.166.0"
 
+# 開発用 VM (forge のコンテナ。`FORGE=1`) はメモリ上限が約 4GB で、aws-sdk-ec2 のコンパイル
+# (rustc 1 個で約 3GB) が終わらない。VM の中でだけ CLI の feature `ec2` を外す。CI と VM の外は
+# ec2 込み。VM で素の `cargo build` / `cargo test` を叩くと ec2 がコンパイルされて固まるので、
+# 下のレシピを使うか `-p magic-pocket-cli-rs --no-default-features` を付ける
+vm_build := if env("CI", "") != "" { "" } else if env("FORGE", "") == "1" { "1" } else { "" }
+cli_features := if vm_build == "1" { "--no-default-features" } else { "" }
+
 docs:
     uv run zensical serve -a 0.0.0.0:8080
 
 # テスト実行 (引数は pytest にパススルー。"$@" で "a or b" 等の空白引数を保つ)
 test *args: _target-gc-guard
     uv run pytest "$@"
-    cargo test --all-features
+    {{ if vm_build == "1" { "cargo test --all-features --workspace --exclude magic-pocket-cli-rs && cargo test -p magic-pocket-cli-rs --no-default-features" } else { "cargo test --all-features" } }}
 
 # 共有 test vector を Python の実装から作り直す (設定モデル = tests/data/settings_vectors 等、
 # CloudFormation template = tests/data/template_vectors)
@@ -22,7 +29,7 @@ vectors:
 
 # Rust の lint (clippy -D warnings)。チェックのみでリンクしないので test より軽い。CI の test.yml も呼ぶ
 lint-rust: _target-gc-guard
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets {{cli_features}} -- -D warnings
 
 # SAST (semgrep) を repo 全量に掛ける。CI の test.yml も呼ぶ。検出があれば exit 1 (--error)
 semgrep-all:
@@ -37,7 +44,7 @@ target-gc:
     now=$(date +%s)
     echo "[target-gc] cargo clean → フルビルドで baseline を取り直します (数分かかります)"
     cargo clean
-    if cargo build --workspace --all-targets; then
+    if cargo build --workspace --all-targets {{cli_features}}; then
         kb=$(du -sk target | cut -f1)
         printf 'baseline_kb=%s\nlast_gc=%s\nlast_check=%s\n' "$kb" "$now" "$now" > "$state"
         echo "[target-gc] baseline = $((kb / 1024)) MiB を記録しました"

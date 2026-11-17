@@ -11,6 +11,14 @@ publish = false
 name = "pocket-rs"
 path = "src/main.rs"
 
+[features]
+# aws-sdk-ec2 は rustc 1 個で約 3GB を使い、メモリ上限が約 4GB の開発用 VM ではコンパイルが
+# 終わらない (落ちずに止まる)。VM の中のビルドだけ `--no-default-features` で外せるよう
+# feature の後ろに置く (justfile のレシピが切り替える)。素の `cargo build`・CI・release は
+# ec2 込み。EC2 を呼ぶコードは `src/ec2.rs` に集める
+default = ["ec2"]
+ec2 = ["dep:aws-sdk-ec2"]
+
 [dependencies]
 # runtime lib。pocket.toml の読み込み (StaticConfig) と key 名 / URL encode / 論理 path
 # の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない
@@ -60,7 +68,7 @@ aws-sdk-cloudformation = { version = "1", default-features = false, features = [
 # SES の rule set / SNS の購読 / SSM)
 aws-sdk-lambda = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-rds = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
-aws-sdk-ec2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-ec2 = { version = "1", optional = true, default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-efs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-dsql = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-ses = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

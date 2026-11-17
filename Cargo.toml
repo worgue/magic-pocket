@@ -4,3 +4,13 @@ members = ["crates/pocket-rs", "crates/pocket-spa-auth", "crates/pocket-cli", "c
 # example は独立した利用者側プロジェクト (リリース済みの magic-pocket-rs を参照する)。
 # sample は参考用に置いた他プロジェクトで、公開 repo の管理対象ではない。
 exclude = ["example-dsql", "sample"]
+
+# --- VM ビルド標準 (dev profile) — 外さないこと ---
+# full debuginfo の target 肥大とリンク時のメモリで開発用 VM (メモリ上限 約 4GB) が
+# 固まるため、自コードは行番号のみ・依存クレートは debuginfo なしに削減する。
+# gdb/lldb で変数ステップ実行が必要なときだけ一時的に debug = true へ戻す。
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

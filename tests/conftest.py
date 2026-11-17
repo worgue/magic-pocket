@@ -101,8 +101,15 @@ def pocket_rs_bin() -> Path:
         if os.environ.get("CI"):
             pytest.fail("CI に cargo がありません (pocket-rs の e2e を実行できません)")
         pytest.skip("cargo が無いため pocket-rs の e2e を skip します")
+    # 開発用 VM (FORGE=1) はメモリ上限が小さく aws-sdk-ec2 をコンパイルできないので、
+    # feature `ec2` を外す (justfile の cli_features と同じ条件)
+    features = (
+        ["--no-default-features"]
+        if os.environ.get("FORGE") == "1" and not os.environ.get("CI")
+        else []
+    )
     subprocess.run(  # noqa: S603 shell=False + 制御された引数
-        ["cargo", "build", "-p", "magic-pocket-cli-rs"],  # noqa: S607 cargo は PATH 前提
+        ["cargo", "build", "-p", "magic-pocket-cli-rs", *features],  # noqa: S607 cargo は PATH 前提
         cwd=REPO_ROOT,
         check=True,
         env={**os.environ, "TARGET_GC": "never"},

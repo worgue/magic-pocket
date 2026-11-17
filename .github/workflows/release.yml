@@ -15,6 +15,8 @@ on:
 permissions: {}
 env:
   BIN: pocket-rs
+  # .cargo/config.toml の `jobs = 2` は開発用 VM の保護用。runner では上限を外す
+  CARGO_BUILD_JOBS: default
 jobs:
   publish:
     runs-on: ubuntu-latest

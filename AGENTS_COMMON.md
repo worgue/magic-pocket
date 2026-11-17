@@ -160,6 +160,32 @@ CLI 専用だったロジックを runtime 側へ移設して公開 API 化す�
 
 「prod だけ特別扱い」という中間案は採りません。
 
+## Rust のビルド (開発用 VM のメモリ上限)
+
+forge の VM (コンテナ) はメモリの上限が約 4GB で、超えても OOM kill されず、reclaim と swap で
+**エラーを出さないまま進まなくなる** (VM ごと固まり、session が切れる)。`free` は空きを大きく
+見せるので当てにならない。上限は `/sys/fs/cgroup/memory.high`、到達の回数は
+`/sys/fs/cgroup/memory.events` の `high` で見る。
+
+- **VM では `just test` / `just lint-rust` を使う**。CLI (`magic-pocket-cli-rs`) を cargo で直接
+  ビルドするときは `--no-default-features` を付ける (`cargo test -p magic-pocket-cli-rs --no-default-features`)。
+  付けないと aws-sdk-ec2 (rustc 1 個で約 3GB) がコンパイルされて固まる。素の `cargo build` /
+  `cargo test` (workspace 全体) も同じ
+- aws-sdk-ec2 は CLI の feature `ec2` (既定で有効) の後ろにある。**EC2 を呼ぶコードは
+  `crates/pocket-cli/src/ec2.rs` に集め、feature あり・なしの両方に同じ関数を置く**。
+  feature ありの側は VM ではコンパイルされないので、触ったら push して CI (ec2 込みの
+  clippy / test) で確かめる。VM でビルドした `pocket-rs` は EC2 を呼ぶ箇所でエラーになる
+- **root の `Cargo.toml` の `[profile.dev]` と `.cargo/config.toml` の `jobs = 2` は外さない**
+  (依存の debuginfo を切ってリンクのメモリと `target/` を減らし、重い crate の同時コンパイルを
+  2 個までにする)。CI は `CARGO_BUILD_JOBS: default` で並列数の上限を外している
+- **aws-sdk-* を足すときは rustc の最大メモリを測る** (2GB を大きく超えるなら feature の後ろに置く)。
+  実測 (dev profile): ec2 3.1GB 以上 (完走しない) / rds 2.2GB / ssm 2.0GB / iam 1.8GB / s3 1.6GB
+- 依存が全部作り直しになる操作 (`cargo clean`、profile や feature の変更、別の target dir) を
+  試すときは、上限を超えたら固まらずに止まるよう
+  `systemd-run --user --scope -p MemoryMax=3600M -p MemorySwapMax=0 cargo ...` の中で実行する
+- dev profile や feature の構成を変える commit では、workflow の rust-cache の `prefix-key` を上げる
+  (古い cache の上にフルビルドが載ると runner のディスクが尽きる)
+
 ## 検査の置き場所 (pre-commit / pre-push / CI)
 
 - **pre-commit** (commit 毎、数秒): ruff / ruff format / pyright / `cargo fmt --check` 等の軽い検査

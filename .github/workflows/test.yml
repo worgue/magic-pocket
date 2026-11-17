@@ -27,6 +27,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # .cargo/config.toml の `jobs = 2` は開発用 VM の保護用。runner では上限を外す
+      CARGO_BUILD_JOBS: default
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
@@ -39,6 +42,9 @@ jobs:
       # (PR ごとに保存すると repo の cache 上限を食い、dev の cache を追い出す)
       - uses: Swatinem/rust-cache@v2
         with:
+          # dev profile や feature を変えて依存が全部作り直しになるときは上げる (古い cache の
+          # 上にフルビルドが載ると runner のディスクが尽きる)。dependabot-auto-merge.yml と揃える
+          prefix-key: v1-rust
           shared-key: test
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - uses: extractions/setup-just@v4

@@ -1,0 +1,5 @@
+# VM ビルド標準: 開発用 VM (メモリ上限 約 4GB) を守るため並列数を絞る。aws-sdk-* は rustc
+# 1 個で 2GB 前後を使うものがあり、全開の並列だと VM が固まる。
+# CI など上限の無い環境は環境変数 CARGO_BUILD_JOBS=default で外す
+[build]
+jobs = 2
