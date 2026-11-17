@@ -33,6 +33,7 @@
     "dsql_identifier": null,
     "efs_filesystem_id": null,
     "inbound_bindings": {},
+    "inbound_domain_hosted_zone_ids": {},
     "rds": {
       "cluster": {
         "Endpoint": "dev-testprj-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",

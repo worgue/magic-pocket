@@ -35,6 +35,7 @@
     "dsql_identifier": "vectordsqlclusteridentifier",
     "efs_filesystem_id": null,
     "inbound_bindings": {},
+    "inbound_domain_hosted_zone_ids": {},
     "rds": {
       "cluster": {
         "Endpoint": "dev-db-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",

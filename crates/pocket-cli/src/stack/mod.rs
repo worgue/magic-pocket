@@ -9,6 +9,7 @@
 
 pub mod cloudfront;
 pub mod container;
+pub mod inbound;
 pub mod render;
 pub mod roles;
 pub mod vpc;

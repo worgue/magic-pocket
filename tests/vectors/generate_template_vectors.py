@@ -15,10 +15,11 @@ Python 版の deploy が作る stack の template を、入力 (toml × その s
   template を Python の dict で組むので無い)。dict の順は描画の順なので並べ替えない
 
 外部入力 (他 stack の output・secret の値・RDS / DSQL / EFS の実体・receipt rule set
-の binding) は固定の fake に差し替え、使った値を manifest の `stack_external` に
-同梱する (Rust は同じ値を注入する)。Context の外部入力は settings の vector と同じ
-fake (`generate_settings_vectors.fake_external`) で、SM の managed secret は
-全 stage で「作成済み」にする (未作成だと IAM policy の Resource を組めない)。
+の binding・受信ドメインの hosted zone id) は固定の fake に差し替え、使った値を
+manifest の `stack_external` に同梱する (Rust は同じ値を注入する)。Context の
+外部入力は settings の vector と同じ fake (`generate_settings_vectors.fake_external`)
+で、SM の managed secret は全 stage で「作成済み」にする (未作成だと IAM policy の
+Resource を組めない)。
 
 生成器は「JSON にした変数で描画し直しても同じテキストになる」ことも確かめる
 (Rust が受け取るのは JSON の値だけなので、Python のオブジェクトに依存した描画が
@@ -137,6 +138,7 @@ def fake_stack_external() -> Iterator[dict]:
         "dsql_identifier": None,
         "efs_filesystem_id": None,
         "inbound_bindings": {},
+        "inbound_domain_hosted_zone_ids": {},
     }
 
     def output(self: Stack) -> dict[str, str] | None:
@@ -250,10 +252,13 @@ def build_stacks(context: Context, used: dict) -> list[tuple[str, Stack]]:
     }
     used["secrets"] = secrets
     stacks = _edge_stacks(context, secrets)
-    stacks.extend(
-        ("inbound_domain", InboundDomainStack(ctx))
-        for ctx in context.inbound_domain.values()
-    )
+    for ctx in context.inbound_domain.values():
+        domain_stack = InboundDomainStack(ctx)
+        # manage_dns = false なら None (レコードを作らず Outputs で案内する)
+        used["inbound_domain_hosted_zone_ids"][domain_stack.name] = (
+            domain_stack.hosted_zone_id
+        )
+        stacks.append(("inbound_domain", domain_stack))
     stacks.extend(_vpc_stacks(context))
     stacks.extend(_keys_stacks(context, secrets))
     for name in sorted(context.container):

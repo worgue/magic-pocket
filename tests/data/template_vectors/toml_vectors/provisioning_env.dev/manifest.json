@@ -31,6 +31,7 @@
     "dsql_identifier": null,
     "efs_filesystem_id": null,
     "inbound_bindings": {},
+    "inbound_domain_hosted_zone_ids": {},
     "rds": null,
     "secrets": {
       "origin_verify_secret": {},

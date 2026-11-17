@@ -13,7 +13,7 @@ use serde_json::Value as Json;
 use super::cloudfront::{self, CloudFrontInputs};
 use super::container::{self, ContainerInputs, RdsState};
 use super::testing::{context, read_json, read_text, repo_root, vector_dirs};
-use super::{vpc, StackOutputs, StackTemplate};
+use super::{inbound, vpc, StackOutputs, StackTemplate};
 
 fn string_map(value: &Json) -> BTreeMap<String, String> {
     value
@@ -49,6 +49,13 @@ fn build_stacks(ctx: &Context, external: &Json) -> Vec<(&'static str, StackTempl
             let values = string_map(&secrets["waf_allow_secret_values"][&cf.name]);
             stacks.push(("waf", cloudfront::waf_stack(cf, &values).expect("waf")));
         }
+    }
+    for domain in ctx.inbound_domain.values() {
+        let zone = external["inbound_domain_hosted_zone_ids"][&domain.stack_name].as_str();
+        stacks.push((
+            "inbound_domain",
+            inbound::inbound_domain_stack(domain, zone),
+        ));
     }
     let mut vpc_names: Vec<&str> = Vec::new();
     for c in ctx.container.values() {
@@ -103,6 +110,12 @@ fn build_stacks(ctx: &Context, external: &Json) -> Vec<(&'static str, StackTempl
         )
         .expect("container");
         stacks.push(("container", stack));
+    }
+    for inlet in ctx.inbound.values() {
+        let binding = &external["inbound_bindings"][&inlet.resource_name];
+        let rule_set = binding["rule_set"].as_str().expect("rule_set");
+        let stack = inbound::inbound_stack(inlet, rule_set, binding["after"].as_str());
+        stacks.push(("inbound", stack));
     }
     for cf in ctx.cloudfront.values() {
         let inputs = CloudFrontInputs {
@@ -183,12 +196,10 @@ fn test_stacks_match_python() {
         let manifest = read_json(&dir.join("manifest.json"));
         let ctx = context(&root, &manifest);
         let stacks = build_stacks(&ctx, &manifest["stack_external"]);
-        // inbound 系は別のテスト (Python の dict で組む template)
         let wanted: Vec<&Json> = manifest["stacks"]
             .as_array()
             .expect("stacks")
             .iter()
-            .filter(|s| !s["kind"].as_str().expect("kind").starts_with("inbound"))
             .collect();
         let got_names: Vec<(&str, &str)> =
             stacks.iter().map(|(k, s)| (*k, s.name.as_str())).collect();

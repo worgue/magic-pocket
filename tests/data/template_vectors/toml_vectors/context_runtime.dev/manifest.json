@@ -39,6 +39,9 @@
         "rule_set": "default-rule-set"
       }
     },
+    "inbound_domain_hosted_zone_ids": {
+      "dev-rt-pocket-inbound-domain-e8d55f5c6b": "ZEXAMPLE"
+    },
     "rds": null,
     "secrets": {
       "origin_verify_secret": {},

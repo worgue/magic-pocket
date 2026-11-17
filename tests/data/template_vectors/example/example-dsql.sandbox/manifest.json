@@ -38,6 +38,9 @@
         "rule_set": "default-rule-set"
       }
     },
+    "inbound_domain_hosted_zone_ids": {
+      "sandbox-pocket-example-dsql-pock-f6e05bca8f": "ZSANDBOX"
+    },
     "rds": null,
     "secrets": {
       "origin_verify_secret": {},

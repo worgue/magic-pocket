@@ -38,6 +38,9 @@
         "rule_set": "shared-rules"
       }
     },
+    "inbound_domain_hosted_zone_ids": {
+      "prod-misc-pocket-inbound-domain-a107bad86a": "Z1"
+    },
     "rds": null,
     "secrets": {
       "origin_verify_secret": {},
