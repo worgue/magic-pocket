@@ -1,0 +1,443 @@
+[
+  {
+    "name": "live-ctx-myorg-lambda-role",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+      "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+      "arn:aws:iam::aws:policy/AmazonRoute53FullAccess",
+      "arn:aws:iam::aws:policy/AmazonSQSFullAccess",
+      "arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess"
+    ],
+    "inline_policies": {
+      "inbound-support": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}"
+              }
+            ]
+          },
+          {
+            "Effect": "Deny",
+            "Action": [
+              "s3:DeleteObject",
+              "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/raw/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/metadata/*"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/raw/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/imports/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/metadata/*"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:PutObject"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-${AWS::AccountId}/metadata/*"
+              }
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:plain-name-??????"
+              },
+              {
+                "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x"
+              }
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-ssm": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-web-pocket/*"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live/external/api"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/tidb_database_url"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket/*"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket/*"
+              }
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/live-ctx-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": true,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "inbound-support": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket"
+            ],
+            "Resource": [
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012"
+            ]
+          },
+          {
+            "Effect": "Deny",
+            "Action": [
+              "s3:DeleteObject",
+              "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/raw/*",
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/metadata/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": [
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/raw/*",
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/imports/*",
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/metadata/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:PutObject"
+            ],
+            "Resource": [
+              "arn:aws:s3:::live-ctx-pocket-inbound-support-4f1ebcd01b-123456789012/metadata/*"
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:plain-name-??????",
+              "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x"
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-ssm": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/live-ctx-web-pocket/*",
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p",
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/live/external/api",
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/plain/param",
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/live-ctx-pocket-user/tidb_database_url",
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/live-ctx-pocket/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/live-ctx-pocket/*"
+            ]
+          }
+        ]
+      },
+      "live-ctx-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/live-ctx-*"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "live-ctx-myorg-scheduler-role",
+    "service": "scheduler.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "invoke-handlers": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "sqs:SendMessage"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:live-ctx-pocket-worker-jobs"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": "arn:aws:iam::123456789012:policy/env-boundary",
+    "assume_role_policy_version": true,
+    "external": true,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "scheduler.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "invoke-handlers": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "sqs:SendMessage"
+            ],
+            "Resource": [
+              "arn:aws:sqs:ap-northeast-1:123456789012:live-ctx-pocket-worker-jobs"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "live-ctx-myorg-codebuild-role",
+    "service": "codebuild.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::live-ctx-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/live-ctx-pocket-codebuild*"
+          }
+        ]
+      }
+    },
+    "permissions_boundary": "arn:aws:iam::123456789012:policy/env-boundary",
+    "assume_role_policy_version": true,
+    "external": true,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "codebuild.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::live-ctx-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/live-ctx-pocket-codebuild*"
+          }
+        ]
+      }
+    }
+  }
+]

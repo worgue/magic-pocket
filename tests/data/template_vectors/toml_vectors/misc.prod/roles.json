@@ -1,0 +1,351 @@
+[
+  {
+    "name": "lambda-prod-misc-app-pocket",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      "arn:aws:iam::aws:policy/AmazonSESFullAccess",
+      "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+    ],
+    "inline_policies": {
+      "inbound-support": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}"
+              }
+            ]
+          },
+          {
+            "Effect": "Deny",
+            "Action": [
+              "s3:DeleteObject",
+              "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/import/*"
+              },
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:PutObject"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+              }
+            ]
+          }
+        ]
+      },
+      "prod-misc-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-misc-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": false,
+    "external": false,
+    "assume_role_policy": {
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "inbound-support": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket"
+            ],
+            "Resource": [
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012"
+            ]
+          },
+          {
+            "Effect": "Deny",
+            "Action": [
+              "s3:DeleteObject",
+              "s3:DeleteObjectVersion"
+            ],
+            "Resource": [
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/raw/*",
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/meta/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": [
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/raw/*",
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/import/*",
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/meta/*"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:PutObject"
+            ],
+            "Resource": [
+              "arn:aws:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-123456789012/in/meta/*"
+            ]
+          }
+        ]
+      },
+      "prod-misc-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/prod-misc-*"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "prod-misc-pocket-app-scheduler",
+    "service": "scheduler.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "invoke-handlers": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "lambda:InvokeFunction"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-management"
+              },
+              {
+                "Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-wsgi"
+              }
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "sqs:SendMessage"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-app-jobs"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": false,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "scheduler.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "invoke-handlers": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "lambda:InvokeFunction"
+            ],
+            "Resource": [
+              "arn:aws:lambda:ap-northeast-1:123456789012:function:prod-misc-pocket-app-management",
+              "arn:aws:lambda:ap-northeast-1:123456789012:function:prod-misc-pocket-app-wsgi"
+            ]
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "sqs:SendMessage"
+            ],
+            "Resource": [
+              "arn:aws:sqs:ap-northeast-1:123456789012:prod-misc-pocket-app-jobs"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "prod-misc-pocket-codebuild-role",
+    "service": "codebuild.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::prod-misc-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/prod-misc-pocket-codebuild*"
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": false,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "codebuild.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::prod-misc-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/prod-misc-pocket-codebuild*"
+          }
+        ]
+      }
+    }
+  }
+]

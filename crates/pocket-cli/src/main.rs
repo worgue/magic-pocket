@@ -6,7 +6,9 @@
 //! サブコマンド・引数・出力は旧 Python 版 `pocket static ...` (削除済み) を引き継いでいる。
 //! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
+mod aws_util;
 mod context;
+mod deploy;
 mod image_build;
 mod mapfile;
 mod publisher;

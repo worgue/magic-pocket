@@ -16,12 +16,13 @@ use aws_sdk_codebuild::types::{
     ProjectArtifacts, ProjectEnvironment, ProjectSource, SourceType, StatusType,
 };
 use aws_sdk_s3::primitives::ByteStream;
-use serde_json::{json, Value};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipWriter};
 
 use super::context_files::{iter_source_files, load_dockerignore};
 use super::BuildRequest;
+use crate::deploy::iam;
+use crate::stack::roles::{codebuild_role, CodeBuildRole};
 
 pub const IMAGE_AMD64: &str = "aws/codebuild/amazonlinux-x86_64-standard:5.0";
 pub const IMAGE_ARM64: &str = "aws/codebuild/amazonlinux-aarch64-standard:3.0";
@@ -42,11 +43,6 @@ phases:\n  \
       - docker push $IMAGE_TAG\n";
 
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
-
-/// IAM role の伝播待ち (作成直後に使うと AssumeRole / PassRole が失敗する)
-const ROLE_PROPAGATION_WAIT: Duration = Duration::from_secs(10);
-
-const CODEBUILD_SERVICE: &str = "codebuild.amazonaws.com";
 
 /// project / role / source key の名前 (Python 版 `CodeBuildBuilder.__init__`)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,92 +102,6 @@ pub fn env_for_platform(platform: &str) -> (EnvironmentType, &'static str) {
     } else {
         (EnvironmentType::LinuxContainer, IMAGE_AMD64)
     }
-}
-
-pub fn assume_role_policy(service: &str) -> Value {
-    json!({
-        "Version": "2012-10-17",
-        "Statement": [{
-            "Effect": "Allow",
-            "Principal": {"Service": service},
-            "Action": "sts:AssumeRole",
-        }],
-    })
-}
-
-/// role の inline policy `codebuild-policy` (Python 版 `iam_roles.codebuild_role`)
-pub fn codebuild_policy(
-    region: &str,
-    account_id: &str,
-    state_bucket: &str,
-    project: &str,
-) -> Value {
-    json!({
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": ["ecr:GetAuthorizationToken"],
-                "Resource": "*",
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "ecr:BatchCheckLayerAvailability",
-                    "ecr:GetDownloadUrlForLayer",
-                    "ecr:BatchGetImage",
-                    "ecr:PutImage",
-                    "ecr:InitiateLayerUpload",
-                    "ecr:UploadLayerPart",
-                    "ecr:CompleteLayerUpload",
-                ],
-                "Resource": format!("arn:aws:ecr:{region}:{account_id}:repository/*"),
-            },
-            {
-                "Effect": "Allow",
-                "Action": ["s3:GetObject", "s3:GetObjectVersion"],
-                "Resource": format!("arn:aws:s3:::{state_bucket}/codebuild/*"),
-            },
-            {
-                "Effect": "Allow",
-                "Action": [
-                    "logs:CreateLogGroup",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents",
-                ],
-                "Resource": format!(
-                    "arn:aws:logs:{region}:{account_id}:log-group:/aws/codebuild/{project}*"
-                ),
-            },
-        ],
-    })
-}
-
-/// 信頼ポリシーが service に sts:AssumeRole を許可しているか (external role の検査)
-pub fn trusts_service(document: &Value, service: &str) -> bool {
-    let statements: Vec<&Value> = match document.get("Statement") {
-        Some(Value::Array(items)) => items.iter().collect(),
-        Some(item @ Value::Object(_)) => vec![item],
-        _ => vec![],
-    };
-    let as_list = |v: Option<&Value>| -> Vec<String> {
-        match v {
-            Some(Value::String(s)) => vec![s.clone()],
-            Some(Value::Array(items)) => items
-                .iter()
-                .filter_map(|i| i.as_str().map(str::to_string))
-                .collect(),
-            _ => vec![],
-        }
-    };
-    statements.into_iter().any(|statement| {
-        if statement.get("Effect").and_then(Value::as_str) != Some("Allow") {
-            return false;
-        }
-        let services = as_list(statement.get("Principal").and_then(|p| p.get("Service")));
-        let actions = as_list(statement.get("Action"));
-        services.iter().any(|s| s == service) && actions.iter().any(|a| a == "sts:AssumeRole")
-    })
 }
 
 /// 1 ファイルの zip 内 mode。実行ビットがあれば 0755、無ければ 0644 に正規化する
@@ -284,127 +194,21 @@ impl<'a> CodeBuildBuilder<'a> {
     /// role を冪等に ensure して ARN を返す。既存 role はそのまま使う (policy の差分更新は
     /// しない)。external_roles では作らず、存在と信頼先だけを検査する
     async fn ensure_role(&self, region: &str, account_id: &str) -> Result<String> {
-        let name = &self.names.role;
-        let iam = &self.clients.iam;
-        if self.settings.external_roles {
-            return self.verify_role().await;
-        }
-        match iam.get_role().role_name(name).send().await {
-            Ok(res) => {
-                if let Some(role) = res.role() {
-                    return Ok(role.arn().to_string());
-                }
-            }
-            Err(e) => {
-                let no_such = e
-                    .as_service_error()
-                    .is_some_and(|s| s.is_no_such_entity_exception());
-                if !no_such {
-                    return Err(e).with_context(|| format!("IAM get_role ({name}) に失敗しました"));
-                }
-            }
-        }
-        eprintln!("Creating IAM role: {name}");
-        let mut create = iam
-            .create_role()
-            .role_name(name)
-            .assume_role_policy_document(assume_role_policy(CODEBUILD_SERVICE).to_string());
-        if let Some(boundary) = &self.settings.permissions_boundary {
-            create = create.permissions_boundary(boundary);
-        }
-        let res = create
-            .send()
-            .await
-            .with_context(|| format!("IAM create_role ({name}) に失敗しました"))?;
-        let arn = res
-            .role()
-            .map(|r| r.arn().to_string())
-            .context("IAM create_role が role を返しませんでした")?;
-        let policy = codebuild_policy(
+        let spec = codebuild_role(&CodeBuildRole {
+            name: &self.names.role,
             region,
             account_id,
-            &self.settings.state_bucket,
-            &self.names.project,
-        );
-        iam.put_role_policy()
-            .role_name(name)
-            .policy_name("codebuild-policy")
-            .policy_document(policy.to_string())
-            .send()
-            .await
-            .with_context(|| format!("IAM put_role_policy ({name}) に失敗しました"))?;
-        eprintln!("Waiting for IAM role propagation...");
-        tokio::time::sleep(ROLE_PROPAGATION_WAIT).await;
-        Ok(arn)
-    }
-
-    async fn verify_role(&self) -> Result<String> {
-        let name = &self.names.role;
-        let res = match self.clients.iam.get_role().role_name(name).send().await {
-            Ok(res) => res,
-            Err(e) => {
-                if e.as_service_error()
-                    .is_some_and(|s| s.is_no_such_entity_exception())
-                {
-                    bail!(
-                        "IAM role {name} がありません。[iam] external_roles = true では pocket は \
-                         role を作りません。`pocket permissions roles` の出力どおりに作成して\
-                         から再実行してください。"
-                    );
-                }
-                return Err(e).with_context(|| format!("IAM get_role ({name}) に失敗しました"));
-            }
-        };
-        let role = res
-            .role()
-            .context("IAM get_role が role を返しませんでした")?;
-        // AssumeRolePolicyDocument は URL encode された JSON
-        let document: Value = role
-            .assume_role_policy_document()
-            .map(|d| {
-                let decoded = percent_decode(d);
-                serde_json::from_str(&decoded).unwrap_or(Value::Null)
-            })
-            .unwrap_or(Value::Null);
-        if !trusts_service(&document, CODEBUILD_SERVICE) {
-            bail!(
-                "IAM role {name} の信頼ポリシーが {CODEBUILD_SERVICE} に sts:AssumeRole を許可していません。\
-                 `pocket permissions roles` の assume_role_policy を参考に信頼ポリシーを\
-                 直してから再実行してください。"
-            );
-        }
-        Ok(role.arn().to_string())
+            state_bucket: &self.settings.state_bucket,
+            project_name: &self.names.project,
+            permissions_boundary: self.settings.permissions_boundary.as_deref(),
+            external: self.settings.external_roles,
+        });
+        iam::ensure_role(&self.clients.iam, &spec).await
     }
 
     /// role を inline policy ごと削除する (無ければ何もしない)
     async fn delete_role(&self, name: &str) -> Result<()> {
-        let iam = &self.clients.iam;
-        let listed = match iam.list_role_policies().role_name(name).send().await {
-            Ok(res) => res,
-            Err(e) => {
-                if e.as_service_error()
-                    .is_some_and(|s| s.is_no_such_entity_exception())
-                {
-                    return Ok(());
-                }
-                return Err(e)
-                    .with_context(|| format!("IAM list_role_policies ({name}) に失敗しました"));
-            }
-        };
-        for policy in listed.policy_names() {
-            iam.delete_role_policy()
-                .role_name(name)
-                .policy_name(policy)
-                .send()
-                .await
-                .with_context(|| format!("IAM delete_role_policy ({name}) に失敗しました"))?;
-        }
-        iam.delete_role()
-            .role_name(name)
-            .send()
-            .await
-            .with_context(|| format!("IAM delete_role ({name}) に失敗しました"))?;
-        eprintln!("Deleted IAM role: {name}");
+        iam::delete_role(&self.clients.iam, name, &[]).await?;
         Ok(())
     }
 
@@ -590,28 +394,6 @@ pub fn failed_phases_report(phases: &[(String, String, String)]) -> String {
     out
 }
 
-/// IAM が返す URL encode された policy 文書を戻す (`%XX` を 1 byte に戻す)
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Some(b) = s
-                .get(i + 1..i + 3)
-                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-            {
-                out.push(b);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use std::io::{Cursor, Read};
@@ -676,44 +458,6 @@ mod tests {
             Some("cfg")
         );
         assert_eq!(resolve_permissions_boundary(None, None), None);
-    }
-
-    #[test]
-    fn policy_resources() {
-        let p = codebuild_policy("ap-northeast-1", "123", "b", "dev-x-codebuild");
-        let st = p["Statement"].as_array().unwrap();
-        assert_eq!(st.len(), 4);
-        assert_eq!(
-            st[1]["Resource"],
-            "arn:aws:ecr:ap-northeast-1:123:repository/*"
-        );
-        assert_eq!(st[2]["Resource"], "arn:aws:s3:::b/codebuild/*");
-        assert_eq!(
-            st[3]["Resource"],
-            "arn:aws:logs:ap-northeast-1:123:log-group:/aws/codebuild/dev-x-codebuild*"
-        );
-    }
-
-    #[test]
-    fn trust_check() {
-        assert!(trusts_service(
-            &assume_role_policy(CODEBUILD_SERVICE),
-            CODEBUILD_SERVICE
-        ));
-        let single = json!({"Statement": {"Effect": "Allow", "Principal": {"Service": ["x", CODEBUILD_SERVICE]}, "Action": ["sts:AssumeRole"]}});
-        assert!(trusts_service(&single, CODEBUILD_SERVICE));
-        let deny = json!({"Statement": [{"Effect": "Deny", "Principal": {"Service": CODEBUILD_SERVICE}, "Action": "sts:AssumeRole"}]});
-        assert!(!trusts_service(&deny, CODEBUILD_SERVICE));
-        assert!(!trusts_service(
-            &assume_role_policy("lambda.amazonaws.com"),
-            CODEBUILD_SERVICE
-        ));
-    }
-
-    #[test]
-    fn decode_policy_document() {
-        assert_eq!(percent_decode("%7B%22a%22%3A1%7D"), "{\"a\":1}");
-        assert_eq!(percent_decode("100%"), "100%");
     }
 
     #[test]

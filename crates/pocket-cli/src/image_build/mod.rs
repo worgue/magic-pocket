@@ -7,7 +7,7 @@
 //! Context → state bucket の確保 (CodeBuild の source 置き場) → container 名順に
 //! ECR repository の確保と build / push。
 
-mod codebuild;
+pub(crate) mod codebuild;
 mod context_files;
 mod docker;
 mod runner;

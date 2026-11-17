@@ -10,7 +10,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{anyhow, bail, Result};
 use aws_config::{Region, SdkConfig};
-use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
 use base64::Engine as _;
 use magic_pocket_settings::context::{
     CloudFrontContext, ContainerContext, Context, DsqlContext, HostedZone, InboundContext,
@@ -28,6 +27,8 @@ use super::report::{Evaluated, Evaluator};
 use super::resource::Resource;
 use super::sink::Sink;
 use super::{dsql as dsql_status, s3 as s3_status};
+use crate::aws_util::{has_code, sdk_error};
+use crate::deploy::secret_store::{read_managed, ManagedSecrets};
 use crate::stack::cloudfront::{self, CloudFrontInputs};
 use crate::stack::container::{self, ContainerInputs, RdsState};
 use crate::stack::ops::{
@@ -39,25 +40,6 @@ use crate::stack::{inbound, vpc, StackOutputs, StackTemplate};
 /// origin verify の secret を入れる managed secret の key (Python の `ORIGIN_VERIFY_SECRET_KEY`)
 const ORIGIN_VERIFY_SECRET_KEY: &str = "POCKET_ORIGIN_VERIFY_SECRET";
 const EDGE_REGION: &str = "us-east-1";
-
-/// SDK の error を「操作名: code: message」の形にする
-fn sdk_error<E, R>(operation: &str, error: &SdkError<E, R>) -> anyhow::Error
-where
-    E: ProvideErrorMetadata + std::fmt::Debug,
-    R: std::fmt::Debug,
-{
-    match (error.code(), error.message()) {
-        (Some(code), Some(message)) => anyhow!("{operation}: {code}: {message}"),
-        _ => anyhow!("{operation}: {error:?}"),
-    }
-}
-
-fn has_code<E: ProvideErrorMetadata, R>(error: &SdkError<E, R>, codes: &[&str]) -> bool {
-    error.code().is_some_and(|code| codes.contains(&code))
-}
-
-/// pocket managed secret の中身 (key → 文字列か、sub key → 文字列の dict)
-type ManagedSecrets = Map<String, Json>;
 
 pub struct AwsEvaluator<'a> {
     ctx: &'a Context,
@@ -120,85 +102,10 @@ impl<'a> AwsEvaluator<'a> {
         if let Some(found) = self.secrets.get(&view.pocket_key) {
             return Ok(found.clone());
         }
-        let secrets = match view.store {
-            StoreType::Sm => self.read_sm_secrets(view).await?,
-            StoreType::Ssm => Some(self.read_ssm_secrets(view).await?),
-        };
+        let secrets = read_managed(&self.sdk, view, false).await?;
         self.secrets
             .insert(view.pocket_key.clone(), secrets.clone());
         Ok(secrets)
-    }
-
-    async fn read_sm_secrets(&self, view: &SecretsContext) -> Result<Option<ManagedSecrets>> {
-        let client = aws_sdk_secretsmanager::Client::new(&self.config(&view.region));
-        let response = client
-            .get_secret_value()
-            .secret_id(&view.pocket_key)
-            .send()
-            .await;
-        let response = match response {
-            Ok(response) => response,
-            // InvalidRequestException は削除予約中。status は復元しない
-            Err(e)
-                if has_code(
-                    &e,
-                    &["ResourceNotFoundException", "InvalidRequestException"],
-                ) =>
-            {
-                return Ok(None)
-            }
-            Err(e) => return Err(sdk_error("secretsmanager get_secret_value", &e)),
-        };
-        let data: Json =
-            serde_json::from_str(response.secret_string().unwrap_or("{}")).map_err(|e| {
-                anyhow!(
-                    "pocket managed secret {} が JSON ではありません: {e}",
-                    view.pocket_key
-                )
-            })?;
-        let project = &data[&view.stage][&view.project_name];
-        Ok(Some(project.as_object().cloned().unwrap_or_default()))
-    }
-
-    async fn read_ssm_secrets(&self, view: &SecretsContext) -> Result<ManagedSecrets> {
-        let client = aws_sdk_ssm::Client::new(&self.config(&view.region));
-        let path = format!("/{}/", view.pocket_key);
-        let mut pages = client
-            .get_parameters_by_path()
-            .path(&path)
-            .recursive(true)
-            .with_decryption(true)
-            .into_paginator()
-            .send();
-        let mut result = ManagedSecrets::new();
-        while let Some(page) = pages.next().await {
-            let page = page.map_err(|e| sdk_error("ssm get_parameters_by_path", &e))?;
-            for parameter in page.parameters() {
-                let name = parameter.name().unwrap_or_default();
-                let value = parameter.value().unwrap_or_default();
-                // /{pocket_key}/{key} か /{pocket_key}/{key}/{sub}
-                let parts: Vec<&str> = name
-                    .get(path.len()..)
-                    .unwrap_or_default()
-                    .split('/')
-                    .collect();
-                match parts.as_slice() {
-                    [key] => {
-                        result.insert(key.to_string(), Json::from(value));
-                    }
-                    [key, sub] => {
-                        let entry = result
-                            .entry(key.to_string())
-                            .or_insert_with(|| Json::Object(Map::new()));
-                        if let Some(entry) = entry.as_object_mut() {
-                            entry.insert(sub.to_string(), Json::from(value));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Ok(result)
     }
 
     /// managed secret の key を持つ store view (shared → 名前順の container)。

@@ -1,0 +1,195 @@
+[
+  {
+    "name": "lambda-prod-testprj-main-pocket",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    ],
+    "inline_policies": {
+      "prod-testprj-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:prod-testprj-main-pocket-AbCdEf"
+              }
+            ]
+          }
+        ]
+      },
+      "prod-testprj-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-testprj-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": false,
+    "external": false,
+    "assume_role_policy": {
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "prod-testprj-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:prod-testprj-main-pocket-AbCdEf"
+            ]
+          }
+        ]
+      },
+      "prod-testprj-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-southeast-1:123456789012:stack/prod-testprj-*"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "prod-testprj-pocket-codebuild-role",
+    "service": "codebuild.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-southeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::prod-testprj-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-southeast-1:123456789012:log-group:/aws/codebuild/prod-testprj-pocket-codebuild*"
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": false,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "codebuild.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-southeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::prod-testprj-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-southeast-1:123456789012:log-group:/aws/codebuild/prod-testprj-pocket-codebuild*"
+          }
+        ]
+      }
+    }
+  }
+]

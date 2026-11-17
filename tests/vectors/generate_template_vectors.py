@@ -13,6 +13,9 @@ Python 版の deploy が作る stack の template を、入力 (toml × その s
 - `<種別>.<stack 名>.yaml` (inbound 系は `.json`): template のテキスト + 改行 1 つ
 - `<種別>.<stack 名>.input.json`: Jinja2 の template に渡した変数 (inbound 系は
   template を Python の dict で組むので無い)。dict の順は描画の順なので並べ替えない
+- `roles.json`: stage で pocket が使う IAM role の一覧 (`stage_role_specs`。deploy 前の
+  external_roles の検査と同じ並び)。inline policy は定義のままと、`Fn::Sub` を展開した
+  IAM に直接書ける形の両方を持つ。dict の順は policy の定義順なので並べ替えない
 
 外部入力 (他 stack の output・secret の値・RDS / DSQL / EFS の実体・receipt rule set
 の binding・受信ドメインの hosted zone id) は固定の fake に差し替え、使った値を
@@ -58,6 +61,8 @@ from pocket_cli.resources.aws.cloudformation import (
     render_template,
 )
 from pocket_cli.resources.aws.efs import Efs
+from pocket_cli.resources.aws.iam_roles import RoleSpec
+from pocket_cli.resources.aws.stage_roles import stage_role_specs
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.inbound import InboundStack
 from pocket_cli.resources.inbound_domain import InboundDomainStack
@@ -298,6 +303,24 @@ def render_stack(kind: str, stack: Stack) -> tuple[str, dict | None]:
     return text, variables
 
 
+def role_entry(spec: RoleSpec, context: Context) -> dict[str, Any]:
+    """RoleSpec の全 field と、導出する文書 (信頼ポリシー・展開後の inline policy)。"""
+    assert context.general is not None
+    return {
+        "name": spec.name,
+        "service": spec.service,
+        "managed_policy_arns": spec.managed_policy_arns,
+        "inline_policies": spec.inline_policies,
+        "permissions_boundary": spec.permissions_boundary,
+        "assume_role_policy_version": spec.assume_role_policy_version,
+        "external": spec.external,
+        "assume_role_policy": spec.assume_role_policy,
+        "resolved_inline_policies": spec.resolved_inline_policies(
+            region=context.general.region, account_id=FAKE_ACCOUNT
+        ),
+    }
+
+
 def build_files(toml_path: Path, stage: str, context: dict) -> dict[str, str] | None:
     """1 入力 × 1 stage のファイル (名前 → 内容)。Context を組めない入力は None"""
     data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
@@ -332,6 +355,19 @@ def build_files(toml_path: Path, stage: str, context: dict) -> dict[str, str] | 
                         json.dumps(variables, ensure_ascii=False, indent=2) + "\n"
                     )
                 entries.append(entry)
+            files["roles.json"] = (
+                json.dumps(
+                    [
+                        role_entry(spec, pocket_context)
+                        for spec in stage_role_specs(
+                            pocket_context, account_id=FAKE_ACCOUNT
+                        )
+                    ],
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n"
+            )
         external = {**external, "dir_files": dir_files}
     manifest = {
         "input": toml_path.relative_to(REPO_ROOT).as_posix(),

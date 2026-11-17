@@ -1,0 +1,386 @@
+[
+  {
+    "name": "lambda-dev-db-app-pocket",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+    ],
+    "inline_policies": {
+      "dev-db-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-app-pocket-AbCdEf"
+              }
+            ]
+          }
+        ]
+      },
+      "dev-db-pocket-access-rds-secret": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:secretsmanager:ap-northeast-1:${AWS::AccountId}:secret:dev-db-pocket-aurora-credentials-??????"
+              }
+            ]
+          }
+        ]
+      },
+      "dev-db-pocket-access-dsql": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dsql:DbConnectAdmin"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:dsql:ap-northeast-1:${AWS::AccountId}:cluster/*"
+              }
+            ],
+            "Condition": {
+              "StringEquals": {
+                "aws:ResourceTag/Name": "dev-db-pocket-dsql"
+              }
+            }
+          }
+        ]
+      },
+      "dev-db-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-db-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": false,
+    "external": false,
+    "assume_role_policy": {
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "dev-db-pocket-access-secretsmanager": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-app-pocket-AbCdEf"
+            ]
+          }
+        ]
+      },
+      "dev-db-pocket-access-rds-secret": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "secretsmanager:GetSecretValue"
+            ],
+            "Resource": [
+              "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-pocket-aurora-credentials-??????"
+            ]
+          }
+        ]
+      },
+      "dev-db-pocket-access-dsql": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dsql:DbConnectAdmin"
+            ],
+            "Resource": [
+              "arn:aws:dsql:ap-northeast-1:123456789012:cluster/*"
+            ],
+            "Condition": {
+              "StringEquals": {
+                "aws:ResourceTag/Name": "dev-db-pocket-dsql"
+              }
+            }
+          }
+        ]
+      },
+      "dev-db-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/dev-db-*"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "lambda-dev-db-batch-pocket",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+    ],
+    "inline_policies": {
+      "dev-db-pocket-access-dsql": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dsql:DbConnectAdmin"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:${AWS::Partition}:dsql:ap-northeast-1:${AWS::AccountId}:cluster/*"
+              }
+            ],
+            "Condition": {
+              "StringEquals": {
+                "aws:ResourceTag/Name": "dev-db-pocket-dsql"
+              }
+            }
+          }
+        ]
+      },
+      "dev-db-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-db-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": false,
+    "external": false,
+    "assume_role_policy": {
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "dev-db-pocket-access-dsql": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "dsql:DbConnectAdmin"
+            ],
+            "Resource": [
+              "arn:aws:dsql:ap-northeast-1:123456789012:cluster/*"
+            ],
+            "Condition": {
+              "StringEquals": {
+                "aws:ResourceTag/Name": "dev-db-pocket-dsql"
+              }
+            }
+          }
+        ]
+      },
+      "dev-db-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-northeast-1:123456789012:stack/dev-db-*"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "dev-db-pocket-codebuild-role",
+    "service": "codebuild.amazonaws.com",
+    "managed_policy_arns": [],
+    "inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::dev-db-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/dev-db-pocket-codebuild*"
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": false,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "codebuild.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "codebuild-policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:GetAuthorizationToken"
+            ],
+            "Resource": "*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ecr:BatchCheckLayerAvailability",
+              "ecr:GetDownloadUrlForLayer",
+              "ecr:BatchGetImage",
+              "ecr:PutImage",
+              "ecr:InitiateLayerUpload",
+              "ecr:UploadLayerPart",
+              "ecr:CompleteLayerUpload"
+            ],
+            "Resource": "arn:aws:ecr:ap-northeast-1:123456789012:repository/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion"
+            ],
+            "Resource": "arn:aws:s3:::dev-db-pocket-state/codebuild/*"
+          },
+          {
+            "Effect": "Allow",
+            "Action": [
+              "logs:CreateLogGroup",
+              "logs:CreateLogStream",
+              "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/dev-db-pocket-codebuild*"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "dev-db-pocket-backup-role",
+    "service": "backup.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
+      "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
+    ],
+    "inline_policies": {},
+    "permissions_boundary": null,
+    "assume_role_policy_version": true,
+    "external": false,
+    "assume_role_policy": {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "backup.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {}
+  }
+]

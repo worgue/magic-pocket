@@ -68,3 +68,6 @@ aws-sdk-sns = { version = "1", default-features = false, features = ["default-ht
 aws-sdk-ssm = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # Neon / TiDB / Upstash の API (status)。TLS は aws-sdk と同じ rustls を使う
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+# managed secret の生成 (乱数と RSA の鍵対)。aws-sdk の TLS (rustls) が使っているのと同じ
+# 暗号ライブラリを直接使う (依存ツリーは増えない)
+aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys", "alloc"] }

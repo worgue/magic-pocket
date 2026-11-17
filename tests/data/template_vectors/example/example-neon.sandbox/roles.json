@@ -1,0 +1,97 @@
+[
+  {
+    "name": "lambda-sandbox-pocket-example-neon-main-pocket",
+    "service": "lambda.amazonaws.com",
+    "managed_policy_arns": [
+      "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+      "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+      "arn:aws:iam::aws:policy/AmazonRoute53FullAccess"
+    ],
+    "inline_policies": {
+      "sandbox-pocket-example-neon-pocket-access-ssm": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-main-pocket/*"
+              },
+              {
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-pocket-user/neon_database_url"
+              }
+            ]
+          }
+        ]
+      },
+      "sandbox-pocket-example-neon-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              {
+                "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/sandbox-pocket-example-neon-*"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "permissions_boundary": null,
+    "assume_role_policy_version": false,
+    "external": false,
+    "assume_role_policy": {
+      "Statement": [
+        {
+          "Effect": "Allow",
+          "Principal": {
+            "Service": "lambda.amazonaws.com"
+          },
+          "Action": "sts:AssumeRole"
+        }
+      ]
+    },
+    "resolved_inline_policies": {
+      "sandbox-pocket-example-neon-pocket-access-ssm": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "ssm:GetParameter",
+              "ssm:GetParameters",
+              "ssm:GetParametersByPath"
+            ],
+            "Resource": [
+              "arn:aws:ssm:ap-southeast-1:123456789012:parameter/sandbox-pocket-example-neon-main-pocket/*",
+              "arn:aws:ssm:ap-southeast-1:123456789012:parameter/sandbox-pocket-example-neon-pocket-user/neon_database_url"
+            ]
+          }
+        ]
+      },
+      "sandbox-pocket-example-neon-pocket-access-cloudformation": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "cloudformation:DescribeStacks"
+            ],
+            "Resource": [
+              "arn:aws:cloudformation:ap-southeast-1:123456789012:stack/sandbox-pocket-example-neon-*"
+            ]
+          }
+        ]
+      }
+    }
+  }
+]
