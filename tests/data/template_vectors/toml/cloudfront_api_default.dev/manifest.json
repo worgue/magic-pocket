@@ -1,0 +1,71 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml/cloudfront_api_default.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": null,
+    "inbound_bindings": {},
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {}
+  },
+  "stacks": [
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.dev-testprj-container-main.yaml",
+      "input_file": "container.dev-testprj-container-main.input.json",
+      "kind": "container",
+      "name": "dev-testprj-container-main",
+      "region": "ap-southeast-1",
+      "tags": [],
+      "template_hash": "19592e67ca67dd14"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "cloudfront.dev-testprj-main-cloudfront.yaml",
+      "input_file": "cloudfront.dev-testprj-main-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "dev-testprj-main-cloudfront",
+      "region": "ap-southeast-1",
+      "tags": [],
+      "template_hash": "6e4e6e12a8af0427"
+    }
+  ],
+  "stage": "dev"
+}

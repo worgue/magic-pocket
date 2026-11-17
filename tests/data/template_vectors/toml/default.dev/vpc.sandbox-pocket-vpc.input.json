@@ -1,0 +1,30 @@
+{
+  "stack_name": "sandbox-pocket-vpc",
+  "export": {
+    "vpc_id": "sandbox-pocket-vpc-id",
+    "private_subnet_": "sandbox-pocket-private-subnet-",
+    "efs_access_point_arn": "sandbox-pocket-efs-access-point",
+    "efs_security_group": "sandbox-pocket-efs-security-group"
+  },
+  "efs_filesystem_id": "fs-0123456789abcdef0",
+  "ref": "sandbox",
+  "zone_suffixes": [
+    "c"
+  ],
+  "nat_gateway": true,
+  "internet_gateway": true,
+  "efs": {
+    "local_mount_path": "/mnt/efs",
+    "access_point_path": "/lambda",
+    "name": "sandbox-pocket",
+    "region": "ap-southeast-1"
+  },
+  "name": "sandbox-pocket",
+  "region": "ap-southeast-1",
+  "manage": true,
+  "sharable": false,
+  "private_route_table": true,
+  "zones": [
+    "ap-southeast-1c"
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {
+      "fonts/default": [
+        "robots.txt"
+      ]
+    },
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {
+      "prod-cf-app-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:prod-cf-app-pocket-AbCdEf",
+      "prod-cf-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:prod-cf-pocket-AbCdEf"
+    }
+  },
+  "input": "tests/data/toml_vectors/cloudfront_full.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": null,
+    "inbound_bindings": {},
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {
+        "web": "vector-pocket_origin_verify_secret"
+      },
+      "signing_public_key_pem": {
+        "web": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector\n-----END PUBLIC KEY-----\n"
+      },
+      "waf_allow_secret_values": {
+        "admin": {},
+        "web": {
+          "HOOK_ALLOW": "vector-allow-hook_allow",
+          "SMOKE_ALLOW": "vector-allow-smoke_allow"
+        }
+      }
+    },
+    "stack_outputs": {
+      "prod-cf-admin-waf": {
+        "WebACLArn": "arn:aws:wafv2:us-east-1:123456789012:global/webacl/prod-cf-admin-waf/vector"
+      },
+      "prod-cf-web-acm": {
+        "CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/prod-cf-web-acm"
+      },
+      "prod-cf-web-waf": {
+        "WebACLArn": "arn:aws:wafv2:us-east-1:123456789012:global/webacl/prod-cf-web-waf/vector"
+      }
+    }
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "acm.prod-cf-web-acm.yaml",
+      "input_file": "acm.prod-cf-web-acm.input.json",
+      "kind": "acm",
+      "name": "prod-cf-web-acm",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "83743aa4e5e9e8a9"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "waf.prod-cf-web-waf.yaml",
+      "input_file": "waf.prod-cf-web-waf.input.json",
+      "kind": "waf",
+      "name": "prod-cf-web-waf",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "c095da5282d8c38e"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "waf.prod-cf-admin-waf.yaml",
+      "input_file": "waf.prod-cf-admin-waf.input.json",
+      "kind": "waf",
+      "name": "prod-cf-admin-waf",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "82fb6179da8aa788"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "prod-cf-web-key-group-id",
+        "public_key_id": "prod-cf-web-public-key-id"
+      },
+      "file": "cloudfront_keys.prod-cf-web-cloudfront-keys.yaml",
+      "input_file": "cloudfront_keys.prod-cf-web-cloudfront-keys.input.json",
+      "kind": "cloudfront_keys",
+      "name": "prod-cf-web-cloudfront-keys",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "69edc7d8759e874e"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.prod-cf-container-app.yaml",
+      "input_file": "container.prod-cf-container-app.input.json",
+      "kind": "container",
+      "name": "prod-cf-container-app",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "c62cee8237468d2a"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "prod-cf-web-key-group-id",
+        "kvs_arn": "prod-cf-web-token-kvs-arn"
+      },
+      "file": "cloudfront.prod-cf-web-cloudfront.yaml",
+      "input_file": "cloudfront.prod-cf-web-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "prod-cf-web-cloudfront",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "07fbfdd3f8701f5e"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "cloudfront.prod-cf-admin-cloudfront.yaml",
+      "input_file": "cloudfront.prod-cf-admin-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "prod-cf-admin-cloudfront",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "2601ee157aab16ee"
+    }
+  ],
+  "stage": "prod"
+}

@@ -1,0 +1,111 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "example-dsql/pocket.toml",
+  "stack_external": {
+    "dsql_identifier": "vectordsqlclusteridentifier",
+    "efs_filesystem_id": null,
+    "inbound_bindings": {
+      "sandbox-pocket-example-dsql-pock-df065f0823": {
+        "after": null,
+        "rule_set": "default-rule-set"
+      }
+    },
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {
+      "sandbox-pocket-example-dsql-web-acm": {
+        "CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/sandbox-pocket-example-dsql-web-acm"
+      }
+    }
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "acm.sandbox-pocket-example-dsql-web-acm.yaml",
+      "input_file": "acm.sandbox-pocket-example-dsql-web-acm.input.json",
+      "kind": "acm",
+      "name": "sandbox-pocket-example-dsql-web-acm",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "07297f54c4fc9e69"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound_domain.sandbox-pocket-example-dsql-pock-f6e05bca8f.json",
+      "kind": "inbound_domain",
+      "name": "sandbox-pocket-example-dsql-pock-f6e05bca8f",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "c30dda36626e4e1f"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.sandbox-pocket-example-dsql-container-main.yaml",
+      "input_file": "container.sandbox-pocket-example-dsql-container-main.input.json",
+      "kind": "container",
+      "name": "sandbox-pocket-example-dsql-container-main",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "14bff19861823f0d"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound.sandbox-pocket-example-dsql-pock-df065f0823.json",
+      "kind": "inbound",
+      "name": "sandbox-pocket-example-dsql-pock-df065f0823",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "d8803d2b455e4120"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "cloudfront.sandbox-pocket-example-dsql-web-cloudfront.yaml",
+      "input_file": "cloudfront.sandbox-pocket-example-dsql-web-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "sandbox-pocket-example-dsql-web-cloudfront",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "87418b54d7ad93c4"
+    }
+  ],
+  "stage": "sandbox"
+}

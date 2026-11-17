@@ -1,0 +1,500 @@
+{
+  "stack_name": "dev-ctx-container-web",
+  "export": {
+    "vpc_id": "main-pocket-vpc-id",
+    "private_subnet_": "main-pocket-private-subnet-",
+    "efs_access_point_arn": "main-pocket-efs-access-point",
+    "efs_security_group": "main-pocket-efs-security-group"
+  },
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": true,
+    "cfn_properties": {
+      "RoleName": "dev-ctx-myorg-lambda-role",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonRoute53FullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess",
+        "arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "inbound-support",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/imports/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-ctx-pocket-access-secretsmanager",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-web-pocket-AbCdEf"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:plain-name-??????"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/external/api-??????"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-ctx-pocket-access-ssm",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:GetParameter",
+                  "ssm:GetParameters",
+                  "ssm:GetParametersByPath"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-ctx-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-ctx-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/dev-ctx-myorg-lambda-role"
+    }
+  },
+  "scheduler_role": null,
+  "name": "web",
+  "vpc": {
+    "ref": "main",
+    "zone_suffixes": [
+      "a",
+      "c"
+    ],
+    "nat_gateway": true,
+    "internet_gateway": true,
+    "efs": {
+      "local_mount_path": "/mnt/data",
+      "access_point_path": "/lambda",
+      "name": "main-pocket",
+      "region": "ap-northeast-1"
+    },
+    "name": "main-pocket",
+    "region": "ap-northeast-1",
+    "manage": true,
+    "sharable": false,
+    "private_route_table": true,
+    "zones": [
+      "ap-northeast-1a",
+      "ap-northeast-1c"
+    ]
+  },
+  "secrets": {
+    "store": "sm",
+    "managed": {
+      "DATABASE_URL": {
+        "type": "neon_database_url",
+        "options": {},
+        "shared": false
+      },
+      "SIGNING": {
+        "type": "cloudfront_signing_key",
+        "options": {
+          "id_environ_suffix": 1
+        },
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [
+      "plain-name",
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x",
+      "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+    ],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-ctx-web-pocket",
+    "stage": "dev",
+    "project_name": "ctx",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-web-pocket-AbCdEf",
+      "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:plain-name-??????",
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x"
+    ],
+    "allowed_ssm_resources": [
+      "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p"
+    ]
+  },
+  "shared_secrets": {
+    "store": "sm",
+    "managed": {
+      "SECRET_KEY": {
+        "type": "password",
+        "options": {},
+        "shared": true
+      }
+    },
+    "user": {
+      "EXTERNAL_API": {
+        "name": "dev/external/api",
+        "type": null,
+        "store": null
+      },
+      "PARAM": {
+        "name": "plain/param",
+        "type": null,
+        "store": "ssm"
+      },
+      "TIDB_URL": {
+        "name": "/dev-ctx-pocket-user/tidb_database_url",
+        "type": "tidb_database_url",
+        "store": "ssm"
+      }
+    },
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-ctx-pocket",
+    "stage": "dev",
+    "project_name": "ctx",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/external/api-??????",
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+    ],
+    "allowed_ssm_resources": [
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+    ]
+  },
+  "dockerfile_path": "web/Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "env-hash-1"
+  },
+  "signing_key_imports": {
+    "SIGNING1": "dev-ctx-web-public-key-id"
+  },
+  "inbound": {
+    "support": {
+      "name": "support",
+      "region": "ap-northeast-1",
+      "resource_name": "dev-ctx-pocket-inbound-support-41d19ddf04",
+      "queue_name": "dev-ctx-pocket-web-mail",
+      "config": {
+        "domain": "mail.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": null,
+        "recipients": [
+          "support@mail.example.com"
+        ],
+        "handler": "web.mail",
+        "rule_set": null,
+        "enabled": true,
+        "tls_policy": "Require",
+        "scan_enabled": true,
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "retention_days": 30,
+        "delivery_alert": {
+          "enabled": true,
+          "email": "ops@example.com",
+          "eventbridge": false
+        }
+      },
+      "bucket_name": "dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-inbound-support-41d19ddf04",
+      "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-web-mail",
+      "runtime_config": {
+        "region": "ap-northeast-1",
+        "bucket": "dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-inbound-support-41d19ddf04",
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "recipients": [
+          "support@mail.example.com"
+        ]
+      }
+    }
+  },
+  "platform": "linux/amd64",
+  "django": {
+    "storages": {
+      "default": {
+        "store": "s3",
+        "location": null,
+        "static": false,
+        "manifest": false,
+        "options": {},
+        "distribution": "web",
+        "route": "media",
+        "deploy_hash": false,
+        "deploy_hash_prefix": null,
+        "object_hash": false,
+        "publish": "deploy",
+        "link": false
+      },
+      "staticfiles": {
+        "store": "s3",
+        "location": null,
+        "static": true,
+        "manifest": false,
+        "options": {},
+        "distribution": "web",
+        "route": "static",
+        "deploy_hash": true,
+        "deploy_hash_prefix": "/static/",
+        "object_hash": false,
+        "publish": "deploy",
+        "link": false
+      }
+    },
+    "caches": {
+      "default": {
+        "store": "efs",
+        "location_subdir": "{stage}/cache",
+        "location": "/mnt/data/dev/cache"
+      },
+      "local": {
+        "store": "locmem",
+        "location_subdir": "{stage}",
+        "location": null
+      }
+    },
+    "settings": {},
+    "project_dir": null
+  },
+  "region": "ap-northeast-1",
+  "slug": "dev-ctx",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-ctx-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "pocket.django.lambda_handlers.wsgi_handler",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": {
+        "domain": "api.project.com",
+        "create_records": true,
+        "hosted_zone_id_override": null,
+        "disable_execute_api_endpoint": true,
+        "hosted_zone_id": "ZPROJECT"
+      },
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "dev-ctx-pocket-web-wsgi",
+      "log_group_name": "/aws/lambda/dev-ctx-pocket-web-wsgi",
+      "export_api_domain": "dev-ctx-web-wsgi-api-domain",
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    },
+    "mail": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "dev-ctx-pocket-web-mail",
+        "visibility_timeout": 180,
+        "dead_letter_alert": {
+          "email": "ops@example.com",
+          "eventbridge": false,
+          "topic_name": "dev-ctx-pocket-web-mail-dead-letter-alert",
+          "alarm_name": "dev-ctx-pocket-web-mail-dead-letter-alert"
+        }
+      },
+      "key": "mail",
+      "function_name": "dev-ctx-pocket-web-mail",
+      "log_group_name": "/aws/lambda/dev-ctx-pocket-web-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    }
+  },
+  "ecr_name": "dev-ctx-pocket-web-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": true,
+  "use_sqs": true,
+  "use_efs": true,
+  "permissions_boundary": "arn:aws:iam::123456789012:policy/env-boundary",
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": true,
+  "external_role_prefix": "dev-ctx-myorg-",
+  "efs_local_mount_path": "/mnt/data",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-web-pocket-AbCdEf",
+    "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:plain-name-??????",
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:x",
+    "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/external/api-??????",
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+  ],
+  "allowed_ssm_resources": [
+    "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p",
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+  ],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {
+    "support": {
+      "region": "ap-northeast-1",
+      "bucket": "dev-ctx-pocket-inbound-support-41d19ddf04-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-inbound-support-41d19ddf04",
+      "raw_prefix": "raw/",
+      "metadata_prefix": "metadata/",
+      "import_prefix": "imports/",
+      "recipients": [
+        "support@mail.example.com"
+      ]
+    }
+  }
+}

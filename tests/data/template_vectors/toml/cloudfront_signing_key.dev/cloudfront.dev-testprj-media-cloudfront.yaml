@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: spa configuration for webapp
+
+Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: "dev-testprj-media-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+
+
+
+
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - OriginAccessControl
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: "dev-testprj-pocket-root"
+            DomainName: "dev-testprj-pocket.s3.ap-southeast-1.amazonaws.com"
+            OriginPath: "/media"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+        DefaultCacheBehavior:
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          TargetOriginId: "dev-testprj-pocket-root"
+          ViewerProtocolPolicy: "redirect-to-https"
+          TrustedKeyGroups:
+            - Fn::ImportValue: "dev-testprj-media-key-group-id"
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+
+
+Outputs:
+  DistributionId:
+    Value:
+      Ref: CloudFrontDistribution
+  DistributionDomainName:
+    Value:
+      Fn::GetAtt: CloudFrontDistribution.DomainName

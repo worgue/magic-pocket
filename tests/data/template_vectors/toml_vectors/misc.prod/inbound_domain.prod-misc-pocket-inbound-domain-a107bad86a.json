@@ -1,0 +1,151 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "Identity": {
+      "Type": "AWS::SES::EmailIdentity",
+      "Properties": {
+        "EmailIdentity": "mail.example.com",
+        "DkimSigningAttributes": {
+          "NextSigningKeyLength": "RSA_2048_BIT"
+        }
+      }
+    },
+    "DkimRecord1": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": "Z1",
+        "Name": {
+          "Fn::GetAtt": [
+            "Identity",
+            "DkimDNSTokenName1"
+          ]
+        },
+        "Type": "CNAME",
+        "TTL": "1800",
+        "ResourceRecords": [
+          {
+            "Fn::GetAtt": [
+              "Identity",
+              "DkimDNSTokenValue1"
+            ]
+          }
+        ]
+      }
+    },
+    "DkimRecord2": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": "Z1",
+        "Name": {
+          "Fn::GetAtt": [
+            "Identity",
+            "DkimDNSTokenName2"
+          ]
+        },
+        "Type": "CNAME",
+        "TTL": "1800",
+        "ResourceRecords": [
+          {
+            "Fn::GetAtt": [
+              "Identity",
+              "DkimDNSTokenValue2"
+            ]
+          }
+        ]
+      }
+    },
+    "DkimRecord3": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": "Z1",
+        "Name": {
+          "Fn::GetAtt": [
+            "Identity",
+            "DkimDNSTokenName3"
+          ]
+        },
+        "Type": "CNAME",
+        "TTL": "1800",
+        "ResourceRecords": [
+          {
+            "Fn::GetAtt": [
+              "Identity",
+              "DkimDNSTokenValue3"
+            ]
+          }
+        ]
+      }
+    },
+    "MxRecord": {
+      "Type": "AWS::Route53::RecordSet",
+      "Properties": {
+        "HostedZoneId": "Z1",
+        "Name": "mail.example.com",
+        "Type": "MX",
+        "TTL": "300",
+        "ResourceRecords": [
+          "10 inbound-smtp.ap-northeast-1.amazonaws.com"
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "Domain": {
+      "Value": "mail.example.com"
+    },
+    "ManageDns": {
+      "Value": "true"
+    },
+    "MxValue": {
+      "Value": "10 inbound-smtp.ap-northeast-1.amazonaws.com"
+    },
+    "DkimName1": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName1"
+        ]
+      }
+    },
+    "DkimValue1": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue1"
+        ]
+      }
+    },
+    "DkimName2": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName2"
+        ]
+      }
+    },
+    "DkimValue2": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue2"
+        ]
+      }
+    },
+    "DkimName3": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName3"
+        ]
+      }
+    },
+    "DkimValue3": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue3"
+        ]
+      }
+    }
+  }
+}

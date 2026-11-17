@@ -1,0 +1,92 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml/default.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": "fs-0123456789abcdef0",
+    "inbound_bindings": {},
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {}
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {
+        "efs_access_point_arn": "sandbox-pocket-efs-access-point",
+        "efs_security_group": "sandbox-pocket-efs-security-group",
+        "private_subnet_": "sandbox-pocket-private-subnet-",
+        "vpc_id": "sandbox-pocket-vpc-id"
+      },
+      "file": "vpc.sandbox-pocket-vpc.yaml",
+      "input_file": "vpc.sandbox-pocket-vpc.input.json",
+      "kind": "vpc",
+      "name": "sandbox-pocket-vpc",
+      "region": "ap-southeast-1",
+      "tags": [],
+      "template_hash": "fd2a61f9b35c35cc"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {
+        "efs_access_point_arn": "sandbox-pocket-efs-access-point",
+        "efs_security_group": "sandbox-pocket-efs-security-group",
+        "private_subnet_": "sandbox-pocket-private-subnet-",
+        "vpc_id": "sandbox-pocket-vpc-id"
+      },
+      "file": "container.sandbox-testprj-container-main.yaml",
+      "input_file": "container.sandbox-testprj-container-main.input.json",
+      "kind": "container",
+      "name": "sandbox-testprj-container-main",
+      "region": "ap-southeast-1",
+      "tags": [],
+      "template_hash": "30c18f01d49fc932"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "cloudfront.sandbox-testprj-main-cloudfront.yaml",
+      "input_file": "cloudfront.sandbox-testprj-main-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "sandbox-testprj-main-cloudfront",
+      "region": "ap-southeast-1",
+      "tags": [],
+      "template_hash": "1c19546ac719b447"
+    }
+  ],
+  "stage": "sandbox"
+}

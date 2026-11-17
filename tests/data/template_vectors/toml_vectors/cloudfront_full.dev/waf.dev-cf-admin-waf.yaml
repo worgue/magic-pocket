@@ -1,0 +1,64 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: WAFv2 IPSet + WebACL for CloudFront (us-east-1)
+
+# Notes:
+# - Scope=CLOUDFRONT requires us-east-1.
+# - waf.enable_ip_set = true (default):
+#   - DefaultAction = Block
+#   - IPSet (Addresses=[]) + ip-allow Rule (Allow on IPSet match) を出力
+#   - 初回 deploy 直後は deny-all。`pocket waf ip add self ...` で CIDR を投入
+#   - IPSet の Addresses は CFn template 上は常に空で、CLI が side-channel
+#     更新する仕様 (CFn 視点では常に drift だが意図的)
+# - waf.enable_ip_set = false:
+#   - DefaultAction = Allow
+#   - IPSet / ip-allow Rule は出力しない
+#   - managed_rule_groups (必須) で「許可ベース + 怪しいリクエストのみ block」
+# - waf.rate_limits:
+#   - 全ルールの先頭 (priority 0..r-1) で評価される rate-based rule。超過していない
+#     送信元には何もせず次へ進む。先頭に置くのは、allow_rules の秘密ヘッダ持ちや
+#     allowlist 済み IP からの異常な頻度のアクセスも止めるため (KN1870)
+#   - block は CustomResponse 429 (allowlist 外の 403 と区別するため)
+#   - 集計キーは送信元 IP 固定 (CloudFront 配下では viewer IP)
+# - waf.allow_rules:
+#   - IPSet / managed rules より先 (priority r..r+n-1) に評価される allow
+#   - header rule の SearchString は managed secret 値の焼き込み
+#     (enable_origin_verify の OriginCustomHeaders と同じ exposure class)
+
+Resources:
+
+  WebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: "dev-cf-admin-waf"
+      Description: "CloudFront WAF - IP allowlist plus optional managed rules"
+      Scope: CLOUDFRONT
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: "dev-cf-admin-waf"
+      Rules:
+        - Name: "ratelimit-0"
+          Priority: 0
+          Action:
+            Block:
+              CustomResponse:
+                ResponseCode: 429
+          Statement:
+            RateBasedStatement:
+              Limit: 10
+              EvaluationWindowSec: 300
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: "dev-cf-admin-waf-ratelimit-0"
+      Tags:
+        - Key: Name
+          Value: "dev-cf-pocket-cloudfront-waf"
+
+Outputs:
+  WebACLArn:
+    Value:
+      Fn::GetAtt: WebACL.Arn

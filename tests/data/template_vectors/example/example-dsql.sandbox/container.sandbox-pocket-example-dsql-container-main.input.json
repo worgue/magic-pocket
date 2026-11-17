@@ -1,0 +1,441 @@
+{
+  "stack_name": "sandbox-pocket-example-dsql-container-main",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": "vectordsqlclusteridentifier.dsql.ap-northeast-1.on.aws",
+  "dsql_region": "ap-northeast-1",
+  "use_dsql": true,
+  "scheduler": {
+    "schedules": [
+      {
+        "key": "daily_message",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "worker",
+        "schedule_expression": "rate(1 day)",
+        "name": "sandbox-pocket-example-dsql-pocket-daily-message",
+        "yaml_key": "DailyMessage",
+        "input_json": "{\"type\": \"post_message\", \"note\": \"scheduled\"}",
+        "is_django_management": false,
+        "is_sqs": true
+      }
+    ],
+    "role_name": "sandbox-pocket-example-dsql-myorg-scheduler-role",
+    "invoked_function_arns": [],
+    "sqs_queue_arns": [
+      "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-worker"
+    ],
+    "has_schedules": true
+  },
+  "lambda_role": {
+    "external": true,
+    "cfn_properties": {
+      "RoleName": "sandbox-pocket-example-dsql-myorg-lambda-role",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonRoute53FullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "inbound-inbox",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/imports/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "sandbox-pocket-example-dsql-pocket-access-ssm",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:GetParameter",
+                  "ssm:GetParameters",
+                  "ssm:GetParametersByPath"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "sandbox-pocket-example-dsql-pocket-access-dsql",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dsql:DbConnectAdmin"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:dsql:ap-northeast-1:${AWS::AccountId}:cluster/*"
+                  }
+                ],
+                "Condition": {
+                  "StringEquals": {
+                    "aws:ResourceTag/Name": "sandbox-pocket-example-dsql-pocket-dsql"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "sandbox-pocket-example-dsql-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/sandbox-pocket-example-dsql-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/sandbox-pocket-example-dsql-myorg-lambda-role"
+    }
+  },
+  "scheduler_role": {
+    "external": true,
+    "cfn_properties": {
+      "RoleName": "sandbox-pocket-example-dsql-myorg-scheduler-role",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "scheduler.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "Policies": [
+        {
+          "PolicyName": "invoke-handlers",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:SendMessage"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-worker"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/sandbox-pocket-example-dsql-myorg-scheduler-role"
+    }
+  },
+  "name": "main",
+  "vpc": null,
+  "secrets": {
+    "store": "ssm",
+    "managed": {
+      "SECRET_KEY": {
+        "type": "password",
+        "options": {
+          "length": 50
+        },
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "sandbox-pocket-example-dsql-main-pocket",
+    "stage": "sandbox",
+    "project_name": "pocket-example-dsql",
+    "allowed_sm_resources": [],
+    "allowed_ssm_resources": [
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*"
+    ]
+  },
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {
+    "inbox": {
+      "name": "inbox",
+      "region": "ap-northeast-1",
+      "resource_name": "sandbox-pocket-example-dsql-pock-df065f0823",
+      "queue_name": "sandbox-pocket-example-dsql-pocket-main-mail",
+      "config": {
+        "domain": "inbound.dsql.sandbox.magic-pocket.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": null,
+        "recipients": [
+          "test@inbound.dsql.sandbox.magic-pocket.example.com"
+        ],
+        "handler": "main.mail",
+        "rule_set": null,
+        "enabled": true,
+        "tls_policy": "Require",
+        "scan_enabled": true,
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "retention_days": 30,
+        "delivery_alert": {
+          "enabled": true,
+          "email": "alerts@example.com",
+          "eventbridge": false
+        }
+      },
+      "bucket_name": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823",
+      "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pocket-main-mail",
+      "runtime_config": {
+        "region": "ap-northeast-1",
+        "bucket": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823",
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "recipients": [
+          "test@inbound.dsql.sandbox.magic-pocket.example.com"
+        ]
+      }
+    }
+  },
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "sandbox-pocket-example-dsql",
+  "stage": "sandbox",
+  "namespace": "pocket",
+  "resource_prefix": "sandbox-pocket-example-dsql-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "pocket-example-dsql-lambda",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": {
+        "domain": null,
+        "create_records": true,
+        "hosted_zone_id_override": null,
+        "disable_execute_api_endpoint": false,
+        "hosted_zone_id": null
+      },
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "sandbox-pocket-example-dsql-pocket-main-wsgi",
+      "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-wsgi",
+      "export_api_domain": "sandbox-pocket-example-dsql-main-wsgi-api-domain",
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    },
+    "worker": {
+      "command": "pocket-example-dsql-worker",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": false,
+        "batch_size": 10,
+        "message_retention_period": 345600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "sandbox-pocket-example-dsql-pocket-main-worker",
+        "visibility_timeout": 180,
+        "dead_letter_alert": {
+          "email": "alerts@example.com",
+          "eventbridge": false,
+          "topic_name": "sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert",
+          "alarm_name": "sandbox-pocket-example-dsql-pocket-main-worker-dead-letter-alert"
+        }
+      },
+      "key": "worker",
+      "function_name": "sandbox-pocket-example-dsql-pocket-main-worker",
+      "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-worker",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "WorkerCertificate"
+    },
+    "mail": {
+      "command": "pocket-example-dsql-mail-worker",
+      "timeout": 60,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "sandbox-pocket-example-dsql-pocket-main-mail",
+        "visibility_timeout": 360,
+        "dead_letter_alert": {
+          "email": "alerts@example.com",
+          "eventbridge": false,
+          "topic_name": "sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert",
+          "alarm_name": "sandbox-pocket-example-dsql-pocket-main-mail-dead-letter-alert"
+        }
+      },
+      "key": "mail",
+      "function_name": "sandbox-pocket-example-dsql-pocket-main-mail",
+      "log_group_name": "/aws/lambda/sandbox-pocket-example-dsql-pocket-main-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    }
+  },
+  "ecr_name": "sandbox-pocket-example-dsql-pocket-main-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": true,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": true,
+  "external_role_prefix": "sandbox-pocket-example-dsql-myorg-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "depot",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-dsql-main-pocket/*"
+  ],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {
+    "inbox": {
+      "region": "ap-northeast-1",
+      "bucket": "sandbox-pocket-example-dsql-pock-df065f0823-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:sandbox-pocket-example-dsql-pock-df065f0823",
+      "raw_prefix": "raw/",
+      "metadata_prefix": "metadata/",
+      "import_prefix": "imports/",
+      "recipients": [
+        "test@inbound.dsql.sandbox.magic-pocket.example.com"
+      ]
+    }
+  }
+}

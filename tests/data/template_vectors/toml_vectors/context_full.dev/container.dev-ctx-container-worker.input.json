@@ -1,0 +1,238 @@
+{
+  "stack_name": "dev-ctx-container-worker",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": {
+    "schedules": [
+      {
+        "key": "drain",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "jobs",
+        "schedule_expression": "rate(5 minutes)",
+        "name": "dev-ctx-pocket-drain",
+        "yaml_key": "Drain",
+        "input_json": "{\"command\": \"drain\", \"label\": \"日本語\"}",
+        "is_django_management": false,
+        "is_sqs": true
+      }
+    ],
+    "role_name": "dev-ctx-myorg-scheduler-role",
+    "invoked_function_arns": [],
+    "sqs_queue_arns": [
+      "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-worker-jobs"
+    ],
+    "has_schedules": true
+  },
+  "lambda_role": {
+    "external": true,
+    "cfn_properties": {
+      "RoleName": "dev-ctx-myorg-lambda-role",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "dev-ctx-pocket-access-secretsmanager",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-ctx-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-ctx-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/dev-ctx-myorg-lambda-role"
+    }
+  },
+  "scheduler_role": {
+    "external": true,
+    "cfn_properties": {
+      "RoleName": "dev-ctx-myorg-scheduler-role",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "scheduler.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "Policies": [
+        {
+          "PolicyName": "invoke-handlers",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:SendMessage"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:dev-ctx-pocket-worker-jobs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "PermissionsBoundary": "arn:aws:iam::123456789012:policy/env-boundary"
+    },
+    "arn": {
+      "Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/dev-ctx-myorg-scheduler-role"
+    }
+  },
+  "name": "worker",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": {
+    "store": "sm",
+    "managed": {
+      "SECRET_KEY": {
+        "type": "password",
+        "options": {},
+        "shared": true
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-ctx-pocket",
+    "stage": "dev",
+    "project_name": "ctx",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+    ],
+    "allowed_ssm_resources": []
+  },
+  "dockerfile_path": "worker/Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "pinned"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "dev-ctx",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-ctx-pocket-",
+  "handlers": {
+    "jobs": {
+      "command": "app.jobs",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": false,
+        "batch_size": 10,
+        "message_retention_period": 345600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "dev-ctx-pocket-worker-jobs",
+        "visibility_timeout": 180,
+        "dead_letter_alert": null
+      },
+      "key": "jobs",
+      "function_name": "dev-ctx-pocket-worker-jobs",
+      "log_group_name": "/aws/lambda/dev-ctx-pocket-worker-jobs",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "JobsCertificate"
+    }
+  },
+  "ecr_name": "dev-ctx-pocket-worker-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": "arn:aws:iam::123456789012:policy/env-boundary",
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": true,
+  "external_role_prefix": "dev-ctx-myorg-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf"
+  ],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

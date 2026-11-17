@@ -1,0 +1,213 @@
+{
+  "stack_name": "dev-db-container-app",
+  "export": {
+    "vpc_id": "main-pocket-vpc-id",
+    "private_subnet_": "main-pocket-private-subnet-",
+    "efs_access_point_arn": "main-pocket-efs-access-point",
+    "efs_security_group": "main-pocket-efs-security-group"
+  },
+  "rds_security_group_id": "sg-0123456789abcdef0",
+  "rds_secret_store": "sm",
+  "rds_secret_arn": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-pocket-aurora-credentials-AbCdEf",
+  "rds_ssm_param_name": null,
+  "rds_endpoint": "dev-db-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",
+  "rds_port": "5432",
+  "rds_dbname": "dev_db",
+  "use_rds": true,
+  "dsql_endpoint": "vectordsqlclusteridentifier.dsql.ap-northeast-1.on.aws",
+  "dsql_region": "ap-northeast-1",
+  "use_dsql": true,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-dev-db-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "dev-db-pocket-access-secretsmanager",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-app-pocket-AbCdEf"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-db-pocket-access-rds-secret",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:secretsmanager:ap-northeast-1:${AWS::AccountId}:secret:dev-db-pocket-aurora-credentials-??????"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-db-pocket-access-dsql",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dsql:DbConnectAdmin"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:dsql:ap-northeast-1:${AWS::AccountId}:cluster/*"
+                  }
+                ],
+                "Condition": {
+                  "StringEquals": {
+                    "aws:ResourceTag/Name": "dev-db-pocket-dsql"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-db-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-db-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "app",
+  "vpc": {
+    "ref": "main",
+    "zone_suffixes": [
+      "a",
+      "c"
+    ],
+    "nat_gateway": true,
+    "internet_gateway": true,
+    "efs": null,
+    "name": "main-pocket",
+    "region": "ap-northeast-1",
+    "manage": true,
+    "sharable": false,
+    "private_route_table": true,
+    "zones": [
+      "ap-northeast-1a",
+      "ap-northeast-1c"
+    ]
+  },
+  "secrets": {
+    "store": "sm",
+    "managed": {
+      "DATABASE_URL": {
+        "type": "rds_database_url",
+        "options": {},
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-db-app-pocket",
+    "stage": "dev",
+    "project_name": "db",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-app-pocket-AbCdEf"
+    ],
+    "allowed_ssm_resources": []
+  },
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "dev-db",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-db-pocket-",
+  "handlers": {},
+  "ecr_name": "dev-db-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": false,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "dev-db-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-db-app-pocket-AbCdEf"
+  ],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

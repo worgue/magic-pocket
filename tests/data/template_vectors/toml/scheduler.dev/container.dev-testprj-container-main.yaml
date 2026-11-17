@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  LambdaRole:
+    # This role must be created before the lambda function.
+    # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
+    # When you change Role, you must delete function and role.
+    # https://www.lastweekinaws.com/blog/the-sneaky-weakness-behind-aws-managed-kms-keys/
+    # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}}]}, "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole", "arn:aws:iam::aws:policy/AmazonS3FullAccess", "arn:aws:iam::aws:policy/AmazonSQSFullAccess"], "PermissionsBoundary": "arn:aws:iam::123456789012:policy/test-boundary", "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["cloudformation:DescribeStacks"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-testprj-*"}]}], "Version": "2012-10-17"}, "PolicyName": "dev-testprj-pocket-access-cloudformation"}], "RoleName": "lambda-dev-testprj-main-pocket"}
+
+
+  "ManagementLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-testprj-pocket-main-management"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "300"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-testprj-pocket-main-lambda:dev"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.management_command_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+  "WorkerLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-testprj-pocket-main-worker"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "60"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-testprj-pocket-main-lambda:dev"
+      ImageConfig:
+        Command:
+          - "pocket.lambda_handlers.worker_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+  "SqsworkerLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-testprj-pocket-main-sqsworker"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "60"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-testprj-pocket-main-lambda:dev"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+
+
+
+
+
+  "SqsworkerSqsQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-testprj-pocket-main-sqsworker"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "SqsworkerDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "360"
+      # default 4 days
+      MessageRetentionPeriod: "345600"
+
+  "SqsworkerDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-testprj-pocket-main-sqsworker-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+  # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
+  # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
+  # (deploy 後の購読状態チェックと pocket status で可視化する)
+  "SqsworkerDeadLetterAlertTopic":
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "dev-testprj-pocket-main-sqsworker-dead-letter-alert"
+
+  "SqsworkerDeadLetterAlertSubscription":
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: "SqsworkerDeadLetterAlertTopic"
+      Protocol: email
+      Endpoint: "alerts@example.com"
+
+  "SqsworkerDeadLetterAlarm":
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "dev-testprj-pocket-main-sqsworker-dead-letter-alert"
+      AlarmDescription: "Messages arrived in the dead-letter queue of dev-testprj-pocket-main-sqsworker"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: "SqsworkerDeadLetterQueue.QueueName"
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Ref: "SqsworkerDeadLetterAlertTopic"
+      # 復旧 (redrive / purge で DLQ が空に戻った) も通知する
+      OKActions:
+        - Ref: "SqsworkerDeadLetterAlertTopic"
+
+  "SqsworkerSqsEventSourceMapping":
+    DependsOn:
+      - "SqsworkerSqsQueue"
+      - "SqsworkerLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "SqsworkerSqsQueue.Arn"
+      FunctionName:
+        Ref: "SqsworkerLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+  SchedulerExecutionRole:
+    # 中身は pocket_cli/resources/aws/iam_roles.py の scheduler_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "scheduler.amazonaws.com"}}], "Version": "2012-10-17"}, "PermissionsBoundary": "arn:aws:iam::123456789012:policy/test-boundary", "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["lambda:InvokeFunction"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-management"}, {"Fn::Sub": "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:dev-testprj-pocket-main-worker"}]}, {"Action": ["sqs:SendMessage"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:sqs:ap-southeast-1:${AWS::AccountId}:dev-testprj-pocket-main-sqsworker"}]}], "Version": "2012-10-17"}, "PolicyName": "invoke-handlers"}], "RoleName": "dev-testprj-pocket-main-scheduler"}
+
+  "CleanupSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "SqsworkerSqsQueue"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "dev-testprj-pocket-cleanup"
+      ScheduleExpression: "rate(15 minutes)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "SqsworkerSqsQueue.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"command\": \"clearsessions\", \"args\": [], \"kwargs\": {}}"
+  "RotateLogsSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "WorkerLambdaFunction"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "dev-testprj-pocket-rotate-logs"
+      ScheduleExpression: "rate(1 hour)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn:
+          Fn::GetAtt: "WorkerLambdaFunction.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"task\": \"rotate_logs\"}"
+  "DailyDigestSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "ManagementLambdaFunction"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "dev-testprj-pocket-daily-digest"
+      ScheduleExpression: "cron(0 18 * * ? *)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn:
+          Fn::GetAtt: "ManagementLambdaFunction.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"manage\": \"send_daily_digest --verbose\"}"
+
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "ManagementLambdaFunction":
+    Value:
+      Fn::GetAtt: "ManagementLambdaFunction.Arn"
+  "WorkerLambdaFunction":
+    Value:
+      Fn::GetAtt: "WorkerLambdaFunction.Arn"
+  "SqsworkerLambdaFunction":
+    Value:
+      Fn::GetAtt: "SqsworkerLambdaFunction.Arn"
+  "SqsworkerDeadLetterAlarmArn":
+    Value:
+      Fn::GetAtt: "SqsworkerDeadLetterAlarm.Arn"

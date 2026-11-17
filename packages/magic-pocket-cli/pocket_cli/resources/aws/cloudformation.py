@@ -14,6 +14,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 
 from pocket.resources.base import ResourceStatus
 from pocket_cli.resources.aws import iam_roles
+from pocket_cli.resources.aws.efs import Efs
 
 if TYPE_CHECKING:
     from pocket.context import (
@@ -38,6 +39,30 @@ def _is_stack_not_exist_error(e: ClientError) -> bool:
     return error.get("Code") == "ValidationError" and "does not exist" in error.get(
         "Message", ""
     )
+
+
+def render_template(template_filename: str, variables: dict) -> str:
+    """cloudformation/<名前>.yaml を描画し prettier-ignore 行を除去する。"""
+    template = Environment(
+        loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
+    ).get_template(name=f"cloudformation/{template_filename}.yaml")
+    original_yaml = template.render(**variables)
+    return "\n".join(
+        [
+            line
+            for line in original_yaml.splitlines()
+            if line.strip() not in ["#", "# prettier-ignore"]
+        ]
+    )
+
+
+def _role_input(role: iam_roles.RoleSpec, logical_id: str) -> dict[str, Any]:
+    """テンプレートに渡す role (external かどうか / Properties / ARN の参照式)。"""
+    return {
+        "external": role.external,
+        "cfn_properties": role.cfn_properties,
+        "arn": role.cfn_arn(logical_id),
+    }
 
 
 class Stack:
@@ -68,9 +93,6 @@ class Stack:
 
     def get_client(self):
         return boto3.client("cloudformation", region_name=self.context.region)
-
-    def _get_resource(self) -> Any:
-        return None
 
     @property
     def capabilities(self):
@@ -259,30 +281,29 @@ class Stack:
     def yaml(self) -> str:
         return self._render_yaml()
 
-    def _render_yaml(self, context_data: dict | None = None, **extra) -> str:
-        """テンプレートをレンダリングし prettier-ignore 行を除去する。
+    def _render_input(self, context_data: dict | None = None, **extra) -> dict:
+        """テンプレートに渡す変数。
 
         context_data 省略時は context.model_dump() を渡す (exclude や動的な
         差し替えが必要なサブクラスは加工済み dict を渡す)。
+
+        値だけを入れる (メソッドを持つオブジェクトを入れない)。Rust 版
+        (`pocket-rs`) が同じテンプレートを同じ変数で描画し、結果がバイト一致する
+        ことを `tests/data/template_vectors` で固定している。
         """
         if context_data is None:
             context_data = self.context.model_dump()
-        template = Environment(
-            loader=PackageLoader("pocket_cli"), autoescape=select_autoescape()
-        ).get_template(name=f"cloudformation/{self.template_filename}.yaml")
-        original_yaml = template.render(
-            stack_name=self.name,
-            export=self.export,
-            resource=self._get_resource(),
+        return {
+            "stack_name": self.name,
+            "export": self.export,
             **extra,
             **context_data,
-        )
-        return "\n".join(
-            [
-                line
-                for line in original_yaml.splitlines()
-                if line.strip() not in ["#", "# prettier-ignore"]
-            ]
+        }
+
+    def _render_yaml(self, context_data: dict | None = None, **extra) -> str:
+        """テンプレートをレンダリングし prettier-ignore 行を除去する。"""
+        return render_template(
+            self.template_filename, self._render_input(context_data, **extra)
         )
 
     @property
@@ -924,6 +945,7 @@ class ContainerStack(Stack):
                 f"{self.context.vpc.region}{chr(97 + i)}" for i in range(zone_count)
             ]
 
+        scheduler_role = self.scheduler_role
         return self._render_yaml(
             context_data=context_dump,
             rds_security_group_id=rds_info.get("rds_security_group_id"),
@@ -942,8 +964,12 @@ class ContainerStack(Stack):
                 if self._scheduler_context
                 else None
             ),
-            lambda_role=self.lambda_role,
-            scheduler_role=self.scheduler_role,
+            lambda_role=_role_input(self.lambda_role, "LambdaRole"),
+            scheduler_role=(
+                _role_input(scheduler_role, "SchedulerExecutionRole")
+                if scheduler_role
+                else None
+            ),
         )
 
 
@@ -951,10 +977,13 @@ class VpcStack(Stack):
     context: VpcContext
     template_filename = "vpc"
 
-    def _get_resource(self):
-        from pocket_cli.resources.vpc import Vpc
-
-        return Vpc(self.context)
+    @property
+    def yaml(self) -> str:
+        # EFS の filesystem id は stack の外 (Efs.ensure_exists) で作られる
+        efs_filesystem_id = None
+        if self.context.efs:
+            efs_filesystem_id = Efs(self.context.efs).filesystem_id
+        return self._render_yaml(efs_filesystem_id=efs_filesystem_id)
 
     @property
     def name(self):

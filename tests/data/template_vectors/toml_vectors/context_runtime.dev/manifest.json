@@ -1,0 +1,107 @@
+{
+  "context": {
+    "env": {
+      "AWS_LAMBDA_FUNCTION_NAME": "fn",
+      "FORGE_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/forge"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/context_runtime.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": null,
+    "inbound_bindings": {
+      "dev-rt-pocket-inbound-a-f14f8810d6": {
+        "after": null,
+        "rule_set": "default-rule-set"
+      },
+      "dev-rt-pocket-inbound-b-97d4923840": {
+        "after": "vector-previous-rule",
+        "rule_set": "default-rule-set"
+      }
+    },
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {}
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound_domain.dev-rt-pocket-inbound-domain-e8d55f5c6b.json",
+      "kind": "inbound_domain",
+      "name": "dev-rt-pocket-inbound-domain-e8d55f5c6b",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "44c32e4a639129fd"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.dev-rt-container-app.yaml",
+      "input_file": "container.dev-rt-container-app.input.json",
+      "kind": "container",
+      "name": "dev-rt-container-app",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "ce6c2df0e7bf81fa"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound.dev-rt-pocket-inbound-a-f14f8810d6.json",
+      "kind": "inbound",
+      "name": "dev-rt-pocket-inbound-a-f14f8810d6",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "932a12d630b92ec5"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound.dev-rt-pocket-inbound-b-97d4923840.json",
+      "kind": "inbound",
+      "name": "dev-rt-pocket-inbound-b-97d4923840",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "6eb7a7a263b8c3da"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "cloudfront.dev-rt-web-cloudfront.yaml",
+      "input_file": "cloudfront.dev-rt-web-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "dev-rt-web-cloudfront",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "61cd333ebcf6bdd4"
+    }
+  ],
+  "stage": "dev"
+}

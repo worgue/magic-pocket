@@ -14,9 +14,11 @@ test *args: _target-gc-guard
     uv run pytest "$@"
     cargo test --all-features
 
-# 設定モデルの共有 test vector (tests/data/settings_vectors) を Python のモデルから作り直す
+# 共有 test vector を Python の実装から作り直す (設定モデル = tests/data/settings_vectors 等、
+# CloudFormation template = tests/data/template_vectors)
 vectors:
     uv run python tests/vectors/generate_settings_vectors.py
+    uv run python tests/vectors/generate_template_vectors.py
 
 # Rust の lint (clippy -D warnings)。チェックのみでリンクしないので test より軽い。CI の test.yml も呼ぶ
 lint-rust: _target-gc-guard

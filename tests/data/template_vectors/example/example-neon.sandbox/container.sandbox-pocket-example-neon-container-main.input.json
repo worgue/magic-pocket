@@ -1,0 +1,260 @@
+{
+  "stack_name": "sandbox-pocket-example-neon-container-main",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-sandbox-pocket-example-neon-main-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonRoute53FullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "sandbox-pocket-example-neon-pocket-access-ssm",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "ssm:GetParameter",
+                  "ssm:GetParameters",
+                  "ssm:GetParametersByPath"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-main-pocket/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-pocket-user/neon_database_url"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "sandbox-pocket-example-neon-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/sandbox-pocket-example-neon-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "main",
+  "vpc": null,
+  "secrets": {
+    "store": "ssm",
+    "managed": {
+      "SECRET_KEY": {
+        "type": "password",
+        "options": {
+          "length": 50
+        },
+        "shared": false
+      },
+      "DJANGO_SUPERUSER_PASSWORD": {
+        "type": "password",
+        "options": {
+          "length": 16
+        },
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-southeast-1",
+    "pocket_key": "sandbox-pocket-example-neon-main-pocket",
+    "stage": "sandbox",
+    "project_name": "pocket-example-neon",
+    "allowed_sm_resources": [],
+    "allowed_ssm_resources": [
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-main-pocket/*"
+    ]
+  },
+  "shared_secrets": {
+    "store": "ssm",
+    "managed": {},
+    "user": {
+      "DATABASE_URL": {
+        "name": "/sandbox-pocket-example-neon-pocket-user/neon_database_url",
+        "type": "neon_database_url",
+        "store": null
+      }
+    },
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-southeast-1",
+    "pocket_key": "sandbox-pocket-example-neon-pocket",
+    "stage": "sandbox",
+    "project_name": "pocket-example-neon",
+    "allowed_sm_resources": [],
+    "allowed_ssm_resources": [
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-pocket-user/neon_database_url"
+    ]
+  },
+  "dockerfile_path": "pocket.Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": {
+    "storages": {
+      "default": {
+        "store": "filesystem",
+        "location": null,
+        "static": false,
+        "manifest": false,
+        "options": {},
+        "distribution": null,
+        "route": null,
+        "deploy_hash": false,
+        "deploy_hash_prefix": null,
+        "object_hash": false,
+        "publish": "deploy",
+        "link": false
+      },
+      "staticfiles": {
+        "store": "s3",
+        "location": null,
+        "static": true,
+        "manifest": false,
+        "options": {},
+        "distribution": "web",
+        "route": "static",
+        "deploy_hash": true,
+        "deploy_hash_prefix": "/static/",
+        "object_hash": false,
+        "publish": "deploy",
+        "link": false
+      }
+    },
+    "caches": {
+      "default": {
+        "store": "locmem",
+        "location_subdir": "{stage}",
+        "location": null
+      }
+    },
+    "settings": {},
+    "project_dir": null
+  },
+  "region": "ap-southeast-1",
+  "slug": "sandbox-pocket-example-neon",
+  "stage": "sandbox",
+  "namespace": "pocket",
+  "resource_prefix": "sandbox-pocket-example-neon-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "pocket.django.lambda_handlers.wsgi_handler",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-southeast-1",
+      "apigateway": {
+        "domain": null,
+        "create_records": true,
+        "hosted_zone_id_override": null,
+        "disable_execute_api_endpoint": false,
+        "hosted_zone_id": null
+      },
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "sandbox-pocket-example-neon-pocket-main-wsgi",
+      "log_group_name": "/aws/lambda/sandbox-pocket-example-neon-pocket-main-wsgi",
+      "export_api_domain": "sandbox-pocket-example-neon-main-wsgi-api-domain",
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    },
+    "management": {
+      "command": "pocket.django.lambda_handlers.management_command_handler",
+      "timeout": 600,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-southeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "management",
+      "function_name": "sandbox-pocket-example-neon-pocket-main-management",
+      "log_group_name": "/aws/lambda/sandbox-pocket-example-neon-pocket-main-management",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "ManagementCertificate"
+    }
+  },
+  "ecr_name": "sandbox-pocket-example-neon-pocket-main-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": true,
+  "use_sqs": false,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "sandbox-pocket-example-neon-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "depot",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-main-pocket/*",
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/sandbox-pocket-example-neon-pocket-user/neon_database_url"
+  ],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

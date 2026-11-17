@@ -1,0 +1,129 @@
+{
+  "stack_name": "prod-db-container-batch",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": "vectordsqlclusteridentifier.dsql.ap-northeast-1.on.aws",
+  "dsql_region": "ap-northeast-1",
+  "use_dsql": true,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-prod-db-batch-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "prod-db-pocket-access-dsql",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dsql:DbConnectAdmin"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:dsql:ap-northeast-1:${AWS::AccountId}:cluster/*"
+                  }
+                ],
+                "Condition": {
+                  "StringEquals": {
+                    "aws:ResourceTag/Name": "prod-db-pocket-dsql"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "prod-db-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-db-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "batch",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "prod-db",
+  "stage": "prod",
+  "namespace": "pocket",
+  "resource_prefix": "prod-db-pocket-",
+  "handlers": {},
+  "ecr_name": "prod-db-pocket-batch-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": false,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "prod-db-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

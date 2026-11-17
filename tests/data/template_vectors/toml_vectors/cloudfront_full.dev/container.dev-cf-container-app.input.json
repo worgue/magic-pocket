@@ -1,0 +1,218 @@
+{
+  "stack_name": "dev-cf-container-app",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-dev-cf-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonRoute53FullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "dev-cf-pocket-access-secretsmanager",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-cf-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-cf-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "app",
+  "vpc": null,
+  "secrets": {
+    "store": "sm",
+    "managed": {
+      "SIGNING_KEY": {
+        "type": "cloudfront_signing_key",
+        "options": {},
+        "shared": false
+      },
+      "TOKEN_SECRET": {
+        "type": "spa_token_secret",
+        "options": {},
+        "shared": false
+      },
+      "BASIC_AUTH": {
+        "type": "basic_auth_credential",
+        "options": {
+          "username": "admin"
+        },
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-cf-app-pocket",
+    "stage": "dev",
+    "project_name": "cf",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf"
+    ],
+    "allowed_ssm_resources": []
+  },
+  "shared_secrets": {
+    "store": "sm",
+    "managed": {
+      "POCKET_ORIGIN_VERIFY_SECRET": {
+        "type": "origin_verify_secret",
+        "options": {},
+        "shared": false
+      },
+      "HOOK_ALLOW": {
+        "type": "waf_allow_secret",
+        "options": {},
+        "shared": false
+      },
+      "SMOKE_ALLOW": {
+        "type": "waf_allow_secret",
+        "options": {},
+        "shared": false
+      }
+    },
+    "user": {},
+    "extra_resources": [],
+    "require_list_secrets": false,
+    "region": "ap-northeast-1",
+    "pocket_key": "dev-cf-pocket",
+    "stage": "dev",
+    "project_name": "cf",
+    "allowed_sm_resources": [
+      "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+    ],
+    "allowed_ssm_resources": []
+  },
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {
+    "SIGNING_KEY_ID": "dev-cf-web-public-key-id"
+  },
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "dev-cf",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-cf-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "pocket.django.lambda_handlers.wsgi_handler",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": {
+        "domain": null,
+        "create_records": true,
+        "hosted_zone_id_override": null,
+        "disable_execute_api_endpoint": false,
+        "hosted_zone_id": null
+      },
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "dev-cf-pocket-app-wsgi",
+      "log_group_name": "/aws/lambda/dev-cf-pocket-app-wsgi",
+      "export_api_domain": "dev-cf-app-wsgi-api-domain",
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    }
+  },
+  "ecr_name": "dev-cf-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": true,
+  "use_sqs": false,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "dev-cf-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-app-pocket-AbCdEf",
+    "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-cf-pocket-AbCdEf"
+  ],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

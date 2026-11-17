@@ -1,0 +1,73 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "Identity": {
+      "Type": "AWS::SES::EmailIdentity",
+      "Properties": {
+        "EmailIdentity": "mail.example.com",
+        "DkimSigningAttributes": {
+          "NextSigningKeyLength": "RSA_2048_BIT"
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "Domain": {
+      "Value": "mail.example.com"
+    },
+    "ManageDns": {
+      "Value": "false"
+    },
+    "MxValue": {
+      "Value": "10 inbound-smtp.ap-northeast-1.amazonaws.com"
+    },
+    "DkimName1": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName1"
+        ]
+      }
+    },
+    "DkimValue1": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue1"
+        ]
+      }
+    },
+    "DkimName2": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName2"
+        ]
+      }
+    },
+    "DkimValue2": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue2"
+        ]
+      }
+    },
+    "DkimName3": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenName3"
+        ]
+      }
+    },
+    "DkimValue3": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Identity",
+          "DkimDNSTokenValue3"
+        ]
+      }
+    }
+  }
+}

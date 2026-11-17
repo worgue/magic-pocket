@@ -1,0 +1,400 @@
+{
+  "stack_name": "dev-rt-container-app",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-dev-rt-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "inbound-a",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/imports/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "inbound-b",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/imports/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "dev-rt-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-rt-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "PermissionsBoundary": "arn:aws:iam::123456789012:policy/forge"
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "app",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "unknown"
+  },
+  "signing_key_imports": {},
+  "inbound": {
+    "a": {
+      "name": "a",
+      "region": "us-east-1",
+      "resource_name": "dev-rt-pocket-inbound-a-f14f8810d6",
+      "queue_name": "dev-rt-pocket-app-mail",
+      "config": {
+        "domain": "b.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": null,
+        "recipients": [
+          "x@b.example.com"
+        ],
+        "handler": "app.mail",
+        "rule_set": null,
+        "enabled": true,
+        "tls_policy": "Require",
+        "scan_enabled": true,
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "retention_days": 14,
+        "delivery_alert": {
+          "enabled": true,
+          "email": "ops@example.com",
+          "eventbridge": false
+        }
+      },
+      "bucket_name": "dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-a-f14f8810d6",
+      "queue_arn": "arn:${AWS::Partition}:sqs:us-east-1:${AWS::AccountId}:dev-rt-pocket-app-mail",
+      "runtime_config": {
+        "region": "us-east-1",
+        "bucket": "dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-a-f14f8810d6",
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "recipients": [
+          "x@b.example.com"
+        ]
+      }
+    },
+    "b": {
+      "name": "b",
+      "region": "us-east-1",
+      "resource_name": "dev-rt-pocket-inbound-b-97d4923840",
+      "queue_name": "dev-rt-pocket-app-mail2",
+      "config": {
+        "domain": "b.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": null,
+        "recipients": [
+          "y@b.example.com"
+        ],
+        "handler": "app.mail2",
+        "rule_set": null,
+        "enabled": true,
+        "tls_policy": "Require",
+        "scan_enabled": true,
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "retention_days": 14,
+        "delivery_alert": {
+          "enabled": true,
+          "email": "ops@example.com",
+          "eventbridge": false
+        }
+      },
+      "bucket_name": "dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-b-97d4923840",
+      "queue_arn": "arn:${AWS::Partition}:sqs:us-east-1:${AWS::AccountId}:dev-rt-pocket-app-mail2",
+      "runtime_config": {
+        "region": "us-east-1",
+        "bucket": "dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-b-97d4923840",
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "recipients": [
+          "y@b.example.com"
+        ]
+      }
+    }
+  },
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "us-east-1",
+  "slug": "dev-rt",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-rt-pocket-",
+  "handlers": {
+    "mail": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "us-east-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "dev-rt-pocket-app-mail",
+        "visibility_timeout": 180,
+        "dead_letter_alert": {
+          "email": null,
+          "eventbridge": true,
+          "topic_name": "dev-rt-pocket-app-mail-dead-letter-alert",
+          "alarm_name": "dev-rt-pocket-app-mail-dead-letter-alert"
+        }
+      },
+      "key": "mail",
+      "function_name": "dev-rt-pocket-app-mail",
+      "log_group_name": "/aws/lambda/dev-rt-pocket-app-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    },
+    "mail2": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "us-east-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "dev-rt-pocket-app-mail2",
+        "visibility_timeout": 180,
+        "dead_letter_alert": null
+      },
+      "key": "mail2",
+      "function_name": "dev-rt-pocket-app-mail2",
+      "log_group_name": "/aws/lambda/dev-rt-pocket-app-mail2",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "Mail2Certificate"
+    }
+  },
+  "ecr_name": "dev-rt-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": "arn:aws:iam::123456789012:policy/forge",
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "dev-rt-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {
+    "a": {
+      "region": "us-east-1",
+      "bucket": "dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-a-f14f8810d6",
+      "raw_prefix": "raw/",
+      "metadata_prefix": "metadata/",
+      "import_prefix": "imports/",
+      "recipients": [
+        "x@b.example.com"
+      ]
+    },
+    "b": {
+      "region": "us-east-1",
+      "bucket": "dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-b-97d4923840",
+      "raw_prefix": "raw/",
+      "metadata_prefix": "metadata/",
+      "import_prefix": "imports/",
+      "recipients": [
+        "y@b.example.com"
+      ]
+    }
+  }
+}

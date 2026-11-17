@@ -1,0 +1,282 @@
+{
+  "stack_name": "prod-testprj-container-main",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": {
+    "schedules": [
+      {
+        "key": "cleanup",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "sqsworker",
+        "schedule_expression": "rate(15 minutes)",
+        "name": "prod-testprj-pocket-cleanup",
+        "yaml_key": "Cleanup",
+        "input_json": "{\"command\": \"clearsessions\", \"args\": [], \"kwargs\": {}}",
+        "is_django_management": false,
+        "is_sqs": true
+      },
+      {
+        "key": "rotate_logs",
+        "scheduler": "pocket.lambda_scheduler",
+        "handler": "worker",
+        "schedule_expression": "rate(10 minutes)",
+        "name": "prod-testprj-pocket-rotate-logs",
+        "yaml_key": "RotateLogs",
+        "input_json": "{\"task\": \"rotate_logs\"}",
+        "is_django_management": false,
+        "is_sqs": false
+      },
+      {
+        "key": "daily_digest",
+        "scheduler": "pocket.django.management_lambda_scheduler",
+        "handler": "management",
+        "schedule_expression": "cron(0 18 * * ? *)",
+        "name": "prod-testprj-pocket-daily-digest",
+        "yaml_key": "DailyDigest",
+        "input_json": "{\"manage\": \"send_daily_digest --verbose\"}",
+        "is_django_management": true,
+        "is_sqs": false
+      },
+      {
+        "key": "month_end",
+        "scheduler": "pocket.django.management_lambda_scheduler",
+        "handler": "management",
+        "schedule_expression": "cron(0 0 L * ? *)",
+        "name": "prod-testprj-pocket-month-end",
+        "yaml_key": "MonthEnd",
+        "input_json": "{\"manage\": \"send_monthly_invoice\"}",
+        "is_django_management": true,
+        "is_sqs": false
+      }
+    ],
+    "role_name": "prod-testprj-pocket-main-scheduler",
+    "invoked_function_arns": [
+      "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:prod-testprj-pocket-main-management",
+      "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:prod-testprj-pocket-main-worker"
+    ],
+    "sqs_queue_arns": [
+      "arn:aws:sqs:ap-southeast-1:${AWS::AccountId}:prod-testprj-pocket-main-sqsworker"
+    ],
+    "has_schedules": true
+  },
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-prod-testprj-main-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "prod-testprj-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-testprj-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "PermissionsBoundary": "arn:aws:iam::123456789012:policy/test-boundary"
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "prod-testprj-pocket-main-scheduler",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "scheduler.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "Policies": [
+        {
+          "PolicyName": "invoke-handlers",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "lambda:InvokeFunction"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:prod-testprj-pocket-main-management"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:lambda:ap-southeast-1:${AWS::AccountId}:function:prod-testprj-pocket-main-worker"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:SendMessage"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:sqs:ap-southeast-1:${AWS::AccountId}:prod-testprj-pocket-main-sqsworker"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "PermissionsBoundary": "arn:aws:iam::123456789012:policy/test-boundary"
+    },
+    "arn": {
+      "Fn::GetAtt": "SchedulerExecutionRole.Arn"
+    }
+  },
+  "name": "main",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "tests/sampleprj/Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-southeast-1",
+  "slug": "prod-testprj",
+  "stage": "prod",
+  "namespace": "pocket",
+  "resource_prefix": "prod-testprj-pocket-",
+  "handlers": {
+    "management": {
+      "command": "pocket.django.lambda_handlers.management_command_handler",
+      "timeout": 300,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-southeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "management",
+      "function_name": "prod-testprj-pocket-main-management",
+      "log_group_name": "/aws/lambda/prod-testprj-pocket-main-management",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "ManagementCertificate"
+    },
+    "worker": {
+      "command": "pocket.lambda_handlers.worker_handler",
+      "timeout": 60,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-southeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "worker",
+      "function_name": "prod-testprj-pocket-main-worker",
+      "log_group_name": "/aws/lambda/prod-testprj-pocket-main-worker",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "WorkerCertificate"
+    },
+    "sqsworker": {
+      "command": "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler",
+      "timeout": 60,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-southeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": false,
+        "batch_size": 10,
+        "message_retention_period": 345600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "prod-testprj-pocket-main-sqsworker",
+        "visibility_timeout": 360,
+        "dead_letter_alert": {
+          "email": "alerts@example.com",
+          "eventbridge": false,
+          "topic_name": "prod-testprj-pocket-main-sqsworker-dead-letter-alert",
+          "alarm_name": "prod-testprj-pocket-main-sqsworker-dead-letter-alert"
+        }
+      },
+      "key": "sqsworker",
+      "function_name": "prod-testprj-pocket-main-sqsworker",
+      "log_group_name": "/aws/lambda/prod-testprj-pocket-main-sqsworker",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "SqsworkerCertificate"
+    }
+  },
+  "ecr_name": "prod-testprj-pocket-main-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": true,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": "arn:aws:iam::123456789012:policy/test-boundary",
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "prod-testprj-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

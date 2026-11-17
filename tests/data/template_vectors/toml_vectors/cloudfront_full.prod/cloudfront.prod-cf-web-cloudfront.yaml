@@ -1,0 +1,537 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: spa configuration for webapp
+
+Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: "prod-cf-web-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  TokenKvs:
+    Type: AWS::CloudFront::KeyValueStore
+    Properties:
+      Name: "prod-cf-web-token-kvs"
+      Comment: "KVS for SPA token secret / basic auth credential"
+
+  UrlFallbackFunctionRoot:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-root-fallback"
+      AutoPublish: true
+      FunctionCode:
+        Fn::Sub:
+          - |
+            import cf from 'cloudfront';
+            var crypto = require('crypto');
+            const kvsHandle = cf.kvs('${TokenKvs}');
+            async function handler(event) {
+                var request = event.request;
+                var __pocketHost = request.headers.host && request.headers.host.value;
+                if (__pocketHost && __pocketHost !== 'www.example.com') {
+                    var __pocketQs = '';
+                    for (var __pocketKey in request.querystring) {
+                        var __pocketVal = request.querystring[__pocketKey].value;
+                        __pocketQs += (__pocketQs ? '&' : '?') + __pocketKey + (__pocketVal !== '' ? '=' + __pocketVal : '');
+                    }
+                    return {
+                        statusCode: 301,
+                        statusDescription: 'Moved Permanently',
+                        headers: { location: { value: 'https://www.example.com' + request.uri + __pocketQs } }
+                    };
+                }
+                var __pocketBaAuth = request.headers.authorization;
+                var __pocketBaExpected;
+                try { __pocketBaExpected = await kvsHandle.get('basic_auth'); }
+                catch (e) { __pocketBaExpected = null; }
+                if (!__pocketBaExpected || !__pocketBaAuth || __pocketBaAuth.value !== __pocketBaExpected) {
+                    return {
+                        statusCode: 401,
+                        statusDescription: 'Unauthorized',
+                        headers: { 'www-authenticate': { value: 'Basic realm="Restricted"' } }
+                    };
+                }
+                var originalUri = request.uri;
+                var lastItem = request.uri.split('/').pop();
+                if (!lastItem.includes('.')) { request.uri = '/app.html'; }
+                var cookie = request.cookies['pocket-spa-token'];
+                if (!cookie) { return _redirect(originalUri); }
+                // cookie ライブラリによっては値の ':' が %3A に percent-encode される
+                // (axum-extra の CookieJar 等)。raw 値には no-op なので常に decode してから分割する。
+                var value;
+                try { value = decodeURIComponent(cookie.value); }
+                catch (e) { return _redirect(originalUri); }
+                var parts = value.split(':');
+                if (parts.length !== 3) { return _redirect(originalUri); }
+                var expiry = parseInt(parts[1], 10);
+                if (Math.floor(Date.now() / 1000) > expiry) { return _redirect(originalUri); }
+                var secret;
+                try { secret = await kvsHandle.get('token_secret'); }
+                catch (e) { return _redirect(originalUri); }
+                var msg = parts[0] + ':' + parts[1];
+                var hmac = crypto.createHmac('sha256', Buffer.from(secret, 'hex'));
+                var sig = hmac.update(msg).digest('hex');
+                if (sig !== parts[2]) { return _redirect(originalUri); }
+                return request;
+            }
+            function _redirect(uri) {
+                var next = encodeURIComponent(uri);
+                return { statusCode: 302, statusDescription: 'Found',
+                    headers: { location: { value: '/login?next=' + next } } };
+            }
+          - TokenKvs:
+              Fn::GetAtt: TokenKvs.Id
+      FunctionConfig:
+        Comment: "CloudFront function for root"
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+  # cache-control は成功応答だけに付ける。ResponseHeadersPolicy はステータスを問わず
+  # 付けるため、403 にも immutable が付いてブラウザに残る (KN1670)。
+  CacheControlFunctionAssets:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-assets-cache-control"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var response = event.response;
+            var status = response.statusCode;
+            if ((status >= 200 && status < 300) || status === 304) {
+                response.headers['cache-control'] = { value: 'public, max-age=3600, immutable' };
+            }
+            return response;
+        }
+      FunctionConfig:
+        Comment: "Set cache-control on successful responses for assets"
+        Runtime: cloudfront-js-2.0
+  # cache-control は成功応答だけに付ける。ResponseHeadersPolicy はステータスを問わず
+  # 付けるため、403 にも immutable が付いてブラウザに残る (KN1670)。
+  CacheControlFunctionStatic:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-static-cache-control"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var response = event.response;
+            var status = response.statusCode;
+            if ((status >= 200 && status < 300) || status === 304) {
+                response.headers['cache-control'] = { value: 'public, max-age=31536000, immutable' };
+            }
+            return response;
+        }
+      FunctionConfig:
+        Comment: "Set cache-control on successful responses for static"
+        Runtime: cloudfront-js-2.0
+  # cache-control は成功応答だけに付ける。ResponseHeadersPolicy はステータスを問わず
+  # 付けるため、403 にも immutable が付いてブラウザに残る (KN1670)。
+  CacheControlFunctionDeploy:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-deploy-cache-control"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var response = event.response;
+            var status = response.statusCode;
+            if ((status >= 200 && status < 300) || status === 304) {
+                response.headers['cache-control'] = { value: 'public, max-age=31536000, immutable' };
+            }
+            return response;
+        }
+      FunctionConfig:
+        Comment: "Set cache-control on successful responses for deploy"
+        Runtime: cloudfront-js-2.0
+  # Managed-CachingOptimized と同じ設定に、strip Function が載せる hash の header を
+  # キャッシュキーとして足したもの。URI は hash を外した後の値がキーになるため、
+  # これが無いと deploy で hash が変わっても同じ edge キャッシュを読み続ける。
+  DeployHashCachePolicyDeploy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: "prod-cf-web-deploy-deploy-hash"
+        Comment: "CachingOptimized + deploy hash in cache key for deploy"
+        MinTTL: 1
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - "x-pocket-deploy-hash"
+  DeployHashStripFunctionDeploy:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-deploy-deploy-hash-strip"
+      AutoPublish: true
+      FunctionCode: |
+        import cf from 'cloudfront';
+        const kvsHandle = cf.kvs();
+        async function handler(event) {
+            var request = event.request;
+            var __pocketHost = request.headers.host && request.headers.host.value;
+            if (__pocketHost && __pocketHost !== 'www.example.com') {
+                var __pocketQs = '';
+                for (var __pocketKey in request.querystring) {
+                    var __pocketVal = request.querystring[__pocketKey].value;
+                    __pocketQs += (__pocketQs ? '&' : '?') + __pocketKey + (__pocketVal !== '' ? '=' + __pocketVal : '');
+                }
+                return {
+                    statusCode: 301,
+                    statusDescription: 'Moved Permanently',
+                    headers: { location: { value: 'https://www.example.com' + request.uri + __pocketQs } }
+                };
+            }
+            var __pocketBaAuth = request.headers.authorization;
+            var __pocketBaExpected;
+            try { __pocketBaExpected = await kvsHandle.get('basic_auth'); }
+            catch (e) { __pocketBaExpected = null; }
+            if (!__pocketBaExpected || !__pocketBaAuth || __pocketBaAuth.value !== __pocketBaExpected) {
+                return {
+                    statusCode: 401,
+                    statusDescription: 'Unauthorized',
+                    headers: { 'www-authenticate': { value: 'Basic realm="Restricted"' } }
+                };
+            }
+            var prefix = '/deploy/';
+            // viewer が同名 header を送ってもキャッシュキーに使わせない
+            delete request.headers['x-pocket-deploy-hash'];
+            if (request.uri.indexOf(prefix) === 0) {
+                var rest = request.uri.substring(prefix.length);
+                var slash = rest.indexOf('/');
+                if (slash > 0) {
+                    var segment = rest.substring(0, slash);
+                    if (/^[0-9a-f]{7,40}$/.test(segment)) {
+                        request.uri = prefix + rest.substring(slash + 1);
+                        // URI から外した hash をキャッシュキーに残す (CachePolicy が参照する)
+                        request.headers['x-pocket-deploy-hash'] = { value: segment };
+                    }
+                }
+            }
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Strip deploy hash prefix for deploy"
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+
+  ApiHostFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-api-host"
+      AutoPublish: true
+      FunctionCode: |
+        import cf from 'cloudfront';
+        const kvsHandle = cf.kvs();
+        async function handler(event) {
+            var request = event.request;
+            var __pocketHost = request.headers.host && request.headers.host.value;
+            if (__pocketHost && __pocketHost !== 'www.example.com') {
+                var __pocketQs = '';
+                for (var __pocketKey in request.querystring) {
+                    var __pocketVal = request.querystring[__pocketKey].value;
+                    __pocketQs += (__pocketQs ? '&' : '?') + __pocketKey + (__pocketVal !== '' ? '=' + __pocketVal : '');
+                }
+                return {
+                    statusCode: 301,
+                    statusDescription: 'Moved Permanently',
+                    headers: { location: { value: 'https://www.example.com' + request.uri + __pocketQs } }
+                };
+            }
+            var __pocketBaAuth = request.headers.authorization;
+            var __pocketBaExpected;
+            try { __pocketBaExpected = await kvsHandle.get('basic_auth'); }
+            catch (e) { __pocketBaExpected = null; }
+            if (!__pocketBaExpected || !__pocketBaAuth || __pocketBaAuth.value !== __pocketBaExpected) {
+                return {
+                    statusCode: 401,
+                    statusDescription: 'Unauthorized',
+                    headers: { 'www-authenticate': { value: 'Basic realm="Restricted"' } }
+                };
+            }
+            request.headers['x-forwarded-host'] = { value: request.headers.host.value };
+            // event.viewer.ip は CloudFront が TCP 接続から取得する viewer IP で詐称不可。
+            // viewer が同名 header を送っても上書きするため、origin は真の client IP を
+            // 信頼できる。OriginVerifyMiddleware が REMOTE_ADDR に正規化する。
+            request.headers['x-pocket-viewer-ip'] = { value: event.viewer.ip };
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Add X-Forwarded-Host for API routes"
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+
+
+  # distribution 全体の Basic 認証。既存 viewer-request Function を持たない
+  # behavior (プレーン S3 route / managed asset) にのみ association する。既存
+  # Function を持つ behavior には各 Function コード側に同等の prelude を注入済み。
+  # redirect_from 有効時は host redirect prelude もこの Function に同居する。
+  BasicAuthFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "prod-cf-web-basic-auth"
+      AutoPublish: true
+      FunctionCode: |
+        import cf from 'cloudfront';
+        const kvsHandle = cf.kvs();
+        async function handler(event) {
+            var request = event.request;
+            var __pocketHost = request.headers.host && request.headers.host.value;
+            if (__pocketHost && __pocketHost !== 'www.example.com') {
+                var __pocketQs = '';
+                for (var __pocketKey in request.querystring) {
+                    var __pocketVal = request.querystring[__pocketKey].value;
+                    __pocketQs += (__pocketQs ? '&' : '?') + __pocketKey + (__pocketVal !== '' ? '=' + __pocketVal : '');
+                }
+                return {
+                    statusCode: 301,
+                    statusDescription: 'Moved Permanently',
+                    headers: { location: { value: 'https://www.example.com' + request.uri + __pocketQs } }
+                };
+            }
+            var __pocketBaAuth = request.headers.authorization;
+            var __pocketBaExpected;
+            try { __pocketBaExpected = await kvsHandle.get('basic_auth'); }
+            catch (e) { __pocketBaExpected = null; }
+            if (!__pocketBaExpected || !__pocketBaAuth || __pocketBaAuth.value !== __pocketBaExpected) {
+                return {
+                    statusCode: 401,
+                    statusDescription: 'Unauthorized',
+                    headers: { 'www-authenticate': { value: 'Basic realm="Restricted"' } }
+                };
+            }
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Basic auth gate for prod-cf-web"
+        Runtime: cloudfront-js-2.0
+        KeyValueStoreAssociations:
+          - KeyValueStoreARN:
+              Fn::GetAtt: TokenKvs.Arn
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - OriginAccessControl
+      - UrlFallbackFunctionRoot
+      - CacheControlFunctionAssets
+      - CacheControlFunctionStatic
+      - CacheControlFunctionDeploy
+      - DeployHashCachePolicyDeploy
+      - DeployHashStripFunctionDeploy
+      - ApiHostFunction
+      - BasicAuthFunction
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - "www.example.com"
+          - "example.com"
+          - "old.example.com"
+        Enabled: true
+        Origins:
+          - Id: "prod-cf-pocket-root"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: "/spa"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "prod-cf-pocket-assets"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: ""
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "prod-cf-pocket-static"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: ""
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "prod-cf-pocket-media"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: "/uploads"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "prod-cf-pocket-deploy"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: ""
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "prod-cf-pocket-api-app.wsgi"
+            DomainName:
+              Fn::ImportValue: "prod-cf-app-wsgi-api-domain"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPSPort: 443
+            # CloudFront → origin にのみ付与する secret header。viewer が同名 header
+            # を送っても CloudFront が上書きするため詐称不可。origin (API GW / Lambda)
+            # 直叩きを検出するために OriginVerifyMiddleware が同値を検証する。
+            OriginCustomHeaders:
+              - HeaderName: "X-Pocket-Origin-Verify"
+                HeaderValue: "vector-pocket_origin_verify_secret"
+          - Id: "prod-cf-pocket-pocket-managed"
+            DomainName: "prod-cf-pocket.s3.ap-northeast-1.amazonaws.com"
+            OriginPath: "/pocket_managed"
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        DefaultCacheBehavior:
+          CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+          TargetOriginId: "prod-cf-pocket-root"
+          ViewerProtocolPolicy: "redirect-to-https"
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt: UrlFallbackFunctionRoot.FunctionMetadata.FunctionARN
+        CacheBehaviors:
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "prod-cf-pocket-assets"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/assets/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: BasicAuthFunction.FunctionMetadata.FunctionARN
+              - EventType: viewer-response
+                FunctionARN:
+                  Fn::GetAtt: CacheControlFunctionAssets.FunctionMetadata.FunctionARN
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "prod-cf-pocket-static"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/static/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: BasicAuthFunction.FunctionMetadata.FunctionARN
+              - EventType: viewer-response
+                FunctionARN:
+                  Fn::GetAtt: CacheControlFunctionStatic.FunctionMetadata.FunctionARN
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "prod-cf-pocket-media"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/media/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: BasicAuthFunction.FunctionMetadata.FunctionARN
+            TrustedKeyGroups:
+              - Fn::ImportValue: "prod-cf-web-key-group-id"
+          - CachePolicyId:
+              Ref: DeployHashCachePolicyDeploy
+            TargetOriginId: "prod-cf-pocket-deploy"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/deploy/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: DeployHashStripFunctionDeploy.FunctionMetadata.FunctionARN
+              - EventType: viewer-response
+                FunctionARN:
+                  Fn::GetAtt: CacheControlFunctionDeploy.FunctionMetadata.FunctionARN
+          - CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+            OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
+            TargetOriginId: "prod-cf-pocket-api-app.wsgi"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/api/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: ApiHostFunction.FunctionMetadata.FunctionARN
+            AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+          - CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
+            TargetOriginId: "prod-cf-pocket-pocket-managed"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/robots.txt"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: BasicAuthFunction.FunctionMetadata.FunctionARN
+        ViewerCertificate:
+          AcmCertificateArn: "arn:aws:acm:us-east-1:123456789012:certificate/prod-cf-web-acm"
+          SslSupportMethod: sni-only
+        WebACLId: "arn:aws:wafv2:us-east-1:123456789012:global/webacl/prod-cf-web-waf/vector"
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - CloudFrontDistribution
+    Properties:
+      HostedZoneId: "Z1"
+      Name: "www.example.com"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2 # Z2FDTNDATAQYW2 is the fixed hosted zone id for cloudfront
+        DNSName:
+          Fn::GetAtt: CloudFrontDistribution.DomainName
+
+  # redirect_from ドメインは専用配信を持たず、メイン配信の Alias として同じ
+  # distribution を指す (301 は viewer-request の CloudFront Function が返す)。
+  "DNSRecordExampleCom":
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - CloudFrontDistribution
+    Properties:
+      HostedZoneId: "ZEXAMPLE"
+      Name: "example.com"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2 # Z2FDTNDATAQYW2 is the fixed hosted zone id for cloudfront
+        DNSName:
+          Fn::GetAtt: CloudFrontDistribution.DomainName
+  # redirect_from ドメインは専用配信を持たず、メイン配信の Alias として同じ
+  # distribution を指す (301 は viewer-request の CloudFront Function が返す)。
+  "DNSRecordOldExampleCom":
+    Type: AWS::Route53::RecordSet
+    DependsOn:
+      - CloudFrontDistribution
+    Properties:
+      HostedZoneId: "Z2"
+      Name: "old.example.com"
+      Type: A
+      AliasTarget:
+        HostedZoneId: Z2FDTNDATAQYW2 # Z2FDTNDATAQYW2 is the fixed hosted zone id for cloudfront
+        DNSName:
+          Fn::GetAtt: CloudFrontDistribution.DomainName
+
+Outputs:
+  DistributionId:
+    Value:
+      Ref: CloudFrontDistribution
+  DistributionDomainName:
+    Value:
+      Fn::GetAtt: CloudFrontDistribution.DomainName
+  TokenKvsArn:
+    Value:
+      Fn::GetAtt: TokenKvs.Arn
+    Export:
+      Name: "prod-cf-web-token-kvs-arn"

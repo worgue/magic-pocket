@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFront signing key resources
+
+Resources:
+  PublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        Name: "prod-cf-pocket-publickey"
+        CallerReference: "prod-cf-pocket-publickey"
+        EncodedKey: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector
+          -----END PUBLIC KEY-----
+
+
+  KeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    DependsOn:
+      - PublicKey
+    Properties:
+      KeyGroupConfig:
+        Name: "prod-cf-pocket-keygroup"
+        Items:
+          - !Ref PublicKey
+
+Outputs:
+  PublicKeyId:
+    Value: !Ref PublicKey
+    Export:
+      Name: "prod-cf-web-public-key-id"
+  KeyGroupId:
+    Value: !Ref KeyGroup
+    Export:
+      Name: "prod-cf-web-key-group-id"

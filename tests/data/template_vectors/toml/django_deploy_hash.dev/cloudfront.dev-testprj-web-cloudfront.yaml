@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: spa configuration for webapp
+
+Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: "dev-testprj-web-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+
+  # cache-control は成功応答だけに付ける。ResponseHeadersPolicy はステータスを問わず
+  # 付けるため、403 にも immutable が付いてブラウザに残る (KN1670)。
+  CacheControlFunctionStatic:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "dev-testprj-web-static-cache-control"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var response = event.response;
+            var status = response.statusCode;
+            if ((status >= 200 && status < 300) || status === 304) {
+                response.headers['cache-control'] = { value: 'public, max-age=31536000, immutable' };
+            }
+            return response;
+        }
+      FunctionConfig:
+        Comment: "Set cache-control on successful responses for static"
+        Runtime: cloudfront-js-2.0
+  # Managed-CachingOptimized と同じ設定に、strip Function が載せる hash の header を
+  # キャッシュキーとして足したもの。URI は hash を外した後の値がキーになるため、
+  # これが無いと deploy で hash が変わっても同じ edge キャッシュを読み続ける。
+  DeployHashCachePolicyStatic:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: "dev-testprj-web-static-deploy-hash"
+        Comment: "CachingOptimized + deploy hash in cache key for static"
+        MinTTL: 1
+        DefaultTTL: 86400
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - "x-pocket-deploy-hash"
+  DeployHashStripFunctionStatic:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "dev-testprj-web-static-deploy-hash-strip"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            var prefix = '/static/';
+            // viewer が同名 header を送ってもキャッシュキーに使わせない
+            delete request.headers['x-pocket-deploy-hash'];
+            if (request.uri.indexOf(prefix) === 0) {
+                var rest = request.uri.substring(prefix.length);
+                var slash = rest.indexOf('/');
+                if (slash > 0) {
+                    var segment = rest.substring(0, slash);
+                    if (/^[0-9a-f]{7,40}$/.test(segment)) {
+                        request.uri = prefix + rest.substring(slash + 1);
+                        // URI から外した hash をキャッシュキーに残す (CachePolicy が参照する)
+                        request.headers['x-pocket-deploy-hash'] = { value: segment };
+                    }
+                }
+            }
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Strip deploy hash prefix for static"
+        Runtime: cloudfront-js-2.0
+
+  ApiHostFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: "dev-testprj-web-api-host"
+      AutoPublish: true
+      FunctionCode: |
+        function handler(event) {
+            var request = event.request;
+            request.headers['x-forwarded-host'] = { value: request.headers.host.value };
+            // event.viewer.ip は CloudFront が TCP 接続から取得する viewer IP で詐称不可。
+            // viewer が同名 header を送っても上書きするため、origin は真の client IP を
+            // 信頼できる。OriginVerifyMiddleware が REMOTE_ADDR に正規化する。
+            request.headers['x-pocket-viewer-ip'] = { value: event.viewer.ip };
+            return request;
+        }
+      FunctionConfig:
+        Comment: "Add X-Forwarded-Host for API routes"
+        Runtime: cloudfront-js-2.0
+
+
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn:
+      - OriginAccessControl
+      - CacheControlFunctionStatic
+      - DeployHashCachePolicyStatic
+      - DeployHashStripFunctionStatic
+      - ApiHostFunction
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Origins:
+          - Id: "dev-testprj-pocket-static"
+            DomainName: "dev-testprj-pocket.s3.ap-southeast-1.amazonaws.com"
+            OriginPath: ""
+            OriginAccessControlId:
+              Fn::GetAtt: OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: "" # Leave this blank because we use OAC(Origin Access Control)
+          - Id: "dev-testprj-pocket-api-main.wsgi"
+            DomainName:
+              Fn::ImportValue: "dev-testprj-main-wsgi-api-domain"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPSPort: 443
+        DefaultCacheBehavior:
+          CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # Managed-CachingDisabled
+          OriginRequestPolicyId: "b689b0a8-53d0-40ab-baf2-68738e2966ac" # Managed-AllViewerExceptHostHeader
+          TargetOriginId: "dev-testprj-pocket-api-main.wsgi"
+          ViewerProtocolPolicy: "redirect-to-https"
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt: ApiHostFunction.FunctionMetadata.FunctionARN
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - PATCH
+            - POST
+            - DELETE
+        CacheBehaviors:
+          - CachePolicyId:
+              Ref: DeployHashCachePolicyStatic
+            TargetOriginId: "dev-testprj-pocket-static"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/static/*"
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN:
+                  Fn::GetAtt: DeployHashStripFunctionStatic.FunctionMetadata.FunctionARN
+              - EventType: viewer-response
+                FunctionARN:
+                  Fn::GetAtt: CacheControlFunctionStatic.FunctionMetadata.FunctionARN
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+
+
+Outputs:
+  DistributionId:
+    Value:
+      Ref: CloudFrontDistribution
+  DistributionDomainName:
+    Value:
+      Fn::GetAtt: CloudFrontDistribution.DomainName

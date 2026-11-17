@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+
+
+  "JobsLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "live-ctx-pocket-worker-jobs"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/live-ctx-myorg-lambda-role"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/live-ctx-pocket-worker-lambda:live"
+      ImageConfig:
+        Command:
+          - "app.jobs"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "live"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "worker"
+          "DEPLOY_HASH": "pinned"
+
+
+
+  "JobsSqsQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "live-ctx-pocket-worker-jobs"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "JobsDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "180"
+      # default 4 days
+      MessageRetentionPeriod: "345600"
+
+  "JobsDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "live-ctx-pocket-worker-jobs-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+
+  "JobsSqsEventSourceMapping":
+    DependsOn:
+      - "JobsSqsQueue"
+      - "JobsLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "JobsSqsQueue.Arn"
+      FunctionName:
+        Ref: "JobsLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+
+  "DrainSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "JobsSqsQueue"
+    Properties:
+      Name: "live-ctx-pocket-drain"
+      ScheduleExpression: "rate(5 minutes)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "JobsSqsQueue.Arn"
+        RoleArn: {"Fn::Sub": "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/live-ctx-myorg-scheduler-role"}
+        Input: "{\"command\": \"drain\", \"label\": \"\u65e5\u672c\u8a9e\"}"
+
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "JobsLambdaFunction":
+    Value:
+      Fn::GetAtt: "JobsLambdaFunction.Arn"

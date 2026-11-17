@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ACM certificates for CloudFront (us-east-1)
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "cdn.example.com"
+      DomainValidationOptions:
+        - DomainName: "cdn.example.com"
+          HostedZoneId: "ZEXAMPLE"
+      Tags:
+        - Key: Name
+          Value: "dev-testprj-pocket-cloudfront-cert"
+      ValidationMethod: DNS
+
+Outputs:
+  CertificateArn:
+    Value:
+      Ref: Certificate

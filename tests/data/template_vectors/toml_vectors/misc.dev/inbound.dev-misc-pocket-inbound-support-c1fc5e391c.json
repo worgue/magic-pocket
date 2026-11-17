@@ -1,0 +1,468 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketName": {
+          "Fn::Sub": "dev-misc-pocket-inbound-support-c1fc5e391c-${AWS::AccountId}"
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        },
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            {
+              "Id": "Expire0",
+              "Status": "Enabled",
+              "Prefix": "in/raw/",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              },
+              "AbortIncompleteMultipartUpload": {
+                "DaysAfterInitiation": 7
+              }
+            },
+            {
+              "Id": "Expire1",
+              "Status": "Enabled",
+              "Prefix": "in/meta/",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              },
+              "AbortIncompleteMultipartUpload": {
+                "DaysAfterInitiation": 7
+              }
+            },
+            {
+              "Id": "Expire2",
+              "Status": "Enabled",
+              "Prefix": "in/import/",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              },
+              "AbortIncompleteMultipartUpload": {
+                "DaysAfterInitiation": 7
+              }
+            },
+            {
+              "Id": "Expire3",
+              "Status": "Enabled",
+              "Prefix": "attachments/",
+              "ExpirationInDays": 30,
+              "NoncurrentVersionExpiration": {
+                "NoncurrentDays": 30
+              },
+              "AbortIncompleteMultipartUpload": {
+                "DaysAfterInitiation": 7
+              }
+            }
+          ]
+        }
+      }
+    },
+    "BucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "Bucket"
+        },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ses.amazonaws.com"
+              },
+              "Action": "s3:PutObject",
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::${Bucket}/in/raw/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnEquals": {
+                  "AWS:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:receipt-rule-set/shared-rules:receipt-rule/dev-misc-pocket-inbound-support-c1fc5e391c"
+                  }
+                }
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Bucket",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Bucket.Arn}/*"
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Topic": {
+      "Type": "AWS::SNS::Topic",
+      "Properties": {
+        "TopicName": "dev-misc-pocket-inbound-support-c1fc5e391c"
+      }
+    },
+    "TopicPolicy": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Properties": {
+        "Topics": [
+          {
+            "Ref": "Topic"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ses.amazonaws.com"
+              },
+              "Action": "sns:Publish",
+              "Resource": {
+                "Ref": "Topic"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnEquals": {
+                  "AWS:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:receipt-rule-set/shared-rules:receipt-rule/dev-misc-pocket-inbound-support-c1fc5e391c"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeliveryDLQ": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "QueueName": "dev-misc-pocket-inbound-support-c1fc5e391c-delivery-dead-letter",
+        "MessageRetentionPeriod": 1209600,
+        "SqsManagedSseEnabled": true
+      }
+    },
+    "QueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "Queues": [
+          {
+            "Fn::Sub": "https://sqs.${AWS::Region}.${AWS::URLSuffix}/${AWS::AccountId}/dev-misc-pocket-app-mail"
+          },
+          {
+            "Ref": "DeliveryDLQ"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "sns.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:dev-misc-pocket-app-mail"
+                },
+                {
+                  "Fn::GetAtt": [
+                    "DeliveryDLQ",
+                    "Arn"
+                  ]
+                }
+              ],
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Ref": "Topic"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "Subscription": {
+      "Type": "AWS::SNS::Subscription",
+      "DependsOn": "QueuePolicy",
+      "Properties": {
+        "TopicArn": {
+          "Ref": "Topic"
+        },
+        "Protocol": "sqs",
+        "Endpoint": {
+          "Fn::Sub": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:dev-misc-pocket-app-mail"
+        },
+        "RawMessageDelivery": false,
+        "RedrivePolicy": {
+          "deadLetterTargetArn": {
+            "Fn::GetAtt": [
+              "DeliveryDLQ",
+              "Arn"
+            ]
+          }
+        }
+      }
+    },
+    "ReceiptRule": {
+      "Type": "AWS::SES::ReceiptRule",
+      "DependsOn": [
+        "BucketPolicy",
+        "TopicPolicy",
+        "QueuePolicy",
+        "Subscription",
+        "PublishFailureAlarm",
+        "PublishExpiredAlarm",
+        "DeliveryDLQAlarm",
+        "QueueAgeAlarm"
+      ],
+      "Properties": {
+        "RuleSetName": "shared-rules",
+        "Rule": {
+          "Name": "dev-misc-pocket-inbound-support-c1fc5e391c",
+          "Enabled": false,
+          "TlsPolicy": "Optional",
+          "ScanEnabled": false,
+          "Recipients": [
+            "support@mail.example.com",
+            "help@mail.example.com"
+          ],
+          "Actions": [
+            {
+              "S3Action": {
+                "BucketName": {
+                  "Ref": "Bucket"
+                },
+                "ObjectKeyPrefix": "in/raw/",
+                "TopicArn": {
+                  "Ref": "Topic"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "PublishFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "dev-misc-pocket-inbound-support-c1fc5e391c-PublishFailure",
+        "Namespace": "AWS/SES",
+        "MetricName": "PublishFailure",
+        "Dimensions": [
+          {
+            "Name": "RuleName",
+            "Value": "dev-misc-pocket-inbound-support-c1fc5e391c"
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 0,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "PublishExpiredAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "dev-misc-pocket-inbound-support-c1fc5e391c-PublishExpired",
+        "Namespace": "AWS/SES",
+        "MetricName": "PublishExpired",
+        "Dimensions": [
+          {
+            "Name": "RuleName",
+            "Value": "dev-misc-pocket-inbound-support-c1fc5e391c"
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 0,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "DeliveryDLQAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "dev-misc-pocket-inbound-support-c1fc5e391c-DeliveryDLQ",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": "dev-misc-pocket-inbound-support-c1fc5e391c-delivery-dead-letter"
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 0,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "QueueAgeAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmName": "dev-misc-pocket-inbound-support-c1fc5e391c-QueueAge",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateAgeOfOldestMessage",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": "dev-misc-pocket-app-mail"
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 3600,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    }
+  },
+  "Outputs": {
+    "RuleSet": {
+      "Value": "shared-rules"
+    },
+    "RuleName": {
+      "Value": "dev-misc-pocket-inbound-support-c1fc5e391c"
+    },
+    "AfterRule": {
+      "Value": ""
+    },
+    "Bucket": {
+      "Value": {
+        "Ref": "Bucket"
+      }
+    },
+    "TopicArn": {
+      "Value": {
+        "Ref": "Topic"
+      }
+    },
+    "QueueUrl": {
+      "Value": {
+        "Fn::Sub": "https://sqs.${AWS::Region}.${AWS::URLSuffix}/${AWS::AccountId}/dev-misc-pocket-app-mail"
+      }
+    },
+    "DeliveryDLQUrl": {
+      "Value": {
+        "Ref": "DeliveryDLQ"
+      }
+    },
+    "WorkerDLQUrl": {
+      "Value": {
+        "Fn::Sub": "https://sqs.${AWS::Region}.${AWS::URLSuffix}/${AWS::AccountId}/dev-misc-pocket-app-mail-dead-letter"
+      }
+    },
+    "Enabled": {
+      "Value": "false"
+    },
+    "Handler": {
+      "Value": "app.mail"
+    },
+    "RawPrefix": {
+      "Value": "in/raw/"
+    },
+    "MetadataPrefix": {
+      "Value": "in/meta/"
+    },
+    "ImportPrefix": {
+      "Value": "in/import/"
+    },
+    "PublishFailureAlarmArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "PublishFailureAlarm",
+          "Arn"
+        ]
+      }
+    },
+    "PublishExpiredAlarmArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "PublishExpiredAlarm",
+          "Arn"
+        ]
+      }
+    },
+    "DeliveryDLQAlarmArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "DeliveryDLQAlarm",
+          "Arn"
+        ]
+      }
+    },
+    "QueueAgeAlarmArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "QueueAgeAlarm",
+          "Arn"
+        ]
+      }
+    }
+  }
+}

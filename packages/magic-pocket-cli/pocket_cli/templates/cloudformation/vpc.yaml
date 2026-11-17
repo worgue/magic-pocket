@@ -155,7 +155,7 @@ Resources:
   EfsAccessPoint:
     Type: AWS::EFS::AccessPoint
     Properties:
-      FileSystemId: "{{ resource.efs.filesystem_id }}"
+      FileSystemId: "{{ efs_filesystem_id }}"
       PosixUser:
         Uid: "1000"
         Gid: "1000"
@@ -169,7 +169,7 @@ Resources:
   MountTarget{{ loop.index }}:
     Type: AWS::EFS::MountTarget
     Properties:
-      FileSystemId: "{{ resource.efs.filesystem_id }}"
+      FileSystemId: "{{ efs_filesystem_id }}"
       SubnetId:
         Ref: PrivateSubnet{{ loop.index }}
       SecurityGroups:

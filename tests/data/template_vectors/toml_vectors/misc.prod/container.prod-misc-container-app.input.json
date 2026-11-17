@@ -1,0 +1,438 @@
+{
+  "stack_name": "prod-misc-container-app",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": {
+    "schedules": [
+      {
+        "key": "ping",
+        "scheduler": "pocket.lambda_scheduler",
+        "handler": "wsgi",
+        "schedule_expression": "cron(0 * * * ? *)",
+        "name": "prod-misc-pocket-ping",
+        "yaml_key": "Ping",
+        "input_json": "{\"path\": \"/ping\", \"nested\": {\"a\": [1, 2]}}",
+        "is_django_management": false,
+        "is_sqs": false
+      },
+      {
+        "key": "cleanup",
+        "scheduler": "pocket.django.management_lambda_scheduler",
+        "handler": "management",
+        "schedule_expression": "rate(1 day)",
+        "name": "prod-misc-pocket-cleanup",
+        "yaml_key": "Cleanup",
+        "input_json": "{\"manage\": \"clearsessions --verbosity 2\"}",
+        "is_django_management": true,
+        "is_sqs": false
+      },
+      {
+        "key": "enqueue",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "jobs",
+        "schedule_expression": "rate(5 minutes)",
+        "name": "prod-misc-pocket-enqueue",
+        "yaml_key": "Enqueue",
+        "input_json": "{\"command\": \"sync\", \"args\": [\"a\"], \"kwargs\": {\"force\": true}}",
+        "is_django_management": false,
+        "is_sqs": true
+      },
+      {
+        "key": "bare",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "jobs",
+        "schedule_expression": "rate(1 hour)",
+        "name": "prod-misc-pocket-bare",
+        "yaml_key": "Bare",
+        "input_json": "{}",
+        "is_django_management": false,
+        "is_sqs": true
+      },
+      {
+        "key": "nightly",
+        "scheduler": "pocket.sqs_scheduler",
+        "handler": "jobs",
+        "schedule_expression": "cron(0 3 * * ? *)",
+        "name": "prod-misc-pocket-nightly",
+        "yaml_key": "Nightly",
+        "input_json": "{\"command\": \"nightly\"}",
+        "is_django_management": false,
+        "is_sqs": true
+      }
+    ],
+    "role_name": "prod-misc-pocket-app-scheduler",
+    "invoked_function_arns": [
+      "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-management",
+      "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-wsgi"
+    ],
+    "sqs_queue_arns": [
+      "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-app-jobs"
+    ],
+    "has_schedules": true
+  },
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-prod-misc-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonSESFullAccess",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "inbound-support",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/import/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "prod-misc-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-misc-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "prod-misc-pocket-app-scheduler",
+      "AssumeRolePolicyDocument": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "scheduler.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "Policies": [
+        {
+          "PolicyName": "invoke-handlers",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "lambda:InvokeFunction"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-management"
+                  },
+                  {
+                    "Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-wsgi"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:SendMessage"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-app-jobs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "SchedulerExecutionRole.Arn"
+    }
+  },
+  "name": "app",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {
+    "support": {
+      "name": "support",
+      "region": "ap-northeast-1",
+      "resource_name": "prod-misc-pocket-inbound-support-e9bd96e68e",
+      "queue_name": "prod-misc-pocket-app-mail",
+      "config": {
+        "domain": "mail.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": "Z1",
+        "recipients": [
+          "support@mail.example.com",
+          "help@mail.example.com"
+        ],
+        "handler": "app.mail",
+        "rule_set": "shared-rules",
+        "enabled": false,
+        "tls_policy": "Optional",
+        "scan_enabled": false,
+        "raw_prefix": "in/raw/",
+        "metadata_prefix": "in/meta/",
+        "import_prefix": "in/import/",
+        "retention_days": 365,
+        "delivery_alert": {
+          "enabled": true,
+          "email": null,
+          "eventbridge": true
+        }
+      },
+      "bucket_name": "prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e",
+      "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-app-mail",
+      "runtime_config": {
+        "region": "ap-northeast-1",
+        "bucket": "prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e",
+        "raw_prefix": "in/raw/",
+        "metadata_prefix": "in/meta/",
+        "import_prefix": "in/import/",
+        "recipients": [
+          "support@mail.example.com",
+          "help@mail.example.com"
+        ]
+      }
+    }
+  },
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "prod-misc",
+  "stage": "prod",
+  "namespace": "pocket",
+  "resource_prefix": "prod-misc-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "app.wsgi",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "prod-misc-pocket-app-wsgi",
+      "log_group_name": "/aws/lambda/prod-misc-pocket-app-wsgi",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    },
+    "management": {
+      "command": "pocket.django.lambda_handlers.management_command_handler",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "management",
+      "function_name": "prod-misc-pocket-app-management",
+      "log_group_name": "/aws/lambda/prod-misc-pocket-app-management",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "ManagementCertificate"
+    },
+    "mail": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "prod-misc-pocket-app-mail",
+        "visibility_timeout": 180,
+        "dead_letter_alert": {
+          "email": "ops@example.com",
+          "eventbridge": false,
+          "topic_name": "prod-misc-pocket-app-mail-dead-letter-alert",
+          "alarm_name": "prod-misc-pocket-app-mail-dead-letter-alert"
+        }
+      },
+      "key": "mail",
+      "function_name": "prod-misc-pocket-app-mail",
+      "log_group_name": "/aws/lambda/prod-misc-pocket-app-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    },
+    "jobs": {
+      "command": "app.jobs",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": false,
+        "batch_size": 10,
+        "message_retention_period": 345600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "prod-misc-pocket-app-jobs",
+        "visibility_timeout": 180,
+        "dead_letter_alert": null
+      },
+      "key": "jobs",
+      "function_name": "prod-misc-pocket-app-jobs",
+      "log_group_name": "/aws/lambda/prod-misc-pocket-app-jobs",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "JobsCertificate"
+    }
+  },
+  "ecr_name": "prod-misc-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": true,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "prod-misc-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {
+    "support": {
+      "region": "ap-northeast-1",
+      "bucket": "prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e",
+      "raw_prefix": "in/raw/",
+      "metadata_prefix": "in/meta/",
+      "import_prefix": "in/import/",
+      "recipients": [
+        "support@mail.example.com",
+        "help@mail.example.com"
+      ]
+    }
+  }
+}

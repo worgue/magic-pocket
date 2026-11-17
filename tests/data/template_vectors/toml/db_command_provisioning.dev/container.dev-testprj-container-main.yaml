@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  LambdaRole:
+    # This role must be created before the lambda function.
+    # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
+    # When you change Role, you must delete function and role.
+    # https://www.lastweekinaws.com/blog/the-sneaky-weakness-behind-aws-managed-kms-keys/
+    # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}}]}, "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"], "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["secretsmanager:GetSecretValue"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/tidb_database_url-??????"}]}], "Version": "2012-10-17"}, "PolicyName": "dev-testprj-pocket-access-secretsmanager"}, {"PolicyDocument": {"Statement": [{"Action": ["cloudformation:DescribeStacks"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-testprj-*"}]}], "Version": "2012-10-17"}, "PolicyName": "dev-testprj-pocket-access-cloudformation"}], "RoleName": "lambda-dev-testprj-main-pocket"}
+
+
+  "WsgiLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-testprj-pocket-main-wsgi"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-testprj-pocket-main-lambda:dev"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.wsgi_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+
+
+
+
+
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "WsgiLambdaFunction":
+    Value:
+      Fn::GetAtt: "WsgiLambdaFunction.Arn"

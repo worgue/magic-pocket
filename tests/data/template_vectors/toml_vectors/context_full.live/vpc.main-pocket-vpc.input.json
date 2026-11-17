@@ -1,0 +1,32 @@
+{
+  "stack_name": "main-pocket-vpc",
+  "export": {
+    "vpc_id": "main-pocket-vpc-id",
+    "private_subnet_": "main-pocket-private-subnet-",
+    "efs_access_point_arn": "main-pocket-efs-access-point",
+    "efs_security_group": "main-pocket-efs-security-group"
+  },
+  "efs_filesystem_id": "fs-0123456789abcdef0",
+  "ref": "main",
+  "zone_suffixes": [
+    "a",
+    "c"
+  ],
+  "nat_gateway": true,
+  "internet_gateway": true,
+  "efs": {
+    "local_mount_path": "/mnt/data",
+    "access_point_path": "/lambda",
+    "name": "main-pocket",
+    "region": "ap-northeast-1"
+  },
+  "name": "main-pocket",
+  "region": "ap-northeast-1",
+  "manage": true,
+  "sharable": false,
+  "private_route_table": true,
+  "zones": [
+    "ap-northeast-1a",
+    "ap-northeast-1c"
+  ]
+}

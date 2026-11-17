@@ -45,7 +45,7 @@ Resources:
       # {% if handler.reserved_concurrency %}
       ReservedConcurrentExecutions: "{{ handler.reserved_concurrency }}"
       # {% endif %}
-      Role: {{ lambda_role.cfn_arn("LambdaRole") | tojson }}
+      Role: {{ lambda_role.arn | tojson }}
       Code:
         ImageUri:
           Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/{{ ecr_name }}:{{ stage }}"
@@ -394,7 +394,7 @@ Resources:
         Arn:
           Fn::GetAtt: "{{ entry.handler|capitalize }}LambdaFunction.Arn"
         # {% endif %}
-        RoleArn: {{ scheduler_role.cfn_arn("SchedulerExecutionRole") | tojson }}
+        RoleArn: {{ scheduler_role.arn | tojson }}
         Input: {{ entry.input_json|tojson }}
   # {% endfor %}
   # {% endif %}

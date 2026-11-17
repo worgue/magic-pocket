@@ -1,0 +1,105 @@
+{
+  "context": {
+    "env": {
+      "NEON_API_KEY": "vector-neon-api-key",
+      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
+      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
+      "UPSTASH_API_KEY": "vector-upstash-api-key",
+      "UPSTASH_EMAIL": "vector@example.com"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {
+      "prod-db-app-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:prod-db-app-pocket-AbCdEf"
+    }
+  },
+  "input": "tests/data/toml_vectors/db_backup.toml",
+  "stack_external": {
+    "dsql_identifier": "vectordsqlclusteridentifier",
+    "efs_filesystem_id": null,
+    "inbound_bindings": {},
+    "rds": {
+      "cluster": {
+        "Endpoint": "prod-db-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",
+        "MasterUserSecret": {
+          "SecretArn": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:rds!cluster-vector"
+        },
+        "Port": 5432
+      },
+      "security_group_id": "sg-0123456789abcdef0"
+    },
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {}
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "vpc.main-pocket-vpc.yaml",
+      "input_file": "vpc.main-pocket-vpc.input.json",
+      "kind": "vpc",
+      "name": "main-pocket-vpc",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "c5bcac07409dcc50"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "container.prod-db-container-app.yaml",
+      "input_file": "container.prod-db-container-app.input.json",
+      "kind": "container",
+      "name": "prod-db-container-app",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "742e564539c44dce"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.prod-db-container-batch.yaml",
+      "input_file": "container.prod-db-container-batch.input.json",
+      "kind": "container",
+      "name": "prod-db-container-batch",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "b554e076773def96"
+    }
+  ],
+  "stage": "prod"
+}

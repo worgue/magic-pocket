@@ -1,0 +1,30 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ACM certificates for CloudFront (us-east-1)
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "www.example.com"
+      # redirect_from ドメインは専用 cert ではなくメイン cert の SAN に載せる。
+      # 301 は CloudFront Function で返すため、redirect ドメインもこの配信の
+      # Alias になり、同じ証明書で終端できる。
+      SubjectAlternativeNames:
+        - "example.com"
+        - "old.example.com"
+      DomainValidationOptions:
+        - DomainName: "www.example.com"
+          HostedZoneId: "Z1"
+        - DomainName: "example.com"
+          HostedZoneId: "ZEXAMPLE"
+        - DomainName: "old.example.com"
+          HostedZoneId: "Z2"
+      Tags:
+        - Key: Name
+          Value: "prod-cf-pocket-cloudfront-cert"
+      ValidationMethod: DNS
+
+Outputs:
+  CertificateArn:
+    Value:
+      Ref: Certificate

@@ -1,0 +1,192 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  LambdaRole:
+    # This role must be created before the lambda function.
+    # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
+    # When you change Role, you must delete function and role.
+    # https://www.lastweekinaws.com/blog/the-sneaky-weakness-behind-aws-managed-kms-keys/
+    # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}}]}, "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole", "arn:aws:iam::aws:policy/AmazonS3FullAccess", "arn:aws:iam::aws:policy/AmazonSQSFullAccess"], "PermissionsBoundary": "arn:aws:iam::123456789012:policy/forge", "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["s3:ListBucket"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}"}]}, {"Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"], "Effect": "Deny", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"}]}, {"Action": ["s3:GetObject", "s3:GetObjectVersion"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/imports/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"}]}, {"Action": ["s3:PutObject"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}/metadata/*"}]}], "Version": "2012-10-17"}, "PolicyName": "inbound-a"}, {"PolicyDocument": {"Statement": [{"Action": ["s3:ListBucket"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}"}]}, {"Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"], "Effect": "Deny", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"}]}, {"Action": ["s3:GetObject", "s3:GetObjectVersion"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/imports/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"}]}, {"Action": ["s3:PutObject"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}/metadata/*"}]}], "Version": "2012-10-17"}, "PolicyName": "inbound-b"}, {"PolicyDocument": {"Statement": [{"Action": ["cloudformation:DescribeStacks"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-rt-*"}]}], "Version": "2012-10-17"}, "PolicyName": "dev-rt-pocket-access-cloudformation"}], "RoleName": "lambda-dev-rt-app-pocket"}
+
+
+  "MailLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-rt-pocket-app-mail"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-rt-pocket-app-lambda:dev"
+      ImageConfig:
+        Command:
+          - "app.mail"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"a\": {\"bucket\": \"dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}\", \"import_prefix\": \"imports/\", \"metadata_prefix\": \"metadata/\", \"raw_prefix\": \"raw/\", \"recipients\": [\"x@b.example.com\"], \"region\": \"us-east-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-a-f14f8810d6\"}, \"b\": {\"bucket\": \"dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}\", \"import_prefix\": \"imports/\", \"metadata_prefix\": \"metadata/\", \"raw_prefix\": \"raw/\", \"recipients\": [\"y@b.example.com\"], \"region\": \"us-east-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-b-97d4923840\"}}"
+          "DEPLOY_HASH": "unknown"
+  "Mail2LambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "dev-rt-pocket-app-mail2"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/dev-rt-pocket-app-lambda:dev"
+      ImageConfig:
+        Command:
+          - "app.mail"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "dev"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"a\": {\"bucket\": \"dev-rt-pocket-inbound-a-f14f8810d6-${AWS::AccountId}\", \"import_prefix\": \"imports/\", \"metadata_prefix\": \"metadata/\", \"raw_prefix\": \"raw/\", \"recipients\": [\"x@b.example.com\"], \"region\": \"us-east-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-a-f14f8810d6\"}, \"b\": {\"bucket\": \"dev-rt-pocket-inbound-b-97d4923840-${AWS::AccountId}\", \"import_prefix\": \"imports/\", \"metadata_prefix\": \"metadata/\", \"raw_prefix\": \"raw/\", \"recipients\": [\"y@b.example.com\"], \"region\": \"us-east-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:us-east-1:${AWS::AccountId}:dev-rt-pocket-inbound-b-97d4923840\"}}"
+          "DEPLOY_HASH": "unknown"
+
+
+
+
+  "MailSqsQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-rt-pocket-app-mail"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "MailDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "180"
+      # default 4 days
+      MessageRetentionPeriod: "1209600"
+
+  "MailDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-rt-pocket-app-mail-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+  # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
+  # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
+  # (deploy 後の購読状態チェックと pocket status で可視化する)
+  "MailDeadLetterAlarm":
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "dev-rt-pocket-app-mail-dead-letter-alert"
+      AlarmDescription: "Messages arrived in the dead-letter queue of dev-rt-pocket-app-mail"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: "MailDeadLetterQueue.QueueName"
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
+      TreatMissingData: notBreaching
+
+  "MailSqsEventSourceMapping":
+    DependsOn:
+      - "MailSqsQueue"
+      - "MailLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "MailSqsQueue.Arn"
+      FunctionName:
+        Ref: "MailLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+  "Mail2SqsQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-rt-pocket-app-mail2"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "Mail2DeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "180"
+      # default 4 days
+      MessageRetentionPeriod: "1209600"
+
+  "Mail2DeadLetterQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "dev-rt-pocket-app-mail2-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+
+  "Mail2SqsEventSourceMapping":
+    DependsOn:
+      - "Mail2SqsQueue"
+      - "Mail2LambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "Mail2SqsQueue.Arn"
+      FunctionName:
+        Ref: "Mail2LambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "MailLambdaFunction":
+    Value:
+      Fn::GetAtt: "MailLambdaFunction.Arn"
+  "MailDeadLetterAlarmArn":
+    Value:
+      Fn::GetAtt: "MailDeadLetterAlarm.Arn"
+  "Mail2LambdaFunction":
+    Value:
+      Fn::GetAtt: "Mail2LambdaFunction.Arn"

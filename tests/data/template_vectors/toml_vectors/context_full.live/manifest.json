@@ -1,0 +1,161 @@
+{
+  "context": {
+    "env": {
+      "DEPLOY_HASH": "env-hash-1",
+      "NEON_API_KEY": "ctx-neon-key",
+      "POCKET_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/env-boundary"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/context_full.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": "fs-0123456789abcdef0",
+    "inbound_bindings": {
+      "live-ctx-pocket-inbound-support-4f1ebcd01b": {
+        "after": null,
+        "rule_set": "default-rule-set"
+      }
+    },
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {
+        "web": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector\n-----END PUBLIC KEY-----\n"
+      },
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {
+      "live-ctx-web-acm": {
+        "CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/live-ctx-web-acm"
+      }
+    }
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "acm.live-ctx-web-acm.yaml",
+      "input_file": "acm.live-ctx-web-acm.input.json",
+      "kind": "acm",
+      "name": "live-ctx-web-acm",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "fdd44b0156d8f4f2"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound_domain.live-ctx-pocket-inbound-domain-19ac11479d.json",
+      "kind": "inbound_domain",
+      "name": "live-ctx-pocket-inbound-domain-19ac11479d",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "fc6935625e3f544d"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "vpc.main-pocket-vpc.yaml",
+      "input_file": "vpc.main-pocket-vpc.input.json",
+      "kind": "vpc",
+      "name": "main-pocket-vpc",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "4cf2c3827f94aea6"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "live-ctx-web-key-group-id",
+        "public_key_id": "live-ctx-web-public-key-id"
+      },
+      "file": "cloudfront_keys.live-ctx-web-cloudfront-keys.yaml",
+      "input_file": "cloudfront_keys.live-ctx-web-cloudfront-keys.input.json",
+      "kind": "cloudfront_keys",
+      "name": "live-ctx-web-cloudfront-keys",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "82878a15c55993ce"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "container.live-ctx-container-web.yaml",
+      "input_file": "container.live-ctx-container-web.input.json",
+      "kind": "container",
+      "name": "live-ctx-container-web",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "21461a5e1500504a"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.live-ctx-container-worker.yaml",
+      "input_file": "container.live-ctx-container-worker.input.json",
+      "kind": "container",
+      "name": "live-ctx-container-worker",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "5717ccd38ab01d03"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound.live-ctx-pocket-inbound-support-4f1ebcd01b.json",
+      "kind": "inbound",
+      "name": "live-ctx-pocket-inbound-support-4f1ebcd01b",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "0a3789d671caa7ef"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "live-ctx-web-key-group-id"
+      },
+      "file": "cloudfront.live-ctx-web-cloudfront.yaml",
+      "input_file": "cloudfront.live-ctx-web-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "live-ctx-web-cloudfront",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "8a388a1a112b1761"
+    }
+  ],
+  "stage": "live"
+}

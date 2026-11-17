@@ -1,0 +1,137 @@
+{
+  "stack_name": "dev-testprj-container-main",
+  "export": {},
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-dev-testprj-main-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "dev-testprj-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/dev-testprj-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "main",
+  "vpc": null,
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "tests/sampleprj/Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "dev-testprj",
+  "stage": "dev",
+  "namespace": "pocket",
+  "resource_prefix": "dev-testprj-pocket-",
+  "handlers": {
+    "wsgi": {
+      "command": "pocket.django.lambda_handlers.wsgi_handler",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "wsgi",
+      "function_name": "dev-testprj-pocket-main-wsgi",
+      "log_group_name": "/aws/lambda/dev-testprj-pocket-main-wsgi",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "WsgiCertificate"
+    },
+    "management": {
+      "command": "pocket.django.lambda_handlers.management_command_handler",
+      "timeout": 600,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": null,
+      "key": "management",
+      "function_name": "dev-testprj-pocket-main-management",
+      "log_group_name": "/aws/lambda/dev-testprj-pocket-main-management",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "ManagementCertificate"
+    }
+  },
+  "ecr_name": "dev-testprj-pocket-main-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": true,
+  "use_route53": false,
+  "use_sqs": false,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "dev-testprj-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

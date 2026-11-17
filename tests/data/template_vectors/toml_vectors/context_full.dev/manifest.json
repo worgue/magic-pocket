@@ -1,0 +1,164 @@
+{
+  "context": {
+    "env": {
+      "DEPLOY_HASH": "env-hash-1",
+      "NEON_API_KEY": "ctx-neon-key",
+      "POCKET_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/env-boundary"
+    },
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {
+      "dev-ctx-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-pocket-AbCdEf",
+      "dev-ctx-web-pocket": "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:dev-ctx-web-pocket-AbCdEf"
+    }
+  },
+  "input": "tests/data/toml_vectors/context_full.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": "fs-0123456789abcdef0",
+    "inbound_bindings": {
+      "dev-ctx-pocket-inbound-support-41d19ddf04": {
+        "after": null,
+        "rule_set": "default-rule-set"
+      }
+    },
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {
+        "web": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector\n-----END PUBLIC KEY-----\n"
+      },
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {
+      "dev-ctx-web-acm": {
+        "CertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/dev-ctx-web-acm"
+      }
+    }
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "acm.dev-ctx-web-acm.yaml",
+      "input_file": "acm.dev-ctx-web-acm.input.json",
+      "kind": "acm",
+      "name": "dev-ctx-web-acm",
+      "region": "us-east-1",
+      "tags": [],
+      "template_hash": "7299ab2a26be6ec3"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound_domain.dev-ctx-pocket-inbound-domain-79027c9373.json",
+      "kind": "inbound_domain",
+      "name": "dev-ctx-pocket-inbound-domain-79027c9373",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "fc6935625e3f544d"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "vpc.main-pocket-vpc.yaml",
+      "input_file": "vpc.main-pocket-vpc.input.json",
+      "kind": "vpc",
+      "name": "main-pocket-vpc",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "4cf2c3827f94aea6"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "dev-ctx-web-key-group-id",
+        "public_key_id": "dev-ctx-web-public-key-id"
+      },
+      "file": "cloudfront_keys.dev-ctx-web-cloudfront-keys.yaml",
+      "input_file": "cloudfront_keys.dev-ctx-web-cloudfront-keys.input.json",
+      "kind": "cloudfront_keys",
+      "name": "dev-ctx-web-cloudfront-keys",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "a71761bb1fb4a482"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "container.dev-ctx-container-web.yaml",
+      "input_file": "container.dev-ctx-container-web.input.json",
+      "kind": "container",
+      "name": "dev-ctx-container-web",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "22b01419fd37e602"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {},
+      "file": "container.dev-ctx-container-worker.yaml",
+      "input_file": "container.dev-ctx-container-worker.input.json",
+      "kind": "container",
+      "name": "dev-ctx-container-worker",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "157e930fc46dee61"
+    },
+    {
+      "capabilities": [],
+      "export": {},
+      "file": "inbound.dev-ctx-pocket-inbound-support-41d19ddf04.json",
+      "kind": "inbound",
+      "name": "dev-ctx-pocket-inbound-support-41d19ddf04",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "ec8e9b5fce760070"
+    },
+    {
+      "capabilities": [],
+      "export": {
+        "key_group_id": "dev-ctx-web-key-group-id"
+      },
+      "file": "cloudfront.dev-ctx-web-cloudfront.yaml",
+      "input_file": "cloudfront.dev-ctx-web-cloudfront.input.json",
+      "kind": "cloudfront",
+      "name": "dev-ctx-web-cloudfront",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "f7e6b26f8a821187"
+    }
+  ],
+  "stage": "dev"
+}

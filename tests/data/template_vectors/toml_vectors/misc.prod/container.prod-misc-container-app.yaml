@@ -1,0 +1,345 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  LambdaRole:
+    # This role must be created before the lambda function.
+    # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
+    # When you change Role, you must delete function and role.
+    # https://www.lastweekinaws.com/blog/the-sneaky-weakness-behind-aws-managed-kms-keys/
+    # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}}]}, "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole", "arn:aws:iam::aws:policy/AmazonSESFullAccess", "arn:aws:iam::aws:policy/AmazonSQSFullAccess"], "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["s3:ListBucket"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}"}]}, {"Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"], "Effect": "Deny", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"}]}, {"Action": ["s3:GetObject", "s3:GetObjectVersion"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/raw/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/import/*"}, {"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"}]}, {"Action": ["s3:PutObject"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:${AWS::Partition}:s3:::prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}/in/meta/*"}]}], "Version": "2012-10-17"}, "PolicyName": "inbound-support"}, {"PolicyDocument": {"Statement": [{"Action": ["cloudformation:DescribeStacks"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-misc-*"}]}], "Version": "2012-10-17"}, "PolicyName": "prod-misc-pocket-access-cloudformation"}], "RoleName": "lambda-prod-misc-app-pocket"}
+
+
+  "WsgiLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "prod-misc-pocket-app-wsgi"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/prod-misc-pocket-app-lambda:prod"
+      ImageConfig:
+        Command:
+          - "app.wsgi"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "prod"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"support\": {\"bucket\": \"prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}\", \"import_prefix\": \"in/import/\", \"metadata_prefix\": \"in/meta/\", \"raw_prefix\": \"in/raw/\", \"recipients\": [\"support@mail.example.com\", \"help@mail.example.com\"], \"region\": \"ap-northeast-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e\"}}"
+          "DEPLOY_HASH": "abc1234"
+  "ManagementLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "prod-misc-pocket-app-management"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/prod-misc-pocket-app-lambda:prod"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.management_command_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "prod"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"support\": {\"bucket\": \"prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}\", \"import_prefix\": \"in/import/\", \"metadata_prefix\": \"in/meta/\", \"raw_prefix\": \"in/raw/\", \"recipients\": [\"support@mail.example.com\", \"help@mail.example.com\"], \"region\": \"ap-northeast-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e\"}}"
+          "DEPLOY_HASH": "abc1234"
+  "MailLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "prod-misc-pocket-app-mail"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/prod-misc-pocket-app-lambda:prod"
+      ImageConfig:
+        Command:
+          - "app.mail"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "prod"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"support\": {\"bucket\": \"prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}\", \"import_prefix\": \"in/import/\", \"metadata_prefix\": \"in/meta/\", \"raw_prefix\": \"in/raw/\", \"recipients\": [\"support@mail.example.com\", \"help@mail.example.com\"], \"region\": \"ap-northeast-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e\"}}"
+          "DEPLOY_HASH": "abc1234"
+  "JobsLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "prod-misc-pocket-app-jobs"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/prod-misc-pocket-app-lambda:prod"
+      ImageConfig:
+        Command:
+          - "app.jobs"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "prod"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "app"
+          POCKET_INBOUND:
+            Fn::Sub: "{\"support\": {\"bucket\": \"prod-misc-pocket-inbound-support-e9bd96e68e-${AWS::AccountId}\", \"import_prefix\": \"in/import/\", \"metadata_prefix\": \"in/meta/\", \"raw_prefix\": \"in/raw/\", \"recipients\": [\"support@mail.example.com\", \"help@mail.example.com\"], \"region\": \"ap-northeast-1\", \"topic_arn\": \"arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-inbound-support-e9bd96e68e\"}}"
+          "DEPLOY_HASH": "abc1234"
+
+
+
+
+
+
+  "MailSqsQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "prod-misc-pocket-app-mail"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "MailDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "180"
+      # default 4 days
+      MessageRetentionPeriod: "1209600"
+
+  "MailDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "prod-misc-pocket-app-mail-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+  # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
+  # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
+  # (deploy 後の購読状態チェックと pocket status で可視化する)
+  "MailDeadLetterAlertTopic":
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "prod-misc-pocket-app-mail-dead-letter-alert"
+
+  "MailDeadLetterAlertSubscription":
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: "MailDeadLetterAlertTopic"
+      Protocol: email
+      Endpoint: "ops@example.com"
+
+  "MailDeadLetterAlarm":
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "prod-misc-pocket-app-mail-dead-letter-alert"
+      AlarmDescription: "Messages arrived in the dead-letter queue of prod-misc-pocket-app-mail"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: "MailDeadLetterQueue.QueueName"
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Ref: "MailDeadLetterAlertTopic"
+      # 復旧 (redrive / purge で DLQ が空に戻った) も通知する
+      OKActions:
+        - Ref: "MailDeadLetterAlertTopic"
+
+  "MailSqsEventSourceMapping":
+    DependsOn:
+      - "MailSqsQueue"
+      - "MailLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "MailSqsQueue.Arn"
+      FunctionName:
+        Ref: "MailLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+  "JobsSqsQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "prod-misc-pocket-app-jobs"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "JobsDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "180"
+      # default 4 days
+      MessageRetentionPeriod: "345600"
+
+  "JobsDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "prod-misc-pocket-app-jobs-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+
+  "JobsSqsEventSourceMapping":
+    DependsOn:
+      - "JobsSqsQueue"
+      - "JobsLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "JobsSqsQueue.Arn"
+      FunctionName:
+        Ref: "JobsLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+  SchedulerExecutionRole:
+    # 中身は pocket_cli/resources/aws/iam_roles.py の scheduler_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "scheduler.amazonaws.com"}}], "Version": "2012-10-17"}, "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["lambda:InvokeFunction"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-management"}, {"Fn::Sub": "arn:aws:lambda:ap-northeast-1:${AWS::AccountId}:function:prod-misc-pocket-app-wsgi"}]}, {"Action": ["sqs:SendMessage"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:sqs:ap-northeast-1:${AWS::AccountId}:prod-misc-pocket-app-jobs"}]}], "Version": "2012-10-17"}, "PolicyName": "invoke-handlers"}], "RoleName": "prod-misc-pocket-app-scheduler"}
+
+  "PingSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "WsgiLambdaFunction"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "prod-misc-pocket-ping"
+      ScheduleExpression: "cron(0 * * * ? *)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn:
+          Fn::GetAtt: "WsgiLambdaFunction.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"path\": \"/ping\", \"nested\": {\"a\": [1, 2]}}"
+  "CleanupSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "ManagementLambdaFunction"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "prod-misc-pocket-cleanup"
+      ScheduleExpression: "rate(1 day)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn:
+          Fn::GetAtt: "ManagementLambdaFunction.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"manage\": \"clearsessions --verbosity 2\"}"
+  "EnqueueSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "JobsSqsQueue"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "prod-misc-pocket-enqueue"
+      ScheduleExpression: "rate(5 minutes)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "JobsSqsQueue.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"command\": \"sync\", \"args\": [\"a\"], \"kwargs\": {\"force\": true}}"
+  "BareSchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "JobsSqsQueue"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "prod-misc-pocket-bare"
+      ScheduleExpression: "rate(1 hour)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "JobsSqsQueue.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{}"
+  "NightlySchedule":
+    Type: AWS::Scheduler::Schedule
+    DependsOn:
+      - "JobsSqsQueue"
+      - SchedulerExecutionRole
+    Properties:
+      Name: "prod-misc-pocket-nightly"
+      ScheduleExpression: "cron(0 3 * * ? *)"
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        # SQS universal target: Input が MessageBody として送信される
+        Arn:
+          Fn::GetAtt: "JobsSqsQueue.Arn"
+        RoleArn: {"Fn::GetAtt": "SchedulerExecutionRole.Arn"}
+        Input: "{\"command\": \"nightly\"}"
+
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "WsgiLambdaFunction":
+    Value:
+      Fn::GetAtt: "WsgiLambdaFunction.Arn"
+  "ManagementLambdaFunction":
+    Value:
+      Fn::GetAtt: "ManagementLambdaFunction.Arn"
+  "MailLambdaFunction":
+    Value:
+      Fn::GetAtt: "MailLambdaFunction.Arn"
+  "MailDeadLetterAlarmArn":
+    Value:
+      Fn::GetAtt: "MailDeadLetterAlarm.Arn"
+  "JobsLambdaFunction":
+    Value:
+      Fn::GetAtt: "JobsLambdaFunction.Arn"

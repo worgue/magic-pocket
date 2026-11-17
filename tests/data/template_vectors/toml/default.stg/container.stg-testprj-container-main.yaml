@@ -1,0 +1,236 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: lambda configuration for webapp
+
+Resources:
+  # [iam] external_roles では role を作らず、事前に作られた role を名前で参照する
+  # (参照は lambda_role.cfn_arn)
+  LambdaRole:
+    # This role must be created before the lambda function.
+    # https://docs.aws.amazon.com/lambda/latest/dg/lambda-intro-execution-role.html
+    # When you change Role, you must delete function and role.
+    # https://www.lastweekinaws.com/blog/the-sneaky-weakness-behind-aws-managed-kms-keys/
+    # 中身は pocket_cli/resources/aws/iam_roles.py の lambda_role
+    Type: AWS::IAM::Role
+    Properties: {"AssumeRolePolicyDocument": {"Statement": [{"Action": "sts:AssumeRole", "Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}}]}, "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole", "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole", "arn:aws:iam::aws:policy/AmazonS3FullAccess", "arn:aws:iam::aws:policy/AmazonSQSFullAccess", "arn:aws:iam::aws:policy/AmazonElasticFileSystemFullAccess"], "Policies": [{"PolicyDocument": {"Statement": [{"Action": ["cloudformation:DescribeStacks"], "Effect": "Allow", "Resource": [{"Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/stg-testprj-*"}]}], "Version": "2012-10-17"}, "PolicyName": "stg-testprj-pocket-access-cloudformation"}], "RoleName": "lambda-stg-testprj-main-pocket"}
+
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "stg-testprj-pocket-main-lambda"
+      GroupName: "stg-testprj-pocket-main-lambda"
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: "stg-testprj-pocket-main-lambda"
+      VpcId:
+        Fn::ImportValue: "sandbox-pocket-vpc-id"
+
+  "WsgiLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "stg-testprj-pocket-main-wsgi"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "30"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/stg-testprj-pocket-main-lambda:stg"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.wsgi_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "stg"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+      VpcConfig:
+        SecurityGroupIds:
+          - Ref: LambdaSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue: "sandbox-pocket-private-subnet-1"
+      FileSystemConfigs:
+        - Arn:
+            Fn::ImportValue: "sandbox-pocket-efs-access-point"
+          LocalMountPath: "/mnt/efs"
+  "ManagementLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "stg-testprj-pocket-main-management"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "600"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/stg-testprj-pocket-main-lambda:stg"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.management_command_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "stg"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+      VpcConfig:
+        SecurityGroupIds:
+          - Ref: LambdaSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue: "sandbox-pocket-private-subnet-1"
+      FileSystemConfigs:
+        - Arn:
+            Fn::ImportValue: "sandbox-pocket-efs-access-point"
+          LocalMountPath: "/mnt/efs"
+  "SqsmanagementLambdaFunction":
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: "stg-testprj-pocket-main-sqsmanagement"
+      PackageType: Image
+      Architectures:
+        - "x86_64"
+      MemorySize: "512"
+      Timeout: "60"
+      Role: {"Fn::GetAtt": "LambdaRole.Arn"}
+      Code:
+        ImageUri:
+          Fn::Sub: "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/stg-testprj-pocket-main-lambda:stg"
+      ImageConfig:
+        Command:
+          - "pocket.django.lambda_handlers.sqs_management_command_report_failures_handler"
+      Environment:
+        Variables:
+          "POCKET_STAGE": "stg"
+          # runtime が自分の [container.<name>] を選択するための識別子
+          "POCKET_CONTAINER": "main"
+          "DEPLOY_HASH": "abc1234"
+      VpcConfig:
+        SecurityGroupIds:
+          - Ref: LambdaSecurityGroup
+        SubnetIds:
+          - Fn::ImportValue: "sandbox-pocket-private-subnet-1"
+      FileSystemConfigs:
+        - Arn:
+            Fn::ImportValue: "sandbox-pocket-efs-access-point"
+          LocalMountPath: "/mnt/efs"
+
+
+
+
+
+  "SqsmanagementSqsQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "stg-testprj-pocket-main-sqsmanagement"
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: "SqsmanagementDeadLetterQueue.Arn"
+        maxReceiveCount: "5"
+      VisibilityTimeout: "360"
+      # default 4 days
+      MessageRetentionPeriod: "345600"
+
+  "SqsmanagementDeadLetterQueue":
+    Type: AWS::SQS::Queue
+    Properties:
+      SqsManagedSseEnabled: true
+      QueueName:
+        Fn::Sub: "stg-testprj-pocket-main-sqsmanagement-dead-letter"
+      # max 14 days
+      MessageRetentionPeriod: "1209600"
+
+  # DLQ 到達の通知 (dead_letter_alert 宣言時のみ)。email 購読は宛先が確認メールの
+  # リンクを踏むまで PendingConfirmation のままで通知が届かない点に注意
+  # (deploy 後の購読状態チェックと pocket status で可視化する)
+  "SqsmanagementDeadLetterAlertTopic":
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: "stg-testprj-pocket-main-sqsmanagement-dead-letter-alert"
+
+  "SqsmanagementDeadLetterAlertSubscription":
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn:
+        Ref: "SqsmanagementDeadLetterAlertTopic"
+      Protocol: email
+      Endpoint: "alerts@example.com"
+
+  "SqsmanagementDeadLetterAlarm":
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: "stg-testprj-pocket-main-sqsmanagement-dead-letter-alert"
+      AlarmDescription: "Messages arrived in the dead-letter queue of stg-testprj-pocket-main-sqsmanagement"
+      Namespace: "AWS/SQS"
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: "SqsmanagementDeadLetterQueue.QueueName"
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # DLQ が空の間はメトリクス欠測になりうるため、欠測 = 正常として扱う
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Ref: "SqsmanagementDeadLetterAlertTopic"
+      # 復旧 (redrive / purge で DLQ が空に戻った) も通知する
+      OKActions:
+        - Ref: "SqsmanagementDeadLetterAlertTopic"
+
+  "SqsmanagementSqsEventSourceMapping":
+    DependsOn:
+      - "SqsmanagementSqsQueue"
+      - "SqsmanagementLambdaFunction"
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn:
+        Fn::GetAtt: "SqsmanagementSqsQueue.Arn"
+      FunctionName:
+        Ref: "SqsmanagementLambdaFunction"
+      BatchSize: "10"
+      ScalingConfig:
+        MaximumConcurrency: "2"
+      FunctionResponseTypes:
+        - "ReportBatchItemFailures"
+
+
+  LambdaEFSAccess:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId:
+        Fn::ImportValue: "sandbox-pocket-efs-security-group"
+      SourceSecurityGroupId:
+        Ref: LambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+
+  # VPC 外 Lambda (use_vpc=false) には LambdaSecurityGroup が無く、RDS SG への
+  # ingress も張れない (そもそも private subnet の RDS に到達できない)。
+  # use_rds だけで囲むと未定義参照で CreateStack の validation に落ちる (KN1352)
+
+Outputs:
+  "WsgiLambdaFunction":
+    Value:
+      Fn::GetAtt: "WsgiLambdaFunction.Arn"
+  "ManagementLambdaFunction":
+    Value:
+      Fn::GetAtt: "ManagementLambdaFunction.Arn"
+  "SqsmanagementLambdaFunction":
+    Value:
+      Fn::GetAtt: "SqsmanagementLambdaFunction.Arn"
+  "SqsmanagementDeadLetterAlarmArn":
+    Value:
+      Fn::GetAtt: "SqsmanagementDeadLetterAlarm.Arn"

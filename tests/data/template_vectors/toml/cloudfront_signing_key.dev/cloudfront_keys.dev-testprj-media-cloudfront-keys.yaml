@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFront signing key resources
+
+Resources:
+  PublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        Name: "dev-testprj-pocket-publickey"
+        CallerReference: "dev-testprj-pocket-publickey"
+        EncodedKey: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector
+          -----END PUBLIC KEY-----
+
+
+  KeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    DependsOn:
+      - PublicKey
+    Properties:
+      KeyGroupConfig:
+        Name: "dev-testprj-pocket-keygroup"
+        Items:
+          - !Ref PublicKey
+
+Outputs:
+  PublicKeyId:
+    Value: !Ref PublicKey
+    Export:
+      Name: "dev-testprj-media-public-key-id"
+  KeyGroupId:
+    Value: !Ref KeyGroup
+    Export:
+      Name: "dev-testprj-media-key-group-id"

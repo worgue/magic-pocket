@@ -1,0 +1,20 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ACM certificates for CloudFront (us-east-1)
+
+Resources:
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: "dsql.sandbox.magic-pocket.example.com"
+      DomainValidationOptions:
+        - DomainName: "dsql.sandbox.magic-pocket.example.com"
+          HostedZoneId: "ZSANDBOX"
+      Tags:
+        - Key: Name
+          Value: "sandbox-pocket-example-dsql-pocket-cloudfront-cert"
+      ValidationMethod: DNS
+
+Outputs:
+  CertificateArn:
+    Value:
+      Ref: Certificate
