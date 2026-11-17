@@ -223,11 +223,6 @@ class Stack:
             return result
 
     @property
-    def deleted_at(self):
-        if self.description:
-            return self.description["DeletionTime"].astimezone()
-
-    @property
     def status_detail(self):
         if not self.description:
             return "NOT_CREATED"
@@ -255,9 +250,8 @@ class Stack:
             if action == "DELETE":
                 return "NOEXIST"
             elif action == "ROLLBACK":
-                if self.deleted_at:
-                    return "FAILED"
-                return "COMPLETED"
+                # 作成の失敗で rollback した stack。update できず、消すしかない
+                return "FAILED"
             elif action in {"IMPORT", "REVIEW", "UPDATE", "CREATE"}:
                 # UPDATE_ROLLBACK_COMPLETE もここで COMPLETED になる (安定状態で
                 # 再 update 可能なため。rest 状態ではタグの template hash が

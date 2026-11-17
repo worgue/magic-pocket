@@ -93,9 +93,7 @@ pub fn cfn_status(description: Option<&StackDescription>) -> Result<ResourceStat
         "FAILED" => return Ok(ResourceStatus::Failed),
         "COMPLETE" => match action {
             "DELETE" => return Ok(ResourceStatus::NoExist),
-            // 作成の失敗で rollback した stack。update できず、消すしかない。
-            // (Python 版は DeletionTime の有無で分けるが、この状態の stack は
-            // DeletionTime を持たず KeyError で止まる。Rust 版は FAILED にする)
+            // 作成の失敗で rollback した stack。update できず、消すしかない
             "ROLLBACK" => return Ok(ResourceStatus::Failed),
             // UPDATE_ROLLBACK_COMPLETE もここで COMPLETED になる (安定状態で再 update
             // できるため。rollback でタグの template hash が旧値に戻るので status は

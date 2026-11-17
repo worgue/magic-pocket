@@ -22,6 +22,12 @@
   エラーが出たら state bucket を新しい region へ移してください（`pocket destroy` は止まりません）。
   [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
 
+### Fixed
+- 作成に失敗して `ROLLBACK_COMPLETE` のまま残った CloudFormation stack があると、`pocket status` や
+  `pocket deploy` が `KeyError: 'DeletionTime'` で止まる不具合を修正しました。この状態の stack は
+  FAILED と表示され、`pocket deploy` は状態名を添えたエラーで止まります（stack を削除してから
+  再実行してください）。
+
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 
 ### Added

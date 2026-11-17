@@ -129,6 +129,26 @@ def test_wait_status_accepts_stack_already_rolled_back_at_rest(use_toml, monkeyp
     stack.wait_status("COMPLETED", timeout=5, interval=1)
 
 
+def test_cfn_status_failed_for_create_rollback(use_toml):
+    """作成に失敗して ROLLBACK_COMPLETE になった stack は FAILED と判定すること
+
+    以前は DeletionTime (削除済みの stack にしか付かない) を読んで KeyError になり、
+    status / deploy が traceback で止まっていた。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.container["main"] is not None
+    assert context.container["main"].vpc is not None
+    stack = Vpc(context.container["main"].vpc).stack
+
+    stack.__dict__["description"] = {
+        "StackName": stack.name,
+        "StackStatus": "ROLLBACK_COMPLETE",
+    }
+    assert stack.cfn_status == "FAILED"
+    assert stack.status == "FAILED"
+
+
 def test_stack_description_none_only_for_not_exist(use_toml, monkeypatch):
     """description は「不存在」のみ None、throttling 等は伝播すること
 
