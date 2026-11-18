@@ -47,9 +47,7 @@ const CREATE_BUCKET_RETRY_TIMEOUT: Duration = Duration::from_secs(3600);
 
 pub async fn run_build(stage: &str, allow_dirty: bool) -> Result<()> {
     let runner = SystemRunner;
-    let sdk = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .load()
-        .await;
+    let sdk = crate::aws_util::load_sdk().await;
     let account_id = check_aws_credentials(&sdk).await?;
     if !allow_dirty && is_working_tree_dirty(&runner) {
         bail!(

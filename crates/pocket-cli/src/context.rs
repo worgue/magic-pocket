@@ -86,7 +86,7 @@ impl AwsExternal {
 
     fn config(&self) -> &SdkConfig {
         self.config
-            .get_or_init(|| self.handle.block_on(aws_config::load_from_env()))
+            .get_or_init(|| self.handle.block_on(crate::aws_util::load_sdk()))
     }
 }
 

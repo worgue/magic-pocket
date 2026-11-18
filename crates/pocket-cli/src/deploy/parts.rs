@@ -299,9 +299,7 @@ pub enum DeployPart {
 }
 
 pub async fn run(part: DeployPart) -> Result<()> {
-    let sdk = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .load()
-        .await;
+    let sdk = crate::aws_util::load_sdk().await;
     let mut sink = Terminal::new();
     match part {
         DeployPart::Secrets { stage } => {

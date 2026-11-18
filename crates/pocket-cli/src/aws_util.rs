@@ -1,4 +1,4 @@
-//! AWS SDK まわりの小さな共通処理 (error の整形・region の差し替え)。
+//! AWS SDK まわりの小さな共通処理 (設定の読み込み・error の整形・region の差し替え)。
 
 use anyhow::anyhow;
 use aws_config::{Region, SdkConfig};
@@ -48,6 +48,22 @@ where
 
 pub fn has_code<E: ProvideErrorMetadata, R>(error: &SdkError<E, R>, codes: &[&str]) -> bool {
     error.code().is_some_and(|code| codes.contains(&code))
+}
+
+/// AWS を呼ぶコマンド (deploy / destroy / build / status と、その context の組み立て) の
+/// AWS の設定。
+///
+/// 1 回の deploy は数百回 API を呼ぶ。SDK の既定 (接続の timeout 約 3 秒・3 回まで) だと、
+/// 一時的な接続の失敗 1 つで途中で止まりやすいので、boto3 の既定 (5 回まで) に寄せる
+pub async fn load_sdk() -> SdkConfig {
+    let timeouts = aws_config::timeout::TimeoutConfig::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build();
+    aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .retry_config(aws_config::retry::RetryConfig::standard().with_max_attempts(5))
+        .timeout_config(timeouts)
+        .load()
+        .await
 }
 
 /// 同じ認証情報で region だけ変えた設定

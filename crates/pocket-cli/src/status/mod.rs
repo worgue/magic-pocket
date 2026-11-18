@@ -23,7 +23,7 @@ use crate::context::load_context_read_only;
 
 pub async fn run(stage: &str, show_info: bool) -> Result<()> {
     let (context, _toml_dir) = load_context_read_only(stage)?;
-    let sdk = aws_config::load_from_env().await;
+    let sdk = crate::aws_util::load_sdk().await;
     let resources = resource::resources(&context);
     let mut evaluator = aws::AwsEvaluator::new(&context, sdk);
     let mut sink = sink::Terminal::new();
