@@ -4,9 +4,8 @@ stages = ["dev", "sandbox"]
 project_name = "pocket-example"
 
 [tidb]
-# provisioning = "command": deploy は TiDB に一切触れない (API キー不要)。接続 URL は
-# 事前に `pocket resource tidb store-url --stage <stage>` で SSM の user secret へ保存する。
-provisioning = "command"
+# deploy は TiDB に一切触れない (API キー不要)。接続 URL は事前に
+# `pocket resource tidb store-url --stage <stage>` で SSM の user secret へ保存する。
 
 [s3]
 
@@ -40,7 +39,7 @@ store = "ssm"
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 
-# DATABASE_URL は stored user secret (provisioning = "command")。deploy 前に
+# DATABASE_URL は事前に保存した user secret。deploy 前に
 # `pocket resource tidb store-url --stage <stage>` で SSM (/{pocket_key}-user/tidb_database_url)
 # へ保存しておく。deploy は TiDB API キー無しで保存済み URL を読むだけ。
 [container.main.secrets.user]

@@ -15,9 +15,8 @@ import click
 def _reject_skip_check_existing(ctx, param, value):
     if value:
         raise click.UsageError(
-            "--skip-check-existing は 0.6.0 で廃止されました (credential-less "
-            'deploy は provisioning = "command" に一本化)。pocket.toml の '
-            '[<neon|tidb|upstash>] に `provisioning = "command"` を設定し、'
+            "--skip-check-existing は 0.6.0 で廃止されました (deploy は Neon / "
+            "TiDB / Upstash に触れません)。"
             "[container.<name>.secrets.user] に接続 URL を type で宣言 "
             '(例: `DATABASE_URL = { type = "neon_database_url" }`) したうえで、'
             "deploy 前に `pocket resource <db> store-url --stage <stage>` を"

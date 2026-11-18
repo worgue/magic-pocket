@@ -22,17 +22,7 @@ use super::generate;
 use super::secret_store::{ManagedSecrets, SecretStore};
 use crate::status::sink::Sink;
 
-/// 管理 API から算出する接続 URL (computed mode。deprecated)。
-///
-/// 未準備 (database / cluster がまだ無い) なら `Ok(None)`。Python 版の
-/// `NeonResourceIsNotReady` 等に当たる
-pub trait DatabaseUrls {
-    async fn neon_database_url(&self, ctx: &Context) -> Result<Option<String>>;
-    async fn tidb_database_url(&self, ctx: &Context) -> Result<Option<String>>;
-    async fn upstash_redis_url(&self, ctx: &Context) -> Result<Option<String>>;
-}
-
-/// 既に在る / 生成に失敗した secret の扱い (Python 版の `ErrorLevel`)
+/// 既に在る secret の扱い (Python 版の `ErrorLevel`)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorLevel {
     Ignore,
@@ -43,20 +33,19 @@ pub enum ErrorLevel {
 /// managed secret の用意が済んだ後に作り直した Context
 pub struct SecretsReady(pub Context);
 
-pub struct Mediator<'a, S, D> {
+pub struct Mediator<'a, S> {
     pub ctx: &'a Context,
     pub store: &'a S,
-    pub urls: &'a D,
 }
 
-impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
+impl<S: SecretStore> Mediator<'_, S> {
     /// deploy 前の用意。`reload` は Context の作り直し (secret の ARN を引き直す)
     pub async fn ensure_pocket_managed_secrets(
         &self,
         sink: &mut dyn Sink,
         reload: impl FnOnce() -> Result<Context>,
     ) -> Result<SecretsReady> {
-        self.create_pocket_managed_secrets(sink, ErrorLevel::Ignore, ErrorLevel::Raise)
+        self.create_pocket_managed_secrets(sink, ErrorLevel::Ignore)
             .await?;
         self.cleanup_orphaned_secrets(sink).await?;
         if let Some(shared) = &self.ctx.secrets {
@@ -69,17 +58,14 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
         &self,
         sink: &mut dyn Sink,
         exists: ErrorLevel,
-        failed: ErrorLevel,
     ) -> Result<()> {
         // 生成の前に旧配置からの引き継ぎを済ませる (引き継ぐ前に再生成しない)
         self.inherit_legacy_secrets(sink).await?;
         if let Some(shared) = &self.ctx.secrets {
-            self.create_store_secrets(sink, shared, exists, failed)
-                .await?;
+            self.create_store_secrets(sink, shared, exists).await?;
         }
         for view in self.container_views() {
-            self.create_store_secrets(sink, view, exists, failed)
-                .await?;
+            self.create_store_secrets(sink, view, exists).await?;
         }
         Ok(())
     }
@@ -142,7 +128,6 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
         sink: &mut dyn Sink,
         view: &SecretsContext,
         exists: ErrorLevel,
-        failed: ErrorLevel,
     ) -> Result<()> {
         let stored = self.store.read(view).await?;
         let mut generated = ManagedSecrets::new();
@@ -156,30 +141,7 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
                 conditional_error(sink, exists, message)?;
                 continue;
             }
-            if matches!(
-                spec.r#type,
-                ManagedSecretType::NeonDatabaseUrl
-                    | ManagedSecretType::TidbDatabaseUrl
-                    | ManagedSecretType::UpstashRedisUrl
-            ) {
-                sink.warning(&format!(
-                    "computed DB/KVS URL (managed type={}) は deprecated です。\
-                     deploy が管理 API を叩いて URL を算出する方式から、\
-                     [<db>] provisioning + [container.<name>.secrets.user] の \
-                     type + \
-                     `pocket <db> store-url` (stored) への移行を推奨します。",
-                    serde_name(&spec.r#type)
-                ));
-            }
-            match self.generate_secret(sink, spec).await? {
-                Some(value) => {
-                    generated.insert(key.clone(), value);
-                }
-                None => {
-                    let message = format!("Secret generation for {key} is failed.");
-                    conditional_error(sink, failed, message)?;
-                }
-            }
+            generated.insert(key.clone(), self.generate_secret(spec)?);
         }
         if !generated.is_empty() {
             let mut merged = stored;
@@ -272,37 +234,14 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
         )
     }
 
-    /// 値を生成する。管理 API 側が未準備なら警告を出して `None`
-    async fn generate_secret(
-        &self,
-        sink: &mut dyn Sink,
-        spec: &ManagedSecretSpec,
-    ) -> Result<Option<Json>> {
-        let text = |value: String| Some(Json::String(value));
+    fn generate_secret(&self, spec: &ManagedSecretSpec) -> Result<Json> {
+        let text = Json::String;
         Ok(match spec.r#type {
-            ManagedSecretType::AutoDatabaseUrl => {
-                self.auto_database_url(sink).await?.map(Json::String)
-            }
+            ManagedSecretType::AutoDatabaseUrl => text(self.auto_database_url()?),
             ManagedSecretType::Password => text(generate::password(&spec.options)?),
-            ManagedSecretType::NeonDatabaseUrl => {
-                self.neon_database_url(sink).await?.map(Json::String)
-            }
-            ManagedSecretType::TidbDatabaseUrl => {
-                self.tidb_database_url(sink).await?.map(Json::String)
-            }
             ManagedSecretType::RdsDatabaseUrl => text(self.rds_database_url()?),
-            ManagedSecretType::UpstashRedisUrl => {
-                if self.ctx.upstash.is_none() {
-                    bail!("upstash is not configured. Please set upstash in pocket.toml");
-                }
-                let url = self.urls.upstash_redis_url(self.ctx).await?;
-                if url.is_none() {
-                    sink.warning("upstash redis is not ready");
-                }
-                url.map(Json::String)
-            }
             ManagedSecretType::RsaPemBase64 | ManagedSecretType::CloudfrontSigningKey => {
-                Some(generate::rsa_pem()?)
+                generate::rsa_pem()?
             }
             ManagedSecretType::SpaTokenSecret
             | ManagedSecretType::OriginVerifySecret
@@ -313,28 +252,6 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
         })
     }
 
-    async fn neon_database_url(&self, sink: &mut dyn Sink) -> Result<Option<String>> {
-        if self.ctx.neon.is_none() {
-            bail!("neon is not configured. Please set neon in pocket.toml");
-        }
-        let url = self.urls.neon_database_url(self.ctx).await?;
-        if url.is_none() {
-            sink.warning("neon database is not ready");
-        }
-        Ok(url)
-    }
-
-    async fn tidb_database_url(&self, sink: &mut dyn Sink) -> Result<Option<String>> {
-        if self.ctx.tidb.is_none() {
-            bail!("tidb is not configured. Please set tidb in pocket.toml");
-        }
-        let url = self.urls.tidb_database_url(self.ctx).await?;
-        if url.is_none() {
-            sink.warning("tidb database is not ready");
-        }
-        Ok(url)
-    }
-
     /// RDS の DATABASE_URL は runtime が組み立てるので、deploy 時は目印の値を入れる
     fn rds_database_url(&self) -> Result<String> {
         if self.ctx.rds.is_none() {
@@ -343,33 +260,17 @@ impl<S: SecretStore, D: DatabaseUrls> Mediator<'_, S, D> {
         Ok("__rds_runtime__".to_string())
     }
 
-    /// pocket.toml の DB 設定から DATABASE_URL の作り方を選ぶ
-    async fn auto_database_url(&self, sink: &mut dyn Sink) -> Result<Option<String>> {
-        let mut dbs = Vec::new();
-        if self.ctx.neon.is_some() {
-            dbs.push("neon");
-        }
-        if self.ctx.tidb.is_some() {
-            dbs.push("tidb");
-        }
+    /// `[rds]` があれば rds_database_url と同じ値。Neon / TiDB の接続 URL は deploy では
+    /// 作らない (`pocket resource <db> store-url` が保存した user secret を使う)
+    fn auto_database_url(&self) -> Result<String> {
         if self.ctx.rds.is_some() {
-            dbs.push("rds");
+            return self.rds_database_url();
         }
-        match dbs.as_slice() {
-            [] => bail!(
-                "auto_database_url: DB が設定されていません。\
-                 [neon], [tidb], [rds] のいずれかを pocket.toml に追加してください。"
-            ),
-            ["neon"] => self.neon_database_url(sink).await,
-            ["tidb"] => self.tidb_database_url(sink).await,
-            [_] => Ok(Some(self.rds_database_url()?)),
-            _ => bail!(
-                "auto_database_url: 複数の DB が設定されています: {}。\
-                 neon_database_url, tidb_database_url, rds_database_url \
-                 のいずれかを明示的に指定してください。",
-                dbs.join(", ")
-            ),
-        }
+        bail!(
+            "auto_database_url が使えるのは [rds] だけです。Neon / TiDB は \
+             [container.<name>.secrets.user] に type で宣言し、\
+             `pocket resource <db> store-url` で接続 URL を保存してください。"
+        )
     }
 }
 
@@ -397,7 +298,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::deploy::testing::{FakeStore, FakeUrls};
+    use crate::deploy::testing::FakeStore;
     use crate::stack::testing::context_from_toml;
     use crate::status::sink::{Stream, Style};
 
@@ -453,13 +354,9 @@ API_KEY = { type = "rsa_pem_base64" }
     const WEB: &str = "prod-testprj-web-pocket";
     const API: &str = "prod-testprj-api-pocket";
 
-    fn ensure(
-        ctx: &Context,
-        store: &FakeStore,
-        urls: &FakeUrls,
-    ) -> (Result<SecretsReady>, Recorder) {
+    fn ensure(ctx: &Context, store: &FakeStore) -> (Result<SecretsReady>, Recorder) {
         let mut sink = Recorder::default();
-        let mediator = Mediator { ctx, store, urls };
+        let mediator = Mediator { ctx, store };
         let result = run(mediator.ensure_pocket_managed_secrets(&mut sink, || Ok(ctx.clone())));
         (result, sink)
     }
@@ -484,7 +381,7 @@ API_KEY = { type = "rsa_pem_base64" }
     fn test_generates_missing_secrets_shared_first_then_container_name_order() {
         let ctx = context_from_toml(TWO_CONTAINERS, "prod");
         let store = FakeStore::default();
-        let (result, sink) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, sink) = ensure(&ctx, &store);
         result.expect("ensure");
         assert_eq!(
             *store.calls.borrow(),
@@ -512,7 +409,7 @@ API_KEY = { type = "rsa_pem_base64" }
             .with(SHARED, json!({"SECRET_KEY": "keep"}))
             .with(WEB, json!({"WEB_ONLY": "keep-web"}))
             .with(API, json!({"API_KEY": {"pem": "a", "pub": "b"}}));
-        let (result, sink) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, sink) = ensure(&ctx, &store);
         result.expect("ensure");
         assert!(store.calls.borrow().is_empty(), "{:?}", store.calls);
         assert_eq!(store.secrets(SHARED)["SECRET_KEY"], "keep");
@@ -524,19 +421,13 @@ API_KEY = { type = "rsa_pem_base64" }
     fn test_create_warns_or_raises_on_existing_key() {
         let ctx = context_from_toml(TWO_CONTAINERS, "prod");
         let store = FakeStore::default().with(SHARED, json!({"SECRET_KEY": "keep"}));
-        let urls = FakeUrls::default();
         let mediator = Mediator {
             ctx: &ctx,
             store: &store,
-            urls: &urls,
         };
         let mut sink = Recorder::default();
-        run(mediator.create_pocket_managed_secrets(
-            &mut sink,
-            ErrorLevel::Warning,
-            ErrorLevel::Raise,
-        ))
-        .expect("create");
+        run(mediator.create_pocket_managed_secrets(&mut sink, ErrorLevel::Warning))
+            .expect("create");
         assert_eq!(
             sink.texts(Style::Warning),
             vec![
@@ -544,12 +435,8 @@ API_KEY = { type = "rsa_pem_base64" }
                  secrets delete-pocket-managed` and then `create-pocket-managed`."
             ]
         );
-        let error = run(mediator.create_pocket_managed_secrets(
-            &mut sink,
-            ErrorLevel::Raise,
-            ErrorLevel::Raise,
-        ))
-        .unwrap_err();
+        let error =
+            run(mediator.create_pocket_managed_secrets(&mut sink, ErrorLevel::Raise)).unwrap_err();
         assert!(error
             .to_string()
             .starts_with("SECRET_KEY is already created."));
@@ -563,7 +450,7 @@ API_KEY = { type = "rsa_pem_base64" }
             SHARED,
             json!({"SECRET_KEY": "shared", "WEB_ONLY": "old-web", "API_KEY": {"pem": "p", "pub": "q"}}),
         );
-        let (result, sink) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, sink) = ensure(&ctx, &store);
         result.expect("ensure");
         assert_eq!(store.secrets(WEB)["WEB_ONLY"], "old-web");
         assert_eq!(
@@ -603,7 +490,7 @@ API_KEY = { type = "rsa_pem_base64" }
             )
             .with(WEB, json!({"WEB_ONLY": "w", "OLD": "z"}))
             .with(API, json!({"API_KEY": {"pem": "a", "pub": "b"}}));
-        let (result, sink) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, sink) = ensure(&ctx, &store);
         result.expect("ensure");
         assert_eq!(
             *store.calls.borrow(),
@@ -642,55 +529,18 @@ dockerfile_path = "Dockerfile"
     const NEON: &str = "[neon]\nproject_name = \"p\"\n";
 
     #[test]
-    fn test_computed_url_warns_deprecation_and_stores_value() {
-        let toml = database_toml(NEON, "DATABASE_URL = { type = \"neon_database_url\" }");
-        let ctx = context_from_toml(&toml, "prod");
-        let store = FakeStore::default();
-        let urls = FakeUrls {
-            neon: Some("postgres://neon".to_string()),
-            ..Default::default()
-        };
-        let (result, sink) = ensure(&ctx, &store, &urls);
-        result.expect("ensure");
-        assert_eq!(store.secrets(WEB)["DATABASE_URL"], "postgres://neon");
-        assert_eq!(
-            sink.texts(Style::Warning),
-            vec![
-                "computed DB/KVS URL (managed type=neon_database_url) は deprecated です。\
-                 deploy が管理 API を叩いて URL を算出する方式から、\
-                 [<db>] provisioning + [container.<name>.secrets.user] の type + \
-                 `pocket <db> store-url` (stored) への移行を推奨します。"
-            ]
-        );
-    }
-
-    #[test]
-    fn test_not_ready_database_fails_deploy() {
+    fn test_auto_database_url_is_rds_only() {
         let toml = database_toml(NEON, "DATABASE_URL = { type = \"auto_database_url\" }");
         let ctx = context_from_toml(&toml, "prod");
         let store = FakeStore::default();
-        let (result, sink) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, _) = ensure(&ctx, &store);
         assert_eq!(
             result.err().expect("失敗するはず").to_string(),
-            "Secret generation for DATABASE_URL is failed."
-        );
-        assert_eq!(
-            sink.texts(Style::Warning),
-            vec!["neon database is not ready"]
+            "auto_database_url が使えるのは [rds] だけです。Neon / TiDB は \
+             [container.<name>.secrets.user] に type で宣言し、\
+             `pocket resource <db> store-url` で接続 URL を保存してください。"
         );
         assert!(store.calls.borrow().is_empty());
-    }
-
-    #[test]
-    fn test_auto_database_url_requires_exactly_one_database() {
-        let toml = database_toml("", "DATABASE_URL = { type = \"auto_database_url\" }");
-        let ctx = context_from_toml(&toml, "prod");
-        let (result, _) = ensure(&ctx, &FakeStore::default(), &FakeUrls::default());
-        assert_eq!(
-            result.err().expect("失敗するはず").to_string(),
-            "auto_database_url: DB が設定されていません。\
-             [neon], [tidb], [rds] のいずれかを pocket.toml に追加してください。"
-        );
     }
 
     #[test]
@@ -709,7 +559,7 @@ dockerfile_path = "Dockerfile"
             .get("DATABASE_URL")
             .and_then(|spec| spec.name.clone())
             .expect("正準名");
-        let (result, _) = ensure(&ctx, &FakeStore::default(), &FakeUrls::default());
+        let (result, _) = ensure(&ctx, &FakeStore::default());
         assert_eq!(
             result.err().expect("失敗するはず").to_string(),
             format!(
@@ -722,7 +572,7 @@ dockerfile_path = "Dockerfile"
             user: BTreeSet::from([name]),
             ..Default::default()
         };
-        let (result, _) = ensure(&ctx, &store, &FakeUrls::default());
+        let (result, _) = ensure(&ctx, &store);
         result.expect("provision 済みなら通る");
     }
 

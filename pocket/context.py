@@ -659,7 +659,6 @@ class NeonContext(BaseModel):
     parent_branch_name: str | None = None
     name: str
     role_name: str
-    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(cls, neon: settings.Neon, root: settings.Settings) -> NeonContext:
@@ -678,7 +677,6 @@ class NeonContext(BaseModel):
             ),
             name=root.project_name,
             role_name=root.project_name,
-            provisioning=neon.provisioning,
         )
 
 
@@ -690,7 +688,6 @@ class TiDbContext(BaseModel):
     database_name: str
     region: str
     project_name: str
-    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
@@ -706,7 +703,6 @@ class TiDbContext(BaseModel):
             database_name=database_name,
             region=tidb.region,
             project_name=root.project_name,
-            provisioning=tidb.provisioning,
         )
 
 
@@ -715,7 +711,6 @@ class UpstashContext(BaseModel):
     api_key: str | None = None
     database_name: str
     budget: int = 20
-    provisioning: settings.ProvisioningMode = "deploy"
 
     @classmethod
     def from_settings(
@@ -726,7 +721,6 @@ class UpstashContext(BaseModel):
             api_key=upstash.api_key,
             database_name=f"{root.project_name}-{root.stage}",
             budget=upstash.budget,
-            provisioning=upstash.provisioning,
         )
 
 

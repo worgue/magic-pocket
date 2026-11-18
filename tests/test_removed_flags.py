@@ -1,7 +1,7 @@
 """廃止済み CLI フラグの移行案内テスト。
 
 `--skip-check-existing` (0.6.0 で廃止) を渡すと、click の "No such option" では
-なく provisioning="command" + store-url への移行手順を示してエラーになること。
+なく store-url への移行手順を示してエラーになること。
 旧バージョンからの一括アップデートで CI がガイドなしに停止した実害への回帰テスト
 (2026-07-24 受領の利用プロジェクト feedback)。
 """

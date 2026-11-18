@@ -4,12 +4,10 @@
 use anyhow::{Context as _, Result};
 use aws_config::SdkConfig;
 use magic_pocket_settings::context::{Context, VpcContext};
-use magic_pocket_settings::model::ProvisioningMode;
 
 use super::backup::{AwsBackup, BackupApi as _, BackupDeploy};
 use super::destroy::{
     self, ContainerFact, DestroyOps, DestroyOptions, Facts, RecoveryPoints, Step, VpcFact,
-    NEON_CREDENTIAL_MISSING,
 };
 use super::edge::{EdgeDeploy, EdgeWaits};
 use super::efs::{self, AwsEfs};
@@ -17,16 +15,12 @@ use super::inbound::AwsInbound;
 use super::inbound_domain::AwsInboundDomain;
 use super::interaction::Interaction;
 use super::migrations::{self, Repositories as _};
-use super::neon::Neon;
 use super::parts;
-use super::provider_urls::ProviderUrls;
 use super::run::AwsRepositories;
 use super::secret_store::AwsSecretStore;
 use super::stacks::{AwsStacks, Stacks as _};
 use super::state::StateStore;
 use super::stored_value::AwsStoredValues;
-use super::tidb::{MysqlSql, TiDb};
-use super::upstash::Upstash;
 use super::vpc::AwsVpcNetwork;
 use super::{dsql, s3};
 use crate::aws_util::{has_code, regional_config, sdk_error};
@@ -36,8 +30,7 @@ use crate::stack::cloudfront as cf_stack;
 use crate::stack::ops::{cfn_status, ResourceStatus, StackDescription, WaitOptions};
 use crate::stack::vpc as vpc_stack;
 use crate::status::aws::AwsEvaluator;
-use crate::status::providers::Http;
-use crate::status::report::{Evaluated, Evaluator as _};
+use crate::status::report::Evaluator as _;
 use crate::status::resource::Resource;
 use crate::status::sink::{Sink, Terminal};
 
@@ -107,11 +100,6 @@ fn consumers(description: Option<&StackDescription>) -> Vec<String> {
         .collect()
 }
 
-/// 資格情報 (API key) が入っている Neon の設定
-fn has_key(key: &Option<String>) -> bool {
-    key.as_deref().is_some_and(|key| !key.is_empty())
-}
-
 impl AwsDestroy {
     fn codebuild_names(&self) -> Result<Names> {
         let prefix = migrations::resource_prefix(&self.ctx)?;
@@ -159,10 +147,7 @@ impl AwsDestroy {
     /// リソースが在るか (状態が NOEXIST でないか)
     async fn exists(&self, resource: &Resource<'_>, sink: &mut dyn Sink) -> Result<bool> {
         let mut evaluator = AwsEvaluator::new(&self.ctx, self.sdk.clone());
-        Ok(match evaluator.status(resource, sink).await? {
-            Evaluated::Status(status) => status != ResourceStatus::NoExist,
-            Evaluated::Skip(_) => false,
-        })
+        Ok(evaluator.status(resource, sink).await? != ResourceStatus::NoExist)
     }
 
     async fn stack_exists(&self, region: &str, name: &str) -> Result<bool> {
@@ -217,28 +202,7 @@ impl AwsDestroy {
         if let Some(rds) = ctx.rds.as_ref() {
             facts.rds = self.exists(&Resource::Rds(rds), sink).await?;
         }
-        let http = Http::new()?;
-        if let Some(tidb) = deploy_managed(ctx.tidb.as_ref(), |t| t.provisioning) {
-            facts.tidb = TiDb::new(&http, tidb, &MysqlSql).cluster_exists().await?;
-        }
-        if let Some(upstash) = deploy_managed(ctx.upstash.as_ref(), |u| u.provisioning) {
-            let upstash = Upstash {
-                http: &http,
-                ctx: upstash,
-            };
-            facts.upstash = upstash.database_exists().await?;
-        }
-        if let Some(neon) = deploy_managed(ctx.neon.as_ref(), |n| n.provisioning) {
-            if has_key(&neon.api_key) {
-                let neon = Neon {
-                    http: &http,
-                    ctx: neon,
-                };
-                facts.neon = neon.destroy_plan(sink).await?;
-            } else {
-                sink.warning(NEON_CREDENTIAL_MISSING);
-            }
-        }
+
         let efs_api = AwsEfs { sdk };
         for vpc in container_vpcs(ctx) {
             if !vpc.manage {
@@ -345,14 +309,6 @@ impl AwsDestroy {
     }
 }
 
-/// `provisioning = "deploy"` のときだけ設定を返す
-fn deploy_managed<T>(
-    settings: Option<&T>,
-    provisioning: impl Fn(&T) -> ProvisioningMode,
-) -> Option<&T> {
-    settings.filter(|s| provisioning(s) == ProvisioningMode::Deploy)
-}
-
 fn is_access_denied(error: &anyhow::Error) -> bool {
     crate::aws_util::error_code(error) == Some("AccessDeniedException")
 }
@@ -454,12 +410,10 @@ impl DestroyOps for AwsDestroy {
                     let acm = cf_stack::acm_stack_name(cf);
                     if self.stack_exists("us-east-1", &acm).await? {
                         sink.log(&format!("Destroying CloudFront ACM '{name}'..."));
-                        let (store, urls) =
-                            (AwsSecretStore::new(sdk.clone()), ProviderUrls::new()?);
+                        let store = AwsSecretStore::new(sdk.clone());
                         let edge = EdgeDeploy {
                             stacks: &stacks,
                             store: &store,
-                            urls: &urls,
                             waits: EdgeWaits::default(),
                         };
                         edge.acm_delete(cf, sink).await?;
@@ -600,11 +554,10 @@ impl DestroyOps for AwsDestroy {
                         continue;
                     }
                     sink.log(&format!("Destroying CloudFrontKeys '{name}'..."));
-                    let (store, urls) = (AwsSecretStore::new(sdk.clone()), ProviderUrls::new()?);
+                    let store = AwsSecretStore::new(sdk.clone());
                     let edge = EdgeDeploy {
                         stacks: &stacks,
                         store: &store,
-                        urls: &urls,
                         waits: EdgeWaits::default(),
                     };
                     edge.keys_delete(cf, sink).await?;
@@ -625,73 +578,11 @@ impl DestroyOps for AwsDestroy {
                 sink.success("S3 bucket was deleted.");
                 Ok(())
             }
-            Step::Tidb => {
-                let provisioning = ctx.tidb.as_ref().map(|tidb| tidb.provisioning);
-                let hint = "pocket resource tidb delete";
-                match destroy::provider_action(provisioning, "TiDB", hint) {
-                    None => Ok(()),
-                    Some(Err(warning)) => {
-                        sink.warning(&warning);
-                        Ok(())
-                    }
-                    Some(Ok(())) => {
-                        let http = Http::new()?;
-                        let tidb = ctx.tidb.as_ref().expect("tidb");
-                        let tidb = TiDb::new(&http, tidb, &MysqlSql);
-                        if tidb.cluster_exists().await? {
-                            sink.log("Destroying TiDB cluster...");
-                            tidb.delete_cluster().await?;
-                            sink.success("TiDB cluster was deleted.");
-                        }
-                        Ok(())
-                    }
+            Step::ExternalDatabases => {
+                for warning in destroy::external_database_warnings(ctx) {
+                    sink.warning(&warning);
                 }
-            }
-            Step::Upstash => {
-                let provisioning = ctx.upstash.as_ref().map(|upstash| upstash.provisioning);
-                match destroy::provider_action(provisioning, "Upstash", "Upstash コンソール等")
-                {
-                    None => Ok(()),
-                    Some(Err(warning)) => {
-                        sink.warning(&warning);
-                        Ok(())
-                    }
-                    Some(Ok(())) => {
-                        let http = Http::new()?;
-                        let upstash = Upstash {
-                            http: &http,
-                            ctx: ctx.upstash.as_ref().expect("upstash"),
-                        };
-                        if upstash.database_exists().await? {
-                            upstash.delete_database(sink).await?;
-                        }
-                        Ok(())
-                    }
-                }
-            }
-            Step::Neon => {
-                let provisioning = ctx.neon.as_ref().map(|neon| neon.provisioning);
-                let hint = "pocket resource neon delete";
-                match destroy::provider_action(provisioning, "Neon", hint) {
-                    None => Ok(()),
-                    Some(Err(warning)) => {
-                        sink.warning(&warning);
-                        Ok(())
-                    }
-                    Some(Ok(())) => {
-                        let neon = ctx.neon.as_ref().expect("neon");
-                        if !has_key(&neon.api_key) {
-                            sink.warning(NEON_CREDENTIAL_MISSING);
-                            return Ok(());
-                        }
-                        let http = Http::new()?;
-                        let neon = Neon {
-                            http: &http,
-                            ctx: neon,
-                        };
-                        neon.destroy(sink).await
-                    }
-                }
+                Ok(())
             }
             Step::StateBucket => {
                 sink.log("Destroying state bucket...");
@@ -721,15 +612,6 @@ mod tests {
             .push(("pocket:sharable".to_string(), "true".to_string()));
         assert_eq!(consumers(Some(&description)), ["dev-other"]);
         assert!(consumers(None).is_empty());
-    }
-
-    #[test]
-    fn test_deploy_managed_filters_command_provisioning() {
-        let deploy = Some(&ProvisioningMode::Deploy);
-        let command = Some(&ProvisioningMode::Command);
-        assert!(deploy_managed(deploy, |mode| *mode).is_some());
-        assert!(deploy_managed(command, |mode| *mode).is_none());
-        assert!(deploy_managed(None::<&ProvisioningMode>, |mode| *mode).is_none());
     }
 
     #[test]

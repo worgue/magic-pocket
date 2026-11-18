@@ -1,4 +1,5 @@
 import pytest
+from pocket_cli.cli.deploy_cli import get_resources
 
 from pocket.context import ContainerContext, Context, SecretsContext
 from pocket.general_context import GeneralContext
@@ -56,8 +57,7 @@ namespace = "test"
     assert context.namespace == "test"
 
 
-def _toml_with_neon(provisioning: str | None = None) -> str:
-    flag = f'\nprovisioning = "{provisioning}"' if provisioning else ""
+def _toml_with_neon(extra: str = "") -> str:
     return f"""
 [general]
 region = "us-east-1"
@@ -66,64 +66,11 @@ stages = ["dev"]
 namespace = "test"
 
 [dev.neon]
-project_name = "dev-test-project"{flag}
+project_name = "dev-test-project"{extra}
 """
 
 
-def test_neon_provisioning_defaults_deploy(use_toml, tmp_path):
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_neon())
-    use_toml(str(toml_path))
-    context = Context.from_toml(stage="dev")
-    assert context.neon is not None
-    assert context.neon.provisioning == "deploy"
-
-
-def test_neon_provisioning_command_from_toml(use_toml, tmp_path):
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_neon(provisioning="command"))
-    use_toml(str(toml_path))
-    context = Context.from_toml(stage="dev")
-    assert context.neon is not None
-    assert context.neon.provisioning == "command"
-
-
-def test_neon_skip_check_existing_is_rejected(use_toml, tmp_path):
-    """廃止済み skip_check_existing が残っていたら fail-fast (黙殺しない)。"""
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_neon() + "\nskip_check_existing = true\n")
-    use_toml(str(toml_path))
-    with pytest.raises(Exception, match="skip_check_existing は廃止"):
-        Context.from_toml(stage="dev")
-
-
-def test_get_resources_excludes_neon_when_provisioning_command(use_toml, tmp_path):
-    """provisioning=command の neon は deploy リソースに乗らない (credential 不要)。"""
-    from pocket_cli.cli.deploy_cli import get_resources
-    from pocket_cli.resources.neon import Neon
-
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_neon(provisioning="command"))
-    use_toml(str(toml_path))
-    context = Context.from_toml(stage="dev")
-    resources = get_resources(context)
-    assert not any(isinstance(r, Neon) for r in resources)
-
-
-def test_get_resources_includes_neon_when_provisioning_deploy(use_toml, tmp_path):
-    from pocket_cli.cli.deploy_cli import get_resources
-    from pocket_cli.resources.neon import Neon
-
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_neon())
-    use_toml(str(toml_path))
-    context = Context.from_toml(stage="dev")
-    resources = get_resources(context)
-    assert any(isinstance(r, Neon) for r in resources)
-
-
-def _toml_with_upstash(provisioning: str | None = None) -> str:
-    flag = f'\nprovisioning = "{provisioning}"' if provisioning else ""
+def _toml_with_upstash(extra: str = "") -> str:
     return f"""
 [general]
 region = "us-east-1"
@@ -131,38 +78,38 @@ project_name = "test-project"
 stages = ["dev"]
 namespace = "test"
 
-[dev.upstash]{flag}
+[dev.upstash]{extra}
 """
 
 
-def test_upstash_provisioning_defaults_deploy(use_toml, tmp_path):
+@pytest.mark.parametrize("mode", ["deploy", "command"])
+@pytest.mark.parametrize("toml", [_toml_with_neon, _toml_with_upstash])
+def test_provisioning_is_rejected(use_toml, tmp_path, toml, mode):
+    """廃止した provisioning が残っていたら、値によらず案内つきで止める。"""
     toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_upstash())
+    toml_path.write_text(toml(f'\nprovisioning = "{mode}"'))
     use_toml(str(toml_path))
-    context = Context.from_toml(stage="dev")
-    assert context.upstash is not None
-    assert context.upstash.provisioning == "deploy"
-
-
-def test_upstash_skip_check_existing_is_rejected(use_toml, tmp_path):
-    """upstash でも廃止済み skip_check_existing は fail-fast。"""
-    toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_upstash() + "\nskip_check_existing = true\n")
-    use_toml(str(toml_path))
-    with pytest.raises(Exception, match="skip_check_existing は廃止"):
+    with pytest.raises(ValueError, match="provisioning は廃止"):
         Context.from_toml(stage="dev")
 
 
-def test_get_resources_excludes_upstash_when_provisioning_command(use_toml, tmp_path):
-    from pocket_cli.cli.deploy_cli import get_resources
-    from pocket_cli.resources.upstash import Upstash
-
+@pytest.mark.parametrize("toml", [_toml_with_neon, _toml_with_upstash])
+def test_skip_check_existing_is_rejected(use_toml, tmp_path, toml):
+    """廃止済み skip_check_existing が残っていたら fail-fast (黙殺しない)。"""
     toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(_toml_with_upstash(provisioning="command"))
+    toml_path.write_text(toml("\nskip_check_existing = true"))
     use_toml(str(toml_path))
+    with pytest.raises(ValueError, match="skip_check_existing は廃止"):
+        Context.from_toml(stage="dev")
+
+
+def test_get_resources_excludes_provider_databases(use_toml):
+    """Neon / TiDB / Upstash は deploy のリソースに乗らない (API key 不要)。"""
+    use_toml("tests/data/toml/db_command_provisioning.toml")
     context = Context.from_toml(stage="dev")
-    resources = get_resources(context)
-    assert not any(isinstance(r, Upstash) for r in resources)
+    assert context.neon and context.tidb and context.upstash
+    names = {type(r).__name__ for r in get_resources(context)}
+    assert not names & {"Neon", "TiDb", "Upstash"}
 
 
 def _build_awscontainer_context(

@@ -11,7 +11,7 @@
   },
   "input": "tests/data/toml_errors/legacy_skip_check_existing.toml",
   "kind": "Value",
-  "message": "[neon] skip_check_existing は廃止されました。`provisioning = \"command\"` に置き換え、接続 URL を [container.<name>.secrets.user] の type で宣言したうえで deploy 前に `pocket resource neon store-url --stage <stage>` を実行してください。",
+  "message": "[neon] skip_check_existing は廃止されました。この行を削除し、接続 URL を [container.<name>.secrets.user] の type で宣言したうえで deploy 前に `pocket resource neon store-url --stage <stage>` を実行してください。",
   "path": [
     "neon"
   ],

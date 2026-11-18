@@ -240,8 +240,7 @@
       "branch_name": null,
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-testprj",
-      "provisioning": "deploy"
+      "project_name": "dev-testprj"
     },
     "rds": null,
     "s3": {
@@ -501,8 +500,7 @@
       "branch_name": null,
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-testprj",
-      "provisioning": "deploy"
+      "project_name": "dev-testprj"
     },
     "rds": null,
     "s3": {

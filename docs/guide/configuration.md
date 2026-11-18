@@ -384,50 +384,30 @@ project_name = "prod-myproject"
 |-----------|------|----------|------|
 | `project_name` | str | **必須** | Neonプロジェクト名 |
 | `pg_version` | int | `15` | PostgreSQLのバージョン |
-| `provisioning` | `"deploy"` \| `"command"` | `"deploy"` | branch/role/db の provisioning を deploy が行うか、`pocket resource neon store-url` に委ねるか（下記参照） |
 
-`NEON_API_KEY` 環境変数（または `.env`）が必要です。ステージごとにNeonプロジェクトを分ける場合は、デプロイ時に環境変数を切り替えてください。
+deploy は Neon に一切触れません（API 呼び出しなし・API キー不要）。ブランチ・データベース・
+ロールは `pocket resource neon store-url` が用意し、接続 URL を secret store に保存します。
+deploy は保存済みの URL（[`secrets.user`](#containersecretsuser) の `type`）を読むだけです。
 
-!!! info "provisioning — デプロイロールから DB credentials を切り離す"
-    既定 (`provisioning = "deploy"`) では、`pocket django deploy` がデプロイ中に Neon API を
-    叩いてブランチ・データベース・ロール・エンドポイントを ensure し、`DATABASE_URL` を供給
-    します（zero-config）。このため CI/CD のデプロイロールに Neon の API キーを渡す必要があり、
-    「デプロイは AWS 操作のみ・DB レイヤの credentials は渡さない」という責務分離をしたい場合に
-    支障になります。
+```toml
+[dev.neon]
+project_name = "dev-myproject"
 
-    `provisioning = "command"` にすると、**deploy は Neon に一切触れません**（API call ゼロ /
-    credential 不要）。provisioning は `pocket resource neon store-url` コマンドに分離し、deploy は
-    事前に保存された `DATABASE_URL`（[stored mode](#containersecretsuser) の user secret）
-    を読むだけになります。
+[dev.container.main.secrets.user]
+# store-url の保存先。secret の名前は pocket が type から決める
+DATABASE_URL = { type = "neon_database_url" }
+```
 
-    ```toml
-    [dev.neon]
-    project_name = "dev-myproject"
-    provisioning = "command"
+| タイミング | 場所 | コマンド |
+|----------|------|---------|
+| 初回 / branch 切替時 | **Neon API キーがある場所**（手元の PC・権限を絞った CI ジョブ） | `pocket resource neon store-url --stage=dev` |
+| 通常デプロイ | CI/CD（**Neon の API キー不要**） | `pocket deploy --stage=dev` |
+| Neon リソース操作 | Neon API キーがある場所 | `pocket resource neon create / status / branch-out / delete` |
 
-    [dev.container.main.secrets.user]
-    # store-url の保存先。pocket が正準名を導出する（stored mode）。
-    DATABASE_URL = { type = "neon_database_url" }
-    ```
-
-    運用フロー（credential custody の分離）:
-
-    | タイミング | 場所 | コマンド |
-    |----------|------|---------|
-    | 初回 / branch 切替時 | **Neon API キーを持つ host / 特権 CI** | `pocket resource neon store-url --stage=dev`（branch/role/db を ensure し `DATABASE_URL` を SSM/SM に保存） |
-    | 通常デプロイ | CI/CD（**Neon credential 不要**） | `pocket django deploy --stage=dev` |
-    | Neon リソース操作 | host | `pocket resource neon create / status / branch-out / ...` を引き続き利用 |
-
-    `store-url` は Neon API キーを要する provisioning ステップなので、頻度が低く特権的な操作
-    （host operator / 限定された CI ジョブ）に置き、credential を持たない通常デプロイと分離する
-    のが推奨です。Neon の接続 URL は `reveal_password` 方式で**冪等**なため、`store-url` は何度
-    実行しても同じ値を書きます。
-
-!!! info "computed mode（非推奨）"
-    従来の computed mode（`[container.main.secrets.managed]` に
-    `DATABASE_URL = { type = "neon_database_url" }` を置き、deploy 時に URL を算出して
-    pocket_store に保存）は **deprecated** です。deploy 時に warning を出します。
-    `provisioning` + stored user secret（上記）へ移行してください。
+`NEON_API_KEY` 環境変数（または `.env`）が要るのは `pocket resource neon` のコマンドだけです。
+Neon の接続 URL は `reveal_password` 方式で**冪等**なため、`store-url` は何度実行しても同じ値を
+書きます。`pocket destroy` は Neon のブランチを消しません。不要になったら
+`pocket resource neon delete --stage=<stage>` で消してください。
 
 !!! warning "Neon プロジェクトのリージョン"
     Neon プロジェクトは `[general].region` と同じリージョン（または近いリージョン）で作成してください。
@@ -451,16 +431,19 @@ project = "9876543210987654321"
 |-----------|------|----------|------|
 | `project` | str | **必須** | TiDB Cloud のプロジェクト ID |
 | `region` | str | `"ap-northeast-1"` | TiDB クラスターのリージョン |
-| `provisioning` | `"deploy"` \| `"command"` | `"deploy"` | provisioning を deploy が行うか `pocket resource tidb store-url` に委ねるか（[neon](#neon) の同名フィールド参照） |
 
-`TIDB_PUBLIC_KEY` と `TIDB_PRIVATE_KEY` 環境変数（または `.env`）が必要です。TiDB Cloud のコンソールから API キーを取得してください。
+[neon](#neon) と同じく、deploy は TiDB に触れません。クラスターとデータベースは
+`pocket resource tidb store-url --stage=<stage>` が用意して接続 URL を保存し、deploy は
+`[container.<name>.secrets.user]` の `DATABASE_URL = { type = "tidb_database_url" }` で読みます。
+`pocket destroy` はクラスターを消しません（`pocket resource tidb delete` で消します）。
+
+`TIDB_PUBLIC_KEY` と `TIDB_PRIVATE_KEY` 環境変数（または `.env`）が要るのは `pocket resource tidb` のコマンドだけです。TiDB Cloud のコンソールから API キーを取得してください。
 
 !!! note "クラスター名"
     クラスター名はプロジェクト名から自動生成されます（`{project_name}`）。
 
 !!! warning "TiDB の store-url は password をローテーションする"
-    `provisioning = "command"` で `pocket resource tidb store-url` を使う場合、TiDB Serverless には
-    password の reveal API が無いため、**store-url は実行のたびに root password を再生成**します
+    TiDB Serverless には password の reveal API が無いため、**store-url は実行のたびに root password を再生成**します
     （Neon は冪等ですが TiDB は異なります）。既存 secret がある場合は誤実行防止のため `--force`
     が必要で、実行後は接続 URL が変わるため consumer の再デプロイが前提になります。
 
@@ -473,7 +456,7 @@ Upstash Redis（サーバーレス Redis）の設定です。VPC 不要で Lambd
 ```toml
 [upstash]
 
-[container.main.secrets.managed]
+[container.main.secrets.user]
 REDIS_URL = { type = "upstash_redis_url" }
 
 [container.main.django.caches]
@@ -483,16 +466,14 @@ default = { store = "redis" }
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `budget` | int | `20` | 月額上限（ドル）。最低値の $20 がデフォルト |
-| `provisioning` | `"deploy"` \| `"command"` | `"deploy"` | provisioning を deploy が行うか `pocket resource upstash store-url` に委ねるか（[neon](#neon) の同名フィールド参照） |
 
-!!! info "provisioning = command で credential なしデプロイ"
-    `[upstash] provisioning = "command"` にすると deploy は Upstash に触れません。`REDIS_URL` を
-    `[container.main.secrets.user]` に `{ type = "upstash_redis_url" }`（stored mode）で宣言し、
-    deploy 前に `pocket resource upstash store-url --stage <stage>` で database を ensure して
-    接続 URL を保存します。Upstash の URL は database の password 読み出しで**冪等**なため、
-    `store-url` は何度実行しても同じ値を書きます。
+[neon](#neon) と同じく、deploy は Upstash に触れません。database は
+`pocket resource upstash store-url --stage=<stage>` が用意して接続 URL を保存し、deploy は
+`[container.<name>.secrets.user]` の `REDIS_URL` で読みます。Upstash の URL は database の
+password を読み出すだけで**冪等**なため、`store-url` は何度実行しても同じ値を書きます。
+`pocket destroy` は database を消しません（`pocket resource upstash delete` で消します）。
 
-`UPSTASH_EMAIL` と `UPSTASH_API_KEY` 環境変数（または `.env`）が必要です。Upstash Console の Account > Management API で API Key を取得してください。これらはデプロイ時のみ必要で、Lambda 実行時には不要です。
+`UPSTASH_EMAIL` と `UPSTASH_API_KEY` 環境変数（または `.env`）が要るのは `pocket resource upstash` のコマンドだけです。Upstash Console の Account > Management API で API Key を取得してください。
 
 データベースは `{project_name}-{stage}` の名前で自動作成されます。プライマリリージョンは `ap-southeast-1`（シンガポール）に固定です。
 
@@ -500,7 +481,7 @@ default = { store = "redis" }
     月額利用料が budget に達するとレート制限がかかり、コストは budget を超えません。Upstash の最低 budget は $20 です。利用が 70% と 90% に達した時点で通知が届きます。
 
 !!! note "Django での利用"
-    `store = "redis"` を指定すると `django-redis` バックエンドが使用されます。`django-redis` のインストールが必要です。`REDIS_URL` は managed secrets から自動設定されます。
+    `store = "redis"` を指定すると `django-redis` バックエンドが使用されます。`django-redis` のインストールが必要です。`REDIS_URL` は上記の user secret から設定されます。
 
 ---
 
@@ -923,10 +904,7 @@ AWS Lambda コンテナの設定です。`[container.<name>]` の dict 形式で
     region を片付ける、プロジェクト廃止など）も、`[container.<name>]` 形式の toml で
     `pocket destroy` を実行すれば、旧命名の stack / ECR repository / log group を
     検出して削除対象に含めます（確認プロンプトに「旧形式の container stack」として
-    表示されます）。また `[neon]` を宣言していても `NEON_API_KEY` が無い環境では、
-    `pocket status` / `pocket destroy` は Neon の解決を warning で skip して続行します
-    （stack の確認・削除に Neon の資格情報は不要です。Neon branch は別途
-    `pocket resource neon delete` で削除してください）。
+    表示されます）。
 
 ```toml
 [container.main]
@@ -1328,19 +1306,9 @@ SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
 ```
 
 **type = "auto_database_url"**
-:   pocket.toml 内の DB 設定（`[neon]` / `[rds]` / `[tidb]`）を自動検出し、適切な DATABASE_URL を生成します。
-    DB が1つだけ定義されている場合はそれを使用し、複数定義されている場合はエラーになります。
-    ステージごとに DB を切り替える場合に便利です。オプションはありません。
-
-    ```toml
-    [container.main.secrets.managed]
-    DATABASE_URL = { type = "auto_database_url" }
-
-    [dev.neon]
-    project_name = "dev-myproject"
-
-    [prod.rds]
-    ```
+:   `[rds]` があるとき、`rds_database_url` と同じ値を設定します。オプションはありません。
+    Neon / TiDB の接続 URL は managed では作りません（[`secrets.user`](#containersecretsuser)
+    の `type` で宣言し、`pocket resource <db> store-url` で保存します）。
 
 **type = "password"**
 :   パスワードを自動生成します。
@@ -1348,15 +1316,6 @@ SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
     | オプション | 型 | デフォルト | 説明 |
     |-----------|------|----------|------|
     | `length` | int | `16` | パスワードの長さ |
-
-**type = "neon_database_url"**
-:   NeonのDB接続URLをAPI経由で取得し保存します（computed）。オプションはありません。
-    deploy 環境に管理 API key を置きたくない場合は、同じ type を `secrets.user` に置く
-    stored mode も使えます（[DB 接続 URL の computed / stored](#db-接続-url-の-computed-mode-と-stored-mode) 参照）。
-
-**type = "tidb_database_url"**
-:   TiDB ServerlessのDB接続URLを取得し保存します（computed）。オプションはありません。
-    stored mode も利用可（[同上](#db-接続-url-の-computed-mode-と-stored-mode)）。
 
 **type = "rds_database_url"**
 :   RDS Aurora の DATABASE_URL を設定します。実際の URL は Lambda 起動時に `POCKET_RDS_SECRET_ARN` から動的に構築されます（パスワードローテーション対応）。オプションはありません。
@@ -1431,7 +1390,7 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `name` | str \| None | None | シークレット名またはARN。`type` と排他 |
-| `type` | `"neon_database_url"` \| `"tidb_database_url"` \| None | None | DB URL の stored mode（後述）。`name` と排他 |
+| `type` | `"neon_database_url"` \| `"tidb_database_url"` \| `"upstash_redis_url"` \| None | None | 事前に保存した接続 URL を読む（後述）。`name` と排他 |
 | `store` | `"sm"` \| `"ssm"` \| None | None | 保存先（Noneの場合 `secrets.store` を継承） |
 
 `name` と `type` はどちらか一方を指定します（両方／どちらも無しはエラー）。
@@ -1446,43 +1405,28 @@ SSM パスや SM シークレットを分けたい場合に便利です。
 SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
 ```
 
-##### DB 接続 URL の computed mode と stored mode
+##### 事前に保存した接続 URL を読む (type)
 
-DB の接続 URL (`DATABASE_URL`) は 2 通りの解決方法があります。
-
-| | computed（`secrets.managed`）**※非推奨** | stored（`secrets.user`） |
-|---|---|---|
-| 書き方 | `DATABASE_URL = { type = "tidb_database_url" }` を **managed** に | 同じ `type` を **user** に |
-| URL を作るのは | pocket が deploy 時に provider の管理 API を叩いて計算（cluster lookup / password reset） | 事前 provision して secret store に保存（`pocket <db> store-url` または手動） |
-| deploy 環境に管理 API key | **必要** | **不要** |
-| pocket が値を生成 | する（pocket_store に保存） | しない（既存値を参照するだけ） |
-
-!!! warning "computed mode は非推奨"
-    computed mode（`secrets.managed` に DB URL の `type`）は **deprecated** です。deploy 時に
-    warning を出します。stored mode + `[<db>] provisioning`（[neon](#neon) 参照）へ移行して
-    ください。
-
-stored mode は「provider の管理 API key を deploy 環境に置きたくない」「provisioning と
-deploy を分離したい」「deploy を外部 API に依存させたくない（CI など）」場合に使います。
+Neon / TiDB / Upstash の接続 URL は、deploy の前に secret store へ保存しておき、deploy は
+それを読むだけにします。pocket は deploy 中に provider の API を呼ばないので、deploy する
+場所（CI など）に provider の API キーを置く必要がありません。
 
 ```toml
 [neon]
 project_name = "dev-myproject"
-provisioning = "command"   # deploy は Neon に触れない
 
 [container.main.secrets.user]
-# 事前に provision した接続 URL を参照するだけ（pocket は deploy 時に API を叩かない）
+# 事前に保存した接続 URL を読むだけ
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
-secret の provision は `pocket resource neon store-url --stage <stage>` / `pocket resource tidb store-url
---stage <stage>` が便利です（branch/cluster/role/db を ensure し、接続 URL を上記 user
-secret の正準名へ保存）。`[<db>] provisioning = "command"` と組み合わせると、provisioning
-（管理 API key 必要）と deploy（credential 不要）を分離できます。手動で正準名に値を投入
-しても構いません。
+保存には `pocket resource neon store-url --stage <stage>` / `pocket resource tidb store-url
+--stage <stage>` / `pocket resource upstash store-url --stage <stage>` を使います
+（branch / cluster / role / database を用意し、接続 URL を上記の secret に保存します）。
+API キーが要るのはこのコマンドを実行する場所だけです。secret の名前に自分で値を入れても
+構いません。
 
-- 対象 `type` は `neon_database_url` / `tidb_database_url` の 2 つ。これらは computed だと
-  deploy 時に管理 API key を要求するため、stored 化の利点が大きい type です。
+- 対象の `type` は `neon_database_url` / `tidb_database_url` / `upstash_redis_url` です。
 - `rds_database_url` は user 側で使えません。RDS は元々 deploy 時に管理 API key を要求せず、
   接続 URL を Lambda 起動時に `POCKET_RDS_SECRET_ARN` から動的構築してパスワード
   ローテーションに追従します。静的な stored URL にするとローテで失効するため対象外です。
@@ -1632,7 +1576,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     ```
 
 !!! note "publish — 静的 publish を deploy から切り離す"
-    DB/KVS の `provisioning = "command"` と同じ思想の staticfiles 版です。
+    DB/KVS の接続 URL を `store-url` で先に用意するのと同じ考え方の staticfiles 版です。
 
     - `"deploy"`（デフォルト）: `pocket django deploy` / `promote` が
       collectstatic + S3 アップロードを実行します（zero-config）

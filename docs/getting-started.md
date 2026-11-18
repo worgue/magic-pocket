@@ -23,8 +23,8 @@ credentialsは `~/.aws/credentials` への設定を想定しています。
 
 以下のいずれかを選択してください。
 
-- **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキーは環境変数 `NEON_API_KEY` で設定します。
-- **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。APIキーは環境変数 `TIDB_PUBLIC_KEY` / `TIDB_PRIVATE_KEY` で設定します。
+- **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキー（`NEON_API_KEY`）は DB を用意するコマンドだけが使います。
+- **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。APIキー（`TIDB_PUBLIC_KEY` / `TIDB_PRIVATE_KEY`）は DB を用意するコマンドだけが使います。
 - **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。外部アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
 - **[Aurora DSQL](https://aws.amazon.com/dsql/){:target="_blank"}**: AWS マネージドのサーバーレス PostgreSQL 互換 DB。VPC 不要、IAM 認証。Django ORM との互換性が低いため、直接 SQL 実行向けです。
 
@@ -139,9 +139,11 @@ apigateway = {}
 [container.main.secrets.managed] # (9)!
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+
+[container.main.secrets.user] # (10)!
 DATABASE_URL = { type = "neon_database_url" }
 
-[container.main.django.storages] # (10)!
+[container.main.django.storages] # (11)!
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }
 ```
@@ -149,13 +151,14 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
 1. AWSリージョンを指定してください。Neon プロジェクトも同じリージョン（または近いリージョン）で作成してください。
 2. devとprodの2ステージ構成です。
 3. S3バケットを作成。バケット名はプロジェクト名+ステージ名から自動生成。
-4. 既存の Neon プロジェクトにブランチ・DB を作成。プロジェクトは事前に [Neon Console](https://console.neon.tech/) で作成してください。
+4. 既存の Neon プロジェクトを使う宣言。ブランチ・DB は手順 4 のコマンドが作ります。プロジェクトは事前に [Neon Console](https://console.neon.tech/) で作成してください。
 5. Lambdaコンテナの設定。
 6. WSGIハンドラーのLambda関数を作成。
 7. マネジメントコマンド実行用のLambda関数（timeout 600秒）。
 8. dev/prod各環境にAPI Gatewayを設定。URLはAWSが自動生成。独自ドメインの場合は `apigateway = { domain = "example.com" }` と指定。
-9. SECRET_KEY、スーパーユーザーパスワード、DB接続URLを自動生成しシークレットストアに保存。
-10. S3上の `media` と `static` ディレクトリをDjangoのSTORAGESとして利用。
+9. SECRET_KEY、スーパーユーザーパスワードを自動生成しシークレットストアに保存。
+10. DB接続URL。手順 4 のコマンドが保存した値を読みます。
+11. S3上の `media` と `static` ディレクトリをDjangoのSTORAGESとして利用。
 
 ### 生成される .env
 
@@ -190,17 +193,23 @@ DATABASES = {"default": env.db()}
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 ```
 
-## 4. NEON_API_KEY の設定
+## 4. データベースの用意
 
-`.env` に `NEON_API_KEY` を追加します。
+`.env` に `NEON_API_KEY` を追加し、ステージごとに 1 回、DB を用意するコマンドを実行します。
+Neon にブランチ・データベース・ロールを作り、接続 URL をシークレットストアに保存します。
 
 ```bash
 # .env に追記
 NEON_API_KEY=あなたのNeon APIキー
 ```
 
-!!! info "NEON_API_KEY はローカルのデプロイ時のみ必要"
-    Lambda環境では不要です。デプロイ時にNeonのDB情報を取得し、Secrets Managerに保存するため、Lambda側はSecrets Manager経由で接続します。
+```bash
+uv run pocket resource neon store-url --stage=dev
+```
+
+!!! info "NEON_API_KEY が要るのはこのコマンドだけ"
+    `pocket deploy` と Lambda は Neon の API を呼びません（保存済みの接続 URL を読むだけ）。
+    CI からデプロイする場合も、CI に `NEON_API_KEY` を置く必要はありません。
 
 ## 5. デプロイ
 
@@ -227,6 +236,7 @@ uv run pocket resource container secrets list --stage=dev --show-values
 同じコマンドで `--stage=prod` に変えるだけです。環境・シークレットは全て別になります。
 
 ```bash
+uv run pocket resource neon store-url --stage=prod
 uv run pocket deploy --stage=prod
 uv run pocket django manage migrate --stage=prod
 uv run pocket django manage collectstatic --noinput --stage=prod

@@ -229,8 +229,7 @@
       "branch_name": "sandbox",
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-magic-pocket",
-      "provisioning": "command"
+      "project_name": "dev-magic-pocket"
     },
     "rds": null,
     "s3": {
@@ -466,8 +465,7 @@
       "branch_name": "sandbox",
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-magic-pocket",
-      "provisioning": "command"
+      "project_name": "dev-magic-pocket"
     },
     "rds": null,
     "s3": {

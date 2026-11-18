@@ -20,9 +20,8 @@ use serde_json::{Map, Value as Json};
 use super::alerts::{self, Subscription};
 use super::container::{self as container_status, HandlerState};
 use super::inbound::{self as inbound_rules, ActiveRuleSet};
-use super::providers::{self, Http};
 use super::rds::{self as rds_status, ClusterPhase, ClusterState};
-use super::report::{Evaluated, Evaluator};
+use super::report::Evaluator;
 use super::resource::Resource;
 use super::sink::Sink;
 use super::{dsql as dsql_status, s3 as s3_status};
@@ -42,7 +41,6 @@ const EDGE_REGION: &str = "us-east-1";
 pub struct AwsEvaluator<'a> {
     ctx: &'a Context,
     sdk: SdkConfig,
-    http: Option<Http>,
     /// (region, stack 名) → describe の結果
     stacks: HashMap<(String, String), Option<StackDescription>>,
     /// pocket_key → managed secret (store に無ければ `None`)
@@ -55,7 +53,6 @@ impl<'a> AwsEvaluator<'a> {
         Self {
             ctx,
             sdk,
-            http: None,
             stacks: HashMap::new(),
             secrets: HashMap::new(),
             hosted_zones: None,
@@ -67,13 +64,6 @@ impl<'a> AwsEvaluator<'a> {
             .to_builder()
             .region(Region::new(region.to_string()))
             .build()
-    }
-
-    fn http(&mut self) -> Result<&Http> {
-        if self.http.is_none() {
-            self.http = Some(Http::new()?);
-        }
-        Ok(self.http.as_ref().expect("作成済み"))
     }
 
     // ---- stack ----
@@ -862,26 +852,15 @@ async fn handler_state(
 }
 
 impl Evaluator for AwsEvaluator<'_> {
-    async fn status(&mut self, resource: &Resource<'_>, sink: &mut dyn Sink) -> Result<Evaluated> {
+    async fn status(
+        &mut self,
+        resource: &Resource<'_>,
+        sink: &mut dyn Sink,
+    ) -> Result<ResourceStatus> {
         let status = match resource {
             Resource::CloudFrontAcm(cf) => self.acm(cf).await?,
             Resource::CloudFrontWaf(cf) => self.waf(cf, sink).await?,
             Resource::InboundDomain(domain) => self.inbound_domain(domain, sink).await?,
-            Resource::Neon(neon) => {
-                // provider の資格情報が無い環境でも、stack の状態確認は続ける
-                if neon.api_key.as_deref().is_none_or(str::is_empty) {
-                    return Ok(Evaluated::Skip(
-                        "Neon status: NEON_API_KEY が未設定のため状態確認をスキップします \
-                         (stack の状態確認・削除に Neon の資格情報は不要です)"
-                            .to_string(),
-                    ));
-                }
-                self.http()?;
-                let http = self.http.as_ref().expect("作成済み");
-                providers::neon_status(http, neon, sink).await?
-            }
-            Resource::TiDb(tidb) => providers::tidb_status(self.http()?, tidb).await?,
-            Resource::Upstash(upstash) => providers::upstash_status(self.http()?, upstash).await?,
             Resource::S3(s3) => self.s3(s3, sink).await?,
             Resource::Vpc(v) => self.vpc(v).await?,
             Resource::Dsql(dsql) => {
@@ -900,7 +879,7 @@ impl Evaluator for AwsEvaluator<'_> {
             Resource::Inbound(inlet) => self.inbound(inlet).await?,
             Resource::CloudFront(cf) => self.cloudfront(cf, sink).await?,
         };
-        Ok(Evaluated::Status(status))
+        Ok(status)
     }
 
     async fn secrets_not_ready(&mut self, container: &ContainerContext) -> Result<usize> {

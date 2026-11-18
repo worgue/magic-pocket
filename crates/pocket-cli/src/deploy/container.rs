@@ -9,7 +9,7 @@ use magic_pocket_settings::context::{ContainerContext, Context};
 use serde_json::Value as Json;
 
 use super::lambda::{self, LambdaApi, WaitUpdate};
-use super::mediator::{DatabaseUrls, Mediator, SecretsReady};
+use super::mediator::{Mediator, SecretsReady};
 use super::secret_store::SecretStore;
 use crate::stack::ops::{
     cfn_status, template_synced, wait_status, ResourceStatus, StackApi, StackDescription,
@@ -63,11 +63,10 @@ impl Default for Waits {
     }
 }
 
-pub struct ContainerDeploy<'a, A, L, S, D> {
+pub struct ContainerDeploy<'a, A, L, S> {
     pub aws: &'a A,
     pub lambda: &'a L,
     pub store: &'a S,
-    pub urls: &'a D,
     pub waits: Waits,
 }
 
@@ -87,9 +86,7 @@ impl<A: ContainerAws> StackApi for RegionStacks<'_, A> {
     }
 }
 
-impl<A: ContainerAws, L: LambdaApi, S: SecretStore, D: DatabaseUrls>
-    ContainerDeploy<'_, A, L, S, D>
-{
+impl<A: ContainerAws, L: LambdaApi, S: SecretStore> ContainerDeploy<'_, A, L, S> {
     /// stack を作る・更新する前の用意: image と、外部 VPC の検査
     pub async fn deploy_init(&self, c: &ContainerContext) -> Result<()> {
         self.aws.sync_image(c).await?;
@@ -196,11 +193,10 @@ impl<A: ContainerAws, L: LambdaApi, S: SecretStore, D: DatabaseUrls>
         lambda::sync_deploy_hash(self.lambda, sink, c, self.waits.lambda).await
     }
 
-    fn mediator<'m>(&'m self, ctx: &'m Context) -> Mediator<'m, S, D> {
+    fn mediator<'m>(&'m self, ctx: &'m Context) -> Mediator<'m, S> {
         Mediator {
             ctx,
             store: self.store,
-            urls: self.urls,
         }
     }
 
@@ -553,18 +549,6 @@ mod tests {
         }
     }
 
-    impl DatabaseUrls for Fake {
-        async fn neon_database_url(&self, _ctx: &Context) -> Result<Option<String>> {
-            Ok(None)
-        }
-        async fn tidb_database_url(&self, _ctx: &Context) -> Result<Option<String>> {
-            Ok(None)
-        }
-        async fn upstash_redis_url(&self, _ctx: &Context) -> Result<Option<String>> {
-            Ok(None)
-        }
-    }
-
     #[derive(Default)]
     struct Recorder(Vec<(Style, String)>);
 
@@ -584,7 +568,7 @@ mod tests {
         }
     }
 
-    fn deploy(fake: &Fake) -> ContainerDeploy<'_, Fake, Fake, Fake, Fake> {
+    fn deploy(fake: &Fake) -> ContainerDeploy<'_, Fake, Fake, Fake> {
         let quick = WaitOptions {
             attempts: 3,
             interval: std::time::Duration::ZERO,
@@ -594,7 +578,6 @@ mod tests {
             aws: fake,
             lambda: fake,
             store: fake,
-            urls: fake,
             waits: Waits {
                 vpc: quick,
                 stack: quick,

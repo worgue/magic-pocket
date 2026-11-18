@@ -25,6 +25,27 @@
   [pocket-rs deploy](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-deploy)
 
 ### Changed
+- **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。
+  これまでの既定）を廃止しました。`pocket deploy` / `pocket destroy` / `pocket status`（Rust 版も
+  同じ）は provider の API を呼ばなくなり、deploy する場所に `NEON_API_KEY` などの API キーを
+  置く必要がなくなります。DB は、API キーがある場所で `pocket resource <db> store-url` を実行して
+  用意します（これまでの `provisioning = "command"` と同じ動きです）。移行の手順:
+    1. pocket.toml の `[neon]` / `[tidb]` / `[upstash]` から `provisioning` の行を削除します
+       （`"command"` と書いていた場合も削除します。残っているとエラーで止まります）。
+    2. `[container.<name>.secrets.managed]` に `neon_database_url` / `tidb_database_url` /
+       `upstash_redis_url` を書いている場合は、その行を `[container.<name>.secrets.user]` へ
+       移します（managed に残っているとエラーで止まります）。
+    3. 2 で行を移したステージは、deploy の前に、API キーがある場所で
+       `pocket resource <db> store-url --stage=<stage>` を 1 回実行します。既存の branch /
+       cluster / database はそのまま使われ、接続 URL が user secret に保存されます
+       （TiDB は実行のたびに root password が変わります）。
+  あわせて次の点が変わります。
+    - `pocket destroy` は Neon の branch・TiDB の cluster・Upstash の database を消しません。
+      `pocket resource neon delete` / `tidb delete` / `upstash delete`（新設）で消します。
+    - `auto_database_url` が使えるのは `[rds]` だけになりました（`rds_database_url` と同じ値）。
+    - `pocket django init` が作る pocket.toml を、この形（`[container.main]` と
+      `secrets.user` の `DATABASE_URL`）に直しました。
+  [neon の設定](https://worgue.github.io/magic-pocket/guide/configuration/#neon)
 - **破壊的変更**: state bucket（`{stage}-{project}-{namespace}-state`）が `[general] region` と
   別の region にあると、`pocket deploy` / `pocket build` / `pocket promote` / `pocket-rs build` が
   エラーで止まるようにしました。これまでは boto3 が別 region の bucket へ自動で向き直るため、

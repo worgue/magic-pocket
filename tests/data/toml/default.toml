@@ -59,7 +59,6 @@ project_name = "dev-testprj"
 # [container.main.secrets.managed]
 # SECRET_KEY = { type = "password", options = { length = 50 } }
 # DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
-# DATABASE_URL = { type = "neon_database_url" }
 
 [prod.container.main.envs]
 DJANGO_ENV_PATH = "project/env/env.prod"

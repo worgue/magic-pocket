@@ -70,8 +70,7 @@
       "branch_name": "{stage}-{project}",
       "parent_branch_name": "main",
       "pg_version": 17,
-      "project_name": "prov-neon",
-      "provisioning": "deploy"
+      "project_name": "prov-neon"
     },
     "rds": null,
     "s3": null,
@@ -83,15 +82,13 @@
       "cluster": "c1",
       "private_key": "****",
       "project": "p1",
-      "provisioning": "command",
       "public_key": "****",
       "region": "us-east-1"
     },
     "upstash": {
       "api_key": "****",
       "budget": 16,
-      "email": "toml@example.com",
-      "provisioning": "deploy"
+      "email": "toml@example.com"
     },
     "vpc": null
   },
@@ -155,8 +152,7 @@
       "branch_name": "{stage}-{project}",
       "parent_branch_name": "main",
       "pg_version": 17,
-      "project_name": "prov-neon",
-      "provisioning": "deploy"
+      "project_name": "prov-neon"
     },
     "rds": null,
     "s3": null,
@@ -168,15 +164,13 @@
       "cluster": "c1",
       "private_key": "vector-tidb-private-key",
       "project": "p1",
-      "provisioning": "command",
       "public_key": "vector-tidb-public-key",
       "region": "us-east-1"
     },
     "upstash": {
       "api_key": "vector-upstash-api-key",
       "budget": 16,
-      "email": "toml@example.com",
-      "provisioning": "deploy"
+      "email": "toml@example.com"
     },
     "vpc": null
   },

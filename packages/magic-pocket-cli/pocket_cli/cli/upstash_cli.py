@@ -1,5 +1,7 @@
 import click
 
+from pocket.context import Context
+from pocket_cli.cli.resource_helper import require_configured
 from pocket_cli.cli.store_url_helper import run_store_url
 from pocket_cli.resources.upstash import Upstash
 
@@ -18,8 +20,8 @@ def upstash():
 def store_url(stage, key, force):
     """database を ensure し REDIS_URL を stored user secret に保存する。
 
-    provisioning="command" で deploy を Upstash credential なしにするための
-    provisioning ステップ。Upstash の URL は database の password を読み出すだけで
+    deploy は Upstash に触れないので、API key がある場所でこのコマンドを実行して
+    database を用意する。Upstash の URL は database の password を読み出すだけで
     冪等なので、何度実行しても同じ値になる。
     """
 
@@ -41,3 +43,22 @@ def store_url(stage, key, force):
         force=force,
         ensure_and_compute_url=ensure_and_compute_url,
     )
+
+
+@upstash.command()
+@click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
+@click.option(
+    "--yes", "-y", is_flag=True, default=False, help="確認プロンプトをスキップ"
+)
+def delete(stage, yes):
+    """stage の Upstash database を削除する (destroy では消えない)。"""
+    if not yes:
+        click.confirm(
+            "stage '%s' の Upstash database を削除しますか？(データは失われます)"
+            % stage,
+            abort=True,
+        )
+    context = Context.from_toml(stage=stage)
+    Upstash(
+        require_configured(context.upstash, "upstash is not configured for this stage")
+    ).delete_database()

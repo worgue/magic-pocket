@@ -60,10 +60,7 @@ pub enum StoreType {
 pub enum ManagedSecretType {
     AutoDatabaseUrl,
     Password,
-    NeonDatabaseUrl,
-    TidbDatabaseUrl,
     RdsDatabaseUrl,
-    UpstashRedisUrl,
     RsaPemBase64,
     CloudfrontSigningKey,
     SpaTokenSecret,

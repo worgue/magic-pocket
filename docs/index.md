@@ -36,7 +36,7 @@ SECRET_KEY = { type = "password", options = { length = 50 } }
 [dev.neon]
 project_name = "dev-myproject"
 
-[dev.container.main.secrets.managed]
+[dev.container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 
 [dev.container.main.handlers.wsgi]

@@ -160,8 +160,6 @@ class TiDb:
 
     @property
     def status(self) -> ResourceStatus:
-        # provisioning="command" の TiDB は get_resources で除外されるため、ここに
-        # 到達するのは deploy が TiDB を管理する provisioning="deploy" の場合のみ。
         if not self.context.public_key or not self.context.private_key:
             return "NOEXIST"
         if self.cluster is None:

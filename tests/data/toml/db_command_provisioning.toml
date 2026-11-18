@@ -4,14 +4,11 @@ project_name = "testprj"
 stages = ["dev"]
 
 [tidb]
-provisioning = "command"
 
 [neon]
 project_name = "dev-testprj"
-provisioning = "command"
 
 [upstash]
-provisioning = "command"
 
 [container.main]
 dockerfile_path = "tests/sampleprj/Dockerfile"
@@ -19,8 +16,7 @@ dockerfile_path = "tests/sampleprj/Dockerfile"
 [container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-# provisioning = "command" は「pocket は provider API を叩かず、事前 provision 済みの
-# URL を読むだけ」なので、managed (pocket が provisioning する) ではなく user の
-# stored mode で宣言するのが対の設定
+# pocket は provider の API を呼ばず、`pocket resource <db> store-url` が保存した
+# URL を読むだけなので、managed ではなく user の type で宣言する
 [container.main.secrets.user]
 DATABASE_URL = { type = "tidb_database_url" }

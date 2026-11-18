@@ -794,7 +794,7 @@ def _user_secret_only_shared_data() -> dict:
     example-neon と同じ形 (`type =` の stored user secret + shared 宣言なし)。
     """
     data = _base_data()
-    data["neon"] = {"project_name": "testprj", "provisioning": "command"}
+    data["neon"] = {"project_name": "testprj"}
     data["container"] = {
         "main": {
             "dockerfile_path": "Dockerfile",

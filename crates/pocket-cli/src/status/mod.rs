@@ -10,7 +10,6 @@ pub(crate) mod aws;
 pub(crate) mod container;
 pub mod dsql;
 pub(crate) mod inbound;
-pub(crate) mod providers;
 pub mod rds;
 pub(crate) mod report;
 pub(crate) mod resource;

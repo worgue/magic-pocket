@@ -16,18 +16,14 @@ use super::inbound::{check_removed_inbound, AwsInbound};
 use super::inbound_domain::{cleanup_unused_inbound_domains, AwsInboundDomain};
 use super::interaction::Interaction;
 use super::migrations;
-use super::neon::Neon;
 use super::parts;
 use super::pipeline::{self, DeployOptions, Ops, Phase};
-use super::provider_urls::ProviderUrls;
 use super::s3::{BucketWriter, CreateRetry};
 use super::secret_store::AwsSecretStore;
 use super::stacks::{AwsStacks, Stacks};
 use super::state::StateStore;
 use super::stored_value::AwsStoredValues;
-use super::tidb::{MysqlSql, TiDb};
 use super::upload::Uploader;
-use super::upstash::Upstash;
 use super::vpc::AwsVpcNetwork;
 use super::{dsql, efs::AwsEfs, lambda};
 use crate::aws_util::regional_config;
@@ -36,8 +32,7 @@ use crate::image_build::context_files::world_read_warning_summary;
 use crate::stack::cloudfront as cf_stack;
 use crate::stack::ops::{cfn_status, stack_outputs, ResourceStatus};
 use crate::status::aws::AwsEvaluator;
-use crate::status::providers::Http;
-use crate::status::report::{Evaluated, Evaluator as _};
+use crate::status::report::Evaluator as _;
 use crate::status::resource::{resources, Resource};
 use crate::status::sink::{Sink, Terminal};
 
@@ -115,12 +110,10 @@ impl AwsOps {
         &self,
         stacks: &'a AwsStacks<'a>,
         store: &'a AwsSecretStore,
-        urls: &'a ProviderUrls,
-    ) -> EdgeDeploy<'a, AwsStacks<'a>, AwsSecretStore, ProviderUrls> {
+    ) -> EdgeDeploy<'a, AwsStacks<'a>, AwsSecretStore> {
         EdgeDeploy {
             stacks,
             store,
-            urls,
             waits: EdgeWaits::default(),
         }
     }
@@ -414,11 +407,7 @@ impl Ops for AwsOps {
         let list = resources(&self.ctx);
         // 直前の書き込みを反映した状態を見るため、毎回読み直す
         let mut evaluator = AwsEvaluator::new(&self.ctx, self.sdk.clone());
-        match evaluator.status(&list[index], sink).await? {
-            Evaluated::Status(status) => Ok(status),
-            // status は資格情報が無い provider を飛ばすが、deploy は作れないので止める
-            Evaluated::Skip(reason) => bail!("{reason}"),
-        }
+        evaluator.status(&list[index], sink).await
     }
 
     async fn create(&mut self, index: usize, sink: &mut dyn Sink) -> Result<()> {
@@ -502,24 +491,24 @@ impl AwsOps {
         };
         match resource {
             Resource::CloudFrontAcm(cf) => {
-                let (store, urls) = (AwsSecretStore::new(sdk.clone()), ProviderUrls::new()?);
-                let edge = self.edge(&stacks, &store, &urls);
+                let store = AwsSecretStore::new(sdk.clone());
+                let edge = self.edge(&stacks, &store);
                 match create {
                     true => edge.acm_create(cf, sink).await,
                     false => edge.acm_update(cf).await,
                 }
             }
             Resource::CloudFrontWaf(cf) => {
-                let (store, urls) = (AwsSecretStore::new(sdk.clone()), ProviderUrls::new()?);
-                let edge = self.edge(&stacks, &store, &urls);
+                let store = AwsSecretStore::new(sdk.clone());
+                let edge = self.edge(&stacks, &store);
                 match create {
                     true => edge.waf_create(ctx, &cf.name, sink, self.reload()).await,
                     false => edge.waf_update(ctx, &cf.name, sink, self.reload()).await,
                 }
             }
             Resource::CloudFrontKeys(cf) => {
-                let (store, urls) = (AwsSecretStore::new(sdk.clone()), ProviderUrls::new()?);
-                let edge = self.edge(&stacks, &store, &urls);
+                let store = AwsSecretStore::new(sdk.clone());
+                let edge = self.edge(&stacks, &store);
                 match create {
                     true => edge.keys_create(ctx, &cf.name, sink, self.reload()).await,
                     false => edge.keys_update(ctx, &cf.name, sink, self.reload()).await,
@@ -532,36 +521,6 @@ impl AwsOps {
                     true => deploy.create(domain).await,
                     false => deploy.update(domain).await,
                 }
-            }
-            Resource::Neon(neon) => {
-                if !create {
-                    return no_update();
-                }
-                let http = Http::new()?;
-                Neon {
-                    http: &http,
-                    ctx: neon,
-                }
-                .create(sink)
-                .await
-            }
-            Resource::TiDb(tidb) => {
-                if !create {
-                    return no_update();
-                }
-                let http = Http::new()?;
-                TiDb::new(&http, tidb, &MysqlSql).create().await
-            }
-            Resource::Upstash(upstash) => {
-                if !create {
-                    return no_update();
-                }
-                let http = Http::new()?;
-                let upstash = Upstash {
-                    http: &http,
-                    ctx: upstash,
-                };
-                upstash.create(sink).await
             }
             Resource::S3(s3) => {
                 let client = aws_sdk_s3::Client::new(&regional_config(sdk, &s3.region));

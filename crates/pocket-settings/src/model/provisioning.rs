@@ -27,7 +27,6 @@ pub(crate) const ENV_BACKED_SECTIONS: &[(&str, &[EnvField])] = &[
             ("branch_name", None),
             ("parent_branch_name", None),
             ("api_key", Some("neon_api_key")),
-            ("provisioning", None),
         ],
     ),
     (
@@ -38,7 +37,6 @@ pub(crate) const ENV_BACKED_SECTIONS: &[(&str, &[EnvField])] = &[
             ("project", None),
             ("cluster", None),
             ("region", None),
-            ("provisioning", None),
         ],
     ),
     (
@@ -47,13 +45,14 @@ pub(crate) const ENV_BACKED_SECTIONS: &[(&str, &[EnvField])] = &[
             ("email", Some("upstash_email")),
             ("api_key", Some("upstash_api_key")),
             ("budget", None),
-            ("provisioning", None),
         ],
     ),
 ];
 
 /// 廃止したキー (案内つきで拒否する)
 const SKIP_CHECK_EXISTING: &str = "skip_check_existing";
+const PROVISIONING: &str = "provisioning";
+const REMOVED_KEYS: &[&str] = &[PROVISIONING, SKIP_CHECK_EXISTING];
 
 /// toml の key の typo を見る (Python の `check_env_backed_section_keys`)。
 /// `extra="ignore"` の Python モデルで typo を拾うための検査
@@ -84,7 +83,7 @@ pub(crate) fn check_section_keys(data: &toml::Table) -> Result<(), SettingsError
                     ),
                 ));
             }
-            if key != SKIP_CHECK_EXISTING && !valid.contains(&key.as_str()) {
+            if !REMOVED_KEYS.contains(&key.as_str()) && !valid.contains(&key.as_str()) {
                 let listed: Vec<String> = valid.iter().map(|k| format!("'{k}'")).collect();
                 return Err(SettingsError::value(
                     Vec::new(),
@@ -99,23 +98,33 @@ pub(crate) fn check_section_keys(data: &toml::Table) -> Result<(), SettingsError
     Ok(())
 }
 
-/// 廃止した `skip_check_existing` を案内つきで拒否する (Python の
-/// `_reject_skip_check_existing`)
-pub(crate) fn reject_skip_check_existing(data: &toml::Table) -> Result<(), SettingsError> {
+/// 廃止した `provisioning` / `skip_check_existing` を案内つきで拒否する (Python の
+/// `_reject_removed_db_keys`)
+pub(crate) fn reject_removed_keys(data: &toml::Table) -> Result<(), SettingsError> {
     for (section, _) in ENV_BACKED_SECTIONS {
         let Some(toml::Value::Table(t)) = data.get(*section) else {
             continue;
         };
-        if t.contains_key(SKIP_CHECK_EXISTING) {
-            return Err(SettingsError::value(
-                path(&[section]),
-                format!(
-                    "[{section}] skip_check_existing は廃止されました。\
-                     `provisioning = \"command\"` に置き換え、接続 URL を \
-                     [container.<name>.secrets.user] の type で宣言したうえで deploy 前に \
-                     `pocket resource {section} store-url --stage <stage>` を実行してください。"
-                ),
-            ));
+        let store_url = format!("`pocket resource {section} store-url --stage <stage>`");
+        let message = match t.get(PROVISIONING) {
+            Some(toml::Value::String(mode)) if mode == "command" => Some(format!(
+                "[{section}] provisioning は廃止されました (deploy は {section} に触れません)。\
+                 この行を削除してください。"
+            )),
+            Some(_) => Some(format!(
+                "[{section}] provisioning は廃止されました。deploy は {section} を用意しません。\
+                 この行を削除し、接続 URL を [container.<name>.secrets.user] の type で\
+                 宣言したうえで、API key がある場所で {store_url} を実行してください。"
+            )),
+            None if t.contains_key(SKIP_CHECK_EXISTING) => Some(format!(
+                "[{section}] skip_check_existing は廃止されました。この行を削除し、接続 URL を \
+                 [container.<name>.secrets.user] の type で宣言したうえで deploy 前に \
+                 {store_url} を実行してください。"
+            )),
+            None => None,
+        };
+        if let Some(message) = message {
+            return Err(SettingsError::value(path(&[section]), message));
         }
     }
     Ok(())
@@ -147,14 +156,6 @@ pub(crate) fn fill_from_env(data: &mut toml::Table, env: &BTreeMap<String, Strin
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ProvisioningMode {
-    #[default]
-    Deploy,
-    Command,
-}
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Neon {
@@ -167,8 +168,6 @@ pub struct Neon {
     pub parent_branch_name: Option<FormatStr>,
     #[serde(default)]
     pub api_key: Option<String>,
-    #[serde(default)]
-    pub provisioning: ProvisioningMode,
 }
 
 fn default_pg_version() -> i64 {
@@ -188,8 +187,6 @@ pub struct TiDb {
     pub cluster: Option<String>,
     #[serde(default = "default_tidb_region")]
     pub region: String,
-    #[serde(default)]
-    pub provisioning: ProvisioningMode,
 }
 
 fn default_tidb_region() -> String {
@@ -205,8 +202,6 @@ pub struct Upstash {
     pub api_key: Option<String>,
     #[serde(default = "default_budget", deserialize_with = "lax_int")]
     pub budget: i64,
-    #[serde(default)]
-    pub provisioning: ProvisioningMode,
 }
 
 fn default_budget() -> i64 {

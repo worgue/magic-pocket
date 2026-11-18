@@ -29,7 +29,7 @@
     "secret_arns": {}
   },
   "input": "tests/data/toml_vectors/provisioning.toml",
-  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"prov\",\n    \"stages\": [\n      \"dev\",\n      \"prod\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {},\n  \"secrets\": null,\n  \"neon\": {\n    \"pg_version\": 17,\n    \"api_key\": \"****\",\n    \"project_name\": \"prov-neon\",\n    \"branch_name\": \"prod-prov\",\n    \"branch_name_specified\": true,\n    \"stage\": \"prod\",\n    \"parent_branch_name\": \"main\",\n    \"name\": \"prov\",\n    \"role_name\": \"prov\",\n    \"provisioning\": \"deploy\"\n  },\n  \"tidb\": {\n    \"public_key\": \"****\",\n    \"private_key\": \"****\",\n    \"tidb_project\": \"p1\",\n    \"cluster_name\": \"c1\",\n    \"database_name\": \"prov_prod\",\n    \"region\": \"us-east-1\",\n    \"project_name\": \"prov\",\n    \"provisioning\": \"command\"\n  },\n  \"upstash\": {\n    \"email\": \"toml@example.com\",\n    \"api_key\": \"****\",\n    \"database_name\": \"prov-prod\",\n    \"budget\": 16,\n    \"provisioning\": \"deploy\"\n  },\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"prod-prov-pocket-\",\n  \"project_name\": \"prov\",\n  \"stage\": \"prod\"\n}",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"prov\",\n    \"stages\": [\n      \"dev\",\n      \"prod\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {},\n  \"secrets\": null,\n  \"neon\": {\n    \"pg_version\": 17,\n    \"api_key\": \"****\",\n    \"project_name\": \"prov-neon\",\n    \"branch_name\": \"prod-prov\",\n    \"branch_name_specified\": true,\n    \"stage\": \"prod\",\n    \"parent_branch_name\": \"main\",\n    \"name\": \"prov\",\n    \"role_name\": \"prov\"\n  },\n  \"tidb\": {\n    \"public_key\": \"****\",\n    \"private_key\": \"****\",\n    \"tidb_project\": \"p1\",\n    \"cluster_name\": \"c1\",\n    \"database_name\": \"prov_prod\",\n    \"region\": \"us-east-1\",\n    \"project_name\": \"prov\"\n  },\n  \"upstash\": {\n    \"email\": \"toml@example.com\",\n    \"api_key\": \"****\",\n    \"database_name\": \"prov-prod\",\n    \"budget\": 16\n  },\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"prod-prov-pocket-\",\n  \"project_name\": \"prov\",\n  \"stage\": \"prod\"\n}",
   "result": {
     "backup": null,
     "cloudfront": {},
@@ -99,7 +99,6 @@
       "parent_branch_name": "main",
       "pg_version": 17,
       "project_name": "prov-neon",
-      "provisioning": "deploy",
       "role_name": "prov",
       "stage": "prod"
     },
@@ -115,7 +114,6 @@
       "database_name": "prov_prod",
       "private_key": "vector-tidb-private-key",
       "project_name": "prov",
-      "provisioning": "command",
       "public_key": "vector-tidb-public-key",
       "region": "us-east-1",
       "tidb_project": "p1"
@@ -124,8 +122,7 @@
       "api_key": "vector-upstash-api-key",
       "budget": 16,
       "database_name": "prov-prod",
-      "email": "toml@example.com",
-      "provisioning": "deploy"
+      "email": "toml@example.com"
     }
   },
   "stage": "prod"

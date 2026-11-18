@@ -113,8 +113,7 @@
       "branch_name": null,
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-testprj",
-      "provisioning": "command"
+      "project_name": "dev-testprj"
     },
     "rds": null,
     "s3": null,
@@ -126,15 +125,13 @@
       "cluster": null,
       "private_key": "****",
       "project": null,
-      "provisioning": "command",
       "public_key": "****",
       "region": "ap-northeast-1"
     },
     "upstash": {
       "api_key": "****",
       "budget": 20,
-      "email": "vector@example.com",
-      "provisioning": "command"
+      "email": "vector@example.com"
     },
     "vpc": null
   },
@@ -241,8 +238,7 @@
       "branch_name": null,
       "parent_branch_name": null,
       "pg_version": 15,
-      "project_name": "dev-testprj",
-      "provisioning": "command"
+      "project_name": "dev-testprj"
     },
     "rds": null,
     "s3": null,
@@ -254,15 +250,13 @@
       "cluster": null,
       "private_key": "vector-tidb-private-key",
       "project": null,
-      "provisioning": "command",
       "public_key": "vector-tidb-public-key",
       "region": "ap-northeast-1"
     },
     "upstash": {
       "api_key": "vector-upstash-api-key",
       "budget": 20,
-      "email": "vector@example.com",
-      "provisioning": "command"
+      "email": "vector@example.com"
     },
     "vpc": null
   },

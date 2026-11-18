@@ -3,7 +3,7 @@
 use serde::Serialize;
 
 use super::general::VpcContext;
-use crate::model::{PasswordStrategy, ProvisioningMode, StoreType};
+use crate::model::{PasswordStrategy, StoreType};
 use crate::types::{RotationDuration, RotationSchedule};
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,7 +18,6 @@ pub struct NeonContext {
     pub parent_branch_name: Option<String>,
     pub name: String,
     pub role_name: String,
-    pub provisioning: ProvisioningMode,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -30,7 +29,6 @@ pub struct TiDbContext {
     pub database_name: String,
     pub region: String,
     pub project_name: String,
-    pub provisioning: ProvisioningMode,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -39,7 +37,6 @@ pub struct UpstashContext {
     pub api_key: Option<String>,
     pub database_name: String,
     pub budget: i64,
-    pub provisioning: ProvisioningMode,
 }
 
 /// backup plan の 1 rule (GFS の 1 階層)

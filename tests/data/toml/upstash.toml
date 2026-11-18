@@ -12,5 +12,5 @@ dockerfile_path = "tests/sampleprj/Dockerfile"
 [container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
 
-[container.main.secrets.managed]
+[container.main.secrets.user]
 REDIS_URL = { type = "upstash_redis_url" }

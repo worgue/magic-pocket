@@ -15,7 +15,6 @@ pg_version = "16"
 project = "p1"
 cluster = "c1"
 region = "us-east-1"
-provisioning = "command"
 
 [upstash]
 # Python (lax) と同じく桁区切りの文字列も受ける

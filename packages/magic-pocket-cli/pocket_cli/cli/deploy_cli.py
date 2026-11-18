@@ -32,12 +32,9 @@ from pocket_cli.resources.inbound_domain import (
     cleanup_unused_inbound_domains,
     confirm_inbound_domains,
 )
-from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
 from pocket_cli.resources.sqs_alert import echo_dead_letter_alert_warnings
-from pocket_cli.resources.tidb import TiDb
-from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
 
 
@@ -86,14 +83,8 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     # 受信ドメイン (identity / DKIM / MX) も先に作り、DKIM 検証を他の deploy と
     # 並行で進める (検証完了は deploy の最後に confirm_inbound_domains で待つ)
     resources.extend(InboundDomain(ctx) for ctx in context.inbound_domain.values())
-    # provisioning="command" の DB は deploy が管理しない (credential 不要)。
-    # provisioning は `pocket <db> store-url` に一任し、deploy は stored-read のみ。
-    if context.neon and context.neon.provisioning != "command":
-        resources.append(Neon(context.neon))
-    if context.tidb and context.tidb.provisioning != "command":
-        resources.append(TiDb(context.tidb))
-    if context.upstash and context.upstash.provisioning != "command":
-        resources.append(Upstash(context.upstash))
+    # Neon / TiDB / Upstash は deploy が管理しない (API key 不要)。用意は
+    # `pocket resource <db> store-url` に任せ、deploy は保存済みの接続 URL を読むだけ。
     if context.s3:
         resources.append(S3(context.s3, cloudfront_contexts=context.cloudfront))
     _append_infra_resources(resources, context, state_bucket)

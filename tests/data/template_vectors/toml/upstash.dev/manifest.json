@@ -26,9 +26,7 @@
         "Name": "project.com."
       }
     ],
-    "secret_arns": {
-      "dev-testprj-main-pocket": "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
-    }
+    "secret_arns": {}
   },
   "input": "tests/data/toml/upstash.toml",
   "stack_external": {
@@ -56,7 +54,7 @@
       "name": "dev-testprj-container-main",
       "region": "ap-southeast-1",
       "tags": [],
-      "template_hash": "8f87e1f3d4f96d45"
+      "template_hash": "e6bc4d1d9bcef617"
     }
   ],
   "stage": "dev"

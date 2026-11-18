@@ -2,10 +2,9 @@
 
 use magic_pocket_settings::context::{
     BackupContext, CloudFrontContext, ContainerContext, Context, DsqlContext, InboundContext,
-    InboundDomainContext, NeonContext, RdsContext, S3Context, TiDbContext, UpstashContext,
-    VpcContext,
+    InboundDomainContext, RdsContext, S3Context, VpcContext,
 };
-use magic_pocket_settings::model::{ProvisioningMode, StoreType};
+use magic_pocket_settings::model::StoreType;
 use serde_json::Value as Json;
 
 use crate::stack;
@@ -15,9 +14,6 @@ pub enum Resource<'a> {
     CloudFrontAcm(&'a CloudFrontContext),
     CloudFrontWaf(&'a CloudFrontContext),
     InboundDomain(&'a InboundDomainContext),
-    Neon(&'a NeonContext),
-    TiDb(&'a TiDbContext),
-    Upstash(&'a UpstashContext),
     S3(&'a S3Context),
     Vpc(&'a VpcContext),
     Dsql(&'a DsqlContext),
@@ -48,22 +44,7 @@ pub fn resources(ctx: &Context) -> Vec<Resource<'_>> {
         }
     }
     list.extend(ctx.inbound_domain.values().map(Resource::InboundDomain));
-    // provisioning = "command" の DB は deploy が管理しない
-    if let Some(neon) = ctx.neon.as_ref() {
-        if neon.provisioning != ProvisioningMode::Command {
-            list.push(Resource::Neon(neon));
-        }
-    }
-    if let Some(tidb) = ctx.tidb.as_ref() {
-        if tidb.provisioning != ProvisioningMode::Command {
-            list.push(Resource::TiDb(tidb));
-        }
-    }
-    if let Some(upstash) = ctx.upstash.as_ref() {
-        if upstash.provisioning != ProvisioningMode::Command {
-            list.push(Resource::Upstash(upstash));
-        }
-    }
+    // Neon / TiDB / Upstash は deploy が管理しない (`pocket resource <db> store-url` で用意する)
     if let Some(s3) = ctx.s3.as_ref() {
         list.push(Resource::S3(s3));
     }
@@ -122,9 +103,6 @@ impl Resource<'_> {
             Resource::CloudFrontAcm(_) => "CloudFrontAcm",
             Resource::CloudFrontWaf(_) => "CloudFrontWaf",
             Resource::InboundDomain(_) => "InboundDomain",
-            Resource::Neon(_) => "Neon",
-            Resource::TiDb(_) => "TiDb",
-            Resource::Upstash(_) => "Upstash",
             Resource::S3(_) => "S3",
             Resource::Vpc(_) => "Vpc",
             Resource::Dsql(_) => "Dsql",
@@ -148,11 +126,6 @@ impl Resource<'_> {
                 format!("Create WAFv2 IPSet + WebACL in us-east-1 for: {}", cf.name)
             }
             Resource::InboundDomain(_) | Resource::Inbound(_) => return None,
-            Resource::Neon(_) => "Create Neon branch, database, role, and endpoint".to_string(),
-            Resource::TiDb(_) => "Create TiDB cluster and database".to_string(),
-            Resource::Upstash(upstash) => {
-                format!("Create Upstash Redis database: {}", upstash.database_name)
-            }
             Resource::S3(s3) => format!("Create bucket: {}", s3.bucket_name),
             Resource::Vpc(vpc) => {
                 let mut text = format!(
@@ -221,9 +194,6 @@ impl Resource<'_> {
             | Resource::CloudFrontKeys(cf)
             | Resource::CloudFront(cf) => to_json(cf),
             Resource::InboundDomain(domain) => to_json(domain),
-            Resource::Neon(neon) => to_json(neon),
-            Resource::TiDb(tidb) => to_json(tidb),
-            Resource::Upstash(upstash) => to_json(upstash),
             Resource::S3(s3) => to_json(s3),
             Resource::Vpc(vpc) => to_json(vpc),
             Resource::Dsql(dsql) => to_json(dsql),
@@ -264,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn test_command_provisioned_databases_are_not_listed() {
+    fn test_provider_databases_are_not_listed() {
         let listed = names("toml/db_command_provisioning.dev");
         for name in ["Neon", "TiDb", "Upstash"] {
             assert!(!listed.contains(&name), "{name} は deploy の管理外");

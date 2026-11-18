@@ -406,8 +406,6 @@ class Neon:
 
     @property
     def status(self) -> ResourceStatus:
-        # provisioning="command" の Neon は get_resources で除外されるため、ここに
-        # 到達するのは deploy が Neon を管理する provisioning="deploy" の場合のみ。
         if self.working:
             return "COMPLETED"
         return "NOEXIST"
@@ -627,6 +625,5 @@ def ensure_and_compute_url(
         parent_branch_name=parent_branch_name,
         name=name,
         role_name=role_name,
-        provisioning="command",
     )
     return ensure_url_for_context(context)

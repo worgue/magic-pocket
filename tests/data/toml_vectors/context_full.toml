@@ -33,7 +33,7 @@ extra_resources = ["plain-name", "arn:aws:secretsmanager:ap-northeast-1:12345678
 
 [container.web.secrets.managed]
 SECRET_KEY = { type = "password", shared = true }
-DATABASE_URL = { type = "neon_database_url" }
+API_TOKEN = { type = "password", options = { length = 32 } }
 SIGNING = { type = "cloudfront_signing_key", options = { id_environ_suffix = 1 } }
 
 [container.web.secrets.user]

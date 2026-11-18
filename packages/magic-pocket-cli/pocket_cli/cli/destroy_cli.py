@@ -22,11 +22,8 @@ from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.inbound import Inbound
 from pocket_cli.resources.inbound_domain import InboundDomain
-from pocket_cli.resources.neon import Neon
 from pocket_cli.resources.rds import Rds
 from pocket_cli.resources.s3 import S3
-from pocket_cli.resources.tidb import TiDb
-from pocket_cli.resources.upstash import Upstash
 from pocket_cli.resources.vpc import Vpc
 
 
@@ -137,23 +134,22 @@ def _collect_legacy_container_targets(context: Context) -> list[str]:
     return targets
 
 
-def _neon_credential_missing(context: Context) -> bool:
-    """[neon] 宣言があるのに NEON_API_KEY が無ければ warning を出して True。"""
-    if not context.neon or context.neon.api_key:
-        return False
-    echo.warning(
-        "Neon: NEON_API_KEY が未設定のため Neon の確認・削除をスキップします "
-        "(stack の削除に Neon の資格情報は不要です。Neon branch は "
-        "pocket resource neon delete か Neon コンソールで削除してください)。"
-    )
-    return True
+def _warn_external_databases(context: Context):
+    """Neon / TiDB / Upstash は destroy では消さないので、消し方を案内する。
 
-
-def _warn_command_provisioned(label: str, hint: str):
-    echo.warning(
-        '%s は provisioning="command" のため destroy では削除しません。'
-        "%s で削除してください。" % (label, hint)
+    deploy と同じく destroy も provider の API を呼ばない (API key 不要)。
+    """
+    hints = (
+        (context.neon, "Neon", "pocket resource neon delete"),
+        (context.tidb, "TiDB", "pocket resource tidb delete"),
+        (context.upstash, "Upstash", "pocket resource upstash delete"),
     )
+    for declared, label, command in hints:
+        if declared:
+            echo.warning(
+                "%s は destroy では削除しません。不要なら %s で削除してください。"
+                % (label, command)
+            )
 
 
 def _collect_aws_database_targets(context: Context) -> list[str]:
@@ -174,45 +170,9 @@ def _collect_aws_database_targets(context: Context) -> list[str]:
     return targets
 
 
-def _collect_external_database_targets(context: Context) -> list[str]:
-    """外部 DB (TiDB / Upstash / Neon) の削除対象を収集
-
-    provisioning="command" の DB は deploy 同様 destroy も管理しない
-    (credential レス運用のため provider API を叩かない)。
-    dsql/rds と同様に存在確認し、確認プロンプトの一覧を実態に合わせる。
-    """
-    targets: list[str] = []
-    if context.tidb and context.tidb.provisioning != "command":
-        if TiDb(context.tidb).cluster:
-            targets.append("TiDB クラスタ")
-    if context.upstash and context.upstash.provisioning != "command":
-        if Upstash(context.upstash).database:
-            targets.append("Upstash Redis: %s" % context.upstash.database_name)
-    if (
-        context.neon
-        and context.neon.provisioning != "command"
-        and not _neon_credential_missing(context)
-    ):
-        neon = Neon(context.neon)
-        if neon.branch:
-            plan = neon.destroy_plan()
-            if plan == "project":
-                targets.append(
-                    "Neon プロジェクト '%s' (root branch のため project ごと削除)"
-                    % context.neon.project_name
-                )
-            elif plan == "branch":
-                targets.append("Neon ブランチ")
-            # "blocked" (root だが他 branch 同居) は削除できないため一覧に載せない
-            # (destroy 実行時に警告する)
-    return targets
-
-
 def _collect_database_targets(context: Context) -> list[str]:
-    """データベース関連の削除対象を収集"""
-    return _collect_aws_database_targets(context) + _collect_external_database_targets(
-        context
-    )
+    """データベース関連の削除対象を収集 (Neon / TiDB / Upstash は対象外)"""
+    return _collect_aws_database_targets(context)
 
 
 def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bool):
@@ -442,68 +402,6 @@ def _destroy_vpc(context: Context):
             echo.success("VPC was destroyed.")
 
 
-def _destroy_tidb(context: Context):
-    """TiDB クラスタを削除 (provisioning="command" は管理外)"""
-    if not context.tidb:
-        return
-    if context.tidb.provisioning == "command":
-        _warn_command_provisioned("TiDB", "pocket resource tidb delete")
-        return
-    if TiDb(context.tidb).cluster:
-        echo.log("Destroying TiDB cluster...")
-        TiDb(context.tidb).delete_cluster()
-        echo.success("TiDB cluster was deleted.")
-
-
-def _destroy_upstash(context: Context):
-    """Upstash Redis を削除 (provisioning="command" は管理外)"""
-    if not context.upstash:
-        return
-    if context.upstash.provisioning == "command":
-        _warn_command_provisioned("Upstash", "Upstash コンソール等")
-        return
-    upstash = Upstash(context.upstash)
-    if upstash.database:
-        upstash.delete_database()
-
-
-def _destroy_neon(context: Context):
-    """Neon ブランチを削除 (provisioning="command" は管理外)
-
-    root branch は Neon 仕様で branch 単位の削除ができない (422: cannot delete the
-    root branch) ため、project 内に他 branch が無ければ project ごと削除する。他
-    branch が同居している場合は巻き添えになるため何も消さず警告して続行する
-    (destroy 全体を異常終了させない)。
-    """
-    if not context.neon:
-        return
-    if context.neon.provisioning == "command":
-        _warn_command_provisioned("Neon", "pocket resource neon delete")
-        return
-    if _neon_credential_missing(context):
-        return
-    neon = Neon(context.neon)
-    if not neon.branch:
-        return
-    plan = neon.destroy_plan()
-    if plan == "blocked":
-        echo.warning(
-            "Neon branch '%s' は root branch のため単体削除できず、project '%s' には"
-            "他の branch が残っているため project 削除も行いません。"
-            "他 stage の destroy 後に pocket resource neon delete で削除してください。"
-            % (context.neon.branch_name, context.neon.project_name)
-        )
-        return
-    if plan == "project":
-        echo.log("Destroying Neon project (root branch のため project ごと削除)...")
-        neon.delete_project()
-        echo.success("Neon project '%s' was deleted." % context.neon.project_name)
-        return
-    echo.log("Destroying Neon branch...")
-    neon.delete_branch()
-    echo.success("Neon branch was deleted.")
-
-
 def _destroy_cloudfront_and_acm(context: Context):
     """CloudFront ディストリビューションと ACM 証明書を削除"""
     for name, cf_ctx in context.cloudfront.items():
@@ -566,14 +464,8 @@ def _destroy_resources(
         S3(context.s3).delete()
         echo.success("S3 bucket was deleted.")
 
-    # 5. TiDB クラスタ (provisioning="command" は deploy 同様 destroy も管理しない)
-    _destroy_tidb(context)
-
-    # 5.5. Upstash Redis
-    _destroy_upstash(context)
-
-    # 6. Neon ブランチ
-    _destroy_neon(context)
+    # 5. Neon / TiDB / Upstash は消さない (消し方の案内だけ)
+    _warn_external_databases(context)
 
     # 7. ステートバケット
     if with_state_bucket:

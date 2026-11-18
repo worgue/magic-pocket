@@ -629,7 +629,6 @@ impl<'a> Builder<'a> {
                 .map(|p| self.fmt(p.as_str())),
             name: self.s.project_name().to_string(),
             role_name: self.s.project_name().to_string(),
-            provisioning: neon.provisioning,
         }
     }
 
@@ -647,7 +646,6 @@ impl<'a> Builder<'a> {
             database_name: format!("{project}_{}", self.stage()).replace('-', "_"),
             region: tidb.region.clone(),
             project_name: project.to_string(),
-            provisioning: tidb.provisioning,
         }
     }
 
@@ -657,7 +655,6 @@ impl<'a> Builder<'a> {
             api_key: upstash.api_key.clone(),
             database_name: format!("{}-{}", self.s.project_name(), self.stage()),
             budget: upstash.budget,
-            provisioning: upstash.provisioning,
         }
     }
 

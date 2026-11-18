@@ -49,8 +49,11 @@ timeout = 600
 [container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
-DATABASE_URL = { type = "neon_database_url" }
 CF_MEDIA_KEY = { type = "cloudfront_signing_key", options = { pem_base64_environ_suffix = "_PEM_BASE64", pub_base64_environ_suffix = "_PUB_BASE64", id_environ_suffix = "_ID" } }
+
+# deploy の前に `pocket resource neon store-url --stage=<stage>` で保存しておく
+[container.main.secrets.user]
+DATABASE_URL = { type = "neon_database_url" }
 
 [container.main.django.storages]
 default = { store = "s3", distribution = "usercontent" }
@@ -145,6 +148,8 @@ domain = "media.example.com"
 
     [container.main.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }
+
+    [container.main.secrets.user]
     DATABASE_URL = { type = "tidb_database_url" }
     ```
 
@@ -176,7 +181,6 @@ CloudFront Function が Cookie 内の HMAC-SHA256 トークンを検証し、未
 ```toml
 [container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
-DATABASE_URL = { type = "neon_database_url" }
 SPA_TOKEN_SECRET = { type = "spa_token_secret" }
 
 [cloudfront.web]

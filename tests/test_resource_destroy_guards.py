@@ -7,6 +7,7 @@ from pocket_cli.cli import container_cli, destroy_cli
 from pocket_cli.cli.cloudfront_cli import cloudfront
 from pocket_cli.cli.neon_cli import neon
 from pocket_cli.cli.tidb_cli import tidb
+from pocket_cli.cli.upstash_cli import upstash
 
 
 def test_awscontainer_destroy_uses_shared_teardown(monkeypatch, use_toml):
@@ -86,81 +87,11 @@ def test_destroy_subcommands_require_confirmation(monkeypatch):
     _assert_confirm_guard(runner, cloudfront, ["destroy", "--stage", "dev"])
     _assert_confirm_guard(runner, neon, ["delete", "--stage", "dev"])
     _assert_confirm_guard(runner, tidb, ["delete", "--stage", "dev"])
+    _assert_confirm_guard(runner, upstash, ["delete", "--stage", "dev"])
 
 
-def _fake_neon(plan: str, calls: list[str]):
-    """destroy_plan の結果に応じた削除経路を検証する Neon スタブ"""
-
-    class _FakeNeon:
-        branch = object()
-
-        def destroy_plan(self):
-            return plan
-
-        def delete_project(self):
-            calls.append("project")
-
-        def delete_branch(self):
-            calls.append("branch")
-
-    return _FakeNeon()
-
-
-def test_destroy_neon_root_branch_deletes_project(use_toml, monkeypatch):
-    """root branch 単独の project は branch delete (422 で異常終了) ではなく
-    project delete で丸ごと削除すること (回帰テスト)"""
-    from pocket.context import Context
-
-    use_toml("tests/data/toml/default.toml")
-    context = Context.from_toml(stage="dev")
-    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
-    assert context.neon is not None
-    context = context.model_copy(
-        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
-    )
-    calls: list[str] = []
-    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("project", calls))
-    destroy_cli._destroy_neon(context)
-    assert calls == ["project"]
-
-
-def test_destroy_neon_blocked_skips_without_error(use_toml, monkeypatch):
-    """root branch に他 branch が同居する場合は何も消さず警告して続行すること
-    (project 削除は他 stage の巻き添えになる)"""
-    from pocket.context import Context
-
-    use_toml("tests/data/toml/default.toml")
-    context = Context.from_toml(stage="dev")
-    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
-    assert context.neon is not None
-    context = context.model_copy(
-        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
-    )
-    calls: list[str] = []
-    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("blocked", calls))
-    destroy_cli._destroy_neon(context)
-    assert calls == []
-
-
-def test_destroy_neon_non_root_deletes_branch(use_toml, monkeypatch):
-    """非 root branch は従来どおり branch 単位で削除すること"""
-    from pocket.context import Context
-
-    use_toml("tests/data/toml/default.toml")
-    context = Context.from_toml(stage="dev")
-    # NEON_API_KEY 無しでは Neon を skip する (KN1456) ため、資格情報ありに揃える
-    assert context.neon is not None
-    context = context.model_copy(
-        update={"neon": context.neon.model_copy(update={"api_key": "k"})}
-    )
-    calls: list[str] = []
-    monkeypatch.setattr(destroy_cli, "Neon", lambda ctx: _fake_neon("branch", calls))
-    destroy_cli._destroy_neon(context)
-    assert calls == ["branch"]
-
-
-def test_collect_database_targets_skips_command_provisioned(use_toml):
-    """provisioning="command" の DB は削除対象一覧に載らないこと"""
+def test_collect_database_targets_skips_provider_databases(use_toml):
+    """Neon / TiDB / Upstash は削除対象の一覧に載らないこと"""
     from pocket.context import Context
 
     use_toml("tests/data/toml/db_command_provisioning.toml")
@@ -168,23 +99,15 @@ def test_collect_database_targets_skips_command_provisioned(use_toml):
     assert destroy_cli._collect_database_targets(context) == []
 
 
-def test_destroy_resources_does_not_touch_command_provisioned(use_toml, monkeypatch):
-    """provisioning="command" の DB へ provider API を叩かないこと
-
-    deploy 側は provisioning != "command" で除外するのに destroy に分岐が無く、
-    credential 未設定だと teardown が途中 (CloudFront 等の削除後) で止まっていた。
-    """
+def test_destroy_resources_only_warns_about_provider_databases(
+    use_toml, monkeypatch, capsys
+):
+    """destroy は provider の DB を消さず、消し方を案内するだけ (API key 不要)。"""
     from pocket.context import Context
 
     use_toml("tests/data/toml/db_command_provisioning.toml")
     context = Context.from_toml(stage="dev")
 
-    def _boom(*args, **kwargs):
-        raise AssertionError("provisioning=command の DB に provider API を呼んだ")
-
-    monkeypatch.setattr(destroy_cli, "TiDb", _boom)
-    monkeypatch.setattr(destroy_cli, "Neon", _boom)
-    monkeypatch.setattr(destroy_cli, "Upstash", _boom)
     monkeypatch.setattr(destroy_cli, "_destroy_cloudfront_and_acm", lambda c: None)
     monkeypatch.setattr(destroy_cli, "_destroy_containers", lambda c, w: None)
     monkeypatch.setattr(destroy_cli, "_destroy_dsql", lambda c: None)
@@ -192,3 +115,10 @@ def test_destroy_resources_does_not_touch_command_provisioned(use_toml, monkeypa
     monkeypatch.setattr(destroy_cli, "_destroy_vpc", lambda c: None)
 
     destroy_cli._destroy_resources(context, with_secrets=False, with_state_bucket=False)
+    output = "".join(capsys.readouterr())
+    for command in (
+        "pocket resource neon delete",
+        "pocket resource tidb delete",
+        "pocket resource upstash delete",
+    ):
+        assert command in output

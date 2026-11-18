@@ -44,7 +44,7 @@
                 ],
                 "Resource": [
                   {
-                    "Fn::Sub": "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
+                    "Fn::Sub": "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
                   }
                 ]
               }
@@ -79,28 +79,28 @@
   "scheduler_role": null,
   "name": "main",
   "vpc": null,
-  "secrets": {
+  "secrets": null,
+  "shared_secrets": {
     "store": "sm",
-    "managed": {
+    "managed": {},
+    "user": {
       "REDIS_URL": {
+        "name": "dev-testprj-pocket-user/upstash_redis_url",
         "type": "upstash_redis_url",
-        "options": {},
-        "shared": false
+        "store": null
       }
     },
-    "user": {},
     "extra_resources": [],
     "require_list_secrets": false,
     "region": "ap-southeast-1",
-    "pocket_key": "dev-testprj-main-pocket",
+    "pocket_key": "dev-testprj-pocket",
     "stage": "dev",
     "project_name": "testprj",
     "allowed_sm_resources": [
-      "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
+      "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
     ],
     "allowed_ssm_resources": []
   },
-  "shared_secrets": null,
   "dockerfile_path": "tests/sampleprj/Dockerfile",
   "envs": {
     "DEPLOY_HASH": "abc1234"
@@ -154,7 +154,7 @@
   },
   "lambda_architecture": "x86_64",
   "allowed_sm_resources": [
-    "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
+    "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
   ],
   "allowed_ssm_resources": [],
   "require_list_secrets": false,

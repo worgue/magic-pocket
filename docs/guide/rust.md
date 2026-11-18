@@ -183,6 +183,9 @@ apigateway = {}
 
 [container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
+
+# deploy の前に `pocket resource neon store-url --stage=<stage>` で保存しておく
+[container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
@@ -193,9 +196,9 @@ DATABASE_URL = { type = "neon_database_url" }
 
 | type | 備考 |
 |------|------|
-| `neon_database_url` | 上記の例。VPC 不要 |
-| `tidb_database_url` | VPC 不要 |
-| `rds_database_url` | VPC 必須。認証情報から実行時に `DATABASE_URL` を構築 |
+| `neon_database_url` | 上記の例 (`secrets.user`)。VPC 不要 |
+| `tidb_database_url` | `secrets.user` に書く。VPC 不要 |
+| `rds_database_url` | `secrets.managed` に書く。VPC 必須。認証情報から実行時に `DATABASE_URL` を構築 |
 | （DSQL） | `[dsql]` を設定。IAM 認証トークンを `POCKET_DSQL_TOKEN` にセット |
 
 RDS を使う場合は `[rds]` と VPC の設定が必要です。

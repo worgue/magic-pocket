@@ -15,7 +15,6 @@ import click
 import pytest
 from botocore.exceptions import ClientError
 from pocket_cli.cli import store_url_helper
-from pocket_cli.mediator import Mediator
 from pydantic import ValidationError
 
 from pocket import settings
@@ -257,34 +256,3 @@ def test_run_store_url_upstash_single_candidate_puts(base_settings, monkeypatch)
     assert fake.puts == [
         ("/test-testprj-pocket-user/upstash_redis_url", "rediss://default:pw@h:6379")
     ]
-
-
-# --- computed deprecation warning --------------------------------------------
-
-
-def test_computed_neon_managed_emits_deprecation_warning(base_settings, monkeypatch):
-    secrets = settings.Secrets(
-        store="ssm",
-        managed={"DATABASE_URL": settings.ManagedSecretSpec(type="neon_database_url")},
-    )
-    sc = SecretsContext.from_settings(secrets, base_settings)
-
-    class _FakeStore:
-        secrets: dict = {}
-
-        def update_secrets(self, d):
-            pass
-
-    fake_store = _FakeStore()
-    # pocket_store は cached_property。class 側を property で差し替えて boto3 を避ける。
-    monkeypatch.setattr(
-        type(sc), "pocket_store", property(lambda self: fake_store), raising=False
-    )
-    mediator = Mediator(_ctx_stub(sc))
-    monkeypatch.setattr(Mediator, "_generate_secret", lambda self, spec: "postgres://x")
-    warnings: list[str] = []
-    monkeypatch.setattr(
-        "pocket_cli.mediator.echo.warning", lambda msg: warnings.append(msg)
-    )
-    mediator.create_pocket_managed_secrets()
-    assert any("deprecated" in w for w in warnings)

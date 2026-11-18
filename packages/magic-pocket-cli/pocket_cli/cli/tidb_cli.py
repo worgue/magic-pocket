@@ -72,10 +72,10 @@ def delete(stage, yes):
 def store_url(stage, key, force):
     """cluster/db を ensure し DATABASE_URL を stored user secret に保存する。
 
-    provisioning="command" で deploy を TiDB credential なしにするための provisioning
-    ステップ。注意: TiDB serverless は password reveal API が無いため、本コマンドは
-    実行のたびに root password をローテーションする (既存 secret は --force が必要。
-    実行後は consumer の redeploy が前提)。
+    deploy は TiDB に触れないので、API key がある場所でこのコマンドを実行して
+    cluster / database を用意する。注意: TiDB serverless は password reveal API が
+    無いため、本コマンドは実行のたびに root password をローテーションする
+    (既存 secret は --force が必要。実行後は consumer の redeploy が前提)。
     """
 
     def ensure_and_compute_url(context):

@@ -9,9 +9,8 @@ project_name = "pocket-example-neon"
 [neon]
 project_name = "dev-magic-pocket"
 # branch_name 省略時は project の default ブランチ (main) を使う。dev stage は main を共有。
-# provisioning = "command": deploy は Neon に一切触れない (credential 不要)。接続 URL は
-# 事前に `pocket resource neon store-url --stage <stage>` で SSM の user secret へ保存する。
-provisioning = "command"
+# deploy は Neon に一切触れない (API key 不要)。接続 URL は事前に
+# `pocket resource neon store-url --stage <stage>` で SSM の user secret へ保存する。
 
 [sandbox.neon]
 project_name = "dev-magic-pocket"
@@ -43,7 +42,7 @@ store = "ssm"
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 
-# DATABASE_URL は stored user secret (provisioning = "command")。deploy 前に
+# DATABASE_URL は事前に保存した user secret。deploy 前に
 # `pocket resource neon store-url --stage <stage>` で SSM (/{pocket_key}-user/neon_database_url)
 # へ保存しておく。deploy は provider を叩かず保存済み URL を読むだけ。
 [container.main.secrets.user]

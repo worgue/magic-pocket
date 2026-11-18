@@ -6,9 +6,6 @@ from typing import TYPE_CHECKING, Literal
 
 from pocket.utils import echo
 from pocket_cli import migrations
-from pocket_cli.resources.neon import Neon, NeonResourceIsNotReady
-from pocket_cli.resources.tidb import TiDb, TiDbResourceIsNotReady
-from pocket_cli.resources.upstash import Upstash, UpstashResourceIsNotReady
 
 if TYPE_CHECKING:
     from pocket.context import Context
@@ -54,19 +51,6 @@ class Mediator:
         generated: dict[str, str | dict[str, str]] = {}
         for key, managed_secret in sc.managed.items():
             if key not in sc.pocket_store.secrets:
-                if managed_secret.type in (
-                    "neon_database_url",
-                    "tidb_database_url",
-                    "upstash_redis_url",
-                ):
-                    echo.warning(
-                        "computed DB/KVS URL (managed type=%s) は deprecated です。"
-                        "deploy が管理 API を叩いて URL を算出する方式から、"
-                        "[<db>] provisioning + [container.<name>.secrets.user] の "
-                        "type + "
-                        "`pocket <db> store-url` (stored) への移行を推奨します。"
-                        % managed_secret.type
-                    )
                 value = self._generate_secret(managed_secret)
                 if value is None:
                     msg = "Secret generation for %s is failed." % key
@@ -160,10 +144,7 @@ class Mediator:
         generators = {
             "auto_database_url": self._get_auto_database_url,
             "password": lambda: self._generate_password(spec.options),
-            "neon_database_url": self._get_neon_database_url,
-            "tidb_database_url": self._get_tidb_database_url,
             "rds_database_url": self._get_rds_database_url,
-            "upstash_redis_url": self._get_upstash_redis_url,
             "rsa_pem_base64": self._generate_rsa_pem,
             "cloudfront_signing_key": self._generate_rsa_pem,
             "spa_token_secret": lambda: secrets.token_hex(32),
@@ -241,53 +222,19 @@ class Mediator:
             raise Exception("chars must be string")
         return "".join(secrets.choice(chars) for _ in range(length))
 
-    def _get_neon_database_url(self):
-        if not self.context.neon:
-            raise Exception("neon is not configured. Please set neon in pocket.toml")
-        try:
-            return Neon(self.context.neon).database_url
-        except NeonResourceIsNotReady:
-            echo.warning("neon database is not ready")
-            return None
-
-    def _get_upstash_redis_url(self):
-        if not self.context.upstash:
-            raise RuntimeError(
-                "upstash is not configured. Please set upstash in pocket.toml"
-            )
-        try:
-            return Upstash(self.context.upstash).redis_url
-        except UpstashResourceIsNotReady:
-            echo.warning("upstash redis is not ready")
-            return None
-
     def _get_auto_database_url(self):
-        """pocket.toml の DB 設定を自動検出して DATABASE_URL を生成する"""
-        dbs = []
-        if self.context.neon:
-            dbs.append("neon")
-        if self.context.tidb:
-            dbs.append("tidb")
+        """[rds] があれば rds_database_url と同じ値を返す。
+
+        Neon / TiDB の接続 URL は deploy では作らない (`pocket resource <db>
+        store-url` が保存した user secret を使う) ので、対象は [rds] だけ。
+        """
         if self.context.rds:
-            dbs.append("rds")
-        if len(dbs) == 0:
-            raise RuntimeError(
-                "auto_database_url: DB が設定されていません。"
-                "[neon], [tidb], [rds] のいずれかを pocket.toml に追加してください。"
-            )
-        if len(dbs) > 1:
-            raise RuntimeError(
-                "auto_database_url: 複数の DB が設定されています: %s。"
-                "neon_database_url, tidb_database_url, rds_database_url "
-                "のいずれかを明示的に指定してください。" % ", ".join(dbs)
-            )
-        db = dbs[0]
-        if db == "neon":
-            return self._get_neon_database_url()
-        if db == "tidb":
-            return self._get_tidb_database_url()
-        # rds: runtime の _set_rds_database_url に委譲
-        return self._get_rds_database_url()
+            return self._get_rds_database_url()
+        raise RuntimeError(
+            "auto_database_url が使えるのは [rds] だけです。Neon / TiDB は "
+            "[container.<name>.secrets.user] に type で宣言し、"
+            "`pocket resource <db> store-url` で接続 URL を保存してください。"
+        )
 
     def _get_rds_database_url(self):
         """RDS の DATABASE_URL は runtime で動的構築されるため、
@@ -299,12 +246,3 @@ class Mediator:
         if not self.context.rds:
             raise RuntimeError("rds is not configured. Please set rds in pocket.toml")
         return "__rds_runtime__"
-
-    def _get_tidb_database_url(self):
-        if not self.context.tidb:
-            raise RuntimeError("tidb is not configured. Please set tidb in pocket.toml")
-        try:
-            return TiDb(self.context.tidb).database_url
-        except TiDbResourceIsNotReady:
-            echo.warning("tidb database is not ready")
-            return None

@@ -143,14 +143,7 @@ pub fn state_info(resource: &Resource<'_>, extra: Option<&str>) -> Json {
         Resource::InboundDomain(domain) => {
             json!({"inbound_domain": {domain.domain.clone(): {"stack_name": domain.stack_name}}})
         }
-        Resource::Neon(neon) => json!({
-            "neon": {"project_name": neon.project_name, "branch_name": neon.branch_name}
-        }),
-        // Python 版の TiDb は state に何も書かない
-        Resource::TiDb(_) | Resource::Backup(_) => json!({}),
-        Resource::Upstash(upstash) => {
-            json!({"upstash": {"database_name": upstash.database_name}})
-        }
+        Resource::Backup(_) => json!({}),
         Resource::S3(s3) => json!({"s3": {"bucket_name": s3.bucket_name}}),
         Resource::Vpc(vpc) => match vpc.efs.as_ref() {
             Some(efs) => json!({"efs": {"name": efs.name}}),

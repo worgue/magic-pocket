@@ -26,19 +26,17 @@
         "Name": "project.com."
       }
     ],
-    "secret_arns": {
-      "dev-testprj-main-pocket": "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
-    }
+    "secret_arns": {}
   },
   "input": "tests/data/toml/upstash.toml",
-  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-southeast-1\",\n    \"project_name\": \"testprj\",\n    \"stages\": [\n      \"dev\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": {\n        \"store\": \"sm\",\n        \"managed\": {\n          \"REDIS_URL\": {\n            \"type\": \"upstash_redis_url\",\n            \"options\": {},\n            \"shared\": false\n          }\n        },\n        \"user\": {},\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-southeast-1\",\n        \"pocket_key\": \"dev-testprj-main-pocket\",\n        \"stage\": \"dev\",\n        \"project_name\": \"testprj\",\n        \"allowed_sm_resources\": [\n          \"arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf\"\n        ],\n        \"allowed_ssm_resources\": []\n      },\n      \"shared_secrets\": null,\n      \"dockerfile_path\": \"tests/sampleprj/Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-southeast-1\",\n      \"slug\": \"dev-testprj\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-testprj-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket.django.lambda_handlers.wsgi_handler\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-southeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"dev-testprj-pocket-main-wsgi\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-wsgi\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-testprj-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": false,\n      \"use_ses\": false,\n      \"use_route53\": false,\n      \"use_sqs\": false,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-testprj-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [\n        \"arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf\"\n      ],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": {\n    \"store\": \"sm\",\n    \"managed\": {},\n    \"user\": {},\n    \"extra_resources\": [],\n    \"require_list_secrets\": false,\n    \"region\": \"ap-southeast-1\",\n    \"pocket_key\": \"dev-testprj-pocket\",\n    \"stage\": \"dev\",\n    \"project_name\": \"testprj\",\n    \"allowed_sm_resources\": [],\n    \"allowed_ssm_resources\": []\n  },\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": {\n    \"email\": \"vector@example.com\",\n    \"api_key\": \"****\",\n    \"database_name\": \"testprj-dev\",\n    \"budget\": 10,\n    \"provisioning\": \"deploy\"\n  },\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-testprj-pocket-\",\n  \"project_name\": \"testprj\",\n  \"stage\": \"dev\"\n}",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-southeast-1\",\n    \"project_name\": \"testprj\",\n    \"stages\": [\n      \"dev\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"main\": {\n      \"name\": \"main\",\n      \"vpc\": null,\n      \"secrets\": null,\n      \"shared_secrets\": {\n        \"store\": \"sm\",\n        \"managed\": {},\n        \"user\": {\n          \"REDIS_URL\": {\n            \"name\": \"dev-testprj-pocket-user/upstash_redis_url\",\n            \"type\": \"upstash_redis_url\",\n            \"store\": null\n          }\n        },\n        \"extra_resources\": [],\n        \"require_list_secrets\": false,\n        \"region\": \"ap-southeast-1\",\n        \"pocket_key\": \"dev-testprj-pocket\",\n        \"stage\": \"dev\",\n        \"project_name\": \"testprj\",\n        \"allowed_sm_resources\": [\n          \"arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????\"\n        ],\n        \"allowed_ssm_resources\": []\n      },\n      \"dockerfile_path\": \"tests/sampleprj/Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-southeast-1\",\n      \"slug\": \"dev-testprj\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-testprj-pocket-\",\n      \"handlers\": {\n        \"wsgi\": {\n          \"command\": \"pocket.django.lambda_handlers.wsgi_handler\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-southeast-1\",\n          \"apigateway\": null,\n          \"sqs\": null,\n          \"key\": \"wsgi\",\n          \"function_name\": \"dev-testprj-pocket-main-wsgi\",\n          \"log_group_name\": \"/aws/lambda/dev-testprj-pocket-main-wsgi\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"WsgiCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-testprj-pocket-main-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": false,\n      \"use_ses\": false,\n      \"use_route53\": false,\n      \"use_sqs\": false,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-testprj-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [\n        \"arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????\"\n      ],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": {\n    \"store\": \"sm\",\n    \"managed\": {},\n    \"user\": {\n      \"REDIS_URL\": {\n        \"name\": \"dev-testprj-pocket-user/upstash_redis_url\",\n        \"type\": \"upstash_redis_url\",\n        \"store\": null\n      }\n    },\n    \"extra_resources\": [],\n    \"require_list_secrets\": false,\n    \"region\": \"ap-southeast-1\",\n    \"pocket_key\": \"dev-testprj-pocket\",\n    \"stage\": \"dev\",\n    \"project_name\": \"testprj\",\n    \"allowed_sm_resources\": [\n      \"arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????\"\n    ],\n    \"allowed_ssm_resources\": []\n  },\n  \"neon\": null,\n  \"tidb\": null,\n  \"upstash\": {\n    \"email\": \"vector@example.com\",\n    \"api_key\": \"****\",\n    \"database_name\": \"testprj-dev\",\n    \"budget\": 10\n  },\n  \"dsql\": null,\n  \"rds\": null,\n  \"backup\": null,\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-testprj-pocket-\",\n  \"project_name\": \"testprj\",\n  \"stage\": \"dev\"\n}",
   "result": {
     "backup": null,
     "cloudfront": {},
     "container": {
       "main": {
         "allowed_sm_resources": [
-          "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
+          "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
         ],
         "allowed_ssm_resources": [],
         "build": {
@@ -88,28 +86,28 @@
         "region": "ap-southeast-1",
         "require_list_secrets": false,
         "resource_prefix": "dev-testprj-pocket-",
-        "secrets": {
+        "secrets": null,
+        "shared_secrets": {
           "allowed_sm_resources": [
-            "arn:aws:secretsmanager:ap-southeast-1:123456789012:secret:dev-testprj-main-pocket-AbCdEf"
+            "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
           ],
           "allowed_ssm_resources": [],
           "extra_resources": [],
-          "managed": {
-            "REDIS_URL": {
-              "options": {},
-              "shared": false,
-              "type": "upstash_redis_url"
-            }
-          },
-          "pocket_key": "dev-testprj-main-pocket",
+          "managed": {},
+          "pocket_key": "dev-testprj-pocket",
           "project_name": "testprj",
           "region": "ap-southeast-1",
           "require_list_secrets": false,
           "stage": "dev",
           "store": "sm",
-          "user": {}
+          "user": {
+            "REDIS_URL": {
+              "name": "dev-testprj-pocket-user/upstash_redis_url",
+              "store": null,
+              "type": "upstash_redis_url"
+            }
+          }
         },
-        "shared_secrets": null,
         "signing_key_imports": {},
         "slug": "dev-testprj",
         "stage": "dev",
@@ -183,7 +181,9 @@
     "s3": null,
     "scheduler": {},
     "secrets": {
-      "allowed_sm_resources": [],
+      "allowed_sm_resources": [
+        "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev-testprj-pocket-user/upstash_redis_url-??????"
+      ],
       "allowed_ssm_resources": [],
       "extra_resources": [],
       "managed": {},
@@ -193,7 +193,13 @@
       "require_list_secrets": false,
       "stage": "dev",
       "store": "sm",
-      "user": {}
+      "user": {
+        "REDIS_URL": {
+          "name": "dev-testprj-pocket-user/upstash_redis_url",
+          "store": null,
+          "type": "upstash_redis_url"
+        }
+      }
     },
     "ses": null,
     "stage": "dev",
@@ -202,8 +208,7 @@
       "api_key": "vector-upstash-api-key",
       "budget": 10,
       "database_name": "testprj-dev",
-      "email": "vector@example.com",
-      "provisioning": "deploy"
+      "email": "vector@example.com"
     }
   },
   "stage": "dev"

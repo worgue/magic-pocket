@@ -58,9 +58,6 @@ pocket deploy --stage=dev
 
 `pocket.toml` の設定に応じて、以下の処理が行われます。
 
-- Neonへのデータベース作成（`[neon]` 設定時）
-- TiDB クラスターの作成（`[tidb]` 設定時）
-- Upstash Redis データベースの作成（`[upstash]` 設定時）
 - RDS Aurora クラスターの作成（`[rds]` 設定時）
 - Secrets Managerへのシークレット登録
 - S3バケットの作成と権限設定
@@ -75,7 +72,6 @@ pocket deploy --stage=dev
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
-| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 Rust 版は [`pocket-rs deploy`](#pocket-rs-deploy) です（同じ処理。今後の新機能は Rust 版だけに入ります）。
 
@@ -126,7 +122,6 @@ pocket promote --stage=stg --commit-hash=<full-sha>
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
-| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 Rust 版は [`pocket-rs promote`](#pocket-rs-promote) です。
 
@@ -173,12 +168,12 @@ pocket destroy --stage=dev
 5. RDS Aurora クラスター（Final Snapshot 付き）
 6. VPC（CFNスタック + EFS。RDS の削除後）と CloudFront 署名鍵（`signing_key` 設定時）
 7. S3 バケット
-8. TiDB クラスタ
-9. Upstash Redis
-10. Neon ブランチ（root branch は Neon 仕様で単体削除できないため、project 内に
-    他の branch がなければ project ごと削除。他の branch が残っている場合は
-    巻き添えを避けるため警告してスキップ）
-11. ステートバケット（`--with-state-bucket` 指定時のみ）
+8. ステートバケット（`--with-state-bucket` 指定時のみ）
+
+!!! note "Neon / TiDB / Upstash は削除されません"
+    deploy と同じく、destroy も provider の API を呼びません。不要になった DB は
+    `pocket resource neon delete` / `pocket resource tidb delete` /
+    `pocket resource upstash delete` で消してください（destroy の最後に案内が出ます）。
 
 !!! note "ECR リポジトリの扱い"
     [`[container.main].ecr_name`](configuration.md#container) を明示指定している場合、
@@ -551,7 +546,6 @@ pocket django deploy --stage=dev
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
 | `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
-| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 !!! note "`pocket deploy` との違い"
     `pocket deploy` はインフラのデプロイのみ行います。
@@ -583,7 +577,6 @@ pocket django promote --stage=stg --commit-hash=<full-sha>
 | `--openpath` | デプロイ後にブラウザで開くパス |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
 | `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
-| `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
 ### build once と昇格 {#build-once}
 
@@ -799,7 +792,7 @@ pocket resource neon status --stage=dev
 # コンテキスト（テンプレートに渡される変数）を表示
 pocket resource neon context --stage=dev
 
-# ブランチの作成（通常は pocket deploy 経由で実行）
+# ブランチの作成（通常は store-url が行う）
 pocket resource neon create --stage=dev
 
 # データベースの削除 + 再作成
@@ -813,8 +806,8 @@ pocket resource neon branch-out --stage=feature1 --base-stage=dev
 #  なければ再確認のうえ project ごと削除。他の branch が残る場合はエラーで中断)
 pocket resource neon delete --stage=dev
 
-# provisioning="command" 用: branch/role/db を ensure し DATABASE_URL を stored user
-# secret に保存（既存があれば --force で上書き）
+# branch / role / database を用意し、DATABASE_URL を user secret に保存
+# （deploy の前に、Neon の API キーがある場所で実行する。既存があれば --force で上書き）
 pocket resource neon store-url --stage=dev
 ```
 
@@ -837,7 +830,7 @@ pocket resource tidb status --stage=dev
 # コンテキストを表示
 pocket resource tidb context --stage=dev
 
-# クラスターの作成（通常は pocket deploy 経由で実行）
+# クラスターの作成（通常は store-url が行う）
 pocket resource tidb create --stage=dev
 
 # データベースの削除 + 再作成
@@ -846,17 +839,19 @@ pocket resource tidb reset-database --stage=dev
 # クラスターの削除
 pocket resource tidb delete --stage=dev
 
-# provisioning="command" 用: cluster/db を ensure し DATABASE_URL を stored user secret に
-# 保存（既存があれば --force で上書き。TiDB は実行ごとに root password をローテーション）
+# cluster / database を用意し、DATABASE_URL を user secret に保存
+# （既存があれば --force で上書き。TiDB は実行ごとに root password をローテーション）
 pocket resource tidb store-url --stage=dev
 ```
 
 ### upstash
 
 ```bash
-# provisioning="command" 用: database を ensure し REDIS_URL を stored user secret に保存
-# （既存があれば --force で上書き）
+# database を用意し、REDIS_URL を user secret に保存（既存があれば --force で上書き）
 pocket resource upstash store-url --stage=dev
+
+# database の削除
+pocket resource upstash delete --stage=dev
 ```
 
 ### dsql

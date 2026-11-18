@@ -49,30 +49,37 @@ FormatStr = Annotated[
 
 StoreType = Literal["sm", "ssm"]
 
-# DB/KVS リソースの provisioning 方式。
-#   "deploy"  : deploy が当該リソースを ensure し接続 URL を供給する (zero-config)。
-#   "command" : deploy は当該リソースに触れない (管理 API 非依存 / credential 不要)。
-#               provisioning は `pocket <db> store-url` に一任し、deploy は
-#               stored-read のみ。
-ProvisioningMode = Literal["deploy", "command"]
-
 BuildBackend = Literal["codebuild", "docker", "depot"]
 
 
-def _reject_skip_check_existing(data, *, resource: str):
-    """削除済み設定 `skip_check_existing` が残っていたら fail-fast で移行を促す。
+def _reject_removed_db_keys(data, *, resource: str):
+    """削除済みの設定 (`provisioning` / `skip_check_existing`) が残っていたら止める。
 
-    `provisioning = "command"` + `pocket <db> store-url` への移行で廃止した。
-    extra="ignore" だと黙殺されるため model_validator(mode="before") で raw 入力を
-    検査する。
+    Neon / TiDB / Upstash は deploy の中では用意しない。API key がある場所で
+    `pocket resource <db> store-url` を実行して用意し、deploy は保存済みの接続 URL を
+    読むだけにする。extra="ignore" だと黙殺されるため model_validator(mode="before")
+    で raw 入力を検査する。
     """
-    if isinstance(data, dict) and "skip_check_existing" in data:
+    if not isinstance(data, dict):
+        return data
+    store_url = "`pocket resource %s store-url --stage <stage>`" % resource
+    if "provisioning" in data:
+        if data["provisioning"] == "command":
+            raise ValueError(
+                "[%s] provisioning は廃止されました (deploy は %s に触れません)。"
+                "この行を削除してください。" % (resource, resource)
+            )
         raise ValueError(
-            "[%s] skip_check_existing は廃止されました。"
-            '`provisioning = "command"` に置き換え、接続 URL を '
+            "[%s] provisioning は廃止されました。deploy は %s を用意しません。"
+            "この行を削除し、接続 URL を [container.<name>.secrets.user] の type で"
+            "宣言したうえで、API key がある場所で %s を実行してください。"
+            % (resource, resource, store_url)
+        )
+    if "skip_check_existing" in data:
+        raise ValueError(
+            "[%s] skip_check_existing は廃止されました。この行を削除し、接続 URL を "
             "[container.<name>.secrets.user] の type で宣言したうえで deploy 前に "
-            "`pocket resource %s store-url --stage <stage>` を実行してください。"
-            % (resource, resource)
+            "%s を実行してください。" % (resource, store_url)
         )
     return data
 
@@ -121,10 +128,7 @@ class ManagedSecretSpec(BaseModel):
     type: Literal[
         "auto_database_url",
         "password",
-        "neon_database_url",
-        "tidb_database_url",
         "rds_database_url",
-        "upstash_redis_url",
         "rsa_pem_base64",
         "cloudfront_signing_key",
         "spa_token_secret",
@@ -177,11 +181,10 @@ class ManagedSecretSpec(BaseModel):
         return self
 
 
-# user secret の stored mode 用 type。
-# managed の computed type と同名だが、user 側に置くと「事前 provision 済みの URL を
-# 参照するだけ (stored)」を意味する。pocket は API を一切叩かず、導出した正準名の secret
-# を読むだけ。対象は deploy 時に管理 API key を要求する neon / tidb / upstash (rds は
-# runtime 構築方式で stored 化の旨味が無く rotation 追従を壊すため対象外)。
+# 事前に用意した接続 URL を読む user secret の type。
+# pocket は provider の API を呼ばず、type から決まる名前の secret を読むだけ。値は
+# `pocket resource <db> store-url` が保存する。対象は neon / tidb / upstash
+# (rds は runtime で URL を組み立てるので managed の rds_database_url を使う)。
 UserSecretType = Literal["neon_database_url", "tidb_database_url", "upstash_redis_url"]
 
 
@@ -598,19 +601,17 @@ class Neon(BaseSettings):
     # 非 default ブランチを親にしたい時だけ指定する (例: feature を別 stage から分岐)。
     # branch_name 同様 FormatStr。既存ブランチがあれば作成は走らないので無視される。
     parent_branch_name: FormatStr | None = None
+    # deploy は Neon に触れない。`pocket resource neon store-url` が branch / role /
+    # database を用意して接続 URL を保存し、deploy は保存済みの user secret を読む。
+    # api_key を使うのは `pocket resource neon` のコマンドだけ。
     api_key: str | None = Field(alias="neon_api_key", default=None)
-    # "deploy" (既定): deploy が branch/role/db を ensure し DATABASE_URL を供給する。
-    # "command": deploy は Neon に一切触れない (credential 不要)。provisioning は
-    #            `pocket neon store-url` に一任し、deploy は stored user secret を
-    #            読むだけ。
-    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_legacy_skip_check_existing(cls, data):
-        return _reject_skip_check_existing(data, resource="neon")
+    def _reject_removed_keys(cls, data):
+        return _reject_removed_db_keys(data, resource="neon")
 
 
 class TiDb(BaseSettings):
@@ -619,32 +620,26 @@ class TiDb(BaseSettings):
     project: str | None = None
     cluster: str | None = None
     region: str = "ap-northeast-1"
-    # Neon.provisioning と同義。"command" で deploy が TiDB に触れない。
-    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_legacy_skip_check_existing(cls, data):
-        return _reject_skip_check_existing(data, resource="tidb")
+    def _reject_removed_keys(cls, data):
+        return _reject_removed_db_keys(data, resource="tidb")
 
 
 class Upstash(BaseSettings):
     email: str | None = Field(alias="upstash_email", default=None)
     api_key: str | None = Field(alias="upstash_api_key", default=None)
     budget: int = 20
-    # Neon.provisioning と同義。"command" で deploy が Upstash に触れない
-    # (credential 不要)。provisioning は `pocket resource upstash store-url` に
-    # 一任し、deploy は stored read のみ。
-    provisioning: ProvisioningMode = "deploy"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_legacy_skip_check_existing(cls, data):
-        return _reject_skip_check_existing(data, resource="upstash")
+    def _reject_removed_keys(cls, data):
+        return _reject_removed_db_keys(data, resource="upstash")
 
 
 class BackupRule(BaseModel):
@@ -2212,9 +2207,9 @@ class Settings(BaseModel):
                     aliases[name] = field.alias
                 else:
                     valid_keys.add(name)
-            # 廃止済みキーは通し、各モデルの _reject_legacy_skip_check_existing に
+            # 廃止済みキーは通し、各モデルの _reject_removed_keys に
             # 移行手順つきのエラーを出させる (ここで弾くと案内が失われる)
-            valid_keys.add("skip_check_existing")
+            removed_keys = {"provisioning", "skip_check_existing"}
             for key in section_data:
                 if key in aliases:
                     alias = aliases[key]
@@ -2223,10 +2218,10 @@ class Settings(BaseModel):
                         f" (field 名で書いた値は読まれません)\n"
                         f"  通常は環境変数 {alias.upper()} または .env で渡してください"
                     )
-                if key not in valid_keys:
+                if key not in valid_keys | removed_keys:
                     raise ValueError(
                         f"invalid key {key} in [{section}] of pocket.toml\n"
-                        f"  有効なキー: {sorted(valid_keys - {'skip_check_existing'})}"
+                        f"  有効なキー: {sorted(valid_keys)}"
                     )
 
     @classmethod

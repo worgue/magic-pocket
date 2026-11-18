@@ -11,17 +11,13 @@ use super::resource::Resource;
 use super::sink::Sink;
 use crate::stack::ops::ResourceStatus;
 
-/// 1 つの resource の判定結果
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Evaluated {
-    /// 状態を取らずに飛ばす (理由を warning で出す)
-    Skip(String),
-    Status(ResourceStatus),
-}
-
 /// resource の状態を調べる側 (本番は AWS / HTTP、テストは固定値)
 pub trait Evaluator {
-    async fn status(&mut self, resource: &Resource<'_>, sink: &mut dyn Sink) -> Result<Evaluated>;
+    async fn status(
+        &mut self,
+        resource: &Resource<'_>,
+        sink: &mut dyn Sink,
+    ) -> Result<ResourceStatus>;
 
     /// pocket managed secret がまだ無い store view の数 (`--show-info` の案内に使う)
     async fn secrets_not_ready(&mut self, container: &ContainerContext) -> Result<usize>;
@@ -37,13 +33,7 @@ pub async fn run(
     sink: &mut dyn Sink,
 ) -> Result<()> {
     for resource in resources {
-        let status = match evaluator.status(resource, sink).await? {
-            Evaluated::Skip(reason) => {
-                sink.warning(&reason);
-                continue;
-            }
-            Evaluated::Status(status) => status,
-        };
+        let status = evaluator.status(resource, sink).await?;
         let message = format!("{} status: {status}", resource.class_name());
         match status {
             ResourceStatus::NoExist => sink.info(&message),
@@ -92,13 +82,13 @@ mod tests {
 
     /// class 名ごとに決めた結果を返す
     struct Fake {
-        results: Vec<(&'static str, Result<Evaluated, String>)>,
+        results: Vec<(&'static str, Result<ResourceStatus, String>)>,
         not_ready: usize,
         calls: Vec<String>,
     }
 
     impl Fake {
-        fn new(results: Vec<(&'static str, Result<Evaluated, String>)>) -> Self {
+        fn new(results: Vec<(&'static str, Result<ResourceStatus, String>)>) -> Self {
             Self {
                 results,
                 not_ready: 0,
@@ -112,16 +102,16 @@ mod tests {
             &mut self,
             resource: &Resource<'_>,
             sink: &mut dyn Sink,
-        ) -> Result<Evaluated> {
+        ) -> Result<ResourceStatus> {
             let name = resource.class_name();
             self.calls.push(name.to_string());
             if name == "Vpc" {
                 sink.warning("判定中の警告");
             }
             match self.results.iter().find(|(n, _)| *n == name) {
-                Some((_, Ok(evaluated))) => Ok(evaluated.clone()),
+                Some((_, Ok(status))) => Ok(*status),
                 Some((_, Err(message))) => bail!("{message}"),
-                None => Ok(Evaluated::Status(ResourceStatus::Completed)),
+                None => Ok(ResourceStatus::Completed),
             }
         }
 
@@ -150,9 +140,9 @@ mod tests {
         let names: Vec<&str> = list.iter().map(Resource::class_name).collect();
         assert_eq!(names, ["Vpc", "Rds", "Container"]);
         let mut fake = Fake::new(vec![
-            ("Vpc", Ok(Evaluated::Status(ResourceStatus::RequireUpdate))),
-            ("Rds", Ok(Evaluated::Status(ResourceStatus::Failed))),
-            ("Container", Ok(Evaluated::Status(ResourceStatus::NoExist))),
+            ("Vpc", Ok(ResourceStatus::RequireUpdate)),
+            ("Rds", Ok(ResourceStatus::Failed)),
+            ("Container", Ok(ResourceStatus::NoExist)),
         ]);
         let mut sink = Recorded::default();
         run(&list, &mut fake, false, &mut sink).await.unwrap();
@@ -166,20 +156,6 @@ mod tests {
                 (Stream::Stdout, Style::Plain, "tail"),
             ]
         );
-    }
-
-    #[tokio::test]
-    async fn test_skip_emits_warning_without_status_or_info() {
-        let ctx = vector_context("toml/rds.dev");
-        let list = resources(&ctx);
-        let mut fake = Fake::new(vec![("Vpc", Ok(Evaluated::Skip("飛ばします".to_string())))]);
-        let mut sink = Recorded::default();
-        run(&list, &mut fake, true, &mut sink).await.unwrap();
-        let texts: Vec<&str> = sink.0.iter().map(|(_, _, t)| t.as_str()).collect();
-        let skip = texts.iter().position(|t| *t == "飛ばします").unwrap();
-        // skip した resource は status も description も JSON も出さず、次の resource へ進む
-        assert_eq!(texts[skip + 1], "Rds status: COMPLETED");
-        assert!(!texts.iter().any(|t| t.starts_with("Vpc status")));
     }
 
     #[tokio::test]

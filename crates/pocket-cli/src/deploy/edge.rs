@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use anyhow::{bail, Context as _, Result};
 use magic_pocket_settings::context::{CloudFrontContext, CloudFrontWafRateLimitContext, Context};
 
-use super::mediator::{DatabaseUrls, Mediator, SecretsReady};
+use super::mediator::{Mediator, SecretsReady};
 use super::secret_store::SecretStore;
 use super::stacks::{self, Stacks};
 use super::template_secrets;
@@ -43,10 +43,9 @@ impl Default for EdgeWaits {
     }
 }
 
-pub struct EdgeDeploy<'a, K, S, D> {
+pub struct EdgeDeploy<'a, K, S> {
     pub stacks: &'a K,
     pub store: &'a S,
-    pub urls: &'a D,
     pub waits: EdgeWaits,
 }
 
@@ -73,7 +72,7 @@ pub fn find_cloudfront<'c>(ctx: &'c Context, name: &str) -> Result<&'c CloudFron
         .with_context(|| format!("cloudfront '{name}' がこの stage に設定されていません。"))
 }
 
-impl<K: Stacks, S: SecretStore, D: DatabaseUrls> EdgeDeploy<'_, K, S, D> {
+impl<K: Stacks, S: SecretStore> EdgeDeploy<'_, K, S> {
     async fn create_stack(
         &self,
         stack: &StackTemplate,
@@ -128,11 +127,10 @@ impl<K: Stacks, S: SecretStore, D: DatabaseUrls> EdgeDeploy<'_, K, S, D> {
         .await
     }
 
-    fn mediator<'m>(&'m self, ctx: &'m Context) -> Mediator<'m, S, D> {
+    fn mediator<'m>(&'m self, ctx: &'m Context) -> Mediator<'m, S> {
         Mediator {
             ctx,
             store: self.store,
-            urls: self.urls,
         }
     }
 
@@ -371,7 +369,7 @@ mod tests {
 
     use super::*;
     use crate::deploy::stacks::fake::FakeStacks;
-    use crate::deploy::testing::{FakeStore, FakeUrls};
+    use crate::deploy::testing::FakeStore;
     use crate::stack::testing::vector_context;
     use crate::status::sink::{Recorded, Style};
 
@@ -402,12 +400,10 @@ mod tests {
     fn edge<'a>(
         stacks: &'a FakeStacks,
         store: &'a FakeStore,
-        urls: &'a FakeUrls,
-    ) -> EdgeDeploy<'a, FakeStacks, FakeStore, FakeUrls> {
+    ) -> EdgeDeploy<'a, FakeStacks, FakeStore> {
         EdgeDeploy {
             stacks,
             store,
-            urls,
             waits: fast(),
         }
     }
@@ -439,12 +435,8 @@ mod tests {
     fn test_acm_create_then_update_is_noop_when_synced() {
         let ctx = vector_context(VECTOR);
         let cf = find_cloudfront(&ctx, "web").expect("web");
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
-        let edge = edge(&stacks, &store, &urls);
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
+        let edge = edge(&stacks, &store);
         let mut sink = Recorded::default();
         run(edge.acm_create(cf, &mut sink)).expect("create");
         let name = cf_stack::acm_stack_name(cf);
@@ -464,14 +456,10 @@ mod tests {
     fn test_create_fails_when_stack_fails() {
         let ctx = vector_context(VECTOR);
         let cf = find_cloudfront(&ctx, "web").expect("web");
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
         *stacks.after_write.borrow_mut() = Some("CREATE_FAILED".to_string());
         let mut sink = Recorded::default();
-        let error = run(edge(&stacks, &store, &urls).acm_create(cf, &mut sink)).expect_err("失敗");
+        let error = run(edge(&stacks, &store).acm_create(cf, &mut sink)).expect_err("失敗");
         assert!(error.to_string().contains("CREATE_FAILED"), "{error}");
     }
 
@@ -479,12 +467,8 @@ mod tests {
     fn test_delete_waits_until_stack_is_gone() {
         let ctx = vector_context(VECTOR);
         let cf = find_cloudfront(&ctx, "web").expect("web");
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
-        let edge = edge(&stacks, &store, &urls);
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
+        let edge = edge(&stacks, &store);
         let mut sink = Recorded::default();
         for (name, region) in [
             (cf_stack::acm_stack_name(cf), "us-east-1"),
@@ -516,13 +500,9 @@ mod tests {
     #[test]
     fn test_waf_create_generates_secrets_before_stack() {
         let ctx = vector_context(VECTOR);
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
         let mut sink = Recorded::default();
-        run(edge(&stacks, &store, &urls).waf_create(&ctx, "web", &mut sink, || Ok(ctx.clone())))
+        run(edge(&stacks, &store).waf_create(&ctx, "web", &mut sink, || Ok(ctx.clone())))
             .expect("create");
         // header secret は shared store に生成されてから stack が作られる
         let shared = ctx.secrets.as_ref().expect("shared");
@@ -551,14 +531,10 @@ mod tests {
     #[test]
     fn test_waf_without_ip_set_and_header_secrets_skips_mediator() {
         let ctx = vector_context(VECTOR);
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
         let mut sink = Recorded::default();
         run(
-            edge(&stacks, &store, &urls).waf_create(&ctx, "admin", &mut sink, || {
+            edge(&stacks, &store).waf_create(&ctx, "admin", &mut sink, || {
                 panic!("header secret が無ければ secret を用意しない")
             }),
         )
@@ -573,12 +549,8 @@ mod tests {
     #[test]
     fn test_waf_update_only_when_template_changes() {
         let ctx = vector_context(VECTOR);
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
-        let edge = edge(&stacks, &store, &urls);
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
+        let edge = edge(&stacks, &store);
         let mut sink = Recorded::default();
         run(edge.waf_create(&ctx, "web", &mut sink, || Ok(ctx.clone()))).expect("create");
         run(edge.waf_update(&ctx, "web", &mut sink, || Ok(ctx.clone()))).expect("update");
@@ -602,12 +574,8 @@ mod tests {
     #[test]
     fn test_keys_create_reads_generated_public_key() {
         let ctx = vector_context(VECTOR);
-        let (stacks, store, urls) = (
-            FakeStacks::default(),
-            FakeStore::default(),
-            FakeUrls::default(),
-        );
-        let edge = edge(&stacks, &store, &urls);
+        let (stacks, store) = (FakeStacks::default(), FakeStore::default());
+        let edge = edge(&stacks, &store);
         let mut sink = Recorded::default();
         run(edge.keys_create(&ctx, "web", &mut sink, || Ok(ctx.clone()))).expect("create");
         let cf = find_cloudfront(&ctx, "web").expect("web");

@@ -25,23 +25,18 @@ use super::inbound_domain::{
 };
 use super::lambda::AwsLambda;
 use super::mediator::Mediator;
-use super::neon::Neon;
-use super::provider_urls::{deploy_managed, Provider, ProviderUrls};
 use super::rds::{AwsRds, RdsAws, RdsDeploy, RdsWaits};
 use super::s3::{BucketWriter, CreateRetry};
 use super::secret_store::AwsSecretStore;
 use super::stacks::AwsStacks;
 use super::stored_value::AwsStoredValues;
-use super::tidb::{MysqlSql, TiDb};
 use super::upload::Uploader;
-use super::upstash::Upstash;
 use super::vpc::{AwsVpcNetwork, VpcDeploy, VpcWaits};
 use crate::aws_util::regional_config;
 use crate::context::load_context;
 use crate::image_build::runner::SystemRunner;
 use crate::stack::ops::{wait_status, CfnClient, ResourceStatus, StackApi, WaitOptions};
 use crate::stack::roles;
-use crate::status::providers::Http;
 use crate::status::sink::Terminal;
 
 #[derive(Subcommand)]
@@ -213,21 +208,6 @@ pub enum DeployPart {
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
     },
-    /// Neon の branch / role / database を確保する (provisioning = "command" なら何もしない)
-    NeonCreate {
-        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
-        stage: String,
-    },
-    /// TiDB の cluster / database を確保する (provisioning = "command" なら何もしない)
-    TidbCreate {
-        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
-        stage: String,
-    },
-    /// Upstash の database を確保する (provisioning = "command" なら何もしない)
-    UpstashCreate {
-        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
-        stage: String,
-    },
     /// inbound の deploy 前の検査 (rule set の差し込み先・変えられない設定)
     InboundPrepare {
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
@@ -305,11 +285,9 @@ pub async fn run(part: DeployPart) -> Result<()> {
         DeployPart::Secrets { stage } => {
             let (ctx, _) = load_context(&stage)?;
             let store = AwsSecretStore::new(sdk.clone());
-            let urls = ProviderUrls::new()?;
             let mediator = Mediator {
                 ctx: &ctx,
                 store: &store,
-                urls: &urls,
             };
             mediator
                 .ensure_pocket_managed_secrets(&mut sink, || Ok(load_context(&stage)?.0))
@@ -586,38 +564,6 @@ pub async fn run(part: DeployPart) -> Result<()> {
             };
             BackupDeploy { api: &api }.delete(backup, &mut sink).await
         }
-        DeployPart::NeonCreate { stage } => {
-            let (ctx, _) = load_context(&stage)?;
-            let Some(neon) = provider(&ctx, Provider::Neon, ctx.neon.as_ref()) else {
-                return Ok(());
-            };
-            let http = Http::new()?;
-            let neon = Neon {
-                http: &http,
-                ctx: neon,
-            };
-            neon.create(&mut sink).await
-        }
-        DeployPart::TidbCreate { stage } => {
-            let (ctx, _) = load_context(&stage)?;
-            let Some(tidb) = provider(&ctx, Provider::Tidb, ctx.tidb.as_ref()) else {
-                return Ok(());
-            };
-            let http = Http::new()?;
-            TiDb::new(&http, tidb, &MysqlSql).create().await
-        }
-        DeployPart::UpstashCreate { stage } => {
-            let (ctx, _) = load_context(&stage)?;
-            let Some(upstash) = provider(&ctx, Provider::Upstash, ctx.upstash.as_ref()) else {
-                return Ok(());
-            };
-            let http = Http::new()?;
-            let upstash = Upstash {
-                http: &http,
-                ctx: upstash,
-            };
-            upstash.create(&mut sink).await
-        }
         DeployPart::InboundPrepare { stage } => {
             let (ctx, _) = load_context(&stage)?;
             let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
@@ -750,19 +696,6 @@ pub(super) fn inbound_domain_deploy<'a>(
         aws,
         waits: InboundDomainWaits::default(),
     }
-}
-
-/// deploy が作る provider の設定。deploy の対象でなければ、その旨を出して `None`
-pub(super) fn provider<'c, T>(
-    ctx: &Context,
-    kind: Provider,
-    settings: Option<&'c T>,
-) -> Option<&'c T> {
-    let settings = settings.filter(|_| deploy_managed(ctx).contains(&kind));
-    if settings.is_none() {
-        println!("{kind:?}: skipped (宣言が無いか、provisioning = \"command\")");
-    }
-    settings
 }
 
 /// stage が管理する VPC (container と RDS が使うもの。名前の重複を除く)
@@ -912,7 +845,6 @@ pub(super) struct Env<'a> {
     region: String,
     lambda: AwsLambda,
     store: AwsSecretStore,
-    urls: ProviderUrls,
 }
 
 impl<'a> Env<'a> {
@@ -934,7 +866,6 @@ impl<'a> Env<'a> {
             region: general.region.clone(),
             lambda: AwsLambda::new(sdk, &general.region),
             store: AwsSecretStore::new(sdk.clone()),
-            urls: ProviderUrls::new()?,
         })
     }
 
@@ -954,12 +885,11 @@ impl<'a> Env<'a> {
     pub(super) fn deploy<'d>(
         &'d self,
         aws: &'d AwsContainer<'d>,
-    ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore, ProviderUrls> {
+    ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore> {
         ContainerDeploy {
             aws,
             lambda: &self.lambda,
             store: &self.store,
-            urls: &self.urls,
             waits: Waits::default(),
         }
     }

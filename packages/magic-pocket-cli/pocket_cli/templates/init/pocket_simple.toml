@@ -7,25 +7,28 @@ stages = ["dev", "prod"]
 [neon]
 project_name = "your-neon-project-name"
 
-[awscontainer]
+[container.main]
 dockerfile_path = "pocket.Dockerfile"
 
-[awscontainer.handlers.wsgi]
+[container.main.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"
-[awscontainer.handlers.management]
+[container.main.handlers.management]
 command = "pocket.django.lambda_handlers.management_command_handler"
 timeout = 600
 
-[dev.awscontainer.handlers.wsgi]
+[dev.container.main.handlers.wsgi]
 apigateway = {}
-[prod.awscontainer.handlers.wsgi]
+[prod.container.main.handlers.wsgi]
 apigateway = {}
 
-[awscontainer.secrets.managed]
+[container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
+
+# deploy の前に `pocket resource neon store-url --stage=<stage>` で保存しておく
+[container.main.secrets.user]
 DATABASE_URL = { type = "neon_database_url" }
 
-[awscontainer.django.storages]
+[container.main.django.storages]
 default = { store = "s3", location = "media" }
 staticfiles = { store = "s3", location = "static", static = true, manifest = true }

@@ -18,8 +18,8 @@ Django アプリを Lambda に載せる最小の形です。
 - `[container.main.handlers.wsgi]` / `[handlers.management]` の 2 handler 構成
 - `[container.main.django.storages]` で staticfiles を S3 + CloudFront に流す
 - `[container.main.secrets.managed]` の `SECRET_KEY` 自動生成
-- DB 接続 URL は `provisioning = "command"` で事前に SSM へ保存する形
-  (deploy は Neon の API を叩きません)
+- DB 接続 URL は `pocket resource neon store-url` で事前に SSM へ保存する形
+  (deploy は Neon の API を呼びません)
 
 `[general] region` が `ap-southeast-1` なのは意図的です。Neon は東京リージョンに
 対応しておらず、Lambda を東京に置くと DB アクセスがクロスリージョンになるためです。

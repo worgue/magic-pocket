@@ -8,11 +8,9 @@
 
 use anyhow::{bail, Result};
 use magic_pocket_settings::context::{ContainerContext, Context};
-use magic_pocket_settings::model::ProvisioningMode;
 
 use super::interaction::Prompt;
 use super::migrations::{self, Repositories};
-use super::neon::DestroyPlan;
 use super::stacks::{self, Stacks};
 use crate::stack::container as container_stack;
 use crate::stack::ops::{cfn_status, status_detail, ResourceStatus, WaitOptions};
@@ -55,9 +53,6 @@ pub struct Facts {
     pub backup_plans: Vec<String>,
     pub dsql: bool,
     pub rds: bool,
-    pub tidb: bool,
-    pub upstash: bool,
-    pub neon: Option<DestroyPlan>,
     pub vpcs: Vec<VpcFact>,
     pub s3: bool,
 }
@@ -134,21 +129,6 @@ pub fn targets(ctx: &Context, facts: &Facts, options: DestroyOptions) -> Vec<Str
     if let Some(rds) = ctx.rds.as_ref().filter(|_| facts.rds) {
         list.push(format!("RDS Aurora クラスター: {}", rds.cluster_identifier));
     }
-    if facts.tidb {
-        list.push("TiDB クラスタ".to_string());
-    }
-    if let Some(upstash) = ctx.upstash.as_ref().filter(|_| facts.upstash) {
-        list.push(format!("Upstash Redis: {}", upstash.database_name));
-    }
-    match (ctx.neon.as_ref(), facts.neon) {
-        (Some(neon), Some(DestroyPlan::Project)) => list.push(format!(
-            "Neon プロジェクト '{}' (root branch のため project ごと削除)",
-            neon.project_name
-        )),
-        (Some(_), Some(DestroyPlan::Branch)) => list.push("Neon ブランチ".to_string()),
-        // root branch で他の branch が同居: 消せないので一覧に載せない (実行時に知らせる)
-        _ => {}
-    }
     for vpc in &facts.vpcs {
         if !vpc.manage {
             list.push("VPC (外部 VPC consumer タグ削除)".to_string());
@@ -202,9 +182,8 @@ pub enum Step {
     Vpc,
     CloudFrontKeys,
     S3,
-    Tidb,
-    Upstash,
-    Neon,
+    /// Neon / TiDB / Upstash は消さない (消し方の案内だけ)
+    ExternalDatabases,
     StateBucket,
 }
 
@@ -229,9 +208,7 @@ pub fn steps(options: DestroyOptions) -> Vec<Step> {
         Step::Vpc,
         Step::CloudFrontKeys,
         Step::S3,
-        Step::Tidb,
-        Step::Upstash,
-        Step::Neon,
+        Step::ExternalDatabases,
     ]);
     if options.with_state_bucket {
         steps.push(Step::StateBucket);
@@ -398,31 +375,26 @@ pub async fn destroy_recovery_points(
     Ok(())
 }
 
-/// `provisioning = "command"` の DB は destroy でも触れない、という案内
-pub fn command_provisioned_warning(label: &str, hint: &str) -> String {
-    format!(
-        "{label} は provisioning=\"command\" のため destroy では削除しません。\
-         {hint} で削除してください。"
-    )
+/// Neon / TiDB / Upstash は destroy では消さない (deploy と同じく provider の API を
+/// 呼ばない)。宣言があるものについて、消し方の案内を返す
+pub fn external_database_warnings(ctx: &Context) -> Vec<String> {
+    let hints = [
+        (ctx.neon.is_some(), "Neon", "pocket resource neon delete"),
+        (ctx.tidb.is_some(), "TiDB", "pocket resource tidb delete"),
+        (
+            ctx.upstash.is_some(),
+            "Upstash",
+            "pocket resource upstash delete",
+        ),
+    ];
+    hints
+        .iter()
+        .filter(|(declared, _, _)| *declared)
+        .map(|(_, label, command)| {
+            format!("{label} は destroy では削除しません。不要なら {command} で削除してください。")
+        })
+        .collect()
 }
-
-/// provider を destroy が扱うか。宣言が無ければ `None`、command なら案内の文言
-pub fn provider_action(
-    provisioning: Option<ProvisioningMode>,
-    label: &str,
-    hint: &str,
-) -> Option<Result<(), String>> {
-    match provisioning? {
-        ProvisioningMode::Command => Some(Err(command_provisioned_warning(label, hint))),
-        ProvisioningMode::Deploy => Some(Ok(())),
-    }
-}
-
-/// `[neon]` の宣言があるのに API key が無いときの案内
-pub const NEON_CREDENTIAL_MISSING: &str =
-    "Neon: NEON_API_KEY が未設定のため Neon の確認・削除をスキップします \
-     (stack の削除に Neon の資格情報は不要です。Neon branch は \
-     pocket resource neon delete か Neon コンソールで削除してください)。";
 
 #[cfg(test)]
 mod tests {
@@ -433,7 +405,7 @@ mod tests {
     use crate::deploy::migrations::testing::FakeRepositories;
     use crate::deploy::poll::testing::fast;
     use crate::deploy::stacks::fake::FakeStacks;
-    use crate::stack::testing::{context_from_toml, vector_context};
+    use crate::stack::testing::vector_context;
     use crate::status::sink::{Recorded, Style};
 
     const ALL: DestroyOptions = DestroyOptions {
@@ -551,28 +523,6 @@ mod tests {
     }
 
     #[test]
-    fn test_neon_target_depends_on_destroy_plan() {
-        let toml = "[general]\nregion = \"ap-southeast-1\"\nproject_name = \"p\"\n\
-                    stages = [\"prod\"]\n\n[neon]\nproject_name = \"np\"\n";
-        let ctx = context_from_toml(toml, "prod");
-        let with = |plan| {
-            let facts = Facts {
-                neon: plan,
-                ..Facts::default()
-            };
-            targets(&ctx, &facts, ALL)
-        };
-        assert_eq!(with(Some(DestroyPlan::Branch)), ["Neon ブランチ"]);
-        assert_eq!(
-            with(Some(DestroyPlan::Project)),
-            ["Neon プロジェクト 'np' (root branch のため project ごと削除)"]
-        );
-        // 消せない root branch と、branch が無い場合は一覧に載せない
-        assert!(with(Some(DestroyPlan::Blocked)).is_empty());
-        assert!(with(None).is_empty());
-    }
-
-    #[test]
     fn test_steps_are_reverse_of_deploy() {
         let all = steps(DestroyOptions {
             with_secrets: true,
@@ -595,9 +545,7 @@ mod tests {
                 Step::Vpc,
                 Step::CloudFrontKeys,
                 Step::S3,
-                Step::Tidb,
-                Step::Upstash,
-                Step::Neon,
+                Step::ExternalDatabases,
                 Step::StateBucket,
             ]
         );
@@ -917,23 +865,16 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_action() {
-        assert_eq!(provider_action(None, "TiDB", "x"), None);
+    fn test_external_database_warnings() {
+        let ctx = vector_context("toml/db_command_provisioning.dev");
         assert_eq!(
-            provider_action(Some(ProvisioningMode::Deploy), "TiDB", "x"),
-            Some(Ok(()))
+            external_database_warnings(&ctx),
+            [
+                "Neon は destroy では削除しません。不要なら pocket resource neon delete で削除してください。",
+                "TiDB は destroy では削除しません。不要なら pocket resource tidb delete で削除してください。",
+                "Upstash は destroy では削除しません。不要なら pocket resource upstash delete で削除してください。",
+            ]
         );
-        assert_eq!(
-            provider_action(
-                Some(ProvisioningMode::Command),
-                "TiDB",
-                "pocket resource tidb delete"
-            ),
-            Some(Err(
-                "TiDB は provisioning=\"command\" のため destroy では削除しません。\
-                 pocket resource tidb delete で削除してください。"
-                    .to_string()
-            ))
-        );
+        assert!(external_database_warnings(&vector_context("toml/rds.dev")).is_empty());
     }
 }

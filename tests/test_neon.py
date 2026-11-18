@@ -362,7 +362,7 @@ def test_neon_resource_reexport_is_same_object():
 
 
 def test_ensure_and_compute_url_builds_context_and_delegates():
-    """公開 API は引数から NeonContext (provisioning='command') を組み立て、
+    """公開 API は引数から NeonContext を組み立て、
     共有ヘルパ ensure_url_for_context に委譲する。"""
     from pocket.provisioning import neon as runtime_neon
 
@@ -383,7 +383,6 @@ def test_ensure_and_compute_url_builds_context_and_delegates():
     assert ctx.role_name == "myapp"
     assert ctx.api_key == "fake-key"
     assert ctx.parent_branch_name is None
-    assert ctx.provisioning == "command"
 
 
 def test_ensure_url_for_context_skips_branch_create_when_present():

@@ -35,7 +35,7 @@ pub use db::{
 pub use django::{CacheStore, Django, DjangoCache, DjangoStorage, PublishMode, StorageStore};
 pub use general::{Efs, GeneralSettings, Iam, Vpc};
 pub use misc::{Inbound, ScheduleEntry, Scheduler, SchedulerKind, Ses, TlsPolicy};
-pub use provisioning::{Neon, ProvisioningMode, TiDb, Upstash};
+pub use provisioning::{Neon, TiDb, Upstash};
 pub use s3::{OneOrMany, S3Cors, S3LifecycleRule, S3};
 
 /// pocket.toml の top-level に書ける key (Python の `Settings.model_fields` から

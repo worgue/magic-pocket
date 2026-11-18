@@ -218,9 +218,11 @@
   "secrets": {
     "store": "ssm",
     "managed": {
-      "DATABASE_URL": {
-        "type": "neon_database_url",
-        "options": {},
+      "API_TOKEN": {
+        "type": "password",
+        "options": {
+          "length": 32
+        },
         "shared": false
       },
       "SIGNING": {

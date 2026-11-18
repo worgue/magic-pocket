@@ -141,8 +141,9 @@ def _echo_store_url_resolution(stage: str, info: EnsureUrlInfo) -> None:
 def store_url(stage, key, force):
     """branch/role/db を ensure し DATABASE_URL を stored user secret に保存する。
 
-    provisioning="command" で deploy を Neon credential なしにするための provisioning
-    ステップ。Neon の URL は reveal_password 方式で冪等なので何度実行しても同じ値。
+    deploy は Neon に触れないので、API key がある場所でこのコマンドを実行して
+    branch / role / database を用意する。Neon の URL は reveal_password 方式で
+    冪等なので何度実行しても同じ値。
     """
 
     def ensure_and_compute_url(context):
