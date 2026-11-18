@@ -6,18 +6,28 @@
 use anyhow::{bail, Context as _, Result};
 use aws_config::SdkConfig;
 use clap::Subcommand;
-use magic_pocket_settings::context::{ContainerContext, Context};
+use std::collections::BTreeMap;
 
+use magic_pocket_settings::context::{
+    BackupContext, ContainerContext, Context, DsqlContext, RdsContext, VpcContext,
+};
+
+use super::backup::{AwsBackup, BackupDeploy};
 use super::cloudfront::{AwsCloudFront, CloudFrontDeploy, CloudFrontWaits};
 use super::container::{AwsContainer, ContainerAws, ContainerDeploy, Waits};
+use super::dsql::{AwsDsql, DsqlDeploy};
 use super::ecr::BuildEnv;
 use super::edge::find_cloudfront;
+use super::efs::AwsEfs;
 use super::lambda::AwsLambda;
 use super::mediator::{DatabaseUrls, Mediator};
+use super::rds::{AwsRds, RdsAws, RdsDeploy, RdsWaits};
 use super::s3::{BucketWriter, CreateRetry};
 use super::secret_store::AwsSecretStore;
 use super::stacks::AwsStacks;
+use super::stored_value::AwsStoredValues;
 use super::upload::Uploader;
+use super::vpc::{AwsVpcNetwork, VpcDeploy, VpcWaits};
 use crate::aws_util::regional_config;
 use crate::context::load_context;
 use crate::image_build::runner::SystemRunner;
@@ -123,6 +133,76 @@ pub enum DeployPart {
         stage: String,
         #[arg(long)]
         cloudfront: String,
+    },
+    /// managed VPC の stack の前の用意 (EFS の確保)
+    VpcInit {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// managed VPC の stack を作る (完了は待たない)
+    VpcCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// managed VPC の stack を更新する (template が変わっていれば)
+    VpcUpdate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// managed VPC の stack と EFS を消す
+    VpcDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// RDS の作成前の検査 (外部 VPC の stack)
+    RdsInit {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// RDS の cluster を作る
+    RdsCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// RDS の cluster を望む設定に合わせる
+    RdsUpdate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// RDS の cluster を消す (最終 snapshot を取る)
+    RdsDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// DSQL の backup 未宣言の警告
+    DsqlInit {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// DSQL の cluster を作る
+    DsqlCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// DSQL の endpoint の公開を合わせる
+    DsqlPost {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// DSQL の cluster を消す
+    DsqlDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// backup の plan / selection を確保する
+    BackupPost {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// backup の plan / selection / role を消す
+    BackupDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
     },
 }
 
@@ -317,7 +397,226 @@ pub async fn run(part: DeployPart) -> Result<()> {
             };
             uploader.upload_managed_assets(&mut sink).await
         }
+        DeployPart::VpcInit { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, efs, network) = vpc_env(&sdk);
+            let deploy = vpc_deploy(&stacks, &efs, &network);
+            for vpc in managed_vpcs(&ctx) {
+                deploy.deploy_init(vpc).await?;
+            }
+            Ok(())
+        }
+        DeployPart::VpcCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, efs, network) = vpc_env(&sdk);
+            let deploy = vpc_deploy(&stacks, &efs, &network);
+            for vpc in managed_vpcs(&ctx) {
+                deploy.create(vpc).await?;
+            }
+            Ok(())
+        }
+        DeployPart::VpcUpdate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, efs, network) = vpc_env(&sdk);
+            let deploy = vpc_deploy(&stacks, &efs, &network);
+            for vpc in managed_vpcs(&ctx) {
+                deploy.update(vpc).await?;
+            }
+            Ok(())
+        }
+        DeployPart::VpcDelete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, efs, network) = vpc_env(&sdk);
+            let deploy = vpc_deploy(&stacks, &efs, &network);
+            for vpc in managed_vpcs(&ctx) {
+                deploy.delete(vpc).await?;
+            }
+            Ok(())
+        }
+        DeployPart::RdsInit { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let rds = rds_context(&ctx)?;
+            let (aws, stacks, values) = rds_env(&sdk, &rds.region);
+            rds_deploy(&aws, &stacks, &values).deploy_init(rds).await
+        }
+        DeployPart::RdsCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let rds = rds_context(&ctx)?;
+            let (aws, stacks, values) = rds_env(&sdk, &rds.region);
+            rds_deploy(&aws, &stacks, &values)
+                .create(rds, &mut sink)
+                .await
+        }
+        DeployPart::RdsUpdate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let rds = rds_context(&ctx)?;
+            let (aws, stacks, values) = rds_env(&sdk, &rds.region);
+            rds_deploy(&aws, &stacks, &values)
+                .update(rds, &mut sink)
+                .await
+        }
+        DeployPart::RdsDelete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let rds = rds_context(&ctx)?;
+            let (aws, stacks, values) = rds_env(&sdk, &rds.region);
+            rds_deploy(&aws, &stacks, &values)
+                .delete(rds, &mut sink)
+                .await
+        }
+        DeployPart::DsqlInit { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            super::dsql::deploy_init(dsql_context(&ctx)?, &mut sink);
+            Ok(())
+        }
+        DeployPart::DsqlCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (api, values) = (AwsDsql { sdk: &sdk }, AwsStoredValues { sdk: &sdk });
+            dsql_deploy(&api, &values)
+                .create(dsql_context(&ctx)?, &mut sink)
+                .await
+        }
+        DeployPart::DsqlPost { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (api, values) = (AwsDsql { sdk: &sdk }, AwsStoredValues { sdk: &sdk });
+            dsql_deploy(&api, &values)
+                .ensure_post_deploy_state(dsql_context(&ctx)?, &mut sink)
+                .await
+        }
+        DeployPart::DsqlDelete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (api, values) = (AwsDsql { sdk: &sdk }, AwsStoredValues { sdk: &sdk });
+            dsql_deploy(&api, &values)
+                .delete(dsql_context(&ctx)?, &mut sink)
+                .await
+        }
+        DeployPart::BackupPost { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let backup = backup_context(&ctx)?;
+            let targets = backup_targets(&sdk, &ctx).await?;
+            let api = AwsBackup {
+                sdk: &sdk,
+                region: &backup.region,
+            };
+            BackupDeploy { api: &api }
+                .ensure_post_deploy_state(backup, &targets, &mut sink)
+                .await
+        }
+        DeployPart::BackupDelete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let backup = backup_context(&ctx)?;
+            let api = AwsBackup {
+                sdk: &sdk,
+                region: &backup.region,
+            };
+            BackupDeploy { api: &api }.delete(backup, &mut sink).await
+        }
     }
+}
+
+/// stage が管理する VPC (container と RDS が使うもの。名前の重複を除く)
+fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
+    let container_vpcs = ctx.container.values().filter_map(|c| c.vpc.as_ref());
+    let rds_vpc = ctx.rds.as_ref().and_then(|rds| rds.vpc.as_ref());
+    let mut vpcs: Vec<&VpcContext> = Vec::new();
+    for vpc in container_vpcs.chain(rds_vpc) {
+        if vpc.manage && !vpcs.iter().any(|known| known.name == vpc.name) {
+            vpcs.push(vpc);
+        }
+    }
+    vpcs
+}
+
+fn vpc_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsEfs<'_>, AwsVpcNetwork<'_>) {
+    (AwsStacks { sdk }, AwsEfs { sdk }, AwsVpcNetwork { sdk })
+}
+
+fn vpc_deploy<'a>(
+    stacks: &'a AwsStacks<'a>,
+    efs: &'a AwsEfs<'a>,
+    network: &'a AwsVpcNetwork<'a>,
+) -> VpcDeploy<'a, AwsStacks<'a>, AwsEfs<'a>, AwsVpcNetwork<'a>> {
+    VpcDeploy {
+        stacks,
+        efs,
+        network,
+        waits: VpcWaits::default(),
+    }
+}
+
+fn rds_context(ctx: &Context) -> Result<&RdsContext> {
+    ctx.rds
+        .as_ref()
+        .context("rds がこの stage に設定されていません。")
+}
+
+fn rds_env<'a>(
+    sdk: &'a SdkConfig,
+    region: &'a str,
+) -> (AwsRds<'a>, AwsStacks<'a>, AwsStoredValues<'a>) {
+    (
+        AwsRds { sdk, region },
+        AwsStacks { sdk },
+        AwsStoredValues { sdk },
+    )
+}
+
+fn rds_deploy<'a>(
+    aws: &'a AwsRds<'a>,
+    stacks: &'a AwsStacks<'a>,
+    values: &'a AwsStoredValues<'a>,
+) -> RdsDeploy<'a, AwsRds<'a>, AwsStacks<'a>, AwsStoredValues<'a>> {
+    RdsDeploy {
+        aws,
+        stacks,
+        values,
+        waits: RdsWaits::default(),
+    }
+}
+
+fn dsql_context(ctx: &Context) -> Result<&DsqlContext> {
+    ctx.dsql
+        .as_ref()
+        .context("dsql がこの stage に設定されていません。")
+}
+
+fn dsql_deploy<'a>(
+    api: &'a AwsDsql<'a>,
+    values: &'a AwsStoredValues<'a>,
+) -> DsqlDeploy<'a, AwsDsql<'a>, AwsStoredValues<'a>> {
+    DsqlDeploy {
+        api,
+        values,
+        wait: super::dsql::default_wait(),
+    }
+}
+
+fn backup_context(ctx: &Context) -> Result<&BackupContext> {
+    ctx.backup
+        .as_ref()
+        .context("backup がこの stage に設定されていません。")
+}
+
+/// backup の対象 (service → cluster の ARN)。cluster が未作成の service と、
+/// pocket が管理しない RDS (managed = false) は入れない
+async fn backup_targets(sdk: &SdkConfig, ctx: &Context) -> Result<BTreeMap<String, String>> {
+    let mut targets = BTreeMap::new();
+    if let Some(dsql) = ctx.dsql.as_ref() {
+        let found = super::dsql::find_cluster(sdk, &dsql.region, &dsql.tag_name).await?;
+        if let Some(cluster) = found {
+            targets.insert("dsql".to_string(), cluster.arn);
+        }
+    }
+    if let Some(rds) = ctx.rds.as_ref().filter(|rds| rds.managed) {
+        let aws = AwsRds {
+            sdk,
+            region: &rds.region,
+        };
+        let cluster = aws.cluster(&rds.cluster_identifier).await?;
+        if let Some(arn) = cluster.and_then(|cluster| cluster.arn) {
+            targets.insert("rds".to_string(), arn);
+        }
+    }
+    Ok(targets)
 }
 
 fn cloudfront_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecretStore) {

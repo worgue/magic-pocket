@@ -392,14 +392,16 @@ mod tests {
         ];
         let mut efs_api = FakeEfs::with(&efs_name, "available", json!([]));
         efs_api.mount_targets = vec![("fsmt-1".to_string(), "eni-efs".to_string())];
-        let mut network = FakeNetwork::default();
-        network.contents = VpcContents {
-            network_interfaces: vec![eni("eni-nat"), eni("eni-efs"), eni("eni-lambda")],
-            security_groups: vec![group("sg-default", "default")],
-            nat_gateways: vec![NatGateway {
-                id: "nat-1".to_string(),
-                network_interface_ids: vec!["eni-nat".to_string()],
-            }],
+        let mut network = FakeNetwork {
+            contents: VpcContents {
+                network_interfaces: vec![eni("eni-nat"), eni("eni-efs"), eni("eni-lambda")],
+                security_groups: vec![group("sg-default", "default")],
+                nat_gateways: vec![NatGateway {
+                    id: "nat-1".to_string(),
+                    network_interface_ids: vec!["eni-nat".to_string()],
+                }],
+            },
+            ..Default::default()
         };
         let deploy = VpcDeploy {
             stacks: &stacks,
