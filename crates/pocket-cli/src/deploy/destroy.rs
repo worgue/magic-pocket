@@ -728,7 +728,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(stacks.writes(), [format!("delete {} {name}", c.region)]);
-        assert_eq!(repos.deleted.borrow().as_slice(), [c.ecr_name.clone()]);
+        assert_eq!(
+            repos.deleted.borrow().as_slice(),
+            std::slice::from_ref(&c.ecr_name)
+        );
         assert_eq!(
             texts(&sink, Style::Success),
             [
@@ -764,7 +767,10 @@ mod tests {
             .await
             .unwrap();
         assert!(stacks.writes().is_empty());
-        assert_eq!(repos.deleted.borrow().as_slice(), [c.ecr_name.clone()]);
+        assert_eq!(
+            repos.deleted.borrow().as_slice(),
+            std::slice::from_ref(&c.ecr_name)
+        );
 
         // 全部消えた後の再実行は何もしない
         let mut sink = Recorded::default();

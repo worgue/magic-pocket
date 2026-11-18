@@ -177,3 +177,26 @@ class PocketRs:
 @pytest.fixture
 def pocket_rs(pocket_rs_bin, moto_endpoint) -> PocketRs:
     return PocketRs(pocket_rs_bin, moto_endpoint)
+
+
+@pytest.fixture
+def moto_versioning_root(monkeypatch):
+    """moto の GetBucketVersioning の応答を、実 AWS と同じ root 要素名にする。
+
+    moto 5.2.2 は root を `GetBucketVersioningResponse` で返す (実 AWS は
+    `VersioningConfiguration`)。boto3 は root の名前を見ないが、Rust の SDK は見る。
+    """
+    from moto.s3.responses import S3Response
+
+    def get_bucket_versioning(self):
+        status = self.backend.get_bucket_versioning(self.bucket_name)
+        inner = f"<Status>{status}</Status>" if status else ""
+        return (
+            200,
+            {},
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
+            f"{inner}</VersioningConfiguration>",
+        )
+
+    monkeypatch.setattr(S3Response, "get_bucket_versioning", get_bucket_versioning)

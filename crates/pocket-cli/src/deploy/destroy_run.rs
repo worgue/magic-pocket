@@ -547,7 +547,7 @@ impl DestroyOps for AwsDestroy {
                     .chain(
                         names
                             .iter()
-                            .map(|name| ctx.container.get(*name).and_then(|c| c.secrets.as_ref())),
+                            .map(|name| ctx.container.get(name).and_then(|c| c.secrets.as_ref())),
                     )
                     .flatten()
                     .collect();

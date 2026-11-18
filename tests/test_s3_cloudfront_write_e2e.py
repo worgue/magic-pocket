@@ -61,27 +61,7 @@ elif sys.argv[3] == "managed-assets":
 """
 
 
-@pytest.fixture(autouse=True)
-def _moto_versioning_root(monkeypatch):
-    """moto の GetBucketVersioning の応答を、実 AWS と同じ root 要素名にする。
-
-    moto 5.2.2 は root を `GetBucketVersioningResponse` で返す (実 AWS は
-    `VersioningConfiguration`)。boto3 は root の名前を見ないが、Rust の SDK は見る。
-    """
-    from moto.s3.responses import S3Response
-
-    def get_bucket_versioning(self):
-        status = self.backend.get_bucket_versioning(self.bucket_name)
-        inner = f"<Status>{status}</Status>" if status else ""
-        return (
-            200,
-            {},
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">'
-            f"{inner}</VersioningConfiguration>",
-        )
-
-    monkeypatch.setattr(S3Response, "get_bucket_versioning", get_bucket_versioning)
+pytestmark = pytest.mark.usefixtures("moto_versioning_root")
 
 
 def _client(service: str, endpoint: str, region: str = REGION):
