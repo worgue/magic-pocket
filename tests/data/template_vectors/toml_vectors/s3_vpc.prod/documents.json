@@ -1,0 +1,30 @@
+{
+  "account_id": "123456789012",
+  "distribution_id": "EVECTORDIST0001",
+  "s3": {
+    "public_access_block": {
+      "BlockPublicAcls": true,
+      "IgnorePublicAcls": true,
+      "BlockPublicPolicy": true,
+      "RestrictPublicBuckets": true
+    },
+    "cors_rules": null,
+    "lifecycle_rules": [
+      {
+        "ID": "all",
+        "Status": "Enabled",
+        "Filter": {
+          "Prefix": ""
+        },
+        "Expiration": {
+          "Days": 365
+        },
+        "NoncurrentVersionExpiration": {
+          "NoncurrentDays": 7
+        }
+      }
+    ],
+    "versioning": true
+  },
+  "cloudfront": {}
+}

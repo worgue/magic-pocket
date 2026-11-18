@@ -1,0 +1,353 @@
+{
+  "account_id": "123456789012",
+  "distribution_id": "EVECTORDIST0001",
+  "s3": {
+    "public_access_block": {
+      "BlockPublicAcls": true,
+      "IgnorePublicAcls": true,
+      "BlockPublicPolicy": true,
+      "RestrictPublicBuckets": true
+    },
+    "cors_rules": null,
+    "lifecycle_rules": null,
+    "versioning": false
+  },
+  "cloudfront": {
+    "web": {
+      "bucket_policy_statement": {
+        "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "cloudfront.amazonaws.com"
+        },
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+          }
+        }
+      },
+      "bucket_policy_cases": [
+        {
+          "name": "none",
+          "current": null,
+          "ensure": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "delete": {
+            "action": "none"
+          }
+        },
+        {
+          "name": "own_only",
+          "current": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                "Condition": {
+                  "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                  }
+                }
+              }
+            ]
+          },
+          "ensure": {
+            "action": "none"
+          },
+          "delete": {
+            "action": "delete"
+          }
+        },
+        {
+          "name": "other_only",
+          "current": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "VectorOther",
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::vector-other"
+              }
+            ]
+          },
+          "ensure": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "VectorOther",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                  },
+                  "Action": "s3:ListBucket",
+                  "Resource": "arn:aws:s3:::vector-other"
+                },
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "delete": {
+            "action": "none"
+          }
+        },
+        {
+          "name": "other_and_own",
+          "current": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "VectorOther",
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::vector-other"
+              },
+              {
+                "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                "Condition": {
+                  "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                  }
+                }
+              }
+            ]
+          },
+          "ensure": {
+            "action": "none"
+          },
+          "delete": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "VectorOther",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                  },
+                  "Action": "s3:ListBucket",
+                  "Resource": "arn:aws:s3:::vector-other"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "same_sid_different_resource",
+          "current": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::vector-other/*",
+                "Condition": {
+                  "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                  }
+                }
+              }
+            ]
+          },
+          "ensure": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::vector-other/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                },
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "delete": {
+            "action": "none"
+          }
+        },
+        {
+          "name": "old_version_with_own",
+          "current": {
+            "Version": "2008-10-17",
+            "Statement": [
+              {
+                "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "cloudfront.amazonaws.com"
+                },
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                "Condition": {
+                  "StringEquals": {
+                    "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                  }
+                }
+              }
+            ]
+          },
+          "ensure": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "delete": {
+            "action": "none"
+          }
+        },
+        {
+          "name": "old_version_without_own",
+          "current": {
+            "Version": "2008-10-17",
+            "Statement": [
+              {
+                "Sid": "VectorOther",
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::123456789012:root"
+                },
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::vector-other"
+              }
+            ]
+          },
+          "ensure": {
+            "action": "put",
+            "policy": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "VectorOther",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:root"
+                  },
+                  "Action": "s3:ListBucket",
+                  "Resource": "arn:aws:s3:::vector-other"
+                },
+                {
+                  "Sid": "AllowCloudFrontReadOnlySandboxPocketExampleNeonWeb",
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "cloudfront.amazonaws.com"
+                  },
+                  "Action": "s3:GetObject",
+                  "Resource": "arn:aws:s3:::sandbox-pocket-example-neon-pocket/static/*",
+                  "Condition": {
+                    "StringEquals": {
+                      "AWS:SourceArn": "arn:aws:cloudfront::123456789012:distribution/EVECTORDIST0001"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "delete": {
+            "action": "none"
+          }
+        }
+      ]
+    }
+  }
+}

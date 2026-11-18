@@ -16,6 +16,9 @@ Python 版の deploy が作る stack の template を、入力 (toml × その s
 - `roles.json`: stage で pocket が使う IAM role の一覧 (`stage_role_specs`。deploy 前の
   external_roles の検査と同じ並び)。inline policy は定義のままと、`Fn::Sub` を展開した
   IAM に直接書ける形の両方を持つ。dict の順は policy の定義順なので並べ替えない
+- `documents.json`: template を通さず API に直接書く文書 (s3 か cloudfront がある stage
+  だけ)。S3 bucket の望む設定と、cloudfront ごとの bucket policy の statement・
+  policy の遷移 (今の policy → 確保した後 / 外した後)
 
 外部入力 (他 stack の output・secret の値・RDS / DSQL / EFS の実体・receipt rule set
 の binding・受信ドメインの hosted zone id) は固定の fake に差し替え、使った値を
@@ -34,6 +37,7 @@ Resource を組めない)。
 from __future__ import annotations
 
 import contextlib
+import copy
 import hashlib
 import json
 from collections.abc import Iterator
@@ -63,10 +67,12 @@ from pocket_cli.resources.aws.cloudformation import (
 from pocket_cli.resources.aws.efs import Efs
 from pocket_cli.resources.aws.iam_roles import RoleSpec
 from pocket_cli.resources.aws.stage_roles import stage_role_specs
+from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.inbound import InboundStack
 from pocket_cli.resources.inbound_domain import InboundDomainStack
 from pocket_cli.resources.rds import Rds
+from pocket_cli.resources.s3 import S3
 from pydantic import ValidationError
 from pydantic_core import to_jsonable_python
 
@@ -85,6 +91,7 @@ FAKE_SIGNING_PUBLIC_KEY_PEM = (
     "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvector\n"
     "-----END PUBLIC KEY-----\n"
 )
+FAKE_DISTRIBUTION_ID = "EVECTORDIST0001"
 FAKE_RULE_SET = "default-rule-set"
 FAKE_PREVIOUS_RULE = "vector-previous-rule"
 # 外部 VPC (manage = false) の private subnet の数
@@ -321,6 +328,103 @@ def role_entry(spec: RoleSpec, context: Context) -> dict[str, Any]:
     }
 
 
+def s3_documents(context: Context) -> dict[str, Any]:
+    """S3 bucket の望む設定 (`S3` が put する値。無いものは None)"""
+    assert context.s3 is not None
+    s3 = S3(context.s3, cloudfront_contexts=context.cloudfront)
+    return {
+        "public_access_block": s3.public_access_block_should_be,
+        "cors_rules": s3._desired_cors_rules(),
+        "lifecycle_rules": s3._desired_lifecycle_rules(),
+        "versioning": context.s3.versioning,
+    }
+
+
+def _policy_cases(own: dict[str, Any]) -> list[tuple[str, dict | None]]:
+    """bucket policy の遷移の入力 (名前, 今の policy)"""
+    other = {
+        "Sid": "VectorOther",
+        "Effect": "Allow",
+        "Principal": {"AWS": "arn:aws:iam::%s:root" % FAKE_ACCOUNT},
+        "Action": "s3:ListBucket",
+        "Resource": "arn:aws:s3:::vector-other",
+    }
+    same_sid = {**own, "Resource": "arn:aws:s3:::vector-other/*"}
+
+    def policy(*statements: dict, version: str = "2012-10-17") -> dict:
+        return {"Version": version, "Statement": list(statements)}
+
+    return [
+        ("none", None),
+        ("own_only", policy(own)),
+        ("other_only", policy(other)),
+        ("other_and_own", policy(other, own)),
+        ("same_sid_different_resource", policy(same_sid)),
+        ("old_version_with_own", policy(own, version="2008-10-17")),
+        ("old_version_without_own", policy(other, version="2008-10-17")),
+    ]
+
+
+def _policy_transition(cf_context, current: dict | None, method: str) -> dict[str, Any]:
+    """`_ensure_bucket_policy` / `_delete_bucket_policy` が行う操作を記録する"""
+    cloudfront = CloudFront.__new__(CloudFront)
+    cloudfront.context = cf_context
+    cloudfront.__dict__["account_id"] = FAKE_ACCOUNT
+    cloudfront.__dict__["distribution_id"] = FAKE_DISTRIBUTION_ID
+    cloudfront.__dict__["bucket_policy"] = copy.deepcopy(current)
+    calls: list[dict[str, Any]] = []
+
+    def record(policy: dict | None):
+        if policy is None:
+            calls.append({"action": "delete"})
+        else:
+            calls.append({"action": "put", "policy": copy.deepcopy(policy)})
+
+    with mock.patch.object(cloudfront, "_update_origin_bucket_policy", record):
+        getattr(cloudfront, method)()
+    if len(calls) > 1:
+        raise click.ClickException("%s が policy を複数回書きました" % method)
+    return calls[0] if calls else {"action": "none"}
+
+
+def cloudfront_documents(cf_context) -> dict[str, Any]:
+    cloudfront = CloudFront.__new__(CloudFront)
+    cloudfront.context = cf_context
+    cloudfront.__dict__["account_id"] = FAKE_ACCOUNT
+    cloudfront.__dict__["distribution_id"] = FAKE_DISTRIBUTION_ID
+    own = cloudfront.bucket_policy_statement_should_contain
+    return {
+        "bucket_policy_statement": own,
+        "bucket_policy_cases": [
+            {
+                "name": name,
+                "current": current,
+                "ensure": _policy_transition(
+                    cf_context, current, "_ensure_bucket_policy"
+                ),
+                "delete": _policy_transition(
+                    cf_context, current, "_delete_bucket_policy"
+                ),
+            }
+            for name, current in _policy_cases(own)
+        ],
+    }
+
+
+def documents(context: Context) -> dict[str, Any] | None:
+    if not context.s3 and not context.cloudfront:
+        return None
+    return {
+        "account_id": FAKE_ACCOUNT,
+        "distribution_id": FAKE_DISTRIBUTION_ID,
+        "s3": s3_documents(context) if context.s3 else None,
+        "cloudfront": {
+            name: cloudfront_documents(cf_context)
+            for name, cf_context in context.cloudfront.items()
+        },
+    }
+
+
 def build_files(toml_path: Path, stage: str, context: dict) -> dict[str, str] | None:
     """1 入力 × 1 stage のファイル (名前 → 内容)。Context を組めない入力は None"""
     data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
@@ -368,6 +472,11 @@ def build_files(toml_path: Path, stage: str, context: dict) -> dict[str, str] | 
                 )
                 + "\n"
             )
+            docs = documents(pocket_context)
+            if docs is not None:
+                files["documents.json"] = (
+                    json.dumps(docs, ensure_ascii=False, indent=2) + "\n"
+                )
         external = {**external, "dir_files": dir_files}
     manifest = {
         "input": toml_path.relative_to(REPO_ROOT).as_posix(),
