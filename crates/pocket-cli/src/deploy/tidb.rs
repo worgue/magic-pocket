@@ -261,6 +261,31 @@ impl<'a, Q: Sql> TiDb<'a, Q> {
         not_ready("Cluster did not become available in time")
     }
 
+    /// 名前が一致する cluster が在るか (destroy の対象の一覧の表示用)
+    pub async fn cluster_exists(&self) -> Result<bool> {
+        Ok(match self.project_id().await? {
+            Some(project_id) => self.cluster(&project_id).await?.is_some(),
+            None => false,
+        })
+    }
+
+    /// cluster を消す (destroy)。無ければ何もせず `false`
+    pub async fn delete_cluster(&self) -> Result<bool> {
+        let cluster = match self.project_id().await? {
+            Some(project_id) => self.cluster(&project_id).await?,
+            None => None,
+        };
+        let Some(cluster) = cluster else {
+            return Ok(false);
+        };
+        let url = format!(
+            "{}clusters/{}",
+            self.http.endpoints.tidb_serverless, cluster.id
+        );
+        self.request(Method::DELETE, &url, None).await?;
+        Ok(true)
+    }
+
     /// 接続 URL。資格情報が無い・cluster が無い・ACTIVE でないなら `None` (未準備)。
     /// API の失敗は error
     pub async fn database_url(&self) -> Result<Option<String>> {
@@ -392,6 +417,10 @@ mod tests {
                     Reply::ok(json!({"clusterId": "c-1"}))
                 }
                 ("PUT", PASSWORD) => Reply::ok(json!({})),
+                ("DELETE", "/serverless/clusters/c-1") => {
+                    state.cluster = None;
+                    Reply::ok(json!({}))
+                }
                 _ => Reply::json(500, json!({"message": "unexpected request"})),
             }
         })
@@ -590,6 +619,23 @@ mod tests {
         let (ctx, sql) = (context(), FakeSql::default());
         let url = tidb(&http, &ctx, &sql).database_url().await.unwrap();
         assert_eq!(url, None);
+    }
+
+    #[tokio::test]
+    async fn test_delete_cluster() {
+        let server = server(State::new(Some("ACTIVE")));
+        let http = stub_http(&server);
+        let (ctx, sql) = (context(), FakeSql::default());
+        let tidb = tidb(&http, &ctx, &sql);
+        assert!(tidb.cluster_exists().await.unwrap());
+        assert!(tidb.delete_cluster().await.unwrap());
+        let writes = authed_writes(&server);
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].line(), "DELETE /serverless/clusters/c-1");
+        // 無い cluster の削除は要求を出さない
+        assert!(!tidb.cluster_exists().await.unwrap());
+        assert!(!tidb.delete_cluster().await.unwrap());
+        assert_eq!(authed_writes(&server).len(), 1);
     }
 
     #[tokio::test]

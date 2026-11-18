@@ -97,3 +97,5 @@ mysql_async = { version = "0.37", default-features = false, features = ["minimal
 # rustc の最大メモリは sesv2 が約 1.3GB (sqs は runtime lib が既に使っている)
 aws-sdk-sesv2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# destroy: Lambda が自動で作った log group を消す
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

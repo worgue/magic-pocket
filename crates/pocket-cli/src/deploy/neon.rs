@@ -46,6 +46,33 @@ pub fn database_body(neon: &NeonContext) -> Json {
     json!({"database": {"name": neon.name, "owner_name": neon.role_name}})
 }
 
+/// stage の branch の消し方
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestroyPlan {
+    /// root でない branch。branch 単位で消せる
+    Branch,
+    /// root branch で、project に他の branch が無い。project ごと消す
+    Project,
+    /// root branch で、他の branch が同居している。何も消せない
+    Blocked,
+}
+
+/// branch の一覧から消し方を決める。`branch_name` の branch が無ければ `None`
+pub fn destroy_plan(branches: &Json, branch_name: &str) -> Option<DestroyPlan> {
+    let branch = find_by(branches, "name", branch_name)?;
+    if branch["parent_id"].as_str().is_some() {
+        return Some(DestroyPlan::Branch);
+    }
+    let others = branches
+        .as_array()
+        .is_some_and(|list| list.iter().any(|b| b["id"] != branch["id"]));
+    Some(if others {
+        DestroyPlan::Blocked
+    } else {
+        DestroyPlan::Project
+    })
+}
+
 pub struct Neon<'a> {
     pub http: &'a Http,
     pub ctx: &'a NeonContext,
@@ -58,11 +85,21 @@ impl Neon<'_> {
 
     /// 書き込み (POST)。成功したら Neon 側の反映を待つ
     async fn post(&self, path: &str, body: &Json, sink: &mut dyn Sink) -> Result<()> {
+        self.write(Method::POST, path, Some(body), sink).await
+    }
+
+    async fn write(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Json>,
+        sink: &mut dyn Sink,
+    ) -> Result<()> {
         let url = format!("{}{path}", self.http.endpoints.neon);
         let key = self.key();
         let response = self
             .http
-            .request(Method::POST, &url, Auth::Bearer(key), Some(body))
+            .request(method, &url, Auth::Bearer(key), body)
             .await?;
         if response.ok() {
             self.http.settle().await;
@@ -172,6 +209,71 @@ impl Neon<'_> {
             return Ok(());
         }
         self.post(&path, &database_body(self.ctx), sink).await
+    }
+
+    /// stage の branch を消す (destroy)。
+    ///
+    /// root branch は branch 単位で消せない。project に他の branch が無ければ project ごと
+    /// 消し、他の branch が在れば (他の stage の巻き添えになるので) 何も消さずに知らせる。
+    /// branch が無ければ何もしない
+    pub async fn destroy(&self, sink: &mut dyn Sink) -> Result<()> {
+        let neon = self.ctx;
+        let project_id = neon_project_id(self.http, self.key(), neon, sink).await?;
+        let base = format!("projects/{project_id}");
+        let branches = self.branches(&base, true, sink).await?;
+        let Some(plan) = destroy_plan(&branches, &neon.branch_name) else {
+            return Ok(());
+        };
+        match plan {
+            DestroyPlan::Blocked => {
+                sink.warning(&format!(
+                    "Neon branch '{}' は root branch のため単体削除できず、project '{}' には\
+                     他の branch が残っているため project 削除も行いません。\
+                     他 stage の destroy 後に pocket resource neon delete で削除してください。",
+                    neon.branch_name, neon.project_name
+                ));
+                Ok(())
+            }
+            DestroyPlan::Project => {
+                sink.log("Destroying Neon project (root branch のため project ごと削除)...");
+                self.write(Method::DELETE, &base, None, sink).await?;
+                sink.success(&format!(
+                    "Neon project '{}' was deleted.",
+                    neon.project_name
+                ));
+                Ok(())
+            }
+            DestroyPlan::Branch => {
+                sink.log("Destroying Neon branch...");
+                let branch_id = self.branch_id(&branches).unwrap_or_default();
+                let path = format!("{base}/endpoints");
+                let endpoints = neon_list(self.http, self.key(), &path, sink).await?;
+                let endpoint = endpoints["endpoints"].as_array().and_then(|list| {
+                    list.iter().find(|endpoint| {
+                        endpoint["branch_id"].as_str() == Some(branch_id.as_str())
+                            && endpoint["type"].as_str() == Some("read_write")
+                    })
+                });
+                let Some(endpoint_id) = endpoint.and_then(|e| e["id"].as_str()) else {
+                    bail!("Branch or endpoint not found. Something is wrong.");
+                };
+                let path = format!("{base}/endpoints/{endpoint_id}");
+                self.write(Method::DELETE, &path, None, sink).await?;
+                let path = format!("{base}/branches/{branch_id}");
+                self.write(Method::DELETE, &path, None, sink).await?;
+                sink.success("Neon branch was deleted.");
+                Ok(())
+            }
+        }
+    }
+
+    /// destroy で何を消すことになるか (対象の一覧の表示用)。branch が無ければ `None`
+    pub async fn destroy_plan(&self, sink: &mut dyn Sink) -> Result<Option<DestroyPlan>> {
+        let project_id = neon_project_id(self.http, self.key(), self.ctx, sink).await?;
+        let branches = self
+            .branches(&format!("projects/{project_id}"), true, sink)
+            .await?;
+        Ok(destroy_plan(&branches, &self.ctx.branch_name))
     }
 
     /// 接続 URL。branch・role・書き込み用の endpoint のどれかが無ければ `None` (未準備)
@@ -528,6 +630,110 @@ mod tests {
             assert_eq!(url, None, "{:?}", server.lines());
             assert!(server.writes().is_empty());
         }
+    }
+
+    /// 削除の要求を受ける stub (branch の一覧は固定)
+    fn destroy_server(branches: Json) -> StubServer {
+        StubServer::start(move |request: &Request| {
+            match (request.method.as_str(), request.path.as_str()) {
+                ("GET", "/neon/projects") => {
+                    Reply::ok(json!({"projects": [{"id": "p1", "name": "app"}]}))
+                }
+                ("GET", BRANCHES) => Reply::ok(json!({"branches": branches})),
+                ("GET", "/neon/projects/p1/endpoints") => Reply::ok(json!({"endpoints": [
+                    {"id": "ep-ro", "branch_id": "br-dev", "type": "read_only"},
+                    {"id": "ep-dev", "branch_id": "br-dev", "type": "read_write"},
+                    {"id": "ep-main", "branch_id": "br-main", "type": "read_write"},
+                ]})),
+                ("DELETE", _) => Reply::ok(json!({})),
+                _ => Reply::json(500, json!({"message": "unexpected request"})),
+            }
+        })
+    }
+
+    #[test]
+    fn test_destroy_plan() {
+        let child = json!([
+            {"id": "br-main", "name": "main"},
+            {"id": "br-dev", "name": "dev", "parent_id": "br-main"},
+        ]);
+        assert_eq!(destroy_plan(&child, "dev"), Some(DestroyPlan::Branch));
+        // root branch で他の branch が同居 → 何も消せない
+        assert_eq!(destroy_plan(&child, "main"), Some(DestroyPlan::Blocked));
+        let alone = json!([{"id": "br-main", "name": "main"}]);
+        assert_eq!(destroy_plan(&alone, "main"), Some(DestroyPlan::Project));
+        assert_eq!(destroy_plan(&alone, "dev"), None);
+    }
+
+    #[tokio::test]
+    async fn test_destroy_deletes_endpoint_then_branch() {
+        let server = destroy_server(json!([
+            {"id": "br-main", "name": "main"},
+            {"id": "br-dev", "name": "dev", "parent_id": "br-main"},
+        ]));
+        let http = stub_http(&server);
+        let ctx = context(None);
+        let neon = Neon {
+            http: &http,
+            ctx: &ctx,
+        };
+        neon.destroy(&mut Recorded::default()).await.unwrap();
+        // 書き込み用の endpoint → branch の順。他の branch と project には触れない
+        assert_eq!(
+            write_lines(&server),
+            [
+                "DELETE /neon/projects/p1/endpoints/ep-dev",
+                "DELETE /neon/projects/p1/branches/br-dev",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_destroy_root_branch_deletes_project_only_when_alone() {
+        let mut ctx = context(None);
+        ctx.branch_name = "main".to_string();
+        let server = destroy_server(json!([{"id": "br-main", "name": "main"}]));
+        let http = stub_http(&server);
+        let neon = Neon {
+            http: &http,
+            ctx: &ctx,
+        };
+        neon.destroy(&mut Recorded::default()).await.unwrap();
+        assert_eq!(write_lines(&server), ["DELETE /neon/projects/p1"]);
+
+        // 他の branch が同居している root branch: 何も消さずに知らせる
+        let server = destroy_server(json!([
+            {"id": "br-main", "name": "main"},
+            {"id": "br-dev", "name": "dev", "parent_id": "br-main"},
+        ]));
+        let http = stub_http(&server);
+        let neon = Neon {
+            http: &http,
+            ctx: &ctx,
+        };
+        let mut sink = Recorded::default();
+        neon.destroy(&mut sink).await.unwrap();
+        assert!(server.writes().is_empty());
+        assert!(sink.0[0].2.starts_with(
+            "Neon branch 'main' は root branch のため単体削除できず、project 'app' には"
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_destroy_without_branch_is_a_no_op() {
+        let server = destroy_server(json!([{"id": "br-main", "name": "main"}]));
+        let http = stub_http(&server);
+        let ctx = context(None);
+        let neon = Neon {
+            http: &http,
+            ctx: &ctx,
+        };
+        neon.destroy(&mut Recorded::default()).await.unwrap();
+        assert_eq!(
+            neon.destroy_plan(&mut Recorded::default()).await.unwrap(),
+            None
+        );
+        assert!(server.writes().is_empty());
     }
 
     #[tokio::test]

@@ -113,6 +113,21 @@ enum Top {
         #[arg(long, short = 'y')]
         yes: bool,
     },
+    /// stage の全リソースを一括で削除する (削除対象を一覧で示し、確認してから消す)
+    Destroy {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// シークレットを削除せずに残す
+        #[arg(long)]
+        without_secrets: bool,
+        /// state bucket も削除する
+        #[arg(long)]
+        with_state_bucket: bool,
+        /// 確認プロンプトを自動で承認する (backup のデータは `-y` では削除しない)
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// deploy の部品を 1 つずつ実行する (e2e 用。`deploy` の公開時に消す)
     #[command(hide = true)]
     DeployParts {
@@ -326,6 +341,20 @@ async fn run(cli: Cli) -> Result<()> {
                 promote: Some(commit_hash),
                 openpath,
                 skip_frontend,
+                yes,
+            })
+            .await
+        }
+        Top::Destroy {
+            stage,
+            without_secrets,
+            with_state_bucket,
+            yes,
+        } => {
+            return deploy::destroy_run::run(deploy::destroy_run::DestroyArgs {
+                stage,
+                without_secrets,
+                with_state_bucket,
                 yes,
             })
             .await

@@ -9,6 +9,8 @@
 pub mod backup;
 pub mod cloudfront;
 pub mod container;
+pub mod destroy;
+pub mod destroy_run;
 pub mod dsql;
 pub mod ecr;
 pub mod edge;

@@ -98,6 +98,34 @@ impl Upstash<'_> {
         Ok(())
     }
 
+    /// 名前が一致する database が在るか (destroy の対象の一覧の表示用)
+    pub async fn database_exists(&self) -> Result<bool> {
+        let Some(auth) = self.credentials() else {
+            bail!("UPSTASH_EMAIL と UPSTASH_API_KEY を設定してください");
+        };
+        Ok(self.database(auth).await?.is_some())
+    }
+
+    /// database を消す (destroy)。無ければ何もしない
+    pub async fn delete_database(&self, sink: &mut dyn Sink) -> Result<()> {
+        let Some(auth) = self.credentials() else {
+            bail!("UPSTASH_EMAIL と UPSTASH_API_KEY を設定してください");
+        };
+        let Some(database) = self.database(auth).await? else {
+            sink.warning("Upstash データベースが見つかりません");
+            return Ok(());
+        };
+        let name = &self.ctx.database_name;
+        sink.log(&format!("Upstash データベースを削除します: {name}"));
+        let path = format!(
+            "database/{}",
+            database["database_id"].as_str().unwrap_or_default()
+        );
+        self.request(Method::DELETE, &path, auth, None).await?;
+        sink.success("Upstash データベースを削除しました");
+        Ok(())
+    }
+
     /// 接続 URL。資格情報が無い・database が無い・active でないなら `None` (未準備)
     pub async fn redis_url(&self) -> Result<Option<String>> {
         let Some(auth) = self.credentials() else {
@@ -145,6 +173,7 @@ mod tests {
             match (request.method.as_str(), request.path.as_str()) {
                 ("GET", "/upstash/databases") => Reply::ok(databases.clone()),
                 ("POST", "/upstash/database") => Reply::ok(json!({"database_id": "db-new"})),
+                ("DELETE", "/upstash/database/db-1") => Reply::ok(json!("OK")),
                 _ => Reply::json(500, json!({"error": "unexpected request"})),
             }
         })
@@ -241,6 +270,38 @@ mod tests {
             "UPSTASH_EMAIL と UPSTASH_API_KEY を設定してください"
         );
         assert_eq!(server.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_delete_database() {
+        let server = server(json!([database("dev-app", "active", true)]));
+        let http = stub_http(&server);
+        let ctx = context();
+        let upstash = Upstash {
+            http: &http,
+            ctx: &ctx,
+        };
+        assert!(upstash.database_exists().await.unwrap());
+        upstash
+            .delete_database(&mut Recorded::default())
+            .await
+            .unwrap();
+        let writes = server.writes();
+        assert_eq!(writes.len(), 1);
+        assert_eq!(writes[0].line(), "DELETE /upstash/database/db-1");
+
+        // 無い database の削除は要求を出さない
+        let server = self::server(json!([database("other", "active", true)]));
+        let http = stub_http(&server);
+        let upstash = Upstash {
+            http: &http,
+            ctx: &ctx,
+        };
+        assert!(!upstash.database_exists().await.unwrap());
+        let mut sink = Recorded::default();
+        upstash.delete_database(&mut sink).await.unwrap();
+        assert!(server.writes().is_empty());
+        assert_eq!(sink.0[0].2, "Upstash データベースが見つかりません");
     }
 
     #[tokio::test]

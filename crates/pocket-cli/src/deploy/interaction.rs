@@ -10,6 +10,8 @@ pub trait Prompt {
     fn confirm(&self, text: &str, default: bool) -> Result<bool>;
     /// `-y` でも自動では承認しない確認 (データの削除など)。`-y` のときは聞かずに `false`
     fn confirm_explicit(&self, text: &str) -> Result<bool>;
+    /// [`Prompt::confirm_explicit`] が実際に聞くか (`-y` なら聞かない)
+    fn asks_explicitly(&self) -> bool;
 }
 
 /// 端末 (stdin) に聞く [`Prompt`]
@@ -58,6 +60,10 @@ impl Prompt for Interaction {
             return Ok(false);
         }
         ask(text, false)
+    }
+
+    fn asks_explicitly(&self) -> bool {
+        !self.assume_yes
     }
 }
 
@@ -108,6 +114,10 @@ pub mod testing {
             }
             self.asked.borrow_mut().push(text.to_string());
             Ok(self.answer)
+        }
+
+        fn asks_explicitly(&self) -> bool {
+            !self.assume_yes
         }
     }
 }
