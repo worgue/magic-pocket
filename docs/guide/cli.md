@@ -77,6 +77,8 @@ pocket deploy --stage=dev
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
 
+Rust 版は [`pocket-rs deploy`](#pocket-rs-deploy) です（同じ処理。今後の新機能は Rust 版だけに入ります）。
+
 ### pocket build
 
 現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして
@@ -125,6 +127,8 @@ pocket promote --stage=stg --commit-hash=<full-sha>
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 | `--skip-check-existing` | neon/tidb/upstash の存在確認 API をスキップ |
+
+Rust 版は [`pocket-rs promote`](#pocket-rs-promote) です。
 
 ### pocket status
 
@@ -184,6 +188,8 @@ pocket destroy --stage=dev
     バックアップ**データ**（recovery point）は既定では削除されず、残る場合は件数が警告表示されます。[`[backup]` の `deletable = true`](configuration.md#backup) を宣言している場合のみ、destroy 実行中に `[y/N]` で削除するか確認されます（既定 No。`--yes` による一括承認ではデータ削除は行いません）。
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
+
+Rust 版は [`pocket-rs destroy`](#pocket-rs-destroy) です。
 
 ### リソースの撤去手順
 
@@ -347,7 +353,7 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 |---|---|---|
 | `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
-| `deploy` / `destroy` / `promote` | Python 版 `pocket` | |
+| `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方）。`pocket django deploy` / `promote` は Python 版のみ |
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
 | `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
@@ -441,7 +447,66 @@ pocket-rs build --stage=dev
 - `[container.<name>] build` の backend（`codebuild` / `docker` / `depot`）は Python 版と同じものを使います。CodeBuild の project・IAM role・source の置き場（state bucket）も Python 版と同じ名前なので、同じ stage を Python 版と Rust 版のどちらから build しても構いません
 - `docker` / `depot` では build 前に、other-read の無いファイルを警告します（`pocket.toml` はエラー）。`codebuild` は source zip の作成時に mode を 0644 / 0755 にそろえます
 
-昇格（`promote`）はまだ Python 版 `pocket promote` を使います。
+昇格は [`pocket-rs promote`](#pocket-rs-promote) で行います。
+
+### pocket-rs deploy {#pocket-rs-deploy}
+
+全リソースをデプロイします。処理の順・作るリソースの名前・表示の文言は Python 版 [`pocket deploy`](#pocket-deploy) と同じです。
+
+```bash
+pocket-rs deploy --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ（省略すると `POCKET_DEPLOY_STAGE`） |
+| `--openpath` | デプロイ後にブラウザで開くパス |
+| `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--yes`, `-y` | 確認プロンプトを自動で承認する（非対話実行用） |
+
+- CloudFormation の stack 名・template・state bucket の記録は Python 版と同じです。Python 版でデプロイ済みのステージに実行しても、設定が変わっていなければ stack の更新は起きません。Python 版と Rust 版を同じステージで交互に使えます
+- リソースの状態が `FAILED`（作成の失敗で rollback した stack など）か `PROGRESS`（前回の操作が進行中）のときは、そのリソースで止まります
+- `--stage` を省略し `POCKET_DEPLOY_STAGE` も無いときは、エラーで止まります（Python 版は入力を求めます）
+- Django の static のアップロードと migration を伴うデプロイは、引き続き Python 版 `pocket django deploy` を使います
+
+### pocket-rs promote {#pocket-rs-promote}
+
+ビルド済みのコンテナイメージへステージを向けてデプロイします（再ビルドなし）。動作は Python 版 [`pocket promote`](#pocket-promote) と同じです。
+
+```bash
+pocket-rs build --stage=dev            # :<commit hash> で push
+pocket-rs promote --stage=stg --commit-hash=<full-sha>
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ（省略すると `POCKET_DEPLOY_STAGE`） |
+| `--commit-hash` | 昇格するイメージの git commit hash（**必須**） |
+| `--openpath` | デプロイ後にブラウザで開くパス |
+| `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
+| `--yes`, `-y` | 確認プロンプトを自動で承認する（非対話実行用） |
+
+container の無いステージではエラーになります。指定した commit hash のイメージが ECR に無い場合もエラーになります（勝手にビルドしません）。
+
+### pocket-rs destroy {#pocket-rs-destroy}
+
+ステージの全リソースを一括削除します。削除対象の一覧・削除の順・確認は Python 版 [`pocket destroy`](#pocket-destroy) と同じです。
+
+```bash
+pocket-rs destroy --stage=dev
+```
+
+| オプション | 説明 |
+|-----------|------|
+| `--stage` | 対象ステージ（省略すると `POCKET_DEPLOY_STAGE`） |
+| `--without-secrets` | pocket 管理シークレットを削除せずに残す |
+| `--with-state-bucket` | ステートバケットも削除 |
+| `--yes`, `-y` | 確認プロンプトを自動で承認する |
+
+- 実行前に削除対象の一覧を表示し、確認を求めます。標準入力が閉じている（非対話）ときに `-y` が無ければ、何も消さずに終了します
+- バックアップのデータ（recovery point）は `-y` では削除しません。`[backup] deletable = true` を宣言していて、対話で明示的に yes と答えたときだけ削除します
+- 途中で止まったときは、同じコマンドを再実行すると続きから進みます（削除中の stack は完了を待つだけで、削除の指示を出し直しません）
+- 受信口（`[inbound.*]`）は、受信を止めてデプロイしてから 36 時間が過ぎ、queue に滞留が無いときだけ削除します。条件を満たさないと、そこで止まります（[メール受信](../inbound.md)）
 
 ### pocket-rs version {#pocket-rs-version}
 

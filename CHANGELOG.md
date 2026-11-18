@@ -18,6 +18,12 @@
   `NOEXIST` と表示せずエラーで止まります。Python 版も残ります。
   [pocket-rs status](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-status)
 
+- `pocket-rs deploy` / `pocket-rs promote` / `pocket-rs destroy` を追加しました。Python 版
+  `pocket deploy` / `promote` / `destroy` と同じ順・同じ stack 名・同じリソース名・同じ state で動くので、
+  Python 版でデプロイ済みのステージにそのまま使えます（設定が変わっていなければ stack の更新は
+  起きません）。Python 版も残ります。`pocket django deploy` / `promote` は引き続き Python 版です。
+  [pocket-rs deploy](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-deploy)
+
 ### Changed
 - **破壊的変更**: state bucket（`{stage}-{project}-{namespace}-state`）が `[general] region` と
   別の region にあると、`pocket deploy` / `pocket build` / `pocket promote` / `pocket-rs build` が

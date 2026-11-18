@@ -2,7 +2,7 @@
 name = "magic-pocket-cli-rs"
 version = "0.48.0"
 edition = "2021"
-description = "magic-pocket の Rust 版 CLI (static 系・settings・context・version・build・status)"
+description = "magic-pocket の Rust 版 CLI (static 系・settings・context・version・build・status・deploy・promote・destroy)"
 publish = false
 
 # bin 名は `pocket-rs`。Python の `pocket` と両立させる期間は別名で配る。
