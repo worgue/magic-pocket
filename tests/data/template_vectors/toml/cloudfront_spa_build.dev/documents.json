@@ -349,5 +349,9 @@
         }
       ]
     }
-  }
+  },
+  "rds": null,
+  "efs": {},
+  "dsql": null,
+  "backup": null
 }

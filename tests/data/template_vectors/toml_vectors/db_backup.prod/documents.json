@@ -1,0 +1,1099 @@
+{
+  "account_id": "123456789012",
+  "distribution_id": "EVECTORDIST0001",
+  "s3": null,
+  "cloudfront": {},
+  "rds": {
+    "subnet_ids": [
+      "subnet-0aaaaaaaaaaaaaaaa",
+      "subnet-0bbbbbbbbbbbbbbbb"
+    ],
+    "vpc_id": "vpc-0123456789abcdef0",
+    "security_group_id": "sg-0123456789abcdef0",
+    "master_password": "vector-master-password",
+    "endpoint": "prod-db-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",
+    "port": 5432,
+    "snapshot_identifier": "vector-snapshot",
+    "create_db_subnet_group": {
+      "DBSubnetGroupName": "prod-db-pocket-aurora",
+      "DBSubnetGroupDescription": "Aurora subnet group for prod-db-pocket-aurora",
+      "SubnetIds": [
+        "subnet-0aaaaaaaaaaaaaaaa",
+        "subnet-0bbbbbbbbbbbbbbbb"
+      ],
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-db-pocket-aurora"
+        }
+      ]
+    },
+    "create_security_group": {
+      "GroupName": "prod-db-pocket-aurora-rds",
+      "Description": "RDS Aurora security group for prod-db-pocket-aurora",
+      "VpcId": "vpc-0123456789abcdef0",
+      "TagSpecifications": [
+        {
+          "ResourceType": "security-group",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "prod-db-pocket-aurora-rds"
+            }
+          ]
+        }
+      ]
+    },
+    "create_db_instance": {
+      "DBInstanceIdentifier": "prod-db-pocket-aurora-1",
+      "DBClusterIdentifier": "prod-db-pocket-aurora",
+      "DBInstanceClass": "db.serverless",
+      "Engine": "aurora-postgresql",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-db-pocket-aurora-1"
+        }
+      ]
+    },
+    "create_cluster_static": {
+      "DBClusterIdentifier": "prod-db-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "appdb",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "prod-db-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 1.0,
+        "MaxCapacity": 8.5
+      },
+      "BackupRetentionPeriod": 14,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-db-pocket-aurora"
+        }
+      ],
+      "MasterUserPassword": "vector-master-password"
+    },
+    "create_cluster_managed": {
+      "DBClusterIdentifier": "prod-db-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "appdb",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "prod-db-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 1.0,
+        "MaxCapacity": 8.5
+      },
+      "BackupRetentionPeriod": 14,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-db-pocket-aurora"
+        }
+      ],
+      "ManageMasterUserPassword": true
+    },
+    "restore_cluster": {
+      "DBClusterIdentifier": "prod-db-pocket-aurora",
+      "SnapshotIdentifier": "vector-snapshot",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "appdb",
+      "DBSubnetGroupName": "prod-db-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 1.0,
+        "MaxCapacity": 8.5
+      },
+      "BackupRetentionPeriod": 14,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-db-pocket-aurora"
+        }
+      ]
+    },
+    "cluster_api": "restore_db_cluster_from_snapshot",
+    "rotation_rules": {
+      "ScheduleExpression": "rate(30 days)",
+      "Duration": "3h"
+    },
+    "static_credentials": "{\"username\": \"postgres\", \"password\": \"vector-master-password\", \"host\": \"prod-db-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com\", \"port\": 5432, \"dbname\": \"appdb\", \"engine\": \"postgres\", \"dbClusterIdentifier\": \"prod-db-pocket-aurora\"}"
+  },
+  "efs": {},
+  "dsql": {
+    "identifier": "vectordsqlclusteridentifier",
+    "create_cluster": {
+      "deletionProtectionEnabled": true,
+      "tags": {
+        "Name": "prod-db-pocket-dsql"
+      }
+    },
+    "endpoint": "vectordsqlclusteridentifier.dsql.ap-northeast-1.on.aws"
+  },
+  "backup": {
+    "role_arn": "arn:aws:iam::123456789012:role/vector-backup-role",
+    "target_arn": "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector",
+    "plans": [
+      {
+        "plan_name": "prod-db-pocket-backup-dsql",
+        "document": {
+          "BackupPlanName": "prod-db-pocket-backup-dsql",
+          "Rules": [
+            {
+              "RuleName": "daily",
+              "TargetBackupVaultName": "prod-db-pocket-backup",
+              "ScheduleExpression": "cron(0 1 * * ? *)",
+              "ScheduleExpressionTimezone": "Asia/Tokyo",
+              "Lifecycle": {
+                "DeleteAfterDays": 100,
+                "MoveToColdStorageAfterDays": 10
+              }
+            },
+            {
+              "RuleName": "weekly",
+              "TargetBackupVaultName": "prod-db-pocket-backup",
+              "ScheduleExpression": "cron(0 2 ? * 1 *)",
+              "ScheduleExpressionTimezone": "Asia/Tokyo",
+              "Lifecycle": {
+                "DeleteAfterDays": 120
+              }
+            },
+            {
+              "RuleName": "monthly",
+              "TargetBackupVaultName": "prod-db-pocket-backup",
+              "ScheduleExpression": "cron(0 3 1 * ? *)",
+              "ScheduleExpressionTimezone": "Asia/Tokyo",
+              "Lifecycle": {
+                "DeleteAfterDays": 400,
+                "MoveToColdStorageAfterDays": 30
+              }
+            }
+          ]
+        },
+        "selection": {
+          "SelectionName": "prod-db-pocket-backup-dsql",
+          "IamRoleArn": "arn:aws:iam::123456789012:role/vector-backup-role",
+          "Resources": [
+            "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector"
+          ]
+        },
+        "match_cases": [
+          {
+            "name": "same",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "completed_by_aws",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-0",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-1",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-2",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "reordered",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "rule_removed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_added",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                },
+                {
+                  "RuleName": "vector-extra",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_renamed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "vector-renamed",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "schedule_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 0 1 1 ? 2000)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Etc/GMT+12",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_missing",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "vault_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "other",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "delete_after_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 101,
+                    "MoveToColdStorageAfterDays": 10
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "cold_storage_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 100,
+                    "MoveToColdStorageAfterDays": 11
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "lifecycle_missing",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-dsql",
+              "Rules": [
+                {
+                  "RuleName": "daily",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 1 * * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo"
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 1 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 120
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 3 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 400,
+                    "MoveToColdStorageAfterDays": 30
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "empty",
+            "current": {},
+            "matches": false
+          }
+        ]
+      },
+      {
+        "plan_name": "prod-db-pocket-backup-rds",
+        "document": {
+          "BackupPlanName": "prod-db-pocket-backup-rds",
+          "Rules": [
+            {
+              "RuleName": "weekly",
+              "TargetBackupVaultName": "prod-db-pocket-backup",
+              "ScheduleExpression": "cron(0 2 ? * 7 *)",
+              "ScheduleExpressionTimezone": "Asia/Tokyo",
+              "Lifecycle": {
+                "DeleteAfterDays": 180
+              }
+            },
+            {
+              "RuleName": "monthly",
+              "TargetBackupVaultName": "prod-db-pocket-backup",
+              "ScheduleExpression": "cron(0 2 1 * ? *)",
+              "ScheduleExpressionTimezone": "Asia/Tokyo",
+              "Lifecycle": {
+                "DeleteAfterDays": 730
+              }
+            }
+          ]
+        },
+        "selection": {
+          "SelectionName": "prod-db-pocket-backup-rds",
+          "IamRoleArn": "arn:aws:iam::123456789012:role/vector-backup-role",
+          "Resources": [
+            "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector"
+          ]
+        },
+        "match_cases": [
+          {
+            "name": "same",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "completed_by_aws",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-0",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-1",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "reordered",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "rule_removed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_added",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                },
+                {
+                  "RuleName": "vector-extra",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_renamed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "vector-renamed",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "schedule_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 0 1 1 ? 2000)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Etc/GMT+12",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_missing",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "vault_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "other",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "delete_after_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 181
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "cold_storage_changed",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 180,
+                    "MoveToColdStorageAfterDays": 1
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "lifecycle_missing",
+            "current": {
+              "BackupPlanName": "prod-db-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo"
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "prod-db-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 1 * ? *)",
+                  "ScheduleExpressionTimezone": "Asia/Tokyo",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 730
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "empty",
+            "current": {},
+            "matches": false
+          }
+        ]
+      }
+    ]
+  }
+}

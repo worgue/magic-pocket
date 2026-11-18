@@ -373,5 +373,30 @@
         }
       ]
     }
-  }
+  },
+  "rds": null,
+  "efs": {
+    "main-pocket": {
+      "create_file_system": {
+        "Encrypted": true,
+        "Backup": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "main-pocket"
+          }
+        ]
+      },
+      "lifecycle_policies": [
+        {
+          "TransitionToIA": "AFTER_30_DAYS"
+        },
+        {
+          "TransitionToPrimaryStorageClass": "AFTER_1_ACCESS"
+        }
+      ]
+    }
+  },
+  "dsql": null,
+  "backup": null
 }

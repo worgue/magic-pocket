@@ -12,5 +12,9 @@
     "lifecycle_rules": null,
     "versioning": false
   },
-  "cloudfront": {}
+  "cloudfront": {},
+  "rds": null,
+  "efs": {},
+  "dsql": null,
+  "backup": null
 }

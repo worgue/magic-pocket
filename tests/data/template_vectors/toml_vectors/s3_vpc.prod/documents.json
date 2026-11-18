@@ -26,5 +26,9 @@
     ],
     "versioning": true
   },
-  "cloudfront": {}
+  "cloudfront": {},
+  "rds": null,
+  "efs": {},
+  "dsql": null,
+  "backup": null
 }

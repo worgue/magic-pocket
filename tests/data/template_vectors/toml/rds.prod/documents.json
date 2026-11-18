@@ -1,0 +1,138 @@
+{
+  "account_id": "123456789012",
+  "distribution_id": "EVECTORDIST0001",
+  "s3": null,
+  "cloudfront": {},
+  "rds": {
+    "subnet_ids": [
+      "subnet-0aaaaaaaaaaaaaaaa",
+      "subnet-0bbbbbbbbbbbbbbbb"
+    ],
+    "vpc_id": "vpc-0123456789abcdef0",
+    "security_group_id": "sg-0123456789abcdef0",
+    "master_password": "vector-master-password",
+    "endpoint": "prod-testprj-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",
+    "port": 5432,
+    "snapshot_identifier": "vector-snapshot",
+    "create_db_subnet_group": {
+      "DBSubnetGroupName": "prod-testprj-pocket-aurora",
+      "DBSubnetGroupDescription": "Aurora subnet group for prod-testprj-pocket-aurora",
+      "SubnetIds": [
+        "subnet-0aaaaaaaaaaaaaaaa",
+        "subnet-0bbbbbbbbbbbbbbbb"
+      ],
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-testprj-pocket-aurora"
+        }
+      ]
+    },
+    "create_security_group": {
+      "GroupName": "prod-testprj-pocket-aurora-rds",
+      "Description": "RDS Aurora security group for prod-testprj-pocket-aurora",
+      "VpcId": "vpc-0123456789abcdef0",
+      "TagSpecifications": [
+        {
+          "ResourceType": "security-group",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "prod-testprj-pocket-aurora-rds"
+            }
+          ]
+        }
+      ]
+    },
+    "create_db_instance": {
+      "DBInstanceIdentifier": "prod-testprj-pocket-aurora-1",
+      "DBClusterIdentifier": "prod-testprj-pocket-aurora",
+      "DBInstanceClass": "db.serverless",
+      "Engine": "aurora-postgresql",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-testprj-pocket-aurora-1"
+        }
+      ]
+    },
+    "create_cluster_static": {
+      "DBClusterIdentifier": "prod-testprj-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "prod_testprj",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "prod-testprj-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-testprj-pocket-aurora"
+        }
+      ],
+      "MasterUserPassword": "vector-master-password"
+    },
+    "create_cluster_managed": {
+      "DBClusterIdentifier": "prod-testprj-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "prod_testprj",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "prod-testprj-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-testprj-pocket-aurora"
+        }
+      ],
+      "ManageMasterUserPassword": true
+    },
+    "restore_cluster": {
+      "DBClusterIdentifier": "prod-testprj-pocket-aurora",
+      "SnapshotIdentifier": "vector-snapshot",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "prod_testprj",
+      "DBSubnetGroupName": "prod-testprj-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "prod-testprj-pocket-aurora"
+        }
+      ]
+    },
+    "cluster_api": "create_db_cluster",
+    "rotation_rules": null,
+    "static_credentials": "{\"username\": \"postgres\", \"password\": \"vector-master-password\", \"host\": \"prod-testprj-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com\", \"port\": 5432, \"dbname\": \"prod_testprj\", \"engine\": \"postgres\", \"dbClusterIdentifier\": \"prod-testprj-pocket-aurora\"}"
+  },
+  "efs": {},
+  "dsql": null,
+  "backup": {
+    "role_arn": "arn:aws:iam::123456789012:role/vector-backup-role",
+    "target_arn": "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector",
+    "plans": []
+  }
+}

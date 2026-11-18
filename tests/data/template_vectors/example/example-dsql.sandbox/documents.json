@@ -349,5 +349,22 @@
         }
       ]
     }
+  },
+  "rds": null,
+  "efs": {},
+  "dsql": {
+    "identifier": "vectordsqlclusteridentifier",
+    "create_cluster": {
+      "deletionProtectionEnabled": false,
+      "tags": {
+        "Name": "sandbox-pocket-example-dsql-pocket-dsql"
+      }
+    },
+    "endpoint": "vectordsqlclusteridentifier.dsql.ap-northeast-1.on.aws"
+  },
+  "backup": {
+    "role_arn": "arn:aws:iam::123456789012:role/vector-backup-role",
+    "target_arn": "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector",
+    "plans": []
   }
 }

@@ -18,7 +18,8 @@ Python 版の deploy が作る stack の template を、入力 (toml × その s
   IAM に直接書ける形の両方を持つ。dict の順は policy の定義順なので並べ替えない
 - `documents.json`: template を通さず API に直接書く文書 (s3 か cloudfront がある stage
   だけ)。S3 bucket の望む設定と、cloudfront ごとの bucket policy の statement・
-  policy の遷移 (今の policy → 確保した後 / 外した後)
+  policy の遷移 (今の policy → 確保した後 / 外した後)。RDS / EFS / DSQL は作成 API に
+  渡す引数、backup は plan・selection の文書と「plan が宣言どおりか」の判定
 
 外部入力 (他 stack の output・secret の値・RDS / DSQL / EFS の実体・receipt rule set
 の binding・受信ドメインの hosted zone id) は固定の fake に差し替え、使った値を
@@ -54,6 +55,7 @@ from generate_settings_vectors import (
     isolated_load,
     iter_inputs,
 )
+from pocket_cli.resources import rds as rds_module
 from pocket_cli.resources.aws.cloudformation import (
     AcmStack,
     CloudFrontKeysStack,
@@ -67,6 +69,7 @@ from pocket_cli.resources.aws.cloudformation import (
 from pocket_cli.resources.aws.efs import Efs
 from pocket_cli.resources.aws.iam_roles import RoleSpec
 from pocket_cli.resources.aws.stage_roles import stage_role_specs
+from pocket_cli.resources.backup import Backup, _plan_matches
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.inbound import InboundStack
@@ -92,6 +95,13 @@ FAKE_SIGNING_PUBLIC_KEY_PEM = (
     "-----END PUBLIC KEY-----\n"
 )
 FAKE_DISTRIBUTION_ID = "EVECTORDIST0001"
+FAKE_VPC_ID = "vpc-0123456789abcdef0"
+FAKE_SUBNET_IDS = ["subnet-0aaaaaaaaaaaaaaaa", "subnet-0bbbbbbbbbbbbbbbb"]
+FAKE_MASTER_PASSWORD = "vector-master-password"  # noqa: S105 vector 用の固定値
+FAKE_RDS_ENDPOINT = "vector.cluster-abc.ap-northeast-1.rds.amazonaws.com"
+FAKE_SNAPSHOT = "vector-snapshot"
+FAKE_BACKUP_ROLE_ARN = "arn:aws:iam::%s:role/vector-backup-role" % FAKE_ACCOUNT
+FAKE_BACKUP_TARGET_ARN = "arn:aws:dsql:ap-northeast-1:%s:cluster/vector" % FAKE_ACCOUNT
 FAKE_RULE_SET = "default-rule-set"
 FAKE_PREVIOUS_RULE = "vector-previous-rule"
 # 外部 VPC (manage = false) の private subnet の数
@@ -411,10 +421,220 @@ def cloudfront_documents(cf_context) -> dict[str, Any]:
     }
 
 
-def documents(context: Context) -> dict[str, Any] | None:
-    if not context.s3 and not context.cloudfront:
+def _recorded(client_method: mock.MagicMock) -> dict[str, Any]:
+    """mock の client method に渡された keyword 引数 (1 回だけ呼ばれている前提)"""
+    client_method.assert_called_once()
+    return dict(client_method.call_args.kwargs)
+
+
+def _rds_cluster_call(rds_context, *, static: bool) -> dict[str, Any]:
+    """cluster を作る API (作成か snapshot 復元) と、その引数"""
+    rds = Rds.__new__(Rds)
+    rds.context = rds_context
+    rds._rds_client = mock.MagicMock()
+    rds._rds_client.describe_db_clusters.return_value = {"DBClusters": []}
+    with mock.patch.object(
+        rds_module, "_generate_master_password", return_value=FAKE_MASTER_PASSWORD
+    ):
+        rds._create_or_restore_cluster(FAKE_RDS_SECURITY_GROUP_ID, static)
+    for api in ("create_db_cluster", "restore_db_cluster_from_snapshot"):
+        method = getattr(rds._rds_client, api)
+        if method.called:
+            return {"api": api, "args": _recorded(method)}
+    raise click.ClickException("cluster を作る API が呼ばれませんでした")
+
+
+def rds_documents(context: Context) -> dict[str, Any] | None:
+    """RDS の作成 API に渡す引数 (managed = false は pocket が作らないので None)"""
+    rds_context = context.rds
+    if rds_context is None or not rds_context.managed:
         return None
+    rds = Rds.__new__(Rds)
+    rds.context = rds_context
+    rds._rds_client = mock.MagicMock()
+    rds._ec2_client = mock.MagicMock()
+    rds._ec2_client.describe_security_groups.return_value = {"SecurityGroups": []}
+    rds._rds_client.describe_db_instances.return_value = {"DBInstances": []}
+    rds._ensure_subnet_group(FAKE_SUBNET_IDS)
+    rds._ensure_security_group(FAKE_VPC_ID)
+    rds._ensure_instance()
+    # static の認証情報 (store に書く文字列)
+    rds._rds_client.describe_db_clusters.return_value = {
+        "DBClusters": [{"Endpoint": FAKE_RDS_ENDPOINT, "Port": 5432}]
+    }
+    with mock.patch.object(rds_module.secret_store, "put_stored_value") as put:
+        rds._store_static_credentials(FAKE_MASTER_PASSWORD)
+    plain = rds_context.model_copy(update={"snapshot_identifier": None})
+    restored = rds_context.model_copy(update={"snapshot_identifier": FAKE_SNAPSHOT})
     return {
+        "subnet_ids": FAKE_SUBNET_IDS,
+        "vpc_id": FAKE_VPC_ID,
+        "security_group_id": FAKE_RDS_SECURITY_GROUP_ID,
+        "master_password": FAKE_MASTER_PASSWORD,
+        "endpoint": json.loads(put.call_args.args[2])["host"],
+        "port": 5432,
+        "snapshot_identifier": FAKE_SNAPSHOT,
+        "create_db_subnet_group": _recorded(rds._rds_client.create_db_subnet_group),
+        "create_security_group": _recorded(rds._ec2_client.create_security_group),
+        "create_db_instance": _recorded(rds._rds_client.create_db_instance),
+        "create_cluster_static": _rds_cluster_call(plain, static=True)["args"],
+        "create_cluster_managed": _rds_cluster_call(plain, static=False)["args"],
+        "restore_cluster": _rds_cluster_call(restored, static=False)["args"],
+        # この stage の設定で実際に呼ぶ API (snapshot の指定があれば復元)
+        "cluster_api": _rds_cluster_call(
+            rds_context,
+            static=rds_context.password_strategy == "static",  # noqa: S105 戦略名
+        )["api"],
+        "rotation_rules": rds._desired_rotation_rules(),
+        "static_credentials": put.call_args.args[2],
+    }
+
+
+def efs_documents(context: Context) -> dict[str, Any]:
+    """EFS ごと (名前順) の作成引数と lifecycle policy"""
+    result: dict[str, Any] = {}
+    for container in context.container.values():
+        vpc = container.vpc
+        if vpc is None or vpc.efs is None or vpc.efs.name in result:
+            continue
+        efs = Efs.__new__(Efs)
+        efs.context = vpc.efs
+        efs.client = mock.MagicMock()
+        efs.client.create_file_system.return_value = {"FileSystemId": "fs-vector"}
+        with (
+            mock.patch.object(Efs, "wait_status"),
+            mock.patch.object(Efs, "ensure_lifecycle_policies"),
+            contextlib.redirect_stdout(None),
+        ):
+            efs.create()
+        args = _recorded(efs.client.create_file_system)
+        # CreationToken は毎回変わる乱数
+        args.pop("CreationToken")
+        result[vpc.efs.name] = {
+            "create_file_system": args,
+            "lifecycle_policies": efs.lifecycle_policies_should_be,
+        }
+    return dict(sorted(result.items()))
+
+
+def dsql_documents(context: Context) -> dict[str, Any] | None:
+    if context.dsql is None:
+        return None
+    dsql = Dsql.__new__(Dsql)
+    dsql.context = context.dsql
+    dsql._client = mock.MagicMock()
+    dsql._client.create_cluster.return_value = {"identifier": FAKE_DSQL_IDENTIFIER}
+    dsql.__dict__["cluster"] = {"identifier": FAKE_DSQL_IDENTIFIER}
+    with (
+        mock.patch.object(Dsql, "_wait_active"),
+        mock.patch.object(Dsql, "clear_cache"),
+        mock.patch.object(Dsql, "publish_endpoint"),
+    ):
+        dsql.create()
+    return {
+        "identifier": FAKE_DSQL_IDENTIFIER,
+        "create_cluster": _recorded(dsql._client.create_cluster),
+        "endpoint": dsql.endpoint,
+    }
+
+
+def _plan_match_cases(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """今の plan (GetBackupPlan の応答) と、宣言どおりと判定されるか"""
+
+    def variant(change) -> dict[str, Any]:
+        current = copy.deepcopy(document)
+        change(current)
+        return current
+
+    def completed(current: dict[str, Any]):
+        # AWS が補完する項目 (比較しない)
+        for index, rule in enumerate(current["Rules"]):
+            rule["RuleId"] = "rule-%d" % index
+            rule["StartWindowMinutes"] = 480
+            rule["CompletionWindowMinutes"] = 10080
+            rule["Lifecycle"]["OptInToArchiveForSupportedResources"] = False
+
+    def first(current: dict[str, Any]) -> dict[str, Any]:
+        return current["Rules"][0]
+
+    cases = {
+        "same": lambda c: None,
+        "completed_by_aws": completed,
+        "reordered": lambda c: c["Rules"].reverse(),
+        "rule_removed": lambda c: c["Rules"].pop(),
+        "rule_added": lambda c: c["Rules"].append(
+            {**copy.deepcopy(first(c)), "RuleName": "vector-extra"}
+        ),
+        "rule_renamed": lambda c: first(c).update(RuleName="vector-renamed"),
+        "schedule_changed": lambda c: first(c).update(
+            ScheduleExpression="cron(0 0 1 1 ? 2000)"
+        ),
+        "timezone_changed": lambda c: first(c).update(
+            ScheduleExpressionTimezone="Etc/GMT+12"
+        ),
+        "timezone_missing": lambda c: first(c).pop("ScheduleExpressionTimezone"),
+        "vault_changed": lambda c: first(c).update(TargetBackupVaultName="other"),
+        "delete_after_changed": lambda c: first(c)["Lifecycle"].update(
+            DeleteAfterDays=first(c)["Lifecycle"]["DeleteAfterDays"] + 1
+        ),
+        "cold_storage_changed": lambda c: first(c)["Lifecycle"].update(
+            MoveToColdStorageAfterDays=first(c)["Lifecycle"].get(
+                "MoveToColdStorageAfterDays", 0
+            )
+            + 1
+        ),
+        "lifecycle_missing": lambda c: first(c).pop("Lifecycle"),
+    }
+    result = []
+    for name, change in cases.items():
+        current = variant(change)
+        result.append(
+            {
+                "name": name,
+                "current": current,
+                "matches": _plan_matches(current, document),
+            }
+        )
+    result.append(
+        {"name": "empty", "current": {}, "matches": _plan_matches({}, document)}
+    )
+    return result
+
+
+def backup_documents(context: Context) -> dict[str, Any] | None:
+    backup_context = context.backup
+    if backup_context is None:
+        return None
+    backup = Backup.__new__(Backup)
+    backup.context = backup_context
+    plans = []
+    for plan in backup_context.plans:
+        document = backup._plan_document(plan)
+        backup._backup = mock.MagicMock()
+        backup._backup.list_backup_selections.return_value = {
+            "BackupSelectionsList": []
+        }
+        backup._ensure_selection(
+            plan, "vector-plan-id", FAKE_BACKUP_ROLE_ARN, [FAKE_BACKUP_TARGET_ARN]
+        )
+        selection = _recorded(backup._backup.create_backup_selection)
+        plans.append(
+            {
+                "plan_name": plan.plan_name,
+                "document": document,
+                "selection": selection["BackupSelection"],
+                "match_cases": _plan_match_cases(document),
+            }
+        )
+    return {
+        "role_arn": FAKE_BACKUP_ROLE_ARN,
+        "target_arn": FAKE_BACKUP_TARGET_ARN,
+        "plans": plans,
+    }
+
+
+def documents(context: Context) -> dict[str, Any] | None:
+    result = {
         "account_id": FAKE_ACCOUNT,
         "distribution_id": FAKE_DISTRIBUTION_ID,
         "s3": s3_documents(context) if context.s3 else None,
@@ -422,7 +642,15 @@ def documents(context: Context) -> dict[str, Any] | None:
             name: cloudfront_documents(cf_context)
             for name, cf_context in context.cloudfront.items()
         },
+        "rds": rds_documents(context),
+        "efs": efs_documents(context),
+        "dsql": dsql_documents(context),
+        "backup": backup_documents(context),
     }
+    used = [key for key, value in result.items() if key.endswith("_id") or value]
+    if len(used) == 2:
+        return None
+    return result
 
 
 def build_files(toml_path: Path, stage: str, context: dict) -> dict[str, str] | None:
