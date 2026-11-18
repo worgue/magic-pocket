@@ -27,6 +27,15 @@ vectors:
     uv run python tests/vectors/generate_settings_vectors.py
     uv run python tests/vectors/generate_template_vectors.py
 
+# Python の lint (ruff)。pre-commit と同じ検査で、Dependabot の auto-merge の関門が呼ぶ
+lint:
+    uv run ruff check .
+    uv run ruff format --check .
+
+# Python の型チェック (pyright)。同上
+typecheck:
+    uv run pyright
+
 # Rust の lint (clippy -D warnings)。チェックのみでリンクしないので test より軽い。CI の test.yml も呼ぶ
 lint-rust: _target-gc-guard
     cargo clippy --workspace --all-targets {{cli_features}} -- -D warnings

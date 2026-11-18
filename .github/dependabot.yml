@@ -18,7 +18,7 @@ updates:
     groups:
       rust-patch: # auto-merge 対象 (従来どおり束ねる)
         update-types: [patch]
-      rust-minor: # auto-merge されず人手 (0.x minor = breaking。組織標準「cargo は minor も人手」)
+      rust-minor: # 0.x の minor を含む週は人手、1.x 以上だけなら auto-merge (判定は workflow の gate)
         update-types: [minor]
   - package-ecosystem: github-actions
     directory: /

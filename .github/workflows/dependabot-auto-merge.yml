@@ -6,28 +6,45 @@ permissions:
   pull-requests: write
 
 jobs:
-  # auto-merge 可否 (patch / minor か) の判定。テスト実行のゲートではない。
-  # cargo は patch のみ (0.x minor は cargo 的に breaking。組織標準「cargo は minor も人手」)。
-  # group 更新は group 内の最大 semver 変更が update-type になるため、
-  # major が混ざった group はここを通らず人手レビューに回る。
+  # auto-merge 可否の判定 (依存ごとの semver 判定)。テスト実行のゲートではない。
+  # 全依存が「patch (0.0.x を除く)」か「0.x でない minor」のときだけ自動マージする。
+  # major / 0.x への minor (semver §4 で breaking になりうる) / 0.0.x への変更が 1 つでも
+  # あれば PR 全体 (group の bundle) を人手レビューに回す。ecosystem の特例は持たない。
   # job の if は PR の作成者で見る (actor で見ると base 取り込み後に job ごと skip され、
   # just test が走らない。KN1617)。自動マージは actor が Dependabot の run だけ。
   meta:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
-      automerge: >-
-        ${{ github.actor == 'dependabot[bot]'
-        && (steps.meta.outputs.update-type == 'version-update:semver-patch'
-        || (steps.meta.outputs.update-type == 'version-update:semver-minor'
-        && steps.meta.outputs.package-ecosystem != 'cargo')) }}
+      automerge: ${{ steps.gate.outputs.automerge }}
     steps:
       - uses: dependabot/fetch-metadata@v3
         if: github.actor == 'dependabot[bot]'
         id: meta
+      # 版が取れない依存が 1 つでもあれば false (人手)。人が起こした run (base 取り込み後) は
+      # step ごと skip され output が空 = false。
+      - name: gate (per-dependency semver)
+        if: github.actor == 'dependabot[bot]'
+        id: gate
+        env:
+          DEPS: ${{ steps.meta.outputs.updated-dependencies-json }}
+        run: |
+          echo "$DEPS" | jq -c '.[] | {dependencyName, updateType, prevVersion, newVersion, dependencyGroup}' || true
+          ok=$(jq -r '
+            def ver: (.newVersion // .prevVersion // "") | ltrimstr("v");
+            def zero_x: ver | test("^0\\.");
+            def zero_zero: ver | test("^0\\.0(\\.|$)");
+            if type != "array" or length == 0 then false
+            else all(.[]; ver != "" and (
+              (.updateType == "version-update:semver-patch" and (zero_zero | not))
+              or (.updateType == "version-update:semver-minor" and (zero_x | not))))
+            end' <<<"$DEPS") || ok=false
+          [ "$ok" = "true" ] || ok=false
+          echo "automerge=$ok" | tee -a "$GITHUB_OUTPUT"
 
-  # 全 Dependabot PR で just test (pytest + cargo test) を回す (job の if でゲートしない —
-  # skip の緑は「未検証」を成功に見せる)。merge だけ automerge 判定で分岐する。
+  # 全 Dependabot PR で lint (ruff / pyright / clippy) と just test (pytest + cargo test) を
+  # 回す (job の if でゲートしない — skip の緑は「未検証」を成功に見せる)。merge だけ
+  # automerge 判定で分岐する。
   # branch protection に依存せず workflow 内で検証する。
   test-and-merge:
     needs: meta
@@ -38,7 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v7
+      # clippy は components を指定しないと入らない (test.yml と同じ)
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       # test.yml と cache を共有する (dev で保存した cache を Dependabot PR が使う)。
       # PR では保存しない (PR ごとの cache が repo の上限を食い dev の cache を追い出すため)
       - uses: Swatinem/rust-cache@v2
@@ -49,8 +69,13 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
       - uses: extractions/setup-just@v4
       - run: uv sync --all-groups
+      # lint ツール自身の更新 (ruff / pyright) や依存の deprecation は、test を通して lint だけ
+      # 壊す。commit 時の pre-commit は Dependabot の merge では走らないので、ここを関門にする
+      - run: just lint
+      - run: just typecheck
+      - run: just lint-rust
       - run: just test
-      # --- 以下 merge は patch/minor (cargo は patch のみ) のときだけ ---
+      # --- 以下 merge は automerge=true (major / 0.x の minor を含まない PR) のときだけ ---
       # App token でマージ (GITHUB_TOKEN だと後続 workflow を起動しないため)。
       # app-id は直書き (Dependabot トリガの run では Actions vars が見えない。App ID は公開情報)。
       # private-key は Dependabot secret (Actions secret も Dependabot run では見えない)。
