@@ -370,7 +370,9 @@ class Rds:
                 Tags=[{"Key": "Name", "Value": self.context.subnet_group_name}],
             )
         except ClientError as e:
-            if e.response["Error"]["Code"] != "DBSubnetGroupAlreadyExistsFault":
+            # API が返す code は "DBSubnetGroupAlreadyExists"
+            # (botocore の例外 class 名は末尾に Fault が付くが、code には付かない)
+            if e.response["Error"]["Code"] != "DBSubnetGroupAlreadyExists":
                 raise
             echo.log(
                 "DB Subnet Group %s already exists; reusing."

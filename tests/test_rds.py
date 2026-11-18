@@ -4,6 +4,7 @@ import os
 import boto3
 import pytest
 from botocore.client import BaseClient
+from botocore.stub import Stubber
 from moto import mock_aws
 from pocket_cli.resources.rds import Rds
 from pydantic import ValidationError
@@ -476,6 +477,28 @@ def test_rds_create_is_idempotent(use_toml):
         Filters=[{"Name": "tag:Name", "Values": [context.rds.security_group_name]}]
     )["SecurityGroups"]
     assert len(groups) == 1
+
+
+@mock_aws
+def test_rds_ensure_subnet_group_reuses_existing(use_toml):
+    """既存の DB Subnet Group は再利用する (API の code は Fault が付かない)。
+
+    cluster の作成前に失敗した deploy の再実行を模す。moto は重複作成でエラーを
+    返さないので、実 API が返す code を Stubber で注入する。
+    """
+    use_toml("tests/data/toml/rds.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.rds is not None
+
+    rds = Rds(context.rds)
+    with Stubber(rds._rds_client) as stubber:
+        stubber.add_client_error(
+            "create_db_subnet_group",
+            service_error_code="DBSubnetGroupAlreadyExists",
+            http_status_code=400,
+        )
+        rds._ensure_subnet_group(["subnet-1", "subnet-2"])
+        stubber.assert_no_pending_responses()
 
 
 # --- password_strategy = "static" ---

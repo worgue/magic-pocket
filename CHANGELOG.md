@@ -37,6 +37,8 @@
   status も deploy と同じく secret を store から読んで判定します（読むだけで作りません）。
 - `pocket status --show-info` が出す Context の JSON で、API key などの secret をマスクするようにしました
   （これまでは平文で出ていました。`pocket context` と同じ扱いです）。
+- `[rds]` を使う stage の `pocket deploy` が、DB Subnet Group の作成後・cluster の作成前に失敗すると、
+  再実行が `DBSubnetGroupAlreadyExists` で止まる不具合を修正しました。既存の DB Subnet Group を再利用します。
 
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 
