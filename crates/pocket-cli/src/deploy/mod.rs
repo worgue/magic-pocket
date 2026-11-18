@@ -12,4 +12,5 @@ pub mod generate;
 pub mod iam;
 pub mod lambda;
 pub mod mediator;
+pub mod parts;
 pub mod secret_store;

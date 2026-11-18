@@ -77,6 +77,12 @@ enum Top {
         #[arg(long)]
         allow_dirty: bool,
     },
+    /// deploy の部品を 1 つずつ実行する (e2e 用。`deploy` の公開時に消す)
+    #[command(hide = true)]
+    DeployParts {
+        #[command(subcommand)]
+        part: deploy::parts::DeployPart,
+    },
 }
 
 #[derive(Args, Clone)]
@@ -257,6 +263,7 @@ async fn run(cli: Cli) -> Result<()> {
         Top::Build { stage, allow_dirty } => {
             return image_build::run_build(&stage, allow_dirty).await
         }
+        Top::DeployParts { part } => return deploy::parts::run(part).await,
         Top::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             return Ok(());

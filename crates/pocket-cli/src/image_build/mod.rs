@@ -207,7 +207,7 @@ fn s3_client(sdk: &SdkConfig, region: &str) -> aws_sdk_s3::Client {
 }
 
 /// AWS の認証情報を確かめ、account id を返す (Python 版 `check_aws_credentials`)
-async fn check_aws_credentials(sdk: &SdkConfig) -> Result<String> {
+pub(crate) async fn check_aws_credentials(sdk: &SdkConfig) -> Result<String> {
     // region 未設定でも STS は呼べるよう、無ければ us-east-1 で呼ぶ
     let config = if sdk.region().is_some() {
         sdk.clone()
