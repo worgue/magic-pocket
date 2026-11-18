@@ -91,5 +91,9 @@ aws-sigv4 = "1"
 # AWS Backup の vault / plan / selection (deploy)。rustc の最大メモリは約 1.6GB
 aws-sdk-backup = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # TiDB の database を作る (MySQL protocol・TLS。Python 版は pymysql)。TLS は aws-sdk と同じ
-# rustls + aws-lc-rs。rustc の最大メモリは下の実測を参照
+# rustls + aws-lc-rs。rustc の最大メモリは mysql_async・mysql_common とも約 0.4GB
 mysql_async = { version = "0.37", default-features = false, features = ["minimal-rust", "rustls-tls", "aws-lc-rs", "tls12"] }
+# inbound: 受信ドメインの検証状態 (SESv2 の identity) と、削除の前の queue の滞留 (SQS)。
+# rustc の最大メモリは sesv2 が約 1.3GB (sqs は runtime lib が既に使っている)
+aws-sdk-sesv2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

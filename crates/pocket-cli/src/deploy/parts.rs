@@ -19,6 +19,10 @@ use super::dsql::{AwsDsql, DsqlDeploy};
 use super::ecr::BuildEnv;
 use super::edge::find_cloudfront;
 use super::efs::AwsEfs;
+use super::inbound::{AwsInbound, InboundDeploy, InboundWaits};
+use super::inbound_domain::{
+    cleanup_unused_inbound_domains, AwsInboundDomain, InboundDomainDeploy, InboundDomainWaits,
+};
 use super::lambda::AwsLambda;
 use super::mediator::Mediator;
 use super::neon::Neon;
@@ -223,6 +227,74 @@ pub enum DeployPart {
     UpstashCreate {
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
+    },
+    /// inbound の deploy 前の検査 (rule set の差し込み先・変えられない設定)
+    InboundPrepare {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// inbound の stack を作る
+    InboundCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// inbound の stack を更新する (template が変わっていれば)
+    InboundUpdate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// inbound の deploy 後の確認 (SES の rule が宣言と一致するか)
+    InboundPost {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// inbound を消す (受信停止・配送猶予・滞留なしを確かめてから)
+    InboundDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        name: String,
+    },
+    /// 宣言から消えた inbound の stack が残っていれば止める
+    InboundCheckRemoved {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// state の JSON (`resources.inbound` を読む)
+        #[arg(long)]
+        state: std::path::PathBuf,
+    },
+    /// 受信ドメインの deploy 前の検査 (pocket が作っていない identity を拒否する)
+    InboundDomainPrepare {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// 受信ドメインの stack を作る
+    InboundDomainCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// 受信ドメインの stack を更新する (template が変わっていれば)
+    InboundDomainUpdate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// 受信ドメインの検証を確定する (manage_dns は待つ。外部 DNS は record を示す)
+    InboundDomainConfirm {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// 受信ドメインの stack を消す
+    InboundDomainDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// どの inbound も使わなくなった受信ドメインの stack を消す (完了は待たない)
+    InboundDomainCleanup {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// state の JSON (`resources.inbound_domain` を読む)
+        #[arg(long)]
+        state: std::path::PathBuf,
     },
 }
 
@@ -548,6 +620,137 @@ pub async fn run(part: DeployPart) -> Result<()> {
             };
             upstash.create(&mut sink).await
         }
+        DeployPart::InboundPrepare { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
+            let deploy = inbound_deploy(&stacks, &aws);
+            for inlet in ctx.inbound.values() {
+                deploy.prepare_deploy(inlet).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
+            let deploy = inbound_deploy(&stacks, &aws);
+            for inlet in ctx.inbound.values() {
+                deploy.create(inlet).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundUpdate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
+            let deploy = inbound_deploy(&stacks, &aws);
+            for inlet in ctx.inbound.values() {
+                deploy.update(inlet).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundPost { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
+            let deploy = inbound_deploy(&stacks, &aws);
+            for inlet in ctx.inbound.values() {
+                deploy.ensure_post_deploy_state(inlet).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundDelete { stage, name } => {
+            let (ctx, _) = load_context(&stage)?;
+            let inlet = ctx
+                .inbound
+                .get(&name)
+                .with_context(|| format!("inbound '{name}' がありません"))?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInbound { sdk: &sdk });
+            inbound_deploy(&stacks, &aws).delete(inlet).await
+        }
+        DeployPart::InboundCheckRemoved { stage, state } => {
+            let (ctx, _) = load_context(&stage)?;
+            let saved = saved_resources(&state, "inbound")?;
+            super::inbound::check_removed_inbound(&ctx, &saved, &AwsStacks { sdk: &sdk }).await
+        }
+        DeployPart::InboundDomainPrepare { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInboundDomain { sdk: &sdk });
+            let deploy = inbound_domain_deploy(&stacks, &aws);
+            for domain in ctx.inbound_domain.values() {
+                deploy.prepare_deploy(domain).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundDomainCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInboundDomain { sdk: &sdk });
+            let deploy = inbound_domain_deploy(&stacks, &aws);
+            for domain in ctx.inbound_domain.values() {
+                deploy.create(domain).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundDomainUpdate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInboundDomain { sdk: &sdk });
+            let deploy = inbound_domain_deploy(&stacks, &aws);
+            for domain in ctx.inbound_domain.values() {
+                deploy.update(domain).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundDomainConfirm { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInboundDomain { sdk: &sdk });
+            inbound_domain_deploy(&stacks, &aws)
+                .confirm(&ctx, &mut sink)
+                .await
+        }
+        DeployPart::InboundDomainDelete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws) = (AwsStacks { sdk: &sdk }, AwsInboundDomain { sdk: &sdk });
+            let deploy = inbound_domain_deploy(&stacks, &aws);
+            for domain in ctx.inbound_domain.values() {
+                deploy.delete(domain).await?;
+            }
+            Ok(())
+        }
+        DeployPart::InboundDomainCleanup { stage, state } => {
+            let (ctx, _) = load_context(&stage)?;
+            let saved = saved_resources(&state, "inbound_domain")?;
+            let stacks = AwsStacks { sdk: &sdk };
+            cleanup_unused_inbound_domains(&ctx, &saved, &stacks, &mut sink).await
+        }
+    }
+}
+
+/// state の JSON の `resources.<kind>` (無ければ null)
+fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Value> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("{} を読めません", path.display()))?;
+    let mut state: serde_json::Value = serde_json::from_str(&text)
+        .with_context(|| format!("{} が JSON ではありません", path.display()))?;
+    Ok(state["resources"][kind].take())
+}
+
+fn inbound_deploy<'a>(
+    stacks: &'a AwsStacks<'a>,
+    aws: &'a AwsInbound<'a>,
+) -> InboundDeploy<'a, AwsStacks<'a>, AwsInbound<'a>> {
+    InboundDeploy {
+        stacks,
+        aws,
+        waits: InboundWaits::default(),
+        now: std::time::SystemTime::now,
+    }
+}
+
+fn inbound_domain_deploy<'a>(
+    stacks: &'a AwsStacks<'a>,
+    aws: &'a AwsInboundDomain<'a>,
+) -> InboundDomainDeploy<'a, AwsStacks<'a>, AwsInboundDomain<'a>> {
+    InboundDomainDeploy {
+        stacks,
+        aws,
+        waits: InboundDomainWaits::default(),
     }
 }
 

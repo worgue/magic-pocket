@@ -19,7 +19,7 @@ use serde_json::{Map, Value as Json};
 
 use super::alerts::{self, Subscription};
 use super::container::{self as container_status, HandlerState};
-use super::inbound::{self as inbound_rules, ActiveRuleSet, ReceiptRule};
+use super::inbound::{self as inbound_rules, ActiveRuleSet};
 use super::providers::{self, Http};
 use super::rds::{self as rds_status, ClusterPhase, ClusterState};
 use super::report::{Evaluated, Evaluator};
@@ -371,32 +371,7 @@ impl<'a> AwsEvaluator<'a> {
     }
 
     async fn active_rule_set(&self, region: &str) -> Result<ActiveRuleSet> {
-        let client = aws_sdk_ses::Client::new(&self.config(region));
-        let response = client
-            .describe_active_receipt_rule_set()
-            .send()
-            .await
-            .map_err(|e| sdk_error("ses describe_active_receipt_rule_set", &e))?;
-        Ok(ActiveRuleSet {
-            name: response
-                .metadata()
-                .and_then(|metadata| metadata.name())
-                .map(str::to_string),
-            rules: response
-                .rules()
-                .iter()
-                .map(|rule| ReceiptRule {
-                    name: rule.name().to_string(),
-                    enabled: rule.enabled(),
-                    recipients: rule.recipients().to_vec(),
-                    stopping: rule.actions().iter().any(|action| {
-                        action.stop_action().is_some()
-                            || action.bounce_action().is_some()
-                            || action.lambda_action().is_some()
-                    }),
-                })
-                .collect(),
-        })
+        crate::deploy::inbound::active_rule_set(&self.sdk, region).await
     }
 
     // ---- container ----
@@ -821,7 +796,10 @@ fn inbound_alarm_lines(outputs: &[StackOutput]) -> Vec<String> {
 }
 
 /// domain を含む hosted zone のうち、名前が最も長いもの
-fn find_hosted_zone<'z>(zones: &'z [HostedZone], domain: &str) -> Option<&'z HostedZone> {
+pub(crate) fn find_hosted_zone<'z>(
+    zones: &'z [HostedZone],
+    domain: &str,
+) -> Option<&'z HostedZone> {
     let mut matched: Vec<&HostedZone> = zones
         .iter()
         .filter(|zone| {

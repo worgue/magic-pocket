@@ -15,6 +15,8 @@ pub mod edge;
 pub mod efs;
 pub mod generate;
 pub mod iam;
+pub mod inbound;
+pub mod inbound_domain;
 pub mod lambda;
 pub mod mediator;
 pub mod neon;

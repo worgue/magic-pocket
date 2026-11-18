@@ -179,7 +179,8 @@ forge の VM (コンテナ) はメモリの上限が約 4GB で、超えても O
   (依存の debuginfo を切ってリンクのメモリと `target/` を減らし、重い crate の同時コンパイルを
   2 個までにする)。CI は `CARGO_BUILD_JOBS: default` で並列数の上限を外している
 - **aws-sdk-* を足すときは rustc の最大メモリを測る** (2GB を大きく超えるなら feature の後ろに置く)。
-  実測 (dev profile): ec2 3.1GB 以上 (完走しない) / rds 2.2GB / ssm 2.0GB / iam 1.8GB / s3 1.6GB
+  実測 (dev profile): ec2 3.1GB 以上 (完走しない) / rds 2.2GB / ssm 2.0GB / iam 1.8GB / s3 1.6GB /
+  sesv2 1.3GB
 - 依存が全部作り直しになる操作 (`cargo clean`、profile や feature の変更、別の target dir) を
   試すときは、上限を超えたら固まらずに止まるよう
   `systemd-run --user --scope -p MemoryMax=3600M -p MemorySwapMax=0 cargo ...` の中で実行する
