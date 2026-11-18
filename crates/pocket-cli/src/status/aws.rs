@@ -10,7 +10,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{anyhow, bail, Result};
 use aws_config::{Region, SdkConfig};
-use base64::Engine as _;
 use magic_pocket_settings::context::{
     CloudFrontContext, ContainerContext, Context, DsqlContext, HostedZone, InboundContext,
     InboundDomainContext, RdsContext, S3Context, SecretsContext, VpcContext,
@@ -29,6 +28,7 @@ use super::sink::Sink;
 use super::{dsql as dsql_status, s3 as s3_status};
 use crate::aws_util::{has_code, sdk_error};
 use crate::deploy::secret_store::{read_managed, ManagedSecrets};
+use crate::deploy::template_secrets;
 use crate::stack::cloudfront::{self, CloudFrontInputs};
 use crate::stack::container::{self, ContainerInputs, RdsState};
 use crate::stack::ops::{
@@ -37,8 +37,6 @@ use crate::stack::ops::{
 };
 use crate::stack::{inbound, vpc, StackOutputs, StackTemplate};
 
-/// origin verify の secret を入れる managed secret の key (Python の `ORIGIN_VERIFY_SECRET_KEY`)
-const ORIGIN_VERIFY_SECRET_KEY: &str = "POCKET_ORIGIN_VERIFY_SECRET";
 const EDGE_REGION: &str = "us-east-1";
 
 pub struct AwsEvaluator<'a> {
@@ -111,20 +109,7 @@ impl<'a> AwsEvaluator<'a> {
     /// managed secret の key を持つ store view (shared → 名前順の container)。
     /// Python の `Context.managed_secret_view`
     fn managed_secret_view(&self, key: &str) -> Option<&'a SecretsContext> {
-        if let Some(shared) = self.ctx.secrets.as_ref() {
-            if shared.managed.contains_key(key) {
-                return Some(shared);
-            }
-        }
-        let mut names: Vec<&String> = self.ctx.container.keys().collect();
-        names.sort();
-        names.into_iter().find_map(|name| {
-            self.ctx
-                .container
-                .get(name)
-                .and_then(|c| c.secrets.as_ref())
-                .filter(|view| view.managed.contains_key(key))
-        })
+        template_secrets::managed_secret_view(self.ctx, key)
     }
 
     // ---- stack 系の resource ----
@@ -155,11 +140,7 @@ impl<'a> AwsEvaluator<'a> {
                 None => sink.warning("container secrets is not configured."),
                 Some(view) => {
                     let secrets = self.managed_secrets(view).await?.unwrap_or_default();
-                    for key in keys {
-                        if let Some(value) = secrets.get(key).and_then(Json::as_str) {
-                            values.insert(key.clone(), value.to_string());
-                        }
-                    }
+                    values = template_secrets::waf_allow_secret_values(keys, &secrets);
                 }
             }
         }
@@ -194,20 +175,7 @@ impl<'a> AwsEvaluator<'a> {
             return Ok(String::new());
         };
         let secrets = self.managed_secrets(view).await?.unwrap_or_default();
-        let Some(data) = secrets.get(key) else {
-            sink.warning(&format!(
-                "signing_key '{key}' not found in managed secrets. \
-                 Deploy the container first to generate the key."
-            ));
-            return Ok(String::new());
-        };
-        let Some(public) = data.get("pub").and_then(Json::as_str) else {
-            return Ok(String::new());
-        };
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(public)
-            .map_err(|e| anyhow!("signing_key '{key}' の公開鍵を base64 として読めません: {e}"))?;
-        Ok(String::from_utf8(decoded)?)
+        template_secrets::signing_public_key_pem(key, &secrets, sink)
     }
 
     async fn cloudfront(
@@ -257,29 +225,13 @@ impl<'a> AwsEvaluator<'a> {
         if let Some(key) = cf.token_secret.as_deref().filter(|k| !k.is_empty()) {
             if let Some(view) = self.managed_secret_view(key) {
                 let secrets = self.managed_secrets(view).await?.unwrap_or_default();
-                match secrets.get(key) {
-                    Some(value) if value.is_string() => {}
-                    Some(_) => {
-                        sink.warning(&format!("token_secret の値が文字列ではありません: {key}"))
-                    }
-                    None => sink.warning(&format!(
-                        "token_secret '{key}' が managed secrets に見つかりません"
-                    )),
-                }
+                template_secrets::token_secret_value(key, &secrets, sink);
             }
         }
         if let Some(key) = cf.basic_auth.as_deref().filter(|k| !k.is_empty()) {
             if let Some(view) = self.managed_secret_view(key) {
                 let secrets = self.managed_secrets(view).await?.unwrap_or_default();
-                let valid = secrets
-                    .get(key)
-                    .and_then(Json::as_str)
-                    .is_some_and(|value| value.contains(':'));
-                if !valid {
-                    sink.warning(&format!(
-                        "basic_auth '{key}' の値が 'user:pass' 形式ではありません"
-                    ));
-                }
+                template_secrets::basic_auth_expected(key, &secrets, sink);
             }
         }
         Ok(())
@@ -297,15 +249,7 @@ impl<'a> AwsEvaluator<'a> {
             return Ok(String::new());
         };
         let secrets = self.managed_secrets(view).await?.unwrap_or_default();
-        match secrets.get(ORIGIN_VERIFY_SECRET_KEY).and_then(Json::as_str) {
-            Some(value) => Ok(value.to_string()),
-            None => {
-                sink.warning(&format!(
-                    "origin verify secret '{ORIGIN_VERIFY_SECRET_KEY}' が managed secrets に見つかりません"
-                ));
-                Ok(String::new())
-            }
-        }
+        Ok(template_secrets::origin_verify_secret(&secrets, sink))
     }
 
     async fn vpc(&mut self, v: &VpcContext) -> Result<ResourceStatus> {

@@ -6,11 +6,19 @@
 // deploy に結合するまで、コマンドから呼ばれない部品がある。結合したら外す
 #![allow(dead_code)]
 
+pub mod cloudfront;
 pub mod container;
 pub mod ecr;
+pub mod edge;
 pub mod generate;
 pub mod iam;
 pub mod lambda;
 pub mod mediator;
 pub mod parts;
+pub mod s3;
 pub mod secret_store;
+pub mod stacks;
+pub mod template_secrets;
+#[cfg(test)]
+pub mod testing;
+pub mod upload;

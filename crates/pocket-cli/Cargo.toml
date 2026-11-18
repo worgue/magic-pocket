@@ -83,3 +83,8 @@ aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sy
 aws-sdk-resourcegroupstagging = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # deploy 済みの template と新しい template の比較 (ACM の手動対応が要るかの判定)
 serde_yaml_ng = "0.10"
+# CloudFront の KVS に token_secret / basic 認証の値を書く (deploy)。SigV4A の署名が要る
+aws-sdk-cloudfrontkeyvaluestore = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio", "sigv4a"] }
+# CloudFront の CreateInvalidation を署名した HTTP で呼ぶ (aws-sdk-cloudfront は rustc が
+# 2.4GB を使い、使う API はこれ 1 つなので SDK を足さない)。aws-sdk が使っている crate
+aws-sigv4 = "1"

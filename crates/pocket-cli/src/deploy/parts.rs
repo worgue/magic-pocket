@@ -8,11 +8,17 @@ use aws_config::SdkConfig;
 use clap::Subcommand;
 use magic_pocket_settings::context::{ContainerContext, Context};
 
+use super::cloudfront::{AwsCloudFront, CloudFrontDeploy, CloudFrontWaits};
 use super::container::{AwsContainer, ContainerAws, ContainerDeploy, Waits};
 use super::ecr::BuildEnv;
+use super::edge::find_cloudfront;
 use super::lambda::AwsLambda;
 use super::mediator::{DatabaseUrls, Mediator};
+use super::s3::{BucketWriter, CreateRetry};
 use super::secret_store::AwsSecretStore;
+use super::stacks::AwsStacks;
+use super::upload::Uploader;
+use crate::aws_util::regional_config;
 use crate::context::load_context;
 use crate::image_build::runner::SystemRunner;
 use crate::stack::ops::{wait_status, CfnClient, ResourceStatus, StackApi, WaitOptions};
@@ -70,6 +76,53 @@ pub enum DeployPart {
         stage: String,
         #[arg(long)]
         container: String,
+    },
+    /// S3 bucket を作る (在れば設定を合わせる)
+    S3 {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// S3 bucket を中身ごと消す
+    S3Delete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// cloudfront の stack の template を stdout に出す
+    CloudfrontTemplate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        cloudfront: String,
+    },
+    /// cloudfront の stack の外の状態 (bucket policy / KVS) を合わせる
+    CloudfrontPost {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        cloudfront: String,
+    },
+    /// bucket policy から statement を外し、cloudfront の stack を消す
+    CloudfrontDelete {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        cloudfront: String,
+    },
+    /// upload_dir のある route を build して upload する
+    Upload {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        cloudfront: String,
+        #[arg(long)]
+        skip_build: bool,
+    },
+    /// managed_assets を upload する
+    ManagedAssets {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        #[arg(long)]
+        cloudfront: String,
     },
 }
 
@@ -171,6 +224,120 @@ pub async fn run(part: DeployPart) -> Result<()> {
             print!("{}", stack.body);
             Ok(())
         }
+        DeployPart::S3 { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let s3 = ctx
+                .s3
+                .as_ref()
+                .context("s3 がこの stage に設定されていません。")?;
+            let client = aws_sdk_s3::Client::new(&regional_config(&sdk, &s3.region));
+            let writer = BucketWriter {
+                client: &client,
+                s3,
+                cloudfront: &ctx.cloudfront,
+                retry: CreateRetry::default(),
+            };
+            if writer.exists().await? {
+                writer.update(&mut sink).await
+            } else {
+                writer.create(&mut sink).await
+            }
+        }
+        DeployPart::S3Delete { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let s3 = ctx
+                .s3
+                .as_ref()
+                .context("s3 がこの stage に設定されていません。")?;
+            let client = aws_sdk_s3::Client::new(&regional_config(&sdk, &s3.region));
+            let deleted = super::s3::delete_bucket_with_contents(&client, &s3.bucket_name).await?;
+            println!(
+                "{}: {}",
+                s3.bucket_name,
+                if deleted { "deleted" } else { "not found" }
+            );
+            Ok(())
+        }
+        DeployPart::CloudfrontTemplate { stage, cloudfront } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws, store) = cloudfront_env(&sdk);
+            let stack = cloudfront_deploy(&stacks, &aws, &store)
+                .template(&ctx, &cloudfront, &mut sink)
+                .await?;
+            print!("{}", stack.body);
+            Ok(())
+        }
+        DeployPart::CloudfrontPost { stage, cloudfront } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws, store) = cloudfront_env(&sdk);
+            cloudfront_deploy(&stacks, &aws, &store)
+                .ensure_post_deploy_state(&ctx, &cloudfront, &mut sink)
+                .await
+        }
+        DeployPart::CloudfrontDelete { stage, cloudfront } => {
+            let (ctx, _) = load_context(&stage)?;
+            let (stacks, aws, store) = cloudfront_env(&sdk);
+            let cf = find_cloudfront(&ctx, &cloudfront)?;
+            cloudfront_deploy(&stacks, &aws, &store)
+                .delete(cf, &mut sink)
+                .await
+        }
+        DeployPart::Upload {
+            stage,
+            cloudfront,
+            skip_build,
+        } => {
+            let (ctx, toml_dir) = load_context(&stage)?;
+            let cf = find_cloudfront(&ctx, &cloudfront)?;
+            let (stacks, aws, store) = cloudfront_env(&sdk);
+            let distribution_id = cloudfront_deploy(&stacks, &aws, &store)
+                .distribution_id(cf)
+                .await?;
+            let client = aws_sdk_s3::Client::new(&regional_config(&sdk, &cf.s3_region));
+            let uploader = Uploader {
+                sdk: &sdk,
+                client: &client,
+                cf,
+                project_dir: &toml_dir,
+            };
+            let routes: Vec<_> = cf.uploadable_routes.iter().collect();
+            uploader
+                .upload(&routes, skip_build, &distribution_id, &mut sink)
+                .await
+        }
+        DeployPart::ManagedAssets { stage, cloudfront } => {
+            let (ctx, toml_dir) = load_context(&stage)?;
+            let cf = find_cloudfront(&ctx, &cloudfront)?;
+            let client = aws_sdk_s3::Client::new(&regional_config(&sdk, &cf.s3_region));
+            let uploader = Uploader {
+                sdk: &sdk,
+                client: &client,
+                cf,
+                project_dir: &toml_dir,
+            };
+            uploader.upload_managed_assets(&mut sink).await
+        }
+    }
+}
+
+fn cloudfront_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecretStore) {
+    (
+        AwsStacks { sdk },
+        AwsCloudFront { sdk },
+        AwsSecretStore::new(sdk.clone()),
+    )
+}
+
+fn cloudfront_deploy<'a>(
+    stacks: &'a AwsStacks<'a>,
+    aws: &'a AwsCloudFront<'a>,
+    store: &'a AwsSecretStore,
+) -> CloudFrontDeploy<'a, AwsStacks<'a>, AwsCloudFront<'a>, AwsSecretStore> {
+    CloudFrontDeploy {
+        stacks,
+        aws,
+        store,
+        waits: CloudFrontWaits::default(),
     }
 }
 

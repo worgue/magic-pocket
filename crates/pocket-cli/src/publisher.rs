@@ -100,7 +100,7 @@ fn strip_quotes(etag: &str) -> &str {
     etag.trim_matches('"')
 }
 
-fn content_type_of(path: &str) -> String {
+pub(crate) fn content_type_of(path: &str) -> String {
     mime_guess::from_path(path)
         .first_raw()
         .unwrap_or("application/octet-stream")

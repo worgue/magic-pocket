@@ -14,7 +14,7 @@ mod providers;
 mod rds;
 mod report;
 mod resource;
-mod s3;
+pub mod s3;
 pub(crate) mod sink;
 
 use anyhow::Result;
