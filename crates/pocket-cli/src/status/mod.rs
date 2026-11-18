@@ -5,15 +5,15 @@
 //! - [`aws`]: AWS / HTTP から状態を取る本番の Evaluator
 //! - それ以外: resource ごとの判定 (取得した事実から status を決める純関数)
 
-mod alerts;
+pub(crate) mod alerts;
 pub(crate) mod aws;
 pub(crate) mod container;
 pub mod dsql;
 pub(crate) mod inbound;
 pub(crate) mod providers;
 pub mod rds;
-mod report;
-mod resource;
+pub(crate) mod report;
+pub(crate) mod resource;
 pub mod s3;
 pub(crate) mod sink;
 

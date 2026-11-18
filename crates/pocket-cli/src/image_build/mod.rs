@@ -321,7 +321,11 @@ fn state_bucket_region_error(bucket: &str, actual: &str, expected: &str) -> anyh
 /// 301 を返す (boto3 は自動で追うので Python 版では黙って吸収されていた)。吸収すると
 /// region 移設の取り残しに気付けず、CodeBuild (source bucket が project と同じ region に
 /// あることを求める) で分かりにくく落ちるため止める
-async fn ensure_state_bucket(s3: &aws_sdk_s3::Client, bucket: &str, region: &str) -> Result<()> {
+pub async fn ensure_state_bucket(
+    s3: &aws_sdk_s3::Client,
+    bucket: &str,
+    region: &str,
+) -> Result<()> {
     match s3.head_bucket().bucket(bucket).send().await {
         Ok(res) => {
             return match res.bucket_region() {
