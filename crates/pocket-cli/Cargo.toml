@@ -90,3 +90,6 @@ aws-sdk-cloudfrontkeyvaluestore = { version = "1", default-features = false, fea
 aws-sigv4 = "1"
 # AWS Backup の vault / plan / selection (deploy)。rustc の最大メモリは約 1.6GB
 aws-sdk-backup = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# TiDB の database を作る (MySQL protocol・TLS。Python 版は pymysql)。TLS は aws-sdk と同じ
+# rustls + aws-lc-rs。rustc の最大メモリは下の実測を参照
+mysql_async = { version = "0.37", default-features = false, features = ["minimal-rust", "rustls-tls", "aws-lc-rs", "tls12"] }

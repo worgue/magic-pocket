@@ -52,6 +52,12 @@ fn random_string(length: i64, chars: &str) -> Result<String> {
     Ok(out)
 }
 
+/// 英数字だけの乱数の文字列 (TiDB の root password。Python の `_generate_password`)
+pub fn alphanumeric(length: i64) -> Result<String> {
+    const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    random_string(length, ALPHABET)
+}
+
 /// Aurora PostgreSQL の master password (Python の `_generate_master_password`)。
 ///
 /// master password には `/` `"` `@` と空白を使えない。quote の事故を避けるため `'` `\\`

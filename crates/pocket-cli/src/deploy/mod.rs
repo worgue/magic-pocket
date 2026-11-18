@@ -17,8 +17,10 @@ pub mod generate;
 pub mod iam;
 pub mod lambda;
 pub mod mediator;
+pub mod neon;
 pub mod parts;
 pub mod poll;
+pub mod provider_urls;
 pub mod rds;
 pub mod s3;
 pub mod secret_store;
@@ -27,5 +29,7 @@ pub mod stored_value;
 pub mod template_secrets;
 #[cfg(test)]
 pub mod testing;
+pub mod tidb;
 pub mod upload;
+pub mod upstash;
 pub mod vpc;

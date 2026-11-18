@@ -3,7 +3,7 @@
 //! `pocket-rs deploy` を公開するまでの e2e の入口で、公開時に消す。利用者向けの
 //! コマンドではない (順序の保証・確認・後始末をしない)。
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result};
 use aws_config::SdkConfig;
 use clap::Subcommand;
 use std::collections::BTreeMap;
@@ -20,19 +20,24 @@ use super::ecr::BuildEnv;
 use super::edge::find_cloudfront;
 use super::efs::AwsEfs;
 use super::lambda::AwsLambda;
-use super::mediator::{DatabaseUrls, Mediator};
+use super::mediator::Mediator;
+use super::neon::Neon;
+use super::provider_urls::{deploy_managed, Provider, ProviderUrls};
 use super::rds::{AwsRds, RdsAws, RdsDeploy, RdsWaits};
 use super::s3::{BucketWriter, CreateRetry};
 use super::secret_store::AwsSecretStore;
 use super::stacks::AwsStacks;
 use super::stored_value::AwsStoredValues;
+use super::tidb::{MysqlSql, TiDb};
 use super::upload::Uploader;
+use super::upstash::Upstash;
 use super::vpc::{AwsVpcNetwork, VpcDeploy, VpcWaits};
 use crate::aws_util::regional_config;
 use crate::context::load_context;
 use crate::image_build::runner::SystemRunner;
 use crate::stack::ops::{wait_status, CfnClient, ResourceStatus, StackApi, WaitOptions};
 use crate::stack::roles;
+use crate::status::providers::Http;
 use crate::status::sink::Terminal;
 
 #[derive(Subcommand)]
@@ -204,21 +209,21 @@ pub enum DeployPart {
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
         stage: String,
     },
-}
-
-/// 管理 API から算出する URL (computed mode) は、provider の移植と一緒に結合する
-struct UrlsNotPorted;
-
-impl DatabaseUrls for UrlsNotPorted {
-    async fn neon_database_url(&self, _ctx: &Context) -> Result<Option<String>> {
-        bail!("neon_database_url (computed) は pocket-rs では未対応です。")
-    }
-    async fn tidb_database_url(&self, _ctx: &Context) -> Result<Option<String>> {
-        bail!("tidb_database_url (computed) は pocket-rs では未対応です。")
-    }
-    async fn upstash_redis_url(&self, _ctx: &Context) -> Result<Option<String>> {
-        bail!("upstash_redis_url (computed) は pocket-rs では未対応です。")
-    }
+    /// Neon の branch / role / database を確保する (provisioning = "command" なら何もしない)
+    NeonCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// TiDB の cluster / database を確保する (provisioning = "command" なら何もしない)
+    TidbCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
+    /// Upstash の database を確保する (provisioning = "command" なら何もしない)
+    UpstashCreate {
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+    },
 }
 
 pub async fn run(part: DeployPart) -> Result<()> {
@@ -230,10 +235,11 @@ pub async fn run(part: DeployPart) -> Result<()> {
         DeployPart::Secrets { stage } => {
             let (ctx, _) = load_context(&stage)?;
             let store = AwsSecretStore::new(sdk.clone());
+            let urls = ProviderUrls::new()?;
             let mediator = Mediator {
                 ctx: &ctx,
                 store: &store,
-                urls: &UrlsNotPorted,
+                urls: &urls,
             };
             mediator
                 .ensure_pocket_managed_secrets(&mut sink, || Ok(load_context(&stage)?.0))
@@ -510,7 +516,48 @@ pub async fn run(part: DeployPart) -> Result<()> {
             };
             BackupDeploy { api: &api }.delete(backup, &mut sink).await
         }
+        DeployPart::NeonCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let Some(neon) = provider(&ctx, Provider::Neon, ctx.neon.as_ref()) else {
+                return Ok(());
+            };
+            let http = Http::new()?;
+            let neon = Neon {
+                http: &http,
+                ctx: neon,
+            };
+            neon.create(&mut sink).await
+        }
+        DeployPart::TidbCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let Some(tidb) = provider(&ctx, Provider::Tidb, ctx.tidb.as_ref()) else {
+                return Ok(());
+            };
+            let http = Http::new()?;
+            TiDb::new(&http, tidb, &MysqlSql).create().await
+        }
+        DeployPart::UpstashCreate { stage } => {
+            let (ctx, _) = load_context(&stage)?;
+            let Some(upstash) = provider(&ctx, Provider::Upstash, ctx.upstash.as_ref()) else {
+                return Ok(());
+            };
+            let http = Http::new()?;
+            let upstash = Upstash {
+                http: &http,
+                ctx: upstash,
+            };
+            upstash.create(&mut sink).await
+        }
     }
+}
+
+/// deploy が作る provider の設定。deploy の対象でなければ、その旨を出して `None`
+fn provider<'c, T>(ctx: &Context, kind: Provider, settings: Option<&'c T>) -> Option<&'c T> {
+    let settings = settings.filter(|_| deploy_managed(ctx).contains(&kind));
+    if settings.is_none() {
+        println!("{kind:?}: skipped (宣言が無いか、provisioning = \"command\")");
+    }
+    settings
 }
 
 /// stage が管理する VPC (container と RDS が使うもの。名前の重複を除く)
@@ -655,6 +702,7 @@ struct Env<'a> {
     region: String,
     lambda: AwsLambda,
     store: AwsSecretStore,
+    urls: ProviderUrls,
 }
 
 impl<'a> Env<'a> {
@@ -672,6 +720,7 @@ impl<'a> Env<'a> {
             region: general.region.clone(),
             lambda: AwsLambda::new(sdk, &general.region),
             store: AwsSecretStore::new(sdk.clone()),
+            urls: ProviderUrls::new()?,
         })
     }
 
@@ -691,12 +740,12 @@ impl<'a> Env<'a> {
     fn deploy<'d>(
         &'d self,
         aws: &'d AwsContainer<'d>,
-    ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore, UrlsNotPorted> {
+    ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore, ProviderUrls> {
         ContainerDeploy {
             aws,
             lambda: &self.lambda,
             store: &self.store,
-            urls: &UrlsNotPorted,
+            urls: &self.urls,
             waits: Waits::default(),
         }
     }

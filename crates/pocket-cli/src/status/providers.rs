@@ -14,10 +14,30 @@ use serde_json::Value as Json;
 use super::sink::Sink;
 use crate::stack::ops::ResourceStatus;
 
-const NEON_ENDPOINT: &str = "https://console.neon.tech/api/v2/";
-const TIDB_IAM_ENDPOINT: &str = "https://iam.tidbapi.com/v1beta1/";
-const TIDB_SERVERLESS_ENDPOINT: &str = "https://serverless.tidbapi.com/v1beta1/";
-const UPSTASH_ENDPOINT: &str = "https://api.upstash.com/v2/redis";
+/// provider の API の接続先。既定は本番で、テストだけが localhost の stub に向ける
+/// (環境変数などでの差し替えは持たない)
+#[derive(Debug, Clone)]
+pub struct Endpoints {
+    /// 末尾に `/` が付く
+    pub neon: String,
+    /// 末尾に `/` が付く
+    pub tidb_iam: String,
+    /// 末尾に `/` が付く
+    pub tidb_serverless: String,
+    /// 末尾に `/` が付かない
+    pub upstash: String,
+}
+
+impl Default for Endpoints {
+    fn default() -> Self {
+        Self {
+            neon: "https://console.neon.tech/api/v2/".to_string(),
+            tidb_iam: "https://iam.tidbapi.com/v1beta1/".to_string(),
+            tidb_serverless: "https://serverless.tidbapi.com/v1beta1/".to_string(),
+            upstash: "https://api.upstash.com/v2/redis".to_string(),
+        }
+    }
+}
 
 pub struct Response {
     pub status: u16,
@@ -25,26 +45,108 @@ pub struct Response {
 }
 
 impl Response {
-    fn ok(&self) -> bool {
+    pub fn ok(&self) -> bool {
         (200..300).contains(&self.status)
     }
 
-    fn json(&self) -> Result<Json> {
+    pub fn json(&self) -> Result<Json> {
         serde_json::from_str(&self.body).context("API の応答が JSON ではありません")
     }
 }
 
+/// 要求に付ける認証
+#[derive(Debug, Clone, Copy)]
+pub enum Auth<'a> {
+    /// `Authorization: Bearer` (Neon。`Accept: application/json` も付ける)
+    Bearer(&'a str),
+    Basic(&'a str, &'a str),
+    /// 認証なしで送り、401 の challenge に応えて送り直す (TiDB Cloud)
+    Digest(&'a str, &'a str),
+}
+
 pub struct Http {
     client: reqwest::Client,
+    pub endpoints: Endpoints,
+    /// 書き込みの後に provider 側の反映を待つ時間 (Python 版の `time.sleep(2)`)
+    pub settle: Duration,
 }
 
 impl Http {
     pub fn new() -> Result<Self> {
+        Self::with_endpoints(Endpoints::default(), Duration::from_secs(2))
+    }
+
+    pub fn with_endpoints(endpoints: Endpoints, settle: Duration) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .context("HTTP client を作れません")?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            endpoints,
+            settle,
+        })
+    }
+
+    /// 認証と JSON の body を付けて送る。4xx / 5xx も error にせず [`Response`] で返す
+    pub async fn request(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        auth: Auth<'_>,
+        body: Option<&Json>,
+    ) -> Result<Response> {
+        let build = || {
+            let request = self.client.request(method.clone(), url);
+            match body {
+                Some(body) => request.json(body),
+                None => request,
+            }
+        };
+        match auth {
+            Auth::Bearer(key) => {
+                let request = build()
+                    .header(reqwest::header::ACCEPT, "application/json")
+                    .bearer_auth(key);
+                Ok(self.send(request).await?.0)
+            }
+            Auth::Basic(user, password) => {
+                Ok(self.send(build().basic_auth(user, Some(password))).await?.0)
+            }
+            Auth::Digest(user, password) => {
+                let (first, challenge) = self.send(build()).await?;
+                if first.status != 401 {
+                    return Ok(first);
+                }
+                let Some(challenge) = challenge else {
+                    return Ok(first);
+                };
+                let parsed = reqwest::Url::parse(url)?;
+                let mut uri = parsed.path().to_string();
+                if let Some(query) = parsed.query() {
+                    uri.push('?');
+                    uri.push_str(query);
+                }
+                let cnonce = format!("{:016x}", rand_u64());
+                let header = digest_authorization(
+                    &challenge,
+                    user,
+                    password,
+                    method.as_str(),
+                    &uri,
+                    &cnonce,
+                )?;
+                let request = build().header(reqwest::header::AUTHORIZATION, header);
+                Ok(self.send(request).await?.0)
+            }
+        }
+    }
+
+    /// 書き込みの後の反映待ち
+    pub async fn settle(&self) {
+        if !self.settle.is_zero() {
+            tokio::time::sleep(self.settle).await;
+        }
     }
 
     async fn send(&self, request: reqwest::RequestBuilder) -> Result<(Response, Option<String>)> {
@@ -60,41 +162,23 @@ impl Http {
     }
 
     async fn get_bearer(&self, url: &str, key: &str) -> Result<Response> {
-        let request = self
-            .client
-            .get(url)
-            .header(reqwest::header::ACCEPT, "application/json")
-            .bearer_auth(key);
-        Ok(self.send(request).await?.0)
+        self.request(reqwest::Method::GET, url, Auth::Bearer(key), None)
+            .await
     }
 
     async fn get_basic(&self, url: &str, user: &str, password: &str) -> Result<Response> {
-        let request = self.client.get(url).basic_auth(user, Some(password));
-        Ok(self.send(request).await?.0)
+        self.request(reqwest::Method::GET, url, Auth::Basic(user, password), None)
+            .await
     }
 
-    /// Digest 認証の GET。認証なしで送り、401 の challenge に応えて送り直す
     async fn get_digest(&self, url: &str, user: &str, password: &str) -> Result<Response> {
-        let (first, challenge) = self.send(self.client.get(url)).await?;
-        if first.status != 401 {
-            return Ok(first);
-        }
-        let Some(challenge) = challenge else {
-            return Ok(first);
-        };
-        let parsed = reqwest::Url::parse(url)?;
-        let mut uri = parsed.path().to_string();
-        if let Some(query) = parsed.query() {
-            uri.push('?');
-            uri.push_str(query);
-        }
-        let cnonce = format!("{:016x}", rand_u64());
-        let header = digest_authorization(&challenge, user, password, "GET", &uri, &cnonce)?;
-        let request = self
-            .client
-            .get(url)
-            .header(reqwest::header::AUTHORIZATION, header);
-        Ok(self.send(request).await?.0)
+        self.request(
+            reqwest::Method::GET,
+            url,
+            Auth::Digest(user, password),
+            None,
+        )
+        .await
     }
 }
 
@@ -203,7 +287,7 @@ pub fn digest_authorization(
     Ok(header)
 }
 
-fn find_by<'a>(items: &'a Json, key: &str, value: &str) -> Option<&'a Json> {
+pub fn find_by<'a>(items: &'a Json, key: &str, value: &str) -> Option<&'a Json> {
     items
         .as_array()?
         .iter()
@@ -213,7 +297,7 @@ fn find_by<'a>(items: &'a Json, key: &str, value: &str) -> Option<&'a Json> {
 // ---- Neon ----
 
 /// エラー応答から message を取り出す (JSON でない・message が無い応答でも止まらない)
-fn neon_error_detail(response: &Response) -> String {
+pub fn neon_error_detail(response: &Response) -> String {
     match serde_json::from_str::<Json>(&response.body) {
         Err(_) => "<non-JSON response>".to_string(),
         Ok(payload) => match payload.get("message") {
@@ -229,9 +313,14 @@ fn neon_error_detail(response: &Response) -> String {
     }
 }
 
-async fn neon_get(http: &Http, key: &str, path: &str, sink: &mut dyn Sink) -> Result<Option<Json>> {
+pub async fn neon_get(
+    http: &Http,
+    key: &str,
+    path: &str,
+    sink: &mut dyn Sink,
+) -> Result<Option<Json>> {
     let response = http
-        .get_bearer(&format!("{NEON_ENDPOINT}{path}"), key)
+        .get_bearer(&format!("{}{path}", http.endpoints.neon), key)
         .await?;
     if response.ok() {
         return response.json().map(Some);
@@ -252,7 +341,7 @@ async fn neon_get(http: &Http, key: &str, path: &str, sink: &mut dyn Sink) -> Re
 }
 
 /// 404 を「無い」と見なさない取得 (一覧系)
-async fn neon_list(http: &Http, key: &str, path: &str, sink: &mut dyn Sink) -> Result<Json> {
+pub async fn neon_list(http: &Http, key: &str, path: &str, sink: &mut dyn Sink) -> Result<Json> {
     match neon_get(http, key, path, sink).await? {
         Some(json) => Ok(json),
         None => bail!("404: Neon API {path}"),
@@ -261,14 +350,14 @@ async fn neon_list(http: &Http, key: &str, path: &str, sink: &mut dyn Sink) -> R
 
 /// project 名から project id を引く。組織の key は一覧から、project に限った key は
 /// 一覧のエラーに入っている project id から解決する
-async fn neon_project_id(
+pub async fn neon_project_id(
     http: &Http,
     key: &str,
     neon: &NeonContext,
     sink: &mut dyn Sink,
 ) -> Result<String> {
     let response = http
-        .get_bearer(&format!("{NEON_ENDPOINT}projects"), key)
+        .get_bearer(&format!("{}projects", http.endpoints.neon), key)
         .await?;
     if response.ok() {
         let json = response.json()?;
@@ -361,7 +450,7 @@ pub async fn neon_status(
 
 // ---- TiDB ----
 
-async fn tidb_get(http: &Http, tidb: &TiDbContext, url: &str) -> Result<Json> {
+pub async fn tidb_get(http: &Http, tidb: &TiDbContext, url: &str) -> Result<Json> {
     let user = tidb.public_key.as_deref().unwrap_or_default();
     let password = tidb.private_key.as_deref().unwrap_or_default();
     let response = http.get_digest(url, user, password).await?;
@@ -414,12 +503,12 @@ pub fn tidb_cluster_status(tidb: &TiDbContext, clusters: &[Json]) -> ResourceSta
     }
 }
 
-fn json_list(value: &Json) -> &[Json] {
+pub fn json_list(value: &Json) -> &[Json] {
     value.as_array().map(Vec::as_slice).unwrap_or_default()
 }
 
 /// project の id (数値でも文字列でも同じ文字列にする。Python の `str(p["id"])`)
-fn id_text(value: &Json) -> String {
+pub fn id_text(value: &Json) -> String {
     match value.as_str() {
         Some(text) => text.to_string(),
         None => value.to_string(),
@@ -431,12 +520,13 @@ pub async fn tidb_status(http: &Http, tidb: &TiDbContext) -> Result<ResourceStat
     if !has(&tidb.public_key) || !has(&tidb.private_key) {
         return Ok(ResourceStatus::NoExist);
     }
-    let projects = tidb_get(http, tidb, &format!("{TIDB_IAM_ENDPOINT}projects")).await?;
+    let projects = tidb_get(http, tidb, &format!("{}projects", http.endpoints.tidb_iam)).await?;
     let Some(project) = tidb_select_project(tidb, json_list(&projects["projects"]))? else {
         return Ok(ResourceStatus::NoExist);
     };
     let url = format!(
-        "{TIDB_SERVERLESS_ENDPOINT}clusters?filter=projectId={}",
+        "{}clusters?filter=projectId={}",
+        http.endpoints.tidb_serverless,
         id_text(&project["id"])
     );
     let clusters = tidb_get(http, tidb, &url).await?;
@@ -462,7 +552,7 @@ pub async fn upstash_status(http: &Http, upstash: &UpstashContext) -> Result<Res
     let (Some(email), Some(api_key)) = (email, api_key) else {
         bail!("UPSTASH_EMAIL と UPSTASH_API_KEY を設定してください");
     };
-    let url = format!("{UPSTASH_ENDPOINT}/databases");
+    let url = format!("{}/databases", http.endpoints.upstash);
     let response = http.get_basic(&url, email, api_key).await?;
     if !response.ok() {
         bail!("Upstash API error: {} {}", response.status, response.body);
