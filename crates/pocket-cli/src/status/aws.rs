@@ -508,20 +508,10 @@ impl<'a> AwsEvaluator<'a> {
             Err(e) if has_code(&e, &["DBClusterNotFoundFault"]) => return Ok(None),
             Err(e) => return Err(sdk_error("rds describe_db_clusters", &e)),
         };
-        Ok(response.db_clusters().first().map(|cluster| {
-            let scaling = cluster.serverless_v2_scaling_configuration();
-            let secret = cluster.master_user_secret();
-            ClusterState {
-                status: cluster.status().unwrap_or_default().to_string(),
-                min_capacity: scaling.and_then(|s| s.min_capacity()),
-                max_capacity: scaling.and_then(|s| s.max_capacity()),
-                backup_retention_period: cluster.backup_retention_period().map(i64::from),
-                has_master_user_secret: secret.is_some(),
-                master_user_secret_arn: secret.and_then(|s| s.secret_arn()).map(str::to_string),
-                endpoint: cluster.endpoint().map(str::to_string),
-                port: cluster.port().map(i64::from),
-            }
-        }))
+        Ok(response
+            .db_clusters()
+            .first()
+            .map(rds_status::cluster_state))
     }
 
     /// static のパスワードを入れた secret (Secrets Manager) の ARN。無ければ `None`

@@ -15,6 +15,24 @@ pub struct ClusterState {
     pub master_user_secret_arn: Option<String>,
     pub endpoint: Option<String>,
     pub port: Option<i64>,
+    pub arn: Option<String>,
+}
+
+/// `describe_db_clusters` の応答から判定に使う項目を取り出す
+pub fn cluster_state(cluster: &aws_sdk_rds::types::DbCluster) -> ClusterState {
+    let scaling = cluster.serverless_v2_scaling_configuration();
+    let secret = cluster.master_user_secret();
+    ClusterState {
+        status: cluster.status().unwrap_or_default().to_string(),
+        min_capacity: scaling.and_then(|s| s.min_capacity()),
+        max_capacity: scaling.and_then(|s| s.max_capacity()),
+        backup_retention_period: cluster.backup_retention_period().map(i64::from),
+        has_master_user_secret: secret.is_some(),
+        master_user_secret_arn: secret.and_then(|s| s.secret_arn()).map(str::to_string),
+        endpoint: cluster.endpoint().map(str::to_string),
+        port: cluster.port().map(i64::from),
+        arn: cluster.db_cluster_arn().map(str::to_string),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

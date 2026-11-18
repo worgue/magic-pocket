@@ -74,6 +74,8 @@ pub struct StackOutput {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StackResource {
     pub logical_id: String,
+    /// `AWS::EC2::VPC` など
+    pub resource_type: String,
     pub physical_id: Option<String>,
     pub status: String,
     pub status_reason: Option<String>,
@@ -417,6 +419,7 @@ impl StackApi for CfnClient {
                         .logical_resource_id()
                         .unwrap_or_default()
                         .to_string(),
+                    resource_type: summary.resource_type().unwrap_or_default().to_string(),
                     physical_id: summary.physical_resource_id().map(str::to_string),
                     status: summary
                         .resource_status()
@@ -701,12 +704,14 @@ mod tests {
         api.resources = vec![
             StackResource {
                 logical_id: "Bucket".to_string(),
+                resource_type: "AWS::S3::Bucket".to_string(),
                 physical_id: None,
                 status: "CREATE_FAILED".to_string(),
                 status_reason: Some("already exists".to_string()),
             },
             StackResource {
                 logical_id: "Topic".to_string(),
+                resource_type: "AWS::SNS::Topic".to_string(),
                 physical_id: Some("arn:topic".to_string()),
                 status: "CREATE_COMPLETE".to_string(),
                 status_reason: None,

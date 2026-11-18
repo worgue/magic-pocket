@@ -92,6 +92,8 @@ pub mod fake {
         pub outputs: RefCell<BTreeMap<String, Vec<(String, String)>>>,
         /// create / update / delete の後に遷移する状態 (既定は成功)
         pub after_write: RefCell<Option<String>>,
+        /// `resources` が返す stack の resource
+        pub resources: RefCell<Vec<StackResource>>,
         pub calls: RefCell<Vec<String>>,
     }
 
@@ -174,7 +176,7 @@ pub mod fake {
             self.calls
                 .borrow_mut()
                 .push(format!("resources {region} {name}"));
-            Ok(Vec::new())
+            Ok(self.resources.borrow().clone())
         }
 
         async fn create(&self, stack: &StackTemplate) -> Result<()> {

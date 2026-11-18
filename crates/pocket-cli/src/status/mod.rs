@@ -8,10 +8,10 @@
 mod alerts;
 pub(crate) mod aws;
 pub(crate) mod container;
-mod dsql;
+pub mod dsql;
 mod inbound;
 mod providers;
-mod rds;
+pub mod rds;
 mod report;
 mod resource;
 pub mod s3;

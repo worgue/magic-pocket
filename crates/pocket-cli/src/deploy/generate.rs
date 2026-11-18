@@ -52,6 +52,15 @@ fn random_string(length: i64, chars: &str) -> Result<String> {
     Ok(out)
 }
 
+/// Aurora PostgreSQL の master password (Python の `_generate_master_password`)。
+///
+/// master password には `/` `"` `@` と空白を使えない。quote の事故を避けるため `'` `\\`
+/// `` ` `` も外し、英数字と限られた記号から選ぶ
+pub fn master_password() -> Result<String> {
+    const ALPHABET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.!#%+=";
+    random_string(32, ALPHABET)
+}
+
 /// `type = "password"`。options: `length` (既定 16) / `chars`
 pub fn password(options: &OrderedMap<StrOrInt>) -> Result<String> {
     let length = match options.get("length") {
