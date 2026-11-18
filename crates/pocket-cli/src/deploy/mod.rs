@@ -6,8 +6,10 @@
 // deploy に結合するまで、コマンドから呼ばれない部品がある。結合したら外す
 #![allow(dead_code)]
 
+pub mod backup;
 pub mod cloudfront;
 pub mod container;
+pub mod dsql;
 pub mod ecr;
 pub mod edge;
 pub mod efs;

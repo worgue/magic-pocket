@@ -645,38 +645,10 @@ impl<'a> AwsEvaluator<'a> {
 
     /// Name タグが一致する最初の cluster の (identifier, 状態)。全ページを辿る
     async fn dsql_cluster(&self, dsql: &DsqlContext) -> Result<Option<(String, String)>> {
-        let client = aws_sdk_dsql::Client::new(&self.config(&dsql.region));
-        let mut pages = client.list_clusters().into_paginator().send();
-        while let Some(page) = pages.next().await {
-            let page = page.map_err(|e| sdk_error("dsql list_clusters", &e))?;
-            for summary in page.clusters() {
-                let identifier = summary.identifier();
-                // 一覧の後で消えた cluster は飛ばす (他の error は止める)
-                let detail = match client.get_cluster().identifier(identifier).send().await {
-                    Ok(detail) => detail,
-                    Err(e) if has_code(&e, &["ResourceNotFoundException"]) => continue,
-                    Err(e) => return Err(sdk_error("dsql get_cluster", &e)),
-                };
-                let tags = client
-                    .list_tags_for_resource()
-                    .resource_arn(detail.arn())
-                    .send()
-                    .await;
-                let tags = match tags {
-                    Ok(tags) => tags,
-                    Err(e) if has_code(&e, &["ResourceNotFoundException"]) => continue,
-                    Err(e) => return Err(sdk_error("dsql list_tags_for_resource", &e)),
-                };
-                let name = tags.tags().and_then(|tags| tags.get("Name"));
-                if name.map(String::as_str) == Some(dsql.tag_name.as_str()) {
-                    return Ok(Some((
-                        detail.identifier().to_string(),
-                        detail.status().as_str().to_string(),
-                    )));
-                }
-            }
-        }
-        Ok(None)
+        let found = crate::deploy::dsql::find_cluster(&self.sdk, &dsql.region, &dsql.tag_name);
+        Ok(found
+            .await?
+            .map(|cluster| (cluster.identifier, cluster.status)))
     }
 
     // ---- S3 ----

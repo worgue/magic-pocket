@@ -204,6 +204,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-backup"
+version = "1.136.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aff1477c8a6a5e048f1f6844b3a356a058772ed8328e2a49f9efeafc4b0b8c7"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json 0.65.1",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema 1.2.0",
+ "aws-smithy-types",
+ "aws-types",
+ "fastrand",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-cloudformation"
 version = "1.118.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2361,6 +2384,7 @@ dependencies = [
  "anyhow",
  "aws-config",
  "aws-lc-rs",
+ "aws-sdk-backup",
  "aws-sdk-cloudformation",
  "aws-sdk-cloudfrontkeyvaluestore",
  "aws-sdk-codebuild",

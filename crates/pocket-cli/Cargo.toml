@@ -88,3 +88,5 @@ aws-sdk-cloudfrontkeyvaluestore = { version = "1", default-features = false, fea
 # CloudFront の CreateInvalidation を署名した HTTP で呼ぶ (aws-sdk-cloudfront は rustc が
 # 2.4GB を使い、使う API はこれ 1 つなので SDK を足さない)。aws-sdk が使っている crate
 aws-sigv4 = "1"
+# AWS Backup の vault / plan / selection (deploy)。rustc の最大メモリは約 1.6GB
+aws-sdk-backup = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

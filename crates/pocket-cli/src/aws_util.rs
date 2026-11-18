@@ -4,6 +4,32 @@ use anyhow::anyhow;
 use aws_config::{Region, SdkConfig};
 use aws_sdk_s3::error::{ProvideErrorMetadata, SdkError};
 
+/// AWS の API が返した error (code が取れたもの)。
+///
+/// 表示は「操作名: code: message」。`anyhow::Error` に包んだ後も [`error_code`] で code を
+/// 取り出せる (権限不足を警告に留める、といった分岐に使う)
+#[derive(Debug)]
+pub struct AwsError {
+    pub operation: String,
+    pub code: String,
+    pub message: String,
+}
+
+impl std::fmt::Display for AwsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}: {}", self.operation, self.code, self.message)
+    }
+}
+
+impl std::error::Error for AwsError {}
+
+/// [`sdk_error`] が作った error の code
+pub fn error_code(error: &anyhow::Error) -> Option<&str> {
+    error
+        .downcast_ref::<AwsError>()
+        .map(|aws| aws.code.as_str())
+}
+
 /// SDK の error を「操作名: code: message」の形にする
 pub fn sdk_error<E, R>(operation: &str, error: &SdkError<E, R>) -> anyhow::Error
 where
@@ -11,7 +37,11 @@ where
     R: std::fmt::Debug,
 {
     match (error.code(), error.message()) {
-        (Some(code), Some(message)) => anyhow!("{operation}: {code}: {message}"),
+        (Some(code), Some(message)) => anyhow::Error::new(AwsError {
+            operation: operation.to_string(),
+            code: code.to_string(),
+            message: message.to_string(),
+        }),
         _ => anyhow!("{operation}: {error:?}"),
     }
 }
