@@ -2,7 +2,6 @@
   "context": {
     "env": {
       "DEPLOY_HASH": "env-hash-1",
-      "NEON_API_KEY": "ctx-neon-key",
       "POCKET_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/env-boundary"
     },
     "project_name_fallback": "vector-prj"

@@ -194,8 +194,11 @@ class NeonApi:
 class Neon:
     context: NeonContext
 
-    def __init__(self, context: NeonContext) -> None:
+    def __init__(self, context: NeonContext, *, api_key: str) -> None:
+        # API key は context (pocket.toml 由来) に載せず、呼び出し側が渡す。
+        # CLI は `pocket resource neon` のコマンドだけが環境変数から読む。
         self.context = context
+        self._api_key = api_key
 
     def get_resource_path(self, resource_type: ResourceType) -> str:
         requirements = {
@@ -243,7 +246,7 @@ class Neon:
 
     @property
     def api(self):
-        return NeonApi(self.context.api_key)
+        return NeonApi(self._api_key)
 
     @cached_property
     def role(self) -> Role | None:
@@ -394,15 +397,6 @@ class Neon:
     def masked_database_url(self):
         """password を伏せた表示用 URL。reveal API を呼ばず secret を取得しない。"""
         return self._build_database_url("****")
-
-    @property
-    def has_credential(self) -> bool:
-        """NEON_API_KEY (neon_api_key) が設定されているか。
-
-        stack の状態確認・削除に Neon の資格情報は不要なので、status / destroy は
-        未設定なら Neon の解決を warning で skip して続行する (KN1456)。
-        """
-        return bool(self.context.api_key)
 
     @property
     def status(self) -> ResourceStatus:
@@ -557,7 +551,9 @@ class EnsureUrlInfo(NamedTuple):
     branch_created: bool
 
 
-def ensure_url_for_context_with_info(context: NeonContext) -> EnsureUrlInfo:
+def ensure_url_for_context_with_info(
+    context: NeonContext, *, api_key: str
+) -> EnsureUrlInfo:
     """`ensure_url_for_context` の解決情報付き版。
 
     branch が無ければ (parent 指定があればそこから) 作成し、role と database を
@@ -565,10 +561,10 @@ def ensure_url_for_context_with_info(context: NeonContext) -> EnsureUrlInfo:
     算出して返す。Neon の URL は reveal_password 方式で冪等なので何度呼んでも同じ。
     endpoint_host は算出済み URL から解析し、追加の API call はしない。
     """
-    neon = Neon(context)
+    neon = Neon(context, api_key=api_key)
     branch_created = neon.branch is None
     neon.create()
-    url = Neon(context).database_url
+    url = Neon(context, api_key=api_key).database_url
     return EnsureUrlInfo(
         url=url,
         project_name=context.project_name,
@@ -578,13 +574,12 @@ def ensure_url_for_context_with_info(context: NeonContext) -> EnsureUrlInfo:
     )
 
 
-def ensure_url_for_context(context: NeonContext) -> str:
+def ensure_url_for_context(context: NeonContext, *, api_key: str) -> str:
     """`NeonContext` から branch/role/db を ensure し接続 URL を算出する。
 
-    挙動は :func:`ensure_url_for_context_with_info` と同一で、URL のみを返す
-    (公開 API の従来シグネチャ維持)。
+    挙動は :func:`ensure_url_for_context_with_info` と同一で、URL のみを返す。
     """
-    return ensure_url_for_context_with_info(context).url
+    return ensure_url_for_context_with_info(context, api_key=api_key).url
 
 
 def ensure_and_compute_url(
@@ -619,11 +614,10 @@ def ensure_and_compute_url(
     """
     context = NeonContext(
         pg_version=pg_version,
-        api_key=api_key,
         project_name=project_name,
         branch_name=branch_name,
         parent_branch_name=parent_branch_name,
         name=name,
         role_name=role_name,
     )
-    return ensure_url_for_context(context)
+    return ensure_url_for_context(context, api_key=api_key)

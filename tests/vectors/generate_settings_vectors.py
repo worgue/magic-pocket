@@ -6,8 +6,8 @@ Python の `Settings.from_toml` で各入力 (toml × その stages) を読み�
 この JSON と一致することを確かめる。
 
 入力の先頭に `# vector-env: KEY=VALUE` の行 (`# vector-env:` だけなら環境変数なし)
-があれば、その入力の vector の環境変数をその行のものだけにする (credential の
-空文字・未設定・大文字小文字の違いを固定するため)。
+があれば、その入力の vector の環境変数をその行のものにする (DEPLOY_HASH 等、
+Context の導出が読む環境変数を固定するため。既定は環境変数なし)。
 
 ファイル・環境に依らない読み込み (Rust の純粋層 `Settings::from_parts` と同じ入力)
 にするため、読み込みは空の一時ディレクトリを cwd にし (`.env` を読まない)、
@@ -80,13 +80,7 @@ INPUT_GROUPS = (
 
 DEFAULT_CONTEXT: dict = {
     "project_name_fallback": "vector-prj",
-    "env": {
-        "NEON_API_KEY": "vector-neon-api-key",
-        "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
-        "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
-        "UPSTASH_EMAIL": "vector@example.com",
-        "UPSTASH_API_KEY": "vector-upstash-api-key",
-    },
+    "env": {},
 }
 
 

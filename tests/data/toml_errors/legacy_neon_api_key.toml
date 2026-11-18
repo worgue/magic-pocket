@@ -5,4 +5,4 @@ stages = ["dev"]
 
 [neon]
 project_name = "n"
-pg_version = "abc"
+neon_api_key = "x"

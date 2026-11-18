@@ -4,7 +4,6 @@
 # 環境変数 (DEPLOY_HASH / permissions boundary) の優先順位
 # vector-env: DEPLOY_HASH=env-hash-1
 # vector-env: POCKET_PERMISSIONS_BOUNDARY_ARN=arn:aws:iam::123456789012:policy/env-boundary
-# vector-env: NEON_API_KEY=ctx-neon-key
 [general]
 region = "ap-northeast-1"
 project_name = "ctx"
@@ -39,7 +38,7 @@ SIGNING = { type = "cloudfront_signing_key", options = { id_environ_suffix = 1 }
 [container.web.secrets.user]
 EXTERNAL_API = { name = "{stage}/external/api" }
 PARAM = { name = "plain/param", store = "ssm" }
-TIDB_URL = { type = "tidb_database_url", store = "ssm" }
+NEON_URL = { type = "neon_database_url", store = "ssm" }
 
 [container.web.handlers.wsgi]
 command = "pocket.django.lambda_handlers.wsgi_handler"

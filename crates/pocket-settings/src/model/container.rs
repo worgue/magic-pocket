@@ -110,16 +110,12 @@ impl ManagedSecretSpec {
 #[serde(rename_all = "snake_case")]
 pub enum UserSecretType {
     NeonDatabaseUrl,
-    TidbDatabaseUrl,
-    UpstashRedisUrl,
 }
 
 impl UserSecretType {
     fn as_str(&self) -> &'static str {
         match self {
             Self::NeonDatabaseUrl => "neon_database_url",
-            Self::TidbDatabaseUrl => "tidb_database_url",
-            Self::UpstashRedisUrl => "upstash_redis_url",
         }
     }
 }

@@ -157,7 +157,7 @@
                     "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param"
                   },
                   {
-                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/neon_database_url"
                   }
                 ]
               }
@@ -273,9 +273,9 @@
         "type": null,
         "store": "ssm"
       },
-      "TIDB_URL": {
-        "name": "/dev-ctx-pocket-user/tidb_database_url",
-        "type": "tidb_database_url",
+      "NEON_URL": {
+        "name": "/dev-ctx-pocket-user/neon_database_url",
+        "type": "neon_database_url",
         "store": "ssm"
       }
     },
@@ -291,7 +291,7 @@
     ],
     "allowed_ssm_resources": [
       "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
-      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/neon_database_url"
     ]
   },
   "dockerfile_path": "web/Dockerfile",
@@ -483,7 +483,7 @@
   "allowed_ssm_resources": [
     "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p",
     "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
-    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/neon_database_url"
   ],
   "require_list_secrets": false,
   "inbound_runtime_config": {

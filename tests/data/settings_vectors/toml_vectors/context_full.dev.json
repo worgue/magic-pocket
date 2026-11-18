@@ -2,7 +2,6 @@
   "context": {
     "env": {
       "DEPLOY_HASH": "env-hash-1",
-      "NEON_API_KEY": "ctx-neon-key",
       "POCKET_PERMISSIONS_BOUNDARY_ARN": "arn:aws:iam::123456789012:policy/env-boundary"
     },
     "project_name_fallback": "vector-prj"
@@ -231,15 +230,15 @@
               "store": null,
               "type": null
             },
+            "NEON_URL": {
+              "name": null,
+              "store": "ssm",
+              "type": "neon_database_url"
+            },
             "PARAM": {
               "name": "plain/param",
               "store": "ssm",
               "type": null
-            },
-            "TIDB_URL": {
-              "name": null,
-              "store": "ssm",
-              "type": "tidb_database_url"
             }
           }
         },
@@ -392,7 +391,6 @@
       }
     },
     "neon": {
-      "api_key": "****",
       "branch_name": "{stage}-{project}",
       "parent_branch_name": null,
       "pg_version": 15,
@@ -436,7 +434,6 @@
     "slug": "dev-ctx",
     "stage": "dev",
     "tidb": null,
-    "upstash": null,
     "vpc": {
       "efs": {
         "access_point_path": "/lambda",
@@ -676,15 +673,15 @@
               "store": null,
               "type": null
             },
+            "NEON_URL": {
+              "name": null,
+              "store": "ssm",
+              "type": "neon_database_url"
+            },
             "PARAM": {
               "name": "plain/param",
               "store": "ssm",
               "type": null
-            },
-            "TIDB_URL": {
-              "name": null,
-              "store": "ssm",
-              "type": "tidb_database_url"
             }
           }
         },
@@ -837,7 +834,6 @@
       }
     },
     "neon": {
-      "api_key": "ctx-neon-key",
       "branch_name": "{stage}-{project}",
       "parent_branch_name": null,
       "pg_version": 15,
@@ -881,7 +877,6 @@
     "slug": "dev-ctx",
     "stage": "dev",
     "tidb": null,
-    "upstash": null,
     "vpc": {
       "efs": {
         "access_point_path": "/lambda",

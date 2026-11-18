@@ -648,7 +648,6 @@ class ContainerContext(BaseModel):
 
 class NeonContext(BaseModel):
     pg_version: int = 15
-    api_key: str | None = None
     project_name: str
     branch_name: str
     # branch_name が設定で明示されたか。False (未指定 = default branch fallback) の
@@ -665,7 +664,6 @@ class NeonContext(BaseModel):
         format_vars = root.format_vars
         return cls(
             pg_version=neon.pg_version,
-            api_key=neon.api_key,
             project_name=neon.project_name,
             branch_name=(neon.branch_name or "main").format(**format_vars),
             branch_name_specified=neon.branch_name is not None,
@@ -681,47 +679,7 @@ class NeonContext(BaseModel):
 
 
 class TiDbContext(BaseModel):
-    public_key: str | None = None
-    private_key: str | None = None
-    tidb_project: str | None = None
-    cluster_name: str
-    database_name: str
-    region: str
-    project_name: str
-
-    @classmethod
-    def from_settings(cls, tidb: settings.TiDb, root: settings.Settings) -> TiDbContext:
-        cluster_name = tidb.cluster or re.sub(
-            r"-{2,}", "-", re.sub(r"[^a-zA-Z0-9]", "-", root.project_name)
-        ).strip("-")
-        database_name = f"{root.project_name}_{root.stage}".replace("-", "_")
-        return cls(
-            public_key=tidb.public_key,
-            private_key=tidb.private_key,
-            tidb_project=tidb.project,
-            cluster_name=cluster_name,
-            database_name=database_name,
-            region=tidb.region,
-            project_name=root.project_name,
-        )
-
-
-class UpstashContext(BaseModel):
-    email: str | None = None
-    api_key: str | None = None
-    database_name: str
-    budget: int = 20
-
-    @classmethod
-    def from_settings(
-        cls, upstash: settings.Upstash, root: settings.Settings
-    ) -> UpstashContext:
-        return cls(
-            email=upstash.email,
-            api_key=upstash.api_key,
-            database_name=f"{root.project_name}-{root.stage}",
-            budget=upstash.budget,
-        )
+    """[tidb] が宣言されている目印 (Django の DB engine を django_tidb にする)。"""
 
 
 def _permissions_boundary(root: settings.Settings) -> str | None:
@@ -1702,8 +1660,7 @@ def _build_service_contexts(s: settings.Settings) -> dict:
     """外部サービスのコンテキストを構築する"""
     ctx: dict = {}
     ctx["neon"] = NeonContext.from_settings(s.neon, s) if s.neon else None
-    ctx["tidb"] = TiDbContext.from_settings(s.tidb, s) if s.tidb else None
-    ctx["upstash"] = UpstashContext.from_settings(s.upstash, s) if s.upstash else None
+    ctx["tidb"] = TiDbContext() if s.tidb else None
     ctx["dsql"] = DsqlContext.from_settings(s.dsql, s) if s.dsql else None
     ctx["rds"] = RdsContext.from_settings(s.rds, s) if s.rds else None
     ctx["ses"] = SesContext.from_settings(s.ses, s) if s.ses else None
@@ -1725,7 +1682,6 @@ class Context(BaseModel):
     secrets: SecretsContext | None = None
     neon: NeonContext | None = None
     tidb: TiDbContext | None = None
-    upstash: UpstashContext | None = None
     dsql: DsqlContext | None = None
     rds: RdsContext | None = None
     backup: BackupContext | None = None

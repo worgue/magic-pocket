@@ -24,7 +24,7 @@ credentialsは `~/.aws/credentials` への設定を想定しています。
 以下のいずれかを選択してください。
 
 - **[Neon](https://neon.tech/){:target="_blank"}**: サーバーレス PostgreSQL。APIキー（`NEON_API_KEY`）は DB を用意するコマンドだけが使います。
-- **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。APIキー（`TIDB_PUBLIC_KEY` / `TIDB_PRIVATE_KEY`）は DB を用意するコマンドだけが使います。
+- **[TiDB Serverless](https://www.pingcap.com/tidb-serverless/){:target="_blank"}**: MySQL 互換のサーバーレス DB。クラスターは自分で用意し、接続 URL を secret に保存して渡します。
 - **RDS Aurora PostgreSQL Serverless v2**: AWS マネージド。外部アカウント不要で、`[rds]` セクションと VPC 設定のみで利用できます。
 - **[Aurora DSQL](https://aws.amazon.com/dsql/){:target="_blank"}**: AWS マネージドのサーバーレス PostgreSQL 互換 DB。VPC 不要、IAM 認証。Django ORM との互換性が低いため、直接 SQL 実行向けです。
 
@@ -195,20 +195,18 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS")
 
 ## 4. データベースの用意
 
-`.env` に `NEON_API_KEY` を追加し、ステージごとに 1 回、DB を用意するコマンドを実行します。
-Neon にブランチ・データベース・ロールを作り、接続 URL をシークレットストアに保存します。
+環境変数 `NEON_API_KEY` に Neon の API キーを入れ、ステージごとに 1 回、DB を用意する
+コマンドを実行します。Neon にブランチ・データベース・ロールを作り、接続 URL を
+シークレットストアに保存します。
 
 ```bash
-# .env に追記
-NEON_API_KEY=あなたのNeon APIキー
-```
-
-```bash
+export NEON_API_KEY=あなたのNeon APIキー
 uv run pocket resource neon store-url --stage=dev
 ```
 
 !!! info "NEON_API_KEY が要るのはこのコマンドだけ"
     `pocket deploy` と Lambda は Neon の API を呼びません（保存済みの接続 URL を読むだけ）。
+    API キーは `.env` からは読みません。
     CI からデプロイする場合も、CI に `NEON_API_KEY` を置く必要はありません。
 
 ## 5. デプロイ

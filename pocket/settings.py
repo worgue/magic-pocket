@@ -5,7 +5,6 @@ import sys
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .django.settings import Django
 from .general_settings import GeneralSettings, Vpc
@@ -52,36 +51,85 @@ StoreType = Literal["sm", "ssm"]
 BuildBackend = Literal["codebuild", "docker", "depot"]
 
 
-def _reject_removed_db_keys(data, *, resource: str):
-    """削除済みの設定 (`provisioning` / `skip_check_existing`) が残っていたら止める。
+_NEON_STORE_URL = "`pocket resource neon store-url --stage <stage>`"
+_SELF_MANAGED_URL = (
+    "接続 URL は自分で Secrets Manager / SSM に保存し、"
+    '[container.<name>.secrets.user] に `{ name = "<secret 名>" }` で宣言してください。'
+)
 
-    Neon / TiDB / Upstash は deploy の中では用意しない。API key がある場所で
-    `pocket resource <db> store-url` を実行して用意し、deploy は保存済みの接続 URL を
-    読むだけにする。extra="ignore" だと黙殺されるため model_validator(mode="before")
-    で raw 入力を検査する。
+
+def _reject_removed_neon_keys(data):
+    """[neon] の削除済みキーが残っていたら、直し方を添えて止める。
+
+    deploy は Neon に触れない。`pocket resource neon store-url` が branch / role /
+    database を用意し、接続 URL を user secret に保存する。API key は設定に持たず、
+    `pocket resource neon` のコマンドだけが環境変数 NEON_API_KEY から読む。
     """
     if not isinstance(data, dict):
         return data
-    store_url = "`pocket resource %s store-url --stage <stage>`" % resource
     if "provisioning" in data:
         if data["provisioning"] == "command":
             raise ValueError(
-                "[%s] provisioning は廃止されました (deploy は %s に触れません)。"
-                "この行を削除してください。" % (resource, resource)
+                "[neon] provisioning は廃止されました (deploy は neon に触れません)。"
+                "この行を削除してください。"
             )
         raise ValueError(
-            "[%s] provisioning は廃止されました。deploy は %s を用意しません。"
+            "[neon] provisioning は廃止されました。deploy は neon を用意しません。"
             "この行を削除し、接続 URL を [container.<name>.secrets.user] の type で"
             "宣言したうえで、API key がある場所で %s を実行してください。"
-            % (resource, resource, store_url)
+            % _NEON_STORE_URL
         )
     if "skip_check_existing" in data:
         raise ValueError(
-            "[%s] skip_check_existing は廃止されました。この行を削除し、接続 URL を "
+            "[neon] skip_check_existing は廃止されました。この行を削除し、接続 URL を "
             "[container.<name>.secrets.user] の type で宣言したうえで deploy 前に "
-            "%s を実行してください。" % (resource, store_url)
+            "%s を実行してください。" % _NEON_STORE_URL
         )
+    for key in ("neon_api_key", "api_key"):
+        if key in data:
+            raise ValueError(
+                "[neon] %s は廃止されました。API key は pocket.toml に書かず、"
+                "`pocket resource neon` を実行する環境変数 NEON_API_KEY で"
+                "渡してください。" % key
+            )
     return data
+
+
+_REMOVED_TIDB_KEYS = (
+    "provisioning",
+    "skip_check_existing",
+    "project",
+    "cluster",
+    "region",
+    "tidb_public_key",
+    "tidb_private_key",
+    "public_key",
+    "private_key",
+)
+
+
+def _reject_removed_tidb_keys(data):
+    """[tidb] の削除済みキーが残っていたら、直し方を添えて止める。
+
+    pocket は TiDB Cloud の API を呼ばない。[tidb] は Django の DB engine を
+    django_tidb にする目印で、キーを持たない。
+    """
+    if not isinstance(data, dict):
+        return data
+    for key in _REMOVED_TIDB_KEYS:
+        if key in data:
+            raise ValueError(
+                "[tidb] %s は廃止されました (pocket は TiDB Cloud の API を"
+                "呼びません)。この行を削除してください。cluster は TiDB Cloud の"
+                "コンソールで用意します。%s" % (key, _SELF_MANAGED_URL)
+            )
+    return data
+
+
+_REMOVED_USER_SECRET_TYPES = {
+    "tidb_database_url": "TiDB",
+    "upstash_redis_url": "Upstash",
+}
 
 
 # container 名の制約。リソース物理名 ({prefix}{name}-{handler} 等) の slot に
@@ -182,10 +230,9 @@ class ManagedSecretSpec(BaseModel):
 
 
 # 事前に用意した接続 URL を読む user secret の type。
-# pocket は provider の API を呼ばず、type から決まる名前の secret を読むだけ。値は
-# `pocket resource <db> store-url` が保存する。対象は neon / tidb / upstash
-# (rds は runtime で URL を組み立てるので managed の rds_database_url を使う)。
-UserSecretType = Literal["neon_database_url", "tidb_database_url", "upstash_redis_url"]
+# deploy は Neon の API を呼ばず、type から決まる名前の secret を読むだけ。値は
+# `pocket resource neon store-url` が保存する。
+UserSecretType = Literal["neon_database_url"]
 
 
 class UserSecretSpec(BaseModel):
@@ -195,6 +242,18 @@ class UserSecretSpec(BaseModel):
     name: str | None = None  # SM: ARN or secret name, SSM: parameter name/path
     type: UserSecretType | None = None
     store: StoreType | None = None  # Noneの場合Secrets.storeを継承
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_removed_types(cls, data):
+        if isinstance(data, dict):
+            label = _REMOVED_USER_SECRET_TYPES.get(data.get("type"))  # type: ignore
+            if label is not None:
+                raise ValueError(
+                    'type = "%s" は廃止されました (pocket は %s の API を'
+                    "呼びません)。%s" % (data["type"], label, _SELF_MANAGED_URL)
+                )
+        return data
 
     @model_validator(mode="after")
     def check_name_or_type(self):
@@ -587,7 +646,9 @@ class Inbound(BaseModel):
         return self
 
 
-class Neon(BaseSettings):
+class Neon(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     project_name: str
     pg_version: int = 15
     # 省略時は project の default ブランチ (通常 main) を使う。stage 名との暗黙結合を
@@ -603,43 +664,27 @@ class Neon(BaseSettings):
     parent_branch_name: FormatStr | None = None
     # deploy は Neon に触れない。`pocket resource neon store-url` が branch / role /
     # database を用意して接続 URL を保存し、deploy は保存済みの user secret を読む。
-    # api_key を使うのは `pocket resource neon` のコマンドだけ。
-    api_key: str | None = Field(alias="neon_api_key", default=None)
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # API key は設定に持たない (`pocket resource neon` が環境変数 NEON_API_KEY を読む)。
 
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_keys(cls, data):
-        return _reject_removed_db_keys(data, resource="neon")
+        return _reject_removed_neon_keys(data)
 
 
-class TiDb(BaseSettings):
-    public_key: str | None = Field(alias="tidb_public_key", default=None)
-    private_key: str | None = Field(alias="tidb_private_key", default=None)
-    project: str | None = None
-    cluster: str | None = None
-    region: str = "ap-northeast-1"
+class TiDb(BaseModel):
+    """Django の DB engine を django_tidb にする目印 (キーを持たない)。
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    pocket は TiDB Cloud の API を呼ばない。接続 URL は利用者が secret に保存し、
+    [container.<name>.secrets.user] に name で宣言する。
+    """
 
-    @model_validator(mode="before")
-    @classmethod
-    def _reject_removed_keys(cls, data):
-        return _reject_removed_db_keys(data, resource="tidb")
-
-
-class Upstash(BaseSettings):
-    email: str | None = Field(alias="upstash_email", default=None)
-    api_key: str | None = Field(alias="upstash_api_key", default=None)
-    budget: int = 20
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     @model_validator(mode="before")
     @classmethod
     def _reject_removed_keys(cls, data):
-        return _reject_removed_db_keys(data, resource="upstash")
+        return _reject_removed_tidb_keys(data)
 
 
 class BackupRule(BaseModel):
@@ -1625,7 +1670,6 @@ class Settings(BaseModel):
     container: dict[str, Container] = {}
     neon: Neon | None = None
     tidb: TiDb | None = None
-    upstash: Upstash | None = None
     dsql: Dsql | None = None
     rds: Rds | None = None
     # DB 層の定期バックアップ (opt-in。宣言時のみ AWS Backup を provision する)
@@ -1703,6 +1747,18 @@ class Settings(BaseModel):
                 '"<container>.<handler>" のドット記法に変更してください '
                 '(例: handler = "mydjango.wsgi")。移行手順は CHANGELOG 0.29.0 を'
                 "参照。"
+            )
+        return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_removed_upstash(cls, data):
+        """廃止した [upstash] を明示エラーにする。"""
+        if isinstance(data, dict) and "upstash" in data:
+            raise ValueError(
+                "[upstash] は廃止されました (pocket は Upstash の API を呼びません)。"
+                "この節を削除してください。database は Upstash のコンソールで"
+                "用意します。" + _SELF_MANAGED_URL
             )
         return data
 
@@ -2109,8 +2165,6 @@ class Settings(BaseModel):
         cls.check_stage(stage, data)
         cls.merge_stage_data(stage, data)
         cls.remove_stages_data(stage, data)
-        # stage override 適用後に検証する ([<stage>.neon] の typo も対象にするため)
-        cls.check_env_backed_section_keys(data)
         data["stage"] = stage
         cls.resolve_vpc(data)
         result = cls.model_validate(data)
@@ -2174,55 +2228,13 @@ class Settings(BaseModel):
         # 旧 [awscontainer] はここで弾かず、reject_legacy_awscontainer の
         # 移行案内付きエラーに任せる
         valid_keys.append("awscontainer")
+        # 廃止した [upstash] も同様に reject_removed_upstash に任せる
+        valid_keys.append("upstash")
         for key in data:
             if key not in valid_keys:
                 error = f"invalid key {key} in pocket.toml\n"
                 error += "If it's a stage name, add it to stages."
                 raise ValueError(error)
-
-    @classmethod
-    def check_env_backed_section_keys(cls, data: dict):
-        """[neon] / [tidb] / [upstash] の toml キーの typo を検出する。
-
-        他の設定クラスは model_config の extra="forbid" で typo を弾くが、この 3 つは
-        credential を .env から読む BaseSettings 派生なので forbid にできない。
-        forbid にすると .env の無関係なキー (DJANGO_SECRET_KEY 等) まで
-        "Extra inputs are not permitted" で拒否されてしまう (nested validation でも
-        dotenv source は読まれるため、Settings 経由でも同じ)。
-        そこで model_config は extra="ignore" のまま、toml 側のキーだけをここで
-        検証し、forbid 相当の typo 検出を得る。
-
-        alias を持つ field (credential) は toml でも alias で書く。BaseSettings は
-        field 名で書いた値を読まずに捨てるため、field 名は alias を案内して拒否する。
-        """
-        for section, model in (("neon", Neon), ("tidb", TiDb), ("upstash", Upstash)):
-            section_data = data.get(section)
-            if not isinstance(section_data, dict):
-                continue
-            valid_keys = set()
-            aliases: dict[str, str] = {}
-            for name, field in model.model_fields.items():
-                if field.alias:
-                    valid_keys.add(field.alias)
-                    aliases[name] = field.alias
-                else:
-                    valid_keys.add(name)
-            # 廃止済みキーは通し、各モデルの _reject_removed_keys に
-            # 移行手順つきのエラーを出させる (ここで弾くと案内が失われる)
-            removed_keys = {"provisioning", "skip_check_existing"}
-            for key in section_data:
-                if key in aliases:
-                    alias = aliases[key]
-                    raise ValueError(
-                        f"[{section}] {key} は toml では {alias} と書きます"
-                        f" (field 名で書いた値は読まれません)\n"
-                        f"  通常は環境変数 {alias.upper()} または .env で渡してください"
-                    )
-                if key not in valid_keys | removed_keys:
-                    raise ValueError(
-                        f"invalid key {key} in [{section}] of pocket.toml\n"
-                        f"  有効なキー: {sorted(valid_keys)}"
-                    )
 
     @classmethod
     def check_stage(cls, stage: str, data: dict):

@@ -83,8 +83,8 @@ def get_resources(context: Context, *, state_bucket: str = ""):
     # 受信ドメイン (identity / DKIM / MX) も先に作り、DKIM 検証を他の deploy と
     # 並行で進める (検証完了は deploy の最後に confirm_inbound_domains で待つ)
     resources.extend(InboundDomain(ctx) for ctx in context.inbound_domain.values())
-    # Neon / TiDB / Upstash は deploy が管理しない (API key 不要)。用意は
-    # `pocket resource <db> store-url` に任せ、deploy は保存済みの接続 URL を読むだけ。
+    # Neon / TiDB は deploy が管理しない (API key 不要)。deploy は保存済みの
+    # 接続 URL (user secret) を読むだけ。
     if context.s3:
         resources.append(S3(context.s3, cloudfront_contexts=context.cloudfront))
     _append_infra_resources(resources, context, state_bucket)

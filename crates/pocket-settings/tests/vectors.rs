@@ -4,7 +4,6 @@
 //! toml を純粋層 (`Settings::from_parts`) で読み、`to_json` と secret マスク後の
 //! JSON が vector と一致することを確かめる。process の環境は使わない。
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use magic_pocket_settings::{mask_secret_values, LoadContext, Settings};
@@ -34,18 +33,11 @@ fn all_vectors(root: &std::path::Path) -> Vec<String> {
 }
 
 fn context(v: &serde_json::Value) -> LoadContext {
-    let env: BTreeMap<String, String> = v["env"]
-        .as_object()
-        .expect("context.env")
-        .iter()
-        .map(|(k, v)| (k.clone(), v.as_str().expect("env の値").to_string()))
-        .collect();
     LoadContext {
         project_name_fallback: v["project_name_fallback"]
             .as_str()
             .expect("project_name_fallback")
             .to_string(),
-        env,
     }
 }
 

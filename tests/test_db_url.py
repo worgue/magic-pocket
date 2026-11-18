@@ -119,7 +119,7 @@ def test_run_get_url_falls_back_to_live_when_unprovisioned(
 
 
 def test_run_get_url_live_flag_skips_stored(base_settings, monkeypatch, capsys):
-    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "tidb_database_url"})
+    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "neon_database_url"})
 
     # stored は存在するが --live なので読まない (boto3 を呼んだら失敗させる)
     def _boom(*a, **k):
@@ -130,12 +130,12 @@ def test_run_get_url_live_flag_skips_stored(base_settings, monkeypatch, capsys):
 
     url_helper.run_get_url(
         stage="dev",
-        secret_type="tidb_database_url",
-        db_label="TiDB",
-        live_url=lambda ctx: "mysql://live",
+        secret_type="neon_database_url",
+        db_label="Neon",
+        live_url=lambda ctx: "postgres://live",
         live=True,
     )
-    assert capsys.readouterr().out.strip() == "mysql://live"
+    assert capsys.readouterr().out.strip() == "postgres://live"
 
 
 def test_run_get_url_propagates_live_failure(base_settings, monkeypatch):
@@ -174,10 +174,13 @@ def test_duplicate_type_config_rejected(base_settings):
 def test_run_get_url_reads_stored_by_type_without_declaration(
     base_settings, monkeypatch, capsys
 ):
-    """consumer (DATABASE_URL) が別 backend を指していても、type 基準パスから
-    その backend の stored URL を直接引ける (dual-declaration / cutover 後)。"""
-    # DATABASE_URL は tidb を指す。neon の consumer 宣言は存在しない。
-    sc = _make_sc(base_settings, "ssm", {"DATABASE_URL": "tidb_database_url"})
+    """consumer (DATABASE_URL) が別の DB を name で指していても、type 基準パスから
+    Neon の stored URL を直接引ける。"""
+    # DATABASE_URL は name で別の secret を指す。neon の consumer 宣言は存在しない。
+    user = {"DATABASE_URL": settings.UserSecretSpec(name="/svc/other-db")}
+    sc = SecretsContext.from_settings(
+        settings.Secrets(store="ssm", user=user), base_settings
+    )
     monkeypatch.setattr(
         "boto3.client", lambda *a, **k: _FakeAws("postgres://neon-stored")
     )

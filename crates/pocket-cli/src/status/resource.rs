@@ -44,7 +44,7 @@ pub fn resources(ctx: &Context) -> Vec<Resource<'_>> {
         }
     }
     list.extend(ctx.inbound_domain.values().map(Resource::InboundDomain));
-    // Neon / TiDB / Upstash は deploy が管理しない (`pocket resource <db> store-url` で用意する)
+    // Neon / TiDB は deploy が管理しない (接続 URL は user secret で渡す)
     if let Some(s3) = ctx.s3.as_ref() {
         list.push(Resource::S3(s3));
     }
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn test_provider_databases_are_not_listed() {
         let listed = names("toml/db_command_provisioning.dev");
-        for name in ["Neon", "TiDb", "Upstash"] {
+        for name in ["Neon", "TiDb"] {
             assert!(!listed.contains(&name), "{name} は deploy の管理外");
         }
     }

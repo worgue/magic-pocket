@@ -14,7 +14,7 @@ use super::{
     GeneralContext, HostedZone, InboundContext, InboundDomainContext, LambdaHandlerContext,
     MessageLevel, NeonContext, RdsContext, RedirectFromContext, RouteContext, S3Context,
     S3CorsContext, S3LifecycleRuleContext, ScheduleEntryContext, SchedulerContext, SecretsContext,
-    SesContext, SqsContext, SqsDeadLetterAlertContext, TiDbContext, UpstashContext, VpcContext,
+    SesContext, SqsContext, SqsDeadLetterAlertContext, TiDbContext, VpcContext,
 };
 use crate::model::cloudfront::camel_logical_name;
 use crate::model::{
@@ -611,7 +611,6 @@ impl<'a> Builder<'a> {
     fn neon(&self, neon: &crate::model::Neon) -> NeonContext {
         NeonContext {
             pg_version: neon.pg_version,
-            api_key: neon.api_key.clone(),
             project_name: neon.project_name.clone(),
             branch_name: self.fmt(
                 neon.branch_name
@@ -629,32 +628,6 @@ impl<'a> Builder<'a> {
                 .map(|p| self.fmt(p.as_str())),
             name: self.s.project_name().to_string(),
             role_name: self.s.project_name().to_string(),
-        }
-    }
-
-    fn tidb(&self, tidb: &crate::model::TiDb) -> TiDbContext {
-        let project = self.s.project_name();
-        let cluster_name = match tidb.cluster.as_deref().filter(|c| !c.is_empty()) {
-            Some(c) => c.to_string(),
-            None => tidb_cluster_name(project),
-        };
-        TiDbContext {
-            public_key: tidb.public_key.clone(),
-            private_key: tidb.private_key.clone(),
-            tidb_project: tidb.project.clone(),
-            cluster_name,
-            database_name: format!("{project}_{}", self.stage()).replace('-', "_"),
-            region: tidb.region.clone(),
-            project_name: project.to_string(),
-        }
-    }
-
-    fn upstash(&self, upstash: &crate::model::Upstash) -> UpstashContext {
-        UpstashContext {
-            email: upstash.email.clone(),
-            api_key: upstash.api_key.clone(),
-            database_name: format!("{}-{}", self.s.project_name(), self.stage()),
-            budget: upstash.budget,
         }
     }
 
@@ -1316,8 +1289,7 @@ impl<'a> Builder<'a> {
         let general = GeneralContext::from_general_settings(&s.general)?;
         // _build_service_contexts
         let neon = s.neon.as_ref().map(|n| self.neon(n));
-        let tidb = s.tidb.as_ref().map(|t| self.tidb(t));
-        let upstash = s.upstash.as_ref().map(|u| self.upstash(u));
+        let tidb = s.tidb.as_ref().map(|_| TiDbContext {});
         let dsql = s.dsql.as_ref().map(|d| self.dsql(d));
         let rds = s.rds.as_ref().map(|r| self.rds(r)).transpose()?;
         let ses = s.ses.as_ref().map(|x| self.ses(x));
@@ -1364,7 +1336,6 @@ impl<'a> Builder<'a> {
             secrets: self.project_secrets()?,
             neon,
             tidb,
-            upstash,
             dsql,
             rds,
             backup,
@@ -1444,8 +1415,6 @@ fn managed_spec(t: ManagedSecretType) -> ManagedSecretSpec {
 fn user_type_str(t: crate::model::UserSecretType) -> &'static str {
     match t {
         crate::model::UserSecretType::NeonDatabaseUrl => "neon_database_url",
-        crate::model::UserSecretType::TidbDatabaseUrl => "tidb_database_url",
-        crate::model::UserSecretType::UpstashRedisUrl => "upstash_redis_url",
     }
 }
 
@@ -1470,19 +1439,6 @@ fn kebab(key: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
-/// TiDB の cluster 名の既定 (英数字以外を `-` にし、連続を 1 つに、両端を落とす)
-fn tidb_cluster_name(project: &str) -> String {
-    let mut out = String::new();
-    for c in project.chars() {
-        let c = if c.is_ascii_alphanumeric() { c } else { '-' };
-        if c == '-' && out.ends_with('-') {
-            continue;
-        }
-        out.push(c);
-    }
-    out.trim_matches('-').to_string()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1491,11 +1447,5 @@ mod tests {
     fn test_kebab() {
         assert_eq!(kebab("Daily_Cleanup"), "daily-cleanup");
         assert_eq!(kebab("--a..b--"), "a-b");
-    }
-
-    #[test]
-    fn test_tidb_cluster_name() {
-        assert_eq!(tidb_cluster_name("my_prj--x"), "my-prj-x");
-        assert_eq!(tidb_cluster_name("-a-"), "a");
     }
 }

@@ -1,12 +1,6 @@
 {
   "context": {
-    "env": {
-      "NEON_API_KEY": "vector-neon-api-key",
-      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
-      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
-      "UPSTASH_API_KEY": "vector-upstash-api-key",
-      "UPSTASH_EMAIL": "vector@example.com"
-    },
+    "env": {},
     "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml_vectors/provisioning.toml",
@@ -66,7 +60,6 @@
     },
     "inbound": {},
     "neon": {
-      "api_key": "****",
       "branch_name": "{stage}-{project}",
       "parent_branch_name": "main",
       "pg_version": 17,
@@ -78,18 +71,7 @@
     "ses": null,
     "slug": "prod-prov",
     "stage": "prod",
-    "tidb": {
-      "cluster": "c1",
-      "private_key": "****",
-      "project": "p1",
-      "public_key": "****",
-      "region": "us-east-1"
-    },
-    "upstash": {
-      "api_key": "****",
-      "budget": 16,
-      "email": "toml@example.com"
-    },
+    "tidb": {},
     "vpc": null
   },
   "settings": {
@@ -148,7 +130,6 @@
     },
     "inbound": {},
     "neon": {
-      "api_key": "toml-neon-key",
       "branch_name": "{stage}-{project}",
       "parent_branch_name": "main",
       "pg_version": 17,
@@ -160,18 +141,7 @@
     "ses": null,
     "slug": "prod-prov",
     "stage": "prod",
-    "tidb": {
-      "cluster": "c1",
-      "private_key": "vector-tidb-private-key",
-      "project": "p1",
-      "public_key": "vector-tidb-public-key",
-      "region": "us-east-1"
-    },
-    "upstash": {
-      "api_key": "vector-upstash-api-key",
-      "budget": 16,
-      "email": "toml@example.com"
-    },
+    "tidb": {},
     "vpc": null
   },
   "stage": "prod"

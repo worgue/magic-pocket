@@ -10,12 +10,12 @@ single source of truth として公開する。
 
 Python から:
 
-    from pocket.naming import stored_user_secret_name, TIDB_DATABASE_URL
+    from pocket.naming import stored_user_secret_name, NEON_DATABASE_URL
 
     name = stored_user_secret_name(
-        project="pocket-example", stage="sandbox", secret_type=TIDB_DATABASE_URL
+        project="pocket-example", stage="sandbox", secret_type=NEON_DATABASE_URL
     )
-    # -> "/sandbox-pocket-example-pocket-user/tidb_database_url"
+    # -> "/sandbox-pocket-example-pocket-user/neon_database_url"
 
 このモジュールは pydantic / boto3 等の重い依存を持たない (純粋な文字列導出のみ) ので、
 `import pocket` を軽量に保ったまま外部から利用できる。
@@ -25,8 +25,6 @@ from __future__ import annotations
 
 # stored user secret の type (= 保存 segment)。settings.UserSecretType と一致させる。
 NEON_DATABASE_URL = "neon_database_url"
-TIDB_DATABASE_URL = "tidb_database_url"  # noqa: S105 (type 名であって secret 値ではない)
-UPSTASH_REDIS_URL = "upstash_redis_url"  # noqa: S105 (同上)
 
 # deploy が publish する作成記録の segment (consumer が pocket.toml で宣言する
 # UserSecretType ではない)。DSQL は cluster identifier が AWS 自動生成で endpoint を
@@ -96,11 +94,11 @@ def stored_user_secret_name(
     """stored user secret の正準名を ``(project, stage, secret_type)`` から導出する。
 
     例) ``project="pocket-example"``, ``stage="sandbox"``,
-        ``secret_type=TIDB_DATABASE_URL`` →
-        ``"/sandbox-pocket-example-pocket-user/tidb_database_url"``
+        ``secret_type=NEON_DATABASE_URL`` →
+        ``"/sandbox-pocket-example-pocket-user/neon_database_url"``
 
     provisioner はこの名前へ接続 URL を put すれば、consumer の pocket.toml が
-    ``DATABASE_URL = { type = "tidb_database_url" }`` と宣言するだけで deploy が読める
+    ``DATABASE_URL = { type = "neon_database_url" }`` と宣言するだけで deploy が読める
     (``name =`` での手動一致は不要)。
     """
     key = pocket_key(

@@ -35,6 +35,13 @@ def _make_sc(base_settings, store, types: dict):
     return SecretsContext.from_settings(secrets, base_settings)
 
 
+def _make_named_sc(base_settings, key: str):
+    """type を持たない (name で参照する) user secret だけの SecretsContext。"""
+    user = {key: settings.UserSecretSpec(name="/svc/" + key.lower())}
+    secrets = settings.Secrets(store="ssm", user=user)
+    return SecretsContext.from_settings(secrets, base_settings)
+
+
 class _FakeAws:
     """存在確認 (get_parameter/describe_secret) と put を 1 つで扱う boto3 stub。"""
 
@@ -180,7 +187,7 @@ def test_run_store_url_force_overwrites_existing(base_settings, monkeypatch):
 
 
 def test_run_store_url_no_candidate_raises(base_settings, monkeypatch):
-    sc = _make_sc(base_settings, "ssm", {"OTHER": "tidb_database_url"})
+    sc = _make_named_sc(base_settings, "OTHER")
     _patch_from_toml(monkeypatch, _ctx_stub(sc))
     with pytest.raises(click.ClickException, match="宣言されていません"):
         store_url_helper.run_store_url(
@@ -227,32 +234,14 @@ def test_run_store_url_key_selects_declared_target(base_settings, monkeypatch):
 
 
 def test_run_store_url_key_type_mismatch_raises(base_settings, monkeypatch):
-    sc = _make_sc(base_settings, "ssm", {"DB1": "neon_database_url"})
+    sc = _make_named_sc(base_settings, "DB1")
     _patch_from_toml(monkeypatch, _ctx_stub(sc))
     with pytest.raises(click.ClickException, match="type="):
         store_url_helper.run_store_url(
             stage="dev",
-            secret_type="tidb_database_url",
-            db_label="TiDB",
+            secret_type="neon_database_url",
+            db_label="Neon",
             key="DB1",
             force=False,
             ensure_and_compute_url=lambda context: "url",
         )
-
-
-def test_run_store_url_upstash_single_candidate_puts(base_settings, monkeypatch):
-    sc = _make_sc(base_settings, "ssm", {"REDIS_URL": "upstash_redis_url"})
-    fake = _FakeAws(exists=False)
-    monkeypatch.setattr("boto3.client", lambda *a, **k: fake)
-    _patch_from_toml(monkeypatch, _ctx_stub(sc))
-    store_url_helper.run_store_url(
-        stage="dev",
-        secret_type="upstash_redis_url",
-        db_label="Upstash",
-        key=None,
-        force=False,
-        ensure_and_compute_url=lambda context: "rediss://default:pw@h:6379",
-    )
-    assert fake.puts == [
-        ("/test-testprj-pocket-user/upstash_redis_url", "rediss://default:pw@h:6379")
-    ]

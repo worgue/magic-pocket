@@ -18,13 +18,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # credential の環境変数 (親プロセスのものを持ち込まない)
-_CREDENTIAL_ENV = (
-    "NEON_API_KEY",
-    "TIDB_PUBLIC_KEY",
-    "TIDB_PRIVATE_KEY",
-    "UPSTASH_EMAIL",
-    "UPSTASH_API_KEY",
-)
+_CREDENTIAL_ENV = ("NEON_API_KEY",)
 
 CASES = [
     ("tests/data/toml/default.toml", "dev", None),
@@ -36,11 +30,11 @@ CASES = [
     ("tests/data/toml_vectors/cloudfront_full.toml", "dev", None),
     ("tests/data/toml_vectors/db_backup.toml", "prod", None),
     ("tests/data/toml_vectors/misc.toml", "dev", None),
-    # credential は .env から (環境変数より弱い)
+    # .env も環境変数の API key も読まない (置いてあっても出力は変わらない)
     (
         "tests/data/toml_vectors/provisioning.toml",
         "dev",
-        "NEON_API_KEY=from-dotenv\nUPSTASH_EMAIL='dot@example.com'\n",
+        "NEON_API_KEY=from-dotenv\n",
     ),
     ("example-dsql/pocket.toml", "sandbox", None),
 ]
@@ -62,7 +56,7 @@ def _env() -> dict[str, str]:
         for k, v in os.environ.items()
         if k not in _CREDENTIAL_ENV and k != "POCKET_DEPLOY_STAGE"
     }
-    env["UPSTASH_API_KEY"] = "from-env"
+    env["NEON_API_KEY"] = "from-env"
     return env
 
 
@@ -94,3 +88,5 @@ def test_settings_output_matches_python(tmp_path, pocket_rs_bin, toml, stage, do
     assert py.returncode == 0, py.stderr
     assert rs.returncode == 0, rs.stderr
     assert rs.stdout == py.stdout
+    # API key は設定に載らない (.env も環境変数も読まない)
+    assert "from-dotenv" not in py.stdout and "from-env" not in py.stdout

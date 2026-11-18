@@ -128,7 +128,7 @@
                 "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param"
               },
               {
-                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/tidb_database_url"
+                "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/dev-ctx-pocket-user/neon_database_url"
               }
             ]
           }
@@ -253,7 +253,7 @@
             "Resource": [
               "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p",
               "arn:aws:ssm:ap-northeast-1:123456789012:parameter/plain/param",
-              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/dev-ctx-pocket-user/tidb_database_url"
+              "arn:aws:ssm:ap-northeast-1:123456789012:parameter/dev-ctx-pocket-user/neon_database_url"
             ]
           }
         ]

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use magic_pocket_settings::model as settings_model;
@@ -279,7 +279,6 @@ fn load_settings(content: &str, stage: &str) -> Result<Settings> {
     }
     let ctx = LoadContext {
         project_name_fallback: String::new(),
-        env: std::env::vars().collect::<BTreeMap<_, _>>(),
     };
     let (settings, advisories) = Settings::from_parts(content, stage, &ctx)
         .map_err(|e| PocketError::Config(e.to_string()))?;
@@ -660,7 +659,7 @@ pocket_key_format = "{stage}-{project}-{namespace}"
 
 [container.main.secrets.managed]
 SECRET_KEY = { type = "password", options = { length = "50" } }
-DATABASE_URL = { type = "neon_database_url" }
+API_TOKEN = { type = "password" }
 
 [container.main.secrets.user]
 EXTERNAL_API_KEY = { name = "my-external-key", store = "sm" }
@@ -743,7 +742,7 @@ sqs = { dead_letter_alert = { enabled = false } }
         assert_eq!(secrets.pocket_key, "dev-myapp-main-pocket");
         assert_eq!(secrets.managed.len(), 2);
         assert!(secrets.managed.contains_key("SECRET_KEY"));
-        assert!(secrets.managed.contains_key("DATABASE_URL"));
+        assert!(secrets.managed.contains_key("API_TOKEN"));
         assert!(secrets.user.is_empty());
         // user secret は shared store (project パス) の view に載る
         let shared = config.shared_secrets.unwrap();
@@ -1222,7 +1221,7 @@ stages = ["dev"]
         assert!(config.containers.is_empty());
     }
 
-    // 標準構成: provisioning = "command" + type 基準 user secret (name 省略)。
+    // 標準構成: [neon] + type 基準 user secret (name 省略)。
     // 0.12 の type 基準 canonical 導出 (/{pocket_key}-user/{type}) を Rust でも
     // 解決できることの回帰テスト。
     const TYPE_USER_SECRET_TOML: &str = r#"
@@ -1233,7 +1232,6 @@ stages = ["sandbox"]
 
 [neon]
 project_name = "myapp-neon"
-provisioning = "command"
 
 [container.main]
 dockerfile_path = "Dockerfile"

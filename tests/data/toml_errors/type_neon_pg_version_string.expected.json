@@ -1,0 +1,14 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_errors/type_neon_pg_version_string.toml",
+  "kind": "Type",
+  "message": "Input should be a valid integer",
+  "path": [
+    "neon",
+    "pg_version"
+  ],
+  "stage": "dev"
+}

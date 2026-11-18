@@ -1,3 +1,5 @@
+import os
+
 import boto3
 import pytest
 from click.testing import CliRunner
@@ -147,10 +149,13 @@ def test_neon_default(use_toml):
     assert settings.neon
     context = Context.from_settings(settings)
     assert context.neon
-    neon = Neon(context.neon)
+    neon = Neon(context.neon, api_key=os.environ["NEON_API_KEY"])
     assert neon.status == "NOEXIST"
     neon.create()
     assert neon.status == "COMPLETED"
     context = Context.from_toml(stage="dev")
-    assert context.neon and Neon(context.neon).status == "COMPLETED"
+    assert (
+        context.neon
+        and Neon(context.neon, api_key=os.environ["NEON_API_KEY"]).status == "COMPLETED"
+    )
     raise Exception("Test worked well, but you have to delete the resource manually.")

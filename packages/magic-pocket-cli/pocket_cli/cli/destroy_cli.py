@@ -135,14 +135,13 @@ def _collect_legacy_container_targets(context: Context) -> list[str]:
 
 
 def _warn_external_databases(context: Context):
-    """Neon / TiDB / Upstash は destroy では消さないので、消し方を案内する。
+    """外部の DB は destroy では消さないので、消し方を案内する。
 
     deploy と同じく destroy も provider の API を呼ばない (API key 不要)。
     """
     hints = (
         (context.neon, "Neon", "pocket resource neon delete"),
-        (context.tidb, "TiDB", "pocket resource tidb delete"),
-        (context.upstash, "Upstash", "pocket resource upstash delete"),
+        (context.tidb, "TiDB", "TiDB Cloud のコンソール"),
     )
     for declared, label, command in hints:
         if declared:
@@ -171,7 +170,7 @@ def _collect_aws_database_targets(context: Context) -> list[str]:
 
 
 def _collect_database_targets(context: Context) -> list[str]:
-    """データベース関連の削除対象を収集 (Neon / TiDB / Upstash は対象外)"""
+    """データベース関連の削除対象を収集 (Neon / TiDB は対象外)"""
     return _collect_aws_database_targets(context)
 
 
@@ -464,7 +463,7 @@ def _destroy_resources(
         S3(context.s3).delete()
         echo.success("S3 bucket was deleted.")
 
-    # 5. Neon / TiDB / Upstash は消さない (消し方の案内だけ)
+    # 5. Neon / TiDB は消さない (消し方の案内だけ)
     _warn_external_databases(context)
 
     # 7. ステートバケット

@@ -61,8 +61,6 @@ pocket.toml に書く相対パスは、**pocket.toml のあるディレクトリ
 | `[cloudfront.<name>] managed_assets` | ステージ別アセットのディレクトリ |
 | `[container.<name>.django] project_dir` | `pocket django deploy` 等が `manage.py collectstatic` を実行するディレクトリ |
 
-credential を書く `.env`（`NEON_API_KEY` 等）だけは、カレントディレクトリのものを読みます。
-
 ## general（必須）
 
 全ステージ共通の設定です。
@@ -387,7 +385,7 @@ project_name = "prod-myproject"
 
 deploy は Neon に一切触れません（API 呼び出しなし・API キー不要）。ブランチ・データベース・
 ロールは `pocket resource neon store-url` が用意し、接続 URL を secret store に保存します。
-deploy は保存済みの URL（[`secrets.user`](#containersecretsuser) の `type`）を読むだけです。
+deploy は保存済みの URL（[`secrets.user`](#secretsuser) の `type`）を読むだけです。
 
 ```toml
 [dev.neon]
@@ -404,7 +402,8 @@ DATABASE_URL = { type = "neon_database_url" }
 | 通常デプロイ | CI/CD（**Neon の API キー不要**） | `pocket deploy --stage=dev` |
 | Neon リソース操作 | Neon API キーがある場所 | `pocket resource neon create / status / branch-out / delete` |
 
-`NEON_API_KEY` 環境変数（または `.env`）が要るのは `pocket resource neon` のコマンドだけです。
+Neon の API キーは、`pocket resource neon` のコマンドだけが環境変数 `NEON_API_KEY` から読みます
+（`.env` は読みません。pocket.toml にも書けません）。deploy・status・Lambda の中では読みません。
 Neon の接続 URL は `reveal_password` 方式で**冪等**なため、`store-url` は何度実行しても同じ値を
 書きます。`pocket destroy` は Neon のブランチを消しません。不要になったら
 `pocket resource neon delete --stage=<stage>` で消してください。
@@ -417,71 +416,22 @@ Neon の接続 URL は `reveal_password` 方式で**冪等**なため、`store-u
 
 ## tidb
 
-TiDB Serverless（MySQL 互換）の設定です。
+TiDB Serverless（MySQL 互換）を使う宣言です。キーは持ちません。
 
 ```toml
 [tidb]
-project = "1234567890123456789"
-
-[prod.tidb]
-project = "9876543210987654321"
-```
-
-| フィールド | 型 | デフォルト | 説明 |
-|-----------|------|----------|------|
-| `project` | str | **必須** | TiDB Cloud のプロジェクト ID |
-| `region` | str | `"ap-northeast-1"` | TiDB クラスターのリージョン |
-
-[neon](#neon) と同じく、deploy は TiDB に触れません。クラスターとデータベースは
-`pocket resource tidb store-url --stage=<stage>` が用意して接続 URL を保存し、deploy は
-`[container.<name>.secrets.user]` の `DATABASE_URL = { type = "tidb_database_url" }` で読みます。
-`pocket destroy` はクラスターを消しません（`pocket resource tidb delete` で消します）。
-
-`TIDB_PUBLIC_KEY` と `TIDB_PRIVATE_KEY` 環境変数（または `.env`）が要るのは `pocket resource tidb` のコマンドだけです。TiDB Cloud のコンソールから API キーを取得してください。
-
-!!! note "クラスター名"
-    クラスター名はプロジェクト名から自動生成されます（`{project_name}`）。
-
-!!! warning "TiDB の store-url は password をローテーションする"
-    TiDB Serverless には password の reveal API が無いため、**store-url は実行のたびに root password を再生成**します
-    （Neon は冪等ですが TiDB は異なります）。既存 secret がある場合は誤実行防止のため `--force`
-    が必要で、実行後は接続 URL が変わるため consumer の再デプロイが前提になります。
-
----
-
-## upstash
-
-Upstash Redis（サーバーレス Redis）の設定です。VPC 不要で Lambda から直接利用できます。
-
-```toml
-[upstash]
 
 [container.main.secrets.user]
-REDIS_URL = { type = "upstash_redis_url" }
-
-[container.main.django.caches]
-default = { store = "redis" }
+# 自分で保存した接続 URL を name で参照する
+DATABASE_URL = { name = "/{stage}-myproject/tidb-database-url", store = "ssm" }
 ```
 
-| フィールド | 型 | デフォルト | 説明 |
-|-----------|------|----------|------|
-| `budget` | int | `20` | 月額上限（ドル）。最低値の $20 がデフォルト |
+`[tidb]` があると、Django の DB engine が `django_tidb` になります（[Django 連携](django.md)）。
 
-[neon](#neon) と同じく、deploy は Upstash に触れません。database は
-`pocket resource upstash store-url --stage=<stage>` が用意して接続 URL を保存し、deploy は
-`[container.<name>.secrets.user]` の `REDIS_URL` で読みます。Upstash の URL は database の
-password を読み出すだけで**冪等**なため、`store-url` は何度実行しても同じ値を書きます。
-`pocket destroy` は database を消しません（`pocket resource upstash delete` で消します）。
-
-`UPSTASH_EMAIL` と `UPSTASH_API_KEY` 環境変数（または `.env`）が要るのは `pocket resource upstash` のコマンドだけです。Upstash Console の Account > Management API で API Key を取得してください。
-
-データベースは `{project_name}-{stage}` の名前で自動作成されます。プライマリリージョンは `ap-southeast-1`（シンガポール）に固定です。
-
-!!! info "budget について"
-    月額利用料が budget に達するとレート制限がかかり、コストは budget を超えません。Upstash の最低 budget は $20 です。利用が 70% と 90% に達した時点で通知が届きます。
-
-!!! note "Django での利用"
-    `store = "redis"` を指定すると `django-redis` バックエンドが使用されます。`django-redis` のインストールが必要です。`REDIS_URL` は上記の user secret から設定されます。
+pocket は TiDB Cloud の API を呼びません。クラスターとデータベースは TiDB Cloud の
+コンソールで用意し、接続 URL（`mysql://<user>:<password>@<host>:4000/<database>`）を
+Secrets Manager / SSM に保存して、[`secrets.user`](#secretsuser) の `name` で
+参照します。`pocket destroy` はクラスターを消しません。
 
 ---
 
@@ -1307,8 +1257,8 @@ SECRET_KEY = { type = "password", options = { length = 50 }, shared = true }
 
 **type = "auto_database_url"**
 :   `[rds]` があるとき、`rds_database_url` と同じ値を設定します。オプションはありません。
-    Neon / TiDB の接続 URL は managed では作りません（[`secrets.user`](#containersecretsuser)
-    の `type` で宣言し、`pocket resource <db> store-url` で保存します）。
+    Neon / TiDB の接続 URL は managed では作りません（[`secrets.user`](#secretsuser)
+    で宣言します）。
 
 **type = "password"**
 :   パスワードを自動生成します。
@@ -1390,7 +1340,7 @@ MY_API_KEY = { name = "arn:aws:secretsmanager:ap-northeast-1:123456789012:secret
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
 | `name` | str \| None | None | シークレット名またはARN。`type` と排他 |
-| `type` | `"neon_database_url"` \| `"tidb_database_url"` \| `"upstash_redis_url"` \| None | None | 事前に保存した接続 URL を読む（後述）。`name` と排他 |
+| `type` | `"neon_database_url"` \| None | None | `pocket resource neon store-url` が保存した接続 URL を読む（後述）。`name` と排他 |
 | `store` | `"sm"` \| `"ssm"` \| None | None | 保存先（Noneの場合 `secrets.store` を継承） |
 
 `name` と `type` はどちらか一方を指定します（両方／どちらも無しはエラー）。
@@ -1405,11 +1355,11 @@ SSM パスや SM シークレットを分けたい場合に便利です。
 SERVICE_TOKEN = { name = "/svc/{stage}-token", store = "ssm" }
 ```
 
-##### 事前に保存した接続 URL を読む (type)
+##### Neon の接続 URL を読む (type)
 
-Neon / TiDB / Upstash の接続 URL は、deploy の前に secret store へ保存しておき、deploy は
-それを読むだけにします。pocket は deploy 中に provider の API を呼ばないので、deploy する
-場所（CI など）に provider の API キーを置く必要がありません。
+Neon の接続 URL は、deploy の前に secret store へ保存しておき、deploy はそれを読むだけに
+します。pocket は deploy 中に Neon の API を呼ばないので、deploy する場所（CI など）に
+Neon の API キーを置く必要がありません。
 
 ```toml
 [neon]
@@ -1420,13 +1370,13 @@ project_name = "dev-myproject"
 DATABASE_URL = { type = "neon_database_url" }
 ```
 
-保存には `pocket resource neon store-url --stage <stage>` / `pocket resource tidb store-url
---stage <stage>` / `pocket resource upstash store-url --stage <stage>` を使います
-（branch / cluster / role / database を用意し、接続 URL を上記の secret に保存します）。
+保存には `pocket resource neon store-url --stage <stage>` を使います
+（branch / role / database を用意し、接続 URL を上記の secret に保存します）。
 API キーが要るのはこのコマンドを実行する場所だけです。secret の名前に自分で値を入れても
 構いません。
 
-- 対象の `type` は `neon_database_url` / `tidb_database_url` / `upstash_redis_url` です。
+- 対象の `type` は `neon_database_url` だけです。TiDB や Redis など他の接続 URL は、自分で
+  secret に保存して `name` で参照します。
 - `rds_database_url` は user 側で使えません。RDS は元々 deploy 時に管理 API key を要求せず、
   接続 URL を Lambda 起動時に `POCKET_RDS_SECRET_ARN` から動的構築してパスワード
   ローテーションに追従します。静的な stored URL にするとローテで失効するため対象外です。
@@ -1623,11 +1573,14 @@ default = { store = "locmem" }
 
 | フィールド | 型 | デフォルト | 説明 |
 |-----------|------|----------|------|
-| `store` | `"locmem"` \| `"efs"` | **必須** | キャッシュの種類 |
+| `store` | `"locmem"` \| `"efs"` \| `"redis"` | **必須** | キャッシュの種類 |
 | `location_subdir` | str | `"{stage}"` | EFS上のサブディレクトリ（`efs` の場合のみ） |
 
 - `locmem` → `django.core.cache.backends.locmem.LocMemCache`
 - `efs` → `django.core.cache.backends.filebased.FileBasedCache`（VPC + EFS設定が必要）
+- `redis` → `django_redis.cache.RedisCache`（`django-redis` のインストールが必要）。接続先は環境変数
+  `REDIS_URL` です。Redis は自分で用意し、接続 URL を secret に保存して
+  [`secrets.user`](#secretsuser) の `REDIS_URL = { name = "..." }` で渡します
 
 #### settings
 

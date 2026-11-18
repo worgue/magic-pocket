@@ -1,19 +1,13 @@
 {
   "context": {
-    "env": {
-      "NEON_API_KEY": "vector-neon-api-key",
-      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
-      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
-      "UPSTASH_API_KEY": "vector-upstash-api-key",
-      "UPSTASH_EMAIL": "vector@example.com"
-    },
+    "env": {},
     "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml_errors/legacy_provisioning_command.toml",
   "kind": "Value",
-  "message": "[upstash] provisioning は廃止されました (deploy は upstash に触れません)。この行を削除してください。",
+  "message": "[neon] provisioning は廃止されました (deploy は neon に触れません)。この行を削除してください。",
   "path": [
-    "upstash"
+    "neon"
   ],
   "stage": "dev"
 }

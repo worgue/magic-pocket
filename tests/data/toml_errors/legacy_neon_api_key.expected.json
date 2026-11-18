@@ -1,0 +1,13 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_errors/legacy_neon_api_key.toml",
+  "kind": "Value",
+  "message": "[neon] neon_api_key は廃止されました。API key は pocket.toml に書かず、`pocket resource neon` を実行する環境変数 NEON_API_KEY で渡してください。",
+  "path": [
+    "neon"
+  ],
+  "stage": "dev"
+}

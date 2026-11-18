@@ -14,7 +14,6 @@ def run_get_url(
     db_label: str,
     live_url: Callable[[Context], str],
     live: bool = False,
-    live_rotates_credentials: bool = False,
 ) -> None:
     """DB 接続 URL を stdout に純テキストで出力する (`pocket resource <db> url`)。
 
@@ -26,16 +25,8 @@ def run_get_url(
     - default (stored-first): ``type=<secret_type>`` の stored user secret を store から
       読む。副作用が無く、consumer (app) が実際に使う URL と一致する。未 provision なら
       provider API での live 算出に fallback する。
-    - ``--live``: stored を見ず必ず provider API で live 算出する。常に最新だが、reveal
-      API を持たない backend (TiDB 等) では **root password を rotate する** 点に注意
-      (consumer の redeploy が前提)。
-
-    ``live_rotates_credentials=True`` の backend では、default モードからの live
-    fallback は破壊的 (credential rotate) なため確認プロンプトを挟む。``--live``
-    明示時はオプションの help で rotate を告知済みなので確認しない。
-
-    dual-declaration (移行中に ``[neon]`` と ``[tidb]`` を併記) 下でも、resource ごとに
-    neon / tidb を呼び分ければ source/target 双方を解決できる。
+    - ``--live``: stored を見ず必ず provider API で live 算出する (Neon は reveal
+      方式なので何度呼んでも同じ値で、副作用は無い)。
     """
     context = Context.from_toml(stage=stage)
 
@@ -50,18 +41,10 @@ def run_get_url(
         return
 
     click.echo(
-        "%s: stored user secret が未 provision のため provider API で live 算出します"
-        " (reveal API の無い backend では root password が rotate されます)。"
+        "%s: stored user secret が未 provision のため provider API で live 算出します。"
         % db_label,
         err=True,
     )
-    if live_rotates_credentials:
-        click.confirm(
-            "%s の live 算出は root password を rotate し、稼働中 consumer の"
-            "接続を無効化します。続行しますか？" % db_label,
-            abort=True,
-            err=True,
-        )
     # live 算出の失敗は握らず自然に伝播させる (丸めると原因の traceback が失われる)
     click.echo(live_url(context))
 
@@ -70,7 +53,7 @@ def _read_stored_url(context: Context, secret_type: str) -> str | None:
     """``type=<secret_type>`` の stored URL を読む。未 provision なら None。
 
     consumer の user secret 宣言が在れば ``spec.store`` override を尊重して読む。
-    宣言が無くても (dual-declaration で DATABASE_URL が別 backend を指す等)、
+    宣言が無くても (DATABASE_URL が別の DB を指している等)、
     type 基準の正準パスを直接構築して読む — つまり「その backend の stored URL」を
     consumer 宣言の有無と無関係に引ける。両方無ければ None (→ live fallback)。
     """

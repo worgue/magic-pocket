@@ -8,7 +8,7 @@ from __future__ import annotations
 import pocket
 from pocket.context import user_secret_path as context_user_secret_path
 from pocket.naming import (
-    TIDB_DATABASE_URL,
+    NEON_DATABASE_URL,
     pocket_key,
     stored_user_secret_name,
     user_secret_path,
@@ -26,18 +26,18 @@ def test_stored_user_secret_name_ssm():
     """deploy が type= で読むパスと一致する (SSM)。"""
     assert (
         stored_user_secret_name(
-            project="pocket-example", stage="sandbox", secret_type=TIDB_DATABASE_URL
+            project="pocket-example", stage="sandbox", secret_type=NEON_DATABASE_URL
         )
-        == "/sandbox-pocket-example-pocket-user/tidb_database_url"
+        == "/sandbox-pocket-example-pocket-user/neon_database_url"
     )
 
 
 def test_stored_user_secret_name_sm_has_no_leading_slash():
     assert (
         stored_user_secret_name(
-            project="p", stage="prod", secret_type=TIDB_DATABASE_URL, store="sm"
+            project="p", stage="prod", secret_type=NEON_DATABASE_URL, store="sm"
         )
-        == "prod-p-pocket-user/tidb_database_url"
+        == "prod-p-pocket-user/neon_database_url"
     )
 
 
@@ -46,11 +46,11 @@ def test_custom_namespace_and_format():
         stored_user_secret_name(
             project="p",
             stage="dev",
-            secret_type=TIDB_DATABASE_URL,
+            secret_type=NEON_DATABASE_URL,
             namespace="ns",
             pocket_key_format="{project}-{stage}",
         )
-        == "/p-dev-user/tidb_database_url"
+        == "/p-dev-user/neon_database_url"
     )
 
 
@@ -65,7 +65,7 @@ def test_backward_compat_context_reexport():
 
 def test_exposed_at_package_root():
     assert pocket.stored_user_secret_name is stored_user_secret_name
-    assert pocket.TIDB_DATABASE_URL == "tidb_database_url"
+    assert pocket.NEON_DATABASE_URL == "neon_database_url"
 
 
 def test_stored_user_secret_name_dsql_endpoint():

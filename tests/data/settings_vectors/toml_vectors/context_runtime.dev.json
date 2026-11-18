@@ -217,7 +217,6 @@
     "slug": "dev-rt",
     "stage": "dev",
     "tidb": null,
-    "upstash": null,
     "vpc": null
   },
   "settings": {
@@ -430,7 +429,6 @@
     "slug": "dev-rt",
     "stage": "dev",
     "tidb": null,
-    "upstash": null,
     "vpc": null
   },
   "stage": "dev"

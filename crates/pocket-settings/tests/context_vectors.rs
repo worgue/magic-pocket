@@ -123,7 +123,6 @@ fn load_context(v: &serde_json::Value) -> LoadContext {
             .as_str()
             .expect("project_name_fallback")
             .to_string(),
-        env: env_map(v),
     }
 }
 

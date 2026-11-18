@@ -3,9 +3,9 @@ region = "ap-northeast-1"
 stages = ["dev", "sandbox"]
 project_name = "pocket-example"
 
+# Django の DB engine を django_tidb にする目印 (キーを持たない)。pocket は TiDB Cloud の
+# API を呼ばない。cluster は TiDB Cloud のコンソールで用意する。
 [tidb]
-# deploy は TiDB に一切触れない (API キー不要)。接続 URL は事前に
-# `pocket resource tidb store-url --stage <stage>` で SSM の user secret へ保存する。
 
 [s3]
 
@@ -39,11 +39,10 @@ store = "ssm"
 SECRET_KEY = { type = "password", options = { length = 50 } }
 DJANGO_SUPERUSER_PASSWORD = { type = "password", options = { length = 16 } }
 
-# DATABASE_URL は事前に保存した user secret。deploy 前に
-# `pocket resource tidb store-url --stage <stage>` で SSM (/{pocket_key}-user/tidb_database_url)
-# へ保存しておく。deploy は TiDB API キー無しで保存済み URL を読むだけ。
+# DATABASE_URL は自分で SSM に保存した接続 URL を name で参照する
+# ({stage} は stage 名に展開される)。
 [container.main.secrets.user]
-DATABASE_URL = { type = "tidb_database_url" }
+DATABASE_URL = { name = "/{stage}-pocket-example-pocket-user/tidb_database_url" }
 
 [sandbox.cloudfront.web]
 # 公開 repo では placeholder。sandbox デプロイ前に実ドメインへ書き戻す (機密メモ参照)。

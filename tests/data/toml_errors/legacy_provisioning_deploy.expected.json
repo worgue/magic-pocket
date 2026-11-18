@@ -1,19 +1,13 @@
 {
   "context": {
-    "env": {
-      "NEON_API_KEY": "vector-neon-api-key",
-      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
-      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
-      "UPSTASH_API_KEY": "vector-upstash-api-key",
-      "UPSTASH_EMAIL": "vector@example.com"
-    },
+    "env": {},
     "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml_errors/legacy_provisioning_deploy.toml",
   "kind": "Value",
-  "message": "[tidb] provisioning は廃止されました。deploy は tidb を用意しません。この行を削除し、接続 URL を [container.<name>.secrets.user] の type で宣言したうえで、API key がある場所で `pocket resource tidb store-url --stage <stage>` を実行してください。",
+  "message": "[neon] provisioning は廃止されました。deploy は neon を用意しません。この行を削除し、接続 URL を [container.<name>.secrets.user] の type で宣言したうえで、API key がある場所で `pocket resource neon store-url --stage <stage>` を実行してください。",
   "path": [
-    "tidb"
+    "neon"
   ],
   "stage": "dev"
 }

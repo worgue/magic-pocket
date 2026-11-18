@@ -22,8 +22,8 @@ else:
 # 失敗とみなして非ゼロ終了する (migrate 失敗が緑で通る "false green" を防ぐ)。
 MANAGE_HANDLER_SUCCESS_SENTINEL = "POCKET_MANAGE_HANDLER_SUCCESS"
 
-# context / settings の表示用 dump で値を伏せるキー名。api_key (Neon/Upstash)、
-# private_key (TiDB)、token_secret (CloudFront signed URL)、password
+# context / settings の表示用 dump で値を伏せるキー名。api_key / private_key、
+# token_secret (CloudFront signed URL)、password
 # (basic_auth_credential options) 等、pocket.toml / env 由来の credential が対象。
 # 値の取得経路は url 系コマンドや SSM が担うため、表示系では常にマスクする。
 SECRET_DUMP_KEYS = frozenset(

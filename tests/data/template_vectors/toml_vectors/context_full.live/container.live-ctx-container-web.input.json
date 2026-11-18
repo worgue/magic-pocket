@@ -154,7 +154,7 @@
                     "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param"
                   },
                   {
-                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/tidb_database_url"
+                    "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/neon_database_url"
                   },
                   {
                     "Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket/*"
@@ -273,9 +273,9 @@
         "type": null,
         "store": "ssm"
       },
-      "TIDB_URL": {
-        "name": "/live-ctx-pocket-user/tidb_database_url",
-        "type": "tidb_database_url",
+      "NEON_URL": {
+        "name": "/live-ctx-pocket-user/neon_database_url",
+        "type": "neon_database_url",
         "store": "ssm"
       }
     },
@@ -289,7 +289,7 @@
     "allowed_ssm_resources": [
       "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live/external/api",
       "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
-      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/tidb_database_url",
+      "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/neon_database_url",
       "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket/*"
     ]
   },
@@ -481,7 +481,7 @@
     "arn:aws:ssm:ap-northeast-1:123456789012:parameter/p",
     "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live/external/api",
     "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/plain/param",
-    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/tidb_database_url",
+    "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket-user/neon_database_url",
     "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/live-ctx-pocket/*"
   ],
   "require_list_secrets": false,

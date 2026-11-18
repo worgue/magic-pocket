@@ -14,14 +14,6 @@ def test_settings_from_toml(use_toml):
     assert settings.project_name == "testprj"
 
 
-def test_settings_check_keys_accepts_all_fields(use_toml):
-    """check_keys がトップレベル [upstash] 等の全 Settings フィールドを受理すること"""
-    use_toml("tests/data/toml/upstash.toml")
-    settings = Settings.from_toml(stage="dev")
-    assert settings.upstash is not None
-    assert settings.upstash.budget == 10
-
-
 def test_settings_do_not_read_environment_variables(use_toml, monkeypatch):
     """toml 設定クラスが同名の環境変数から値を拾わないこと (BaseModel 化の回帰テスト)
 
@@ -104,13 +96,8 @@ def test_settings_accept_int_for_float():
     assert Rds.model_validate({"min_capacity": 1}).min_capacity == 1.0
 
 
-def test_env_backed_sections_reject_unknown_toml_key(use_toml, tmp_path):
-    """[neon] / [tidb] / [upstash] の toml キーの typo を拒否すること
-
-    この 3 つは .env から credential を読む BaseSettings 派生なので
-    extra="forbid" にできない (test_env_backed_sections_allow_unrelated_dotenv_keys
-    参照)。代わりに Settings.check_env_backed_section_keys が toml 側だけを検証する。
-    """
+def test_neon_rejects_unknown_toml_key(use_toml, tmp_path):
+    """[neon] の toml キーの typo を拒否すること"""
     toml = tmp_path / "pocket.toml"
     toml.write_text(
         '[general]\nregion = "ap-southeast-1"\n'
@@ -118,16 +105,12 @@ def test_env_backed_sections_reject_unknown_toml_key(use_toml, tmp_path):
         '[neon]\nproject_name = "p"\npg_versoin = 16\n'  # typo
     )
     use_toml(str(toml))
-    with pytest.raises(ValueError, match=r"invalid key pg_versoin in \[neon\]"):
+    with pytest.raises(ValidationError, match="pg_versoin"):
         Settings.from_toml(stage="dev")
 
 
-def test_env_backed_sections_keep_legacy_key_guidance(use_toml, tmp_path):
-    """廃止済み skip_check_existing は移行手順つきのエラーになること
-
-    check_env_backed_section_keys が先に "invalid key" で弾いてしまうと、
-    移行手順の案内が失われる。
-    """
+def test_neon_keeps_legacy_key_guidance(use_toml, tmp_path):
+    """廃止済み skip_check_existing は移行手順つきのエラーになること"""
     toml = tmp_path / "pocket.toml"
     toml.write_text(
         '[general]\nregion = "ap-southeast-1"\n'
@@ -139,18 +122,8 @@ def test_env_backed_sections_keep_legacy_key_guidance(use_toml, tmp_path):
         Settings.from_toml(stage="dev")
 
 
-def test_env_backed_sections_allow_unrelated_dotenv_keys(
-    use_toml, tmp_path, monkeypatch
-):
-    """[neon] 等が .env の無関係なキーで壊れないこと
-
-    Neon/TiDb/Upstash を extra="forbid" にすると、nested validation でも dotenv
-    source が読まれるため .env の DJANGO_SECRET_KEY 等まで
-    "Extra inputs are not permitted" で拒否されてしまう。これが 3 クラスだけ
-    extra="ignore" を維持している理由なので、回帰テストで固定する。
-    """
-    # 実環境の NEON_API_KEY は dotenv より優先されるので、.env 由来だと確定させる
-    monkeypatch.delenv("NEON_API_KEY", raising=False)
+def test_neon_does_not_read_dotenv(use_toml, tmp_path, monkeypatch):
+    """cwd の .env を読まないこと (API key も無関係なキーも設定に影響しない)"""
     (tmp_path / ".env").write_text("DJANGO_SECRET_KEY=abc\nNEON_API_KEY=key\n")
     monkeypatch.chdir(tmp_path)
     toml = tmp_path / "pocket.toml"
@@ -162,7 +135,7 @@ def test_env_backed_sections_allow_unrelated_dotenv_keys(
     use_toml(str(toml))
     settings = Settings.from_toml(stage="dev")
     assert settings.neon
-    assert settings.neon.api_key == "key"
+    assert "key" not in settings.neon.model_dump().values()
 
 
 @mock_aws

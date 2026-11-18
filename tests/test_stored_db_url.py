@@ -1,4 +1,4 @@
-"""user secret の stored mode (type = neon_database_url / tidb_database_url) のテスト。
+"""user secret の stored mode (type = neon_database_url / neon_database_url) のテスト。
 
 stored mode は「事前 provision 済みの接続 URL を参照するだけ」で、pocket は provider の
 管理 API を一切叩かない。検証対象:
@@ -22,8 +22,8 @@ from pocket.context import SecretsContext
 
 
 def test_user_secret_type_alone_is_valid():
-    spec = settings.UserSecretSpec(type="tidb_database_url")
-    assert spec.type == "tidb_database_url"
+    spec = settings.UserSecretSpec(type="neon_database_url")
+    assert spec.type == "neon_database_url"
     assert spec.name is None
 
 
@@ -39,7 +39,7 @@ def test_user_secret_both_name_and_type_is_error():
         settings.Secrets(
             user={
                 "DATABASE_URL": settings.UserSecretSpec(
-                    name="/svc/db-url", type="tidb_database_url"
+                    name="/svc/db-url", type="neon_database_url"
                 )
             }
         )
@@ -57,11 +57,11 @@ def test_stored_type_name_derivation_sm(base_settings):
     """type 指定 (store=sm) → {pocket_key}-user/{type} を導出する (env 名に非依存)。"""
     secrets = settings.Secrets(
         store="sm",
-        user={"DATABASE_URL": settings.UserSecretSpec(type="tidb_database_url")},
+        user={"DATABASE_URL": settings.UserSecretSpec(type="neon_database_url")},
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
     # pocket_key = test-testprj-pocket / 保存 identity は type 基準 (辞書キー非依存)
-    assert ctx.user["DATABASE_URL"].name == "test-testprj-pocket-user/tidb_database_url"
+    assert ctx.user["DATABASE_URL"].name == "test-testprj-pocket-user/neon_database_url"
 
 
 def test_stored_type_name_derivation_ssm(base_settings):
@@ -115,7 +115,7 @@ def test_stored_type_name_does_not_collide_with_managed_path(base_settings):
     """
     secrets = settings.Secrets(
         store="ssm",
-        user={"DATABASE_URL": settings.UserSecretSpec(type="tidb_database_url")},
+        user={"DATABASE_URL": settings.UserSecretSpec(type="neon_database_url")},
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
     name = ctx.user["DATABASE_URL"].name
@@ -130,13 +130,13 @@ def test_stored_type_name_does_not_collide_with_managed_path(base_settings):
 def test_stored_type_iam_sm(base_settings):
     secrets = settings.Secrets(
         store="sm",
-        user={"DATABASE_URL": settings.UserSecretSpec(type="tidb_database_url")},
+        user={"DATABASE_URL": settings.UserSecretSpec(type="neon_database_url")},
     )
     ctx = SecretsContext.from_settings(secrets, base_settings)
     assert (
         "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:"
         # SM の実 ARN のランダムサフィックスにマッチするワイルドカード付き
-        "test-testprj-pocket-user/tidb_database_url-??????" in ctx.allowed_sm_resources
+        "test-testprj-pocket-user/neon_database_url-??????" in ctx.allowed_sm_resources
     )
 
 
@@ -249,10 +249,10 @@ def test_verify_stored_secret_missing_ssm_raises(base_settings, patch_boto3):
 
 def test_verify_stored_secret_missing_sm_raises(base_settings, patch_boto3):
     patch_boto3(missing=True)
-    sc = _make_secrets_context(base_settings, "sm", "tidb_database_url")
+    sc = _make_secrets_context(base_settings, "sm", "neon_database_url")
     with pytest.raises(RuntimeError) as ei:
         sc.user_store.verify_provisioned()
-    assert "test-testprj-pocket-user/tidb_database_url" in str(ei.value)
+    assert "test-testprj-pocket-user/neon_database_url" in str(ei.value)
 
 
 def test_verify_ignores_non_typed_user_secret(base_settings, patch_boto3):

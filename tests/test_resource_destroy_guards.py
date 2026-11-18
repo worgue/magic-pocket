@@ -6,8 +6,6 @@ from click.testing import CliRunner
 from pocket_cli.cli import container_cli, destroy_cli
 from pocket_cli.cli.cloudfront_cli import cloudfront
 from pocket_cli.cli.neon_cli import neon
-from pocket_cli.cli.tidb_cli import tidb
-from pocket_cli.cli.upstash_cli import upstash
 
 
 def test_awscontainer_destroy_uses_shared_teardown(monkeypatch, use_toml):
@@ -86,12 +84,10 @@ def test_destroy_subcommands_require_confirmation(monkeypatch):
     # リソース取得より前に confirm が走るコマンドはそのまま呼べる
     _assert_confirm_guard(runner, cloudfront, ["destroy", "--stage", "dev"])
     _assert_confirm_guard(runner, neon, ["delete", "--stage", "dev"])
-    _assert_confirm_guard(runner, tidb, ["delete", "--stage", "dev"])
-    _assert_confirm_guard(runner, upstash, ["delete", "--stage", "dev"])
 
 
 def test_collect_database_targets_skips_provider_databases(use_toml):
-    """Neon / TiDB / Upstash は削除対象の一覧に載らないこと"""
+    """Neon / TiDB は削除対象の一覧に載らないこと"""
     from pocket.context import Context
 
     use_toml("tests/data/toml/db_command_provisioning.toml")
@@ -116,9 +112,5 @@ def test_destroy_resources_only_warns_about_provider_databases(
 
     destroy_cli._destroy_resources(context, with_secrets=False, with_state_bucket=False)
     output = "".join(capsys.readouterr())
-    for command in (
-        "pocket resource neon delete",
-        "pocket resource tidb delete",
-        "pocket resource upstash delete",
-    ):
-        assert command in output
+    for hint in ("pocket resource neon delete", "TiDB Cloud のコンソール"):
+        assert hint in output

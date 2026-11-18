@@ -70,46 +70,67 @@ project_name = "dev-test-project"{extra}
 """
 
 
-def _toml_with_upstash(extra: str = "") -> str:
-    return f"""
-[general]
-region = "us-east-1"
-project_name = "test-project"
-stages = ["dev"]
-namespace = "test"
-
-[dev.upstash]{extra}
-"""
-
-
 @pytest.mark.parametrize("mode", ["deploy", "command"])
-@pytest.mark.parametrize("toml", [_toml_with_neon, _toml_with_upstash])
-def test_provisioning_is_rejected(use_toml, tmp_path, toml, mode):
+def test_provisioning_is_rejected(use_toml, tmp_path, mode):
     """廃止した provisioning が残っていたら、値によらず案内つきで止める。"""
     toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(toml(f'\nprovisioning = "{mode}"'))
+    toml_path.write_text(_toml_with_neon(f'\nprovisioning = "{mode}"'))
     use_toml(str(toml_path))
     with pytest.raises(ValueError, match="provisioning は廃止"):
         Context.from_toml(stage="dev")
 
 
-@pytest.mark.parametrize("toml", [_toml_with_neon, _toml_with_upstash])
-def test_skip_check_existing_is_rejected(use_toml, tmp_path, toml):
+def test_skip_check_existing_is_rejected(use_toml, tmp_path):
     """廃止済み skip_check_existing が残っていたら fail-fast (黙殺しない)。"""
     toml_path = tmp_path / "pocket.toml"
-    toml_path.write_text(toml("\nskip_check_existing = true"))
+    toml_path.write_text(_toml_with_neon("\nskip_check_existing = true"))
     use_toml(str(toml_path))
     with pytest.raises(ValueError, match="skip_check_existing は廃止"):
         Context.from_toml(stage="dev")
 
 
-def test_get_resources_excludes_provider_databases(use_toml):
-    """Neon / TiDB / Upstash は deploy のリソースに乗らない (API key 不要)。"""
+@pytest.mark.parametrize(
+    ("section", "match"),
+    [
+        ('[dev.neon]\nproject_name = "n"\nneon_api_key = "k"', "neon_api_key は廃止"),
+        ('[dev.tidb]\ncluster = "c1"', "cluster は廃止"),
+        ("[dev.upstash]\nbudget = 10", r"\[upstash\] は廃止"),
+        (
+            '[container.main]\ndockerfile_path = "D"\n'
+            "[container.main.secrets.user]\n"
+            'DATABASE_URL = { type = "tidb_database_url" }',
+            'tidb_database_url" は廃止',
+        ),
+    ],
+)
+def test_removed_provider_settings_are_rejected(use_toml, tmp_path, section, match):
+    """廃止した key / 節 / type が残っていたら、直し方を添えて止める。"""
+    toml_path = tmp_path / "pocket.toml"
+    toml_path.write_text(
+        '[general]\nregion = "us-east-1"\nproject_name = "p"\nstages = ["dev"]\n'
+        + section
+        + "\n"
+    )
+    use_toml(str(toml_path))
+    with pytest.raises(ValueError, match=match):
+        Context.from_toml(stage="dev")
+
+
+def test_api_key_in_environment_is_not_loaded(use_toml, monkeypatch):
+    """環境変数に key があっても、設定にも context にも載らない。"""
+    monkeypatch.setenv("NEON_API_KEY", "should-not-be-loaded")
     use_toml("tests/data/toml/db_command_provisioning.toml")
     context = Context.from_toml(stage="dev")
-    assert context.neon and context.tidb and context.upstash
+    assert "should-not-be-loaded" not in context.model_dump_json()
+
+
+def test_get_resources_excludes_provider_databases(use_toml):
+    """Neon / TiDB は deploy のリソースに乗らない (API key 不要)。"""
+    use_toml("tests/data/toml/db_command_provisioning.toml")
+    context = Context.from_toml(stage="dev")
+    assert context.neon and context.tidb
     names = {type(r).__name__ for r in get_resources(context)}
-    assert not names & {"Neon", "TiDb", "Upstash"}
+    assert not names & {"Neon", "TiDb"}
 
 
 def _build_awscontainer_context(

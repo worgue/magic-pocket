@@ -6,7 +6,7 @@
 | example | ランタイム | DB | 主に示すもの |
 |---------|-----------|-----|-------------|
 | [`example-neon`](https://github.com/worgue/magic-pocket/tree/main/example-neon) | Django | Neon (PostgreSQL) | 最小構成。Django + CloudFront + S3 静的配信 |
-| [`example-tidb`](https://github.com/worgue/magic-pocket/tree/main/example-tidb) | Django | TiDB Serverless (MySQL) | `type =` による stored user secret、MySQL 系バックエンド |
+| [`example-tidb`](https://github.com/worgue/magic-pocket/tree/main/example-tidb) | Django | TiDB Serverless (MySQL) | 自分で保存した接続 URL を `name =` で参照する user secret、MySQL 系バックエンド |
 | [`example-dsql`](https://github.com/worgue/magic-pocket/tree/main/example-dsql) | Rust (axum) | Aurora DSQL | pocket-rs、SQS worker、`pocket.sqs_scheduler` による定期実行、SPA (SvelteKit) |
 
 ## それぞれの読みどころ
@@ -24,12 +24,12 @@ Django アプリを Lambda に載せる最小の形です。
 `[general] region` が `ap-southeast-1` なのは意図的です。Neon は東京リージョンに
 対応しておらず、Lambda を東京に置くと DB アクセスがクロスリージョンになるためです。
 
-### example-tidb — stored user secret の型指定
+### example-tidb — 自分で保存した接続 URL の参照
 
-`DATABASE_URL = { type = "tidb_database_url" }` のように **型で宣言**し、
-パラメータ名を書かない形を示しています。外部の provisioner が正準パス
-(`/{stage}-{project}-{namespace}-user/{type}`) へ値を put すれば、consumer 側は
-`name =` で名前を手書きしなくても読めます。
+pocket は TiDB Cloud の API を呼びません。クラスターはコンソールで用意し、接続 URL を
+SSM に保存して `DATABASE_URL = { name = "/{stage}-.../tidb_database_url" }` で参照する形を
+示しています（`{stage}` は stage 名に展開されます）。`[tidb]` は Django の DB engine を
+`django_tidb` にする宣言です。
 
 ### example-dsql — Rust + 非同期 worker + SPA
 

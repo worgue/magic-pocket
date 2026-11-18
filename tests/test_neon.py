@@ -45,13 +45,12 @@ def test_neon_role_returns_none_when_role_missing():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="sandbox",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
 
     # branch は存在する状態をモック
     with (
@@ -135,7 +134,6 @@ def _shadowing_ctx(**overrides):
 
     kwargs = {
         "pg_version": 15,
-        "api_key": "fake",
         "project_name": "dev-myapp",
         "branch_name": "main",
         "branch_name_specified": False,
@@ -156,7 +154,7 @@ def test_neon_warns_when_default_branch_shadows_stage_branch(capsys):
     """
     from pocket_cli.resources.neon import Neon
 
-    neon = Neon(_shadowing_ctx())
+    neon = Neon(_shadowing_ctx(), api_key="fake")
     with (
         patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
         patch("pocket.provisioning.neon._http_request") as mock_req,
@@ -174,7 +172,7 @@ def test_neon_no_warning_when_branch_name_specified(capsys):
     """branch_name を明示していれば stage 名 branch が存在しても警告しない"""
     from pocket_cli.resources.neon import Neon
 
-    neon = Neon(_shadowing_ctx(branch_name_specified=True))
+    neon = Neon(_shadowing_ctx(branch_name_specified=True), api_key="fake")
     with (
         patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
         patch("pocket.provisioning.neon._http_request") as mock_req,
@@ -188,7 +186,7 @@ def test_neon_no_warning_when_stage_branch_absent(capsys):
     """未指定でも stage 名 branch が無ければ警告しない (新規 project の通常運用)"""
     from pocket_cli.resources.neon import Neon
 
-    neon = Neon(_shadowing_ctx(stage="prod"))
+    neon = Neon(_shadowing_ctx(stage="prod"), api_key="fake")
     with (
         patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
         patch("pocket.provisioning.neon._http_request") as mock_req,
@@ -240,14 +238,13 @@ def test_neon_parent_branch_resolves_from_project():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="feature-abc",
         parent_branch_name="main",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     with (
         patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
         patch.object(
@@ -271,13 +268,12 @@ def test_neon_parent_branch_none_when_unset():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="feature-abc",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     # project にも触れずに None を返す (API call 無し)
     with patch.object(Neon, "get") as mock_get:
         assert neon.parent_branch is None
@@ -289,7 +285,6 @@ def _idempotency_ctx():
 
     return NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="main",
         name="myapp",
@@ -305,7 +300,7 @@ def test_neon_create_branch_skips_post_when_branch_exists():
     """
     from pocket_cli.resources.neon import Branch, Neon
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with (
         patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
         patch.object(Neon, "post") as mock_post,
@@ -318,7 +313,7 @@ def test_neon_create_posts_branch_when_absent():
     """branch が無ければ create_branch は POST して新規作成する (従来動作の維持)"""
     from pocket_cli.resources.neon import Neon
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     # branch/endpoint cached_property を None にしておき、del での cache 無効化を通す
     neon.__dict__["branch"] = None
     neon.__dict__["endpoint"] = None
@@ -336,7 +331,7 @@ def test_neon_create_is_idempotent_when_branch_exists():
     """
     from pocket_cli.resources.neon import Branch, Neon
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with (
         patch.object(Neon, "branch", new=Branch(id="br-main", name="main")),
         patch.object(Neon, "create_branch") as mock_create_branch,
@@ -381,7 +376,7 @@ def test_ensure_and_compute_url_builds_context_and_delegates():
     assert ctx.branch_name == "sandbox"
     assert ctx.name == "myapp"
     assert ctx.role_name == "myapp"
-    assert ctx.api_key == "fake-key"
+    assert mock_ensure.call_args.kwargs == {"api_key": "fake-key"}
     assert ctx.parent_branch_name is None
 
 
@@ -400,7 +395,7 @@ def test_ensure_url_for_context_skips_branch_create_when_present():
             Neon, "database_url", new_callable=PropertyMock, return_value=expected
         ),
     ):
-        url = ensure_url_for_context(_idempotency_ctx())
+        url = ensure_url_for_context(_idempotency_ctx(), api_key="fake")
     assert url == expected
     mock_create_branch.assert_not_called()
     mock_ensure_role.assert_called_once()
@@ -422,7 +417,7 @@ def test_ensure_url_for_context_with_info_reports_resolution():
             Neon, "database_url", new_callable=PropertyMock, return_value=expected
         ),
     ):
-        info = ensure_url_for_context_with_info(_idempotency_ctx())
+        info = ensure_url_for_context_with_info(_idempotency_ctx(), api_key="fake")
     assert info.url == expected
     assert info.project_name == "dev-myapp"
     assert info.branch_name == "main"
@@ -445,7 +440,7 @@ def test_ensure_url_for_context_with_info_marks_created_branch():
             Neon, "database_url", new_callable=PropertyMock, return_value=expected
         ),
     ):
-        info = ensure_url_for_context_with_info(_idempotency_ctx())
+        info = ensure_url_for_context_with_info(_idempotency_ctx(), api_key="fake")
     assert info.branch_created is True
 
 
@@ -505,7 +500,7 @@ def test_ensure_url_for_context_creates_branch_when_absent():
             Neon, "database_url", new_callable=PropertyMock, return_value=expected
         ),
     ):
-        url = ensure_url_for_context(_idempotency_ctx())
+        url = ensure_url_for_context(_idempotency_ctx(), api_key="fake")
     assert url == expected
     mock_create_branch.assert_called_once()
     mock_ensure_role.assert_called_once()
@@ -524,13 +519,12 @@ def test_neon_endpoint_prefers_read_write():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="sandbox",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     endpoints = {
         "endpoints": [
             {
@@ -597,7 +591,7 @@ def test_neon_destroy_plan_branch_for_non_root():
     """非 root branch (parent_id あり) は従来どおり branch 単位で削除できる"""
     from pocket_cli.resources.neon import Branch, Neon
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with patch.object(
         Neon, "branch", new=Branch(id="br-x", name="sandbox", parent_id="br-main")
     ):
@@ -613,7 +607,7 @@ def test_neon_destroy_plan_project_for_sole_root():
     from pocket_cli.resources.neon import Branch, Neon
 
     root = Branch(id="br-main", name="main")
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with (
         patch.object(Neon, "branch", new=root),
         patch.object(Neon, "branches", new_callable=PropertyMock, return_value=[root]),
@@ -628,7 +622,7 @@ def test_neon_destroy_plan_blocked_when_root_has_siblings():
 
     root = Branch(id="br-main", name="main")
     sibling = Branch(id="br-x", name="sandbox", parent_id="br-main")
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with (
         patch.object(Neon, "branch", new=root),
         patch.object(
@@ -642,7 +636,7 @@ def test_neon_destroy_plan_raises_when_branch_missing():
     """branch 不在で destroy_plan を呼んだら NeonNotFound (呼び出し側の前提確認)"""
     from pocket_cli.resources.neon import Neon
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with patch.object(Neon, "branch", new=None):
         with pytest.raises(NeonNotFound):
             neon.destroy_plan()
@@ -652,7 +646,7 @@ def test_neon_delete_project_deletes_by_project_id():
     """delete_project は DELETE /projects/{project_id} を叩く"""
     from pocket_cli.resources.neon import Neon, NeonApi
 
-    neon = Neon(_idempotency_ctx())
+    neon = Neon(_idempotency_ctx(), api_key="fake")
     with (
         patch.object(Neon, "project", new=MagicMock(id="proj-1", name="dev-myapp")),
         patch.object(NeonApi, "delete") as mock_delete,
@@ -669,13 +663,12 @@ def test_neon_branch_parses_parent_id_from_api_listing():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="sandbox",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     branches = {
         "branches": [
             {"id": "br-main", "name": "main"},
@@ -702,13 +695,12 @@ def test_neon_database_url_percent_encodes_credentials():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="sandbox",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     with (
         patch.object(Neon, "role", new=Role(name="myapp", password="p%40ss w:rd")),
         patch.object(
@@ -744,13 +736,12 @@ def test_neon_masked_database_url_hides_password_and_skips_reveal():
 
     ctx = NeonContext(
         pg_version=15,
-        api_key="fake",
         project_name="dev-myapp",
         branch_name="sandbox",
         name="myapp",
         role_name="myapp",
     )
-    neon = Neon(ctx)
+    neon = Neon(ctx, api_key="fake")
     with (
         patch.object(Neon, "role", new=Role(name="myapp", password=None)),
         patch.object(

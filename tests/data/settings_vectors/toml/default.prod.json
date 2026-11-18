@@ -1,12 +1,6 @@
 {
   "context": {
-    "env": {
-      "NEON_API_KEY": "vector-neon-api-key",
-      "TIDB_PRIVATE_KEY": "vector-tidb-private-key",
-      "TIDB_PUBLIC_KEY": "vector-tidb-public-key",
-      "UPSTASH_API_KEY": "vector-upstash-api-key",
-      "UPSTASH_EMAIL": "vector@example.com"
-    },
+    "env": {},
     "project_name_fallback": "vector-prj"
   },
   "input": "tests/data/toml/default.toml",
@@ -248,7 +242,6 @@
     "slug": "prod-testprj",
     "stage": "prod",
     "tidb": null,
-    "upstash": null,
     "vpc": {
       "efs": {
         "access_point_path": "/lambda",
@@ -502,7 +495,6 @@
     "slug": "prod-testprj",
     "stage": "prod",
     "tidb": null,
-    "upstash": null,
     "vpc": {
       "efs": {
         "access_point_path": "/lambda",

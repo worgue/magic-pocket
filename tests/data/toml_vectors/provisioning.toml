@@ -1,4 +1,4 @@
-# [neon] / [tidb] / [upstash]。toml に無い credential は環境 (vector の context.env) から読む
+# [neon] / [tidb]。API key は設定に持たない
 [general]
 region = "ap-northeast-1"
 project_name = "prov"
@@ -8,23 +8,10 @@ stages = ["dev", "prod"]
 project_name = "prov-neon"
 branch_name = "{stage}-{project}"
 parent_branch_name = "main"
-# strict の対象外なので整数の文字列も受ける
-pg_version = "16"
+pg_version = 16
 
+# Django の DB engine を django_tidb にする目印 (キーを持たない)
 [tidb]
-project = "p1"
-cluster = "c1"
-region = "us-east-1"
 
-[upstash]
-# Python (lax) と同じく桁区切りの文字列も受ける
-budget = "1_000"
-
-# alias (neon_api_key 等) で書けば toml の値が環境より優先される
 [prod.neon]
-neon_api_key = "toml-neon-key"
 pg_version = 17
-
-[prod.upstash]
-upstash_email = "toml@example.com"
-budget = "16.0"

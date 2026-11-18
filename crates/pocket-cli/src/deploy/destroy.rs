@@ -375,17 +375,12 @@ pub async fn destroy_recovery_points(
     Ok(())
 }
 
-/// Neon / TiDB / Upstash は destroy では消さない (deploy と同じく provider の API を
+/// Neon / TiDB は destroy では消さない (deploy と同じく provider の API を
 /// 呼ばない)。宣言があるものについて、消し方の案内を返す
 pub fn external_database_warnings(ctx: &Context) -> Vec<String> {
     let hints = [
         (ctx.neon.is_some(), "Neon", "pocket resource neon delete"),
-        (ctx.tidb.is_some(), "TiDB", "pocket resource tidb delete"),
-        (
-            ctx.upstash.is_some(),
-            "Upstash",
-            "pocket resource upstash delete",
-        ),
+        (ctx.tidb.is_some(), "TiDB", "TiDB Cloud のコンソール"),
     ];
     hints
         .iter()
@@ -871,8 +866,7 @@ mod tests {
             external_database_warnings(&ctx),
             [
                 "Neon は destroy では削除しません。不要なら pocket resource neon delete で削除してください。",
-                "TiDB は destroy では削除しません。不要なら pocket resource tidb delete で削除してください。",
-                "Upstash は destroy では削除しません。不要なら pocket resource upstash delete で削除してください。",
+                "TiDB は destroy では削除しません。不要なら TiDB Cloud のコンソール で削除してください。",
             ]
         );
         assert!(external_database_warnings(&vector_context("toml/rds.dev")).is_empty());

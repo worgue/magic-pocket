@@ -111,7 +111,6 @@ mod fake {
                 .as_str()
                 .expect("project_name_fallback")
                 .to_string(),
-            env: env.clone(),
         };
         let (settings, _) = Settings::from_parts(&toml_text, stage, &load)
             .unwrap_or_else(|e| panic!("{}: settings が読めません: {e}", input.display()));

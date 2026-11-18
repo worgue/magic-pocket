@@ -34,8 +34,6 @@ from pocket_cli.cli import (
     s3_cli,
     static_cli,
     status_cli,
-    tidb_cli,
-    upstash_cli,
     vpc_cli,
     waf_cli,
 )
@@ -147,8 +145,6 @@ resource.add_command(inbound_cli.inbound)
 resource.add_command(vpc_cli.vpc)
 resource.add_command(container_cli.container)
 resource.add_command(neon_cli.neon)
-resource.add_command(tidb_cli.tidb)
-resource.add_command(upstash_cli.upstash)
 resource.add_command(dsql_cli.dsql)
 resource.add_command(rds_cli.rds)
 resource.add_command(s3_cli.s3)

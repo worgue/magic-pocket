@@ -4,7 +4,6 @@
 //! `Value` (独自の検証と前処理) は path と message、`Missing` / `Extra` / `Type` は path
 //! だけ、`Syntax` は kind だけ。
 
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use magic_pocket_settings::{ErrorKind, LoadContext, PathSeg, Settings};
@@ -14,18 +13,11 @@ fn repo_root() -> PathBuf {
 }
 
 fn context(v: &serde_json::Value) -> LoadContext {
-    let env: BTreeMap<String, String> = v["env"]
-        .as_object()
-        .expect("context.env")
-        .iter()
-        .map(|(k, v)| (k.clone(), v.as_str().expect("env の値").to_string()))
-        .collect();
     LoadContext {
         project_name_fallback: v["project_name_fallback"]
             .as_str()
             .expect("project_name_fallback")
             .to_string(),
-        env,
     }
 }
 

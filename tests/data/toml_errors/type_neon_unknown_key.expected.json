@@ -1,0 +1,14 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_errors/type_neon_unknown_key.toml",
+  "kind": "Extra",
+  "message": "Extra inputs are not permitted",
+  "path": [
+    "neon",
+    "projectname"
+  ],
+  "stage": "dev"
+}

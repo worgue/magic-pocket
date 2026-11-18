@@ -3,5 +3,5 @@ region = "ap-northeast-1"
 project_name = "err"
 stages = ["dev"]
 
-[upstash]
-budget = 16.5
+[tidb]
+cluster = "c1"

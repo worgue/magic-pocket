@@ -225,15 +225,15 @@ class Mediator:
     def _get_auto_database_url(self):
         """[rds] があれば rds_database_url と同じ値を返す。
 
-        Neon / TiDB の接続 URL は deploy では作らない (`pocket resource <db>
-        store-url` が保存した user secret を使う) ので、対象は [rds] だけ。
+        Neon / TiDB の接続 URL は deploy では作らない (user secret を使う) ので、
+        対象は [rds] だけ。
         """
         if self.context.rds:
             return self._get_rds_database_url()
         raise RuntimeError(
-            "auto_database_url が使えるのは [rds] だけです。Neon / TiDB は "
-            "[container.<name>.secrets.user] に type で宣言し、"
-            "`pocket resource <db> store-url` で接続 URL を保存してください。"
+            "auto_database_url が使えるのは [rds] だけです。Neon は "
+            '[container.<name>.secrets.user] に `{ type = "neon_database_url" }` で'
+            "宣言し、`pocket resource neon store-url` で接続 URL を保存してください。"
         )
 
     def _get_rds_database_url(self):

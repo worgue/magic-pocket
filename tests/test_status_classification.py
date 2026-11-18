@@ -1,4 +1,4 @@
-"""rds / tidb / efs の status 分類の回帰テスト。
+"""rds / efs の status 分類の回帰テスト。
 
 一時 status を FAILED / NOEXIST に誤分類すると、deploy の誤中断や
 未起動クラスタへの接続が起きる。
@@ -9,7 +9,6 @@ from __future__ import annotations
 import pytest
 from pocket_cli.resources.aws.efs import Efs
 from pocket_cli.resources.rds import Rds
-from pocket_cli.resources.tidb import Cluster, TiDb
 
 from pocket.context import Context
 
@@ -38,19 +37,6 @@ def test_rds_transient_status_is_progress(use_toml, monkeypatch, transient):
 def test_rds_known_failure_status_is_failed(use_toml, monkeypatch):
     rds = _make_rds(use_toml, monkeypatch, "inaccessible-encryption-credentials")
     assert rds.status == "FAILED"
-
-
-def test_tidb_creating_cluster_is_progress(monkeypatch):
-    """CREATING を NOEXIST 扱いにすると中断後の再 deploy が未起動クラスタへ
-    接続して失敗する (回帰テスト)"""
-    tidb = object.__new__(TiDb)
-    fake_context = type("Ctx", (), {"public_key": "pk", "private_key": "sk"})()
-    monkeypatch.setattr(tidb, "context", fake_context, raising=False)
-    cluster = Cluster(
-        id="c1", name="c", status="CREATING", host="h", port=4000, user="u.root"
-    )
-    monkeypatch.setattr(TiDb, "cluster", property(lambda self: cluster))
-    assert tidb.status == "PROGRESS"
 
 
 def test_efs_wait_status_raises_on_timeout(monkeypatch):

@@ -1,0 +1,11 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_errors/legacy_upstash_section.toml",
+  "kind": "Value",
+  "message": "[upstash] は廃止されました (pocket は Upstash の API を呼びません)。この節を削除してください。database は Upstash のコンソールで用意します。接続 URL は自分で Secrets Manager / SSM に保存し、[container.<name>.secrets.user] に `{ name = \"<secret 名>\" }` で宣言してください。",
+  "path": [],
+  "stage": "dev"
+}

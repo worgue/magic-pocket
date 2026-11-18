@@ -27,22 +27,45 @@
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。
   これまでの既定）を廃止しました。`pocket deploy` / `pocket destroy` / `pocket status`（Rust 版も
-  同じ）は provider の API を呼ばなくなり、deploy する場所に `NEON_API_KEY` などの API キーを
-  置く必要がなくなります。DB は、API キーがある場所で `pocket resource <db> store-url` を実行して
-  用意します（これまでの `provisioning = "command"` と同じ動きです）。移行の手順:
-    1. pocket.toml の `[neon]` / `[tidb]` / `[upstash]` から `provisioning` の行を削除します
-       （`"command"` と書いていた場合も削除します。残っているとエラーで止まります）。
-    2. `[container.<name>.secrets.managed]` に `neon_database_url` / `tidb_database_url` /
-       `upstash_redis_url` を書いている場合は、その行を `[container.<name>.secrets.user]` へ
-       移します（managed に残っているとエラーで止まります）。
-    3. 2 で行を移したステージは、deploy の前に、API キーがある場所で
-       `pocket resource <db> store-url --stage=<stage>` を 1 回実行します。既存の branch /
-       cluster / database はそのまま使われ、接続 URL が user secret に保存されます
-       （TiDB は実行のたびに root password が変わります）。
+  同じ）は provider の API を呼ばなくなり、deploy する場所に API キーを置く必要がなくなります。
+  provider の API を呼ぶのは `pocket resource neon` のコマンドだけになりました。
+    - **Neon**: API キーがある場所で `pocket resource neon store-url` を実行して branch / role /
+      database を用意します（これまでの `provisioning = "command"` と同じ動きです）。
+    - **TiDB / Upstash**: `pocket resource tidb` / `pocket resource upstash` と `[upstash]` を
+      廃止しました。cluster / database は各サービスのコンソールで用意し、接続 URL を自分で
+      Secrets Manager / SSM に保存して、`[container.<name>.secrets.user]` の `name` で参照します。
+      `[tidb]` は Django の DB engine を `django_tidb` にする宣言として残ります（キーは持ちません）。
+    - **API キーの読み方**: `pocket resource neon` のコマンドだけが、環境変数 `NEON_API_KEY` から
+      読みます。`.env` と pocket.toml（`neon_api_key`）からは読まなくなりました。deploy・status・
+      Lambda の中では API キーを読みません。
+
+  移行の手順（該当する行が残っていると、直し方を添えたエラーで止まります）:
+    1. `[neon]` から `provisioning` と `neon_api_key` の行を削除します。
+    2. `[container.<name>.secrets.managed]` に `neon_database_url` を書いている場合は、その行を
+       `[container.<name>.secrets.user]` へ移します。移したステージは、deploy の前に
+       `NEON_API_KEY=... pocket resource neon store-url --stage=<stage>` を 1 回実行します
+       （既存の branch / database はそのまま使われ、接続 URL が user secret に保存されます）。
+    3. `.env` に `NEON_API_KEY` を置いていた場合は、`pocket resource neon` を実行するときに
+       環境変数で渡します。
+    4. `[tidb]` からすべてのキー（`project` / `cluster` / `region` / `provisioning` など）を削除し、
+       `[upstash]` は節ごと削除します。
+    5. `type = "tidb_database_url"` / `"upstash_redis_url"` の secret は、`name` での参照に
+       書き換えます。これまで `store-url` が保存していた secret をそのまま使う場合の名前は、
+       SSM なら `/{stage}-{project}-{namespace}-user/tidb_database_url`、Secrets Manager なら
+       先頭の `/` を除いたものです（`{stage}` はそのまま書けます。`pocket_key_format` を変えて
+       いる場合はその形に合わせます）。managed に書いていた場合は、先に接続 URL を自分で
+       その名前に保存します。
+
   あわせて次の点が変わります。
-    - `pocket destroy` は Neon の branch・TiDB の cluster・Upstash の database を消しません。
-      `pocket resource neon delete` / `tidb delete` / `upstash delete`（新設）で消します。
+    - `pocket destroy` は Neon の branch を消しません（`pocket resource neon delete` で消します）。
+      TiDB の cluster と Upstash の database は各サービスのコンソールで消します。
     - `auto_database_url` が使えるのは `[rds]` だけになりました（`rds_database_url` と同じ値）。
+    - `[neon]` の `pg_version` は整数で書きます（`"16"` のような文字列はエラーになります）。
+    - Python API: `pocket.provisioning.neon` の `Neon(context, api_key=...)` /
+      `ensure_url_for_context(context, api_key=...)` は API キーを引数で受けます
+      （`NeonContext` から `api_key` を外しました）。`ensure_and_compute_url` は変わりません。
+      `pocket.naming` の `TIDB_DATABASE_URL` / `UPSTASH_REDIS_URL` を削除しました。
+    - runtime パッケージ `magic-pocket` の依存から `pydantic-settings` を外しました。
     - `pocket django init` が作る pocket.toml を、この形（`[container.main]` と
       `secrets.user` の `DATABASE_URL`）に直しました。
   [neon の設定](https://worgue.github.io/magic-pocket/guide/configuration/#neon)

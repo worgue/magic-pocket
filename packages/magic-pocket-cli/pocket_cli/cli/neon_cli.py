@@ -1,3 +1,4 @@
+import os
 from pprint import pprint
 
 import click
@@ -19,20 +20,34 @@ def neon():
     pass
 
 
-def get_neon_resource(stage):
-    context = Context.from_toml(stage=stage)
-    return Neon(
-        context=require_configured(
-            context.neon, "neon is not configured for this stage"
+def neon_api_key() -> str:
+    """Neon の API key を環境変数から読む (`.env` は読まない)。
+
+    key を読むのは `pocket resource neon` のコマンドだけ。deploy / status /
+    runtime は key を必要とせず、設定にも context にも載らない。
+    """
+    key = os.environ.get("NEON_API_KEY")
+    if not key:
+        raise click.ClickException(
+            "環境変数 NEON_API_KEY が未設定です。Neon の API key を環境変数で"
+            "渡してください (.env は読みません)。"
         )
-    )
+    return key
+
+
+def get_neon_context(stage):
+    context = Context.from_toml(stage=stage)
+    return require_configured(context.neon, "neon is not configured for this stage")
+
+
+def get_neon_resource(stage):
+    return Neon(get_neon_context(stage), api_key=neon_api_key())
 
 
 @neon.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 def context(stage):
-    neon = get_neon_resource(stage)
-    pprint(mask_secret_values(neon.context.model_dump()))
+    pprint(mask_secret_values(get_neon_context(stage).model_dump()))
 
 
 @neon.command()
@@ -152,7 +167,7 @@ def store_url(stage, key, force):
                 "neon が pocket.toml に宣言されていません (store-url 不可)"
             )
         # ensure + URL 算出は runtime package の共有ヘルパに一本化 (公開 API と同一経路)
-        info = ensure_url_for_context_with_info(context.neon)
+        info = ensure_url_for_context_with_info(context.neon, api_key=neon_api_key())
         _echo_store_url_resolution(stage, info)
         return info.url
 
@@ -185,7 +200,7 @@ def url(stage, live):
             raise click.ClickException(
                 "neon が pocket.toml に宣言されていません (live 算出不可)"
             )
-        return Neon(context.neon).database_url
+        return Neon(context.neon, api_key=neon_api_key()).database_url
 
     run_get_url(
         stage=stage,

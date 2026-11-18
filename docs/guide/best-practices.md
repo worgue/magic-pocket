@@ -140,17 +140,17 @@ domain = "media.example.com"
 :   dev と prod で Neon プロジェクトを分けることで、開発環境の操作が本番に影響しません。
 
 ??? tip "TiDB Serverless を使う場合"
-    Neon の代わりに TiDB Serverless（MySQL 互換）を使う場合は、`[neon]` を `[tidb]` に、`DATABASE_URL` の type を `tidb_database_url` に変更します。
+    Neon の代わりに TiDB Serverless（MySQL 互換）を使う場合は、`[neon]` を `[tidb]` に変え、
+    自分で secret に保存した接続 URL を `name` で参照します（pocket は TiDB Cloud の API を呼びません）。
 
     ```toml
     [tidb]
-    project = "1234567890123456789"
 
     [container.main.secrets.managed]
     SECRET_KEY = { type = "password", options = { length = 50 } }
 
     [container.main.secrets.user]
-    DATABASE_URL = { type = "tidb_database_url" }
+    DATABASE_URL = { name = "/{stage}-myproject/tidb-database-url", store = "ssm" }
     ```
 
     詳しいコールドスタート特性は「[コールドスタート](cold-start.md)」を参照してください。

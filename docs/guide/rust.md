@@ -192,12 +192,12 @@ DATABASE_URL = { type = "neon_database_url" }
 ### データベースの選択
 
 `set_envs()` は Django 版と同じ DB backend に対応しています。`DATABASE_URL` の
-`type` を差し替えるだけで切り替わります。
+宣言を差し替えるだけで切り替わります。
 
-| type | 備考 |
+| 宣言 | 備考 |
 |------|------|
 | `neon_database_url` | 上記の例 (`secrets.user`)。VPC 不要 |
-| `tidb_database_url` | `secrets.user` に書く。VPC 不要 |
+| `name = "..."` | 自分で保存した接続 URL（TiDB など）を `secrets.user` で参照する。VPC 不要 |
 | `rds_database_url` | `secrets.managed` に書く。VPC 必須。認証情報から実行時に `DATABASE_URL` を構築 |
 | （DSQL） | `[dsql]` を設定。IAM 認証トークンを `POCKET_DSQL_TOKEN` にセット |
 

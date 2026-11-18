@@ -35,7 +35,7 @@ pub use general::{
 pub use services::{
     BackupContext, BackupPlanContext, BackupRuleContext, DsqlContext, NeonContext, RdsContext,
     S3Context, S3CorsContext, S3LifecycleRuleContext, ScheduleEntryContext, SchedulerContext,
-    SesContext, TiDbContext, UpstashContext,
+    SesContext, TiDbContext,
 };
 
 use crate::types::OrderedMap;
@@ -114,7 +114,6 @@ pub struct Context {
     pub secrets: Option<SecretsContext>,
     pub neon: Option<NeonContext>,
     pub tidb: Option<TiDbContext>,
-    pub upstash: Option<UpstashContext>,
     pub dsql: Option<DsqlContext>,
     pub rds: Option<RdsContext>,
     pub backup: Option<BackupContext>,

@@ -170,10 +170,10 @@ pocket destroy --stage=dev
 7. S3 バケット
 8. ステートバケット（`--with-state-bucket` 指定時のみ）
 
-!!! note "Neon / TiDB / Upstash は削除されません"
-    deploy と同じく、destroy も provider の API を呼びません。不要になった DB は
-    `pocket resource neon delete` / `pocket resource tidb delete` /
-    `pocket resource upstash delete` で消してください（destroy の最後に案内が出ます）。
+!!! note "Neon / TiDB は削除されません"
+    deploy と同じく、destroy も provider の API を呼びません。不要になった Neon のブランチは
+    `pocket resource neon delete` で、TiDB のクラスターは TiDB Cloud のコンソールで消してください
+    （destroy の最後に案内が出ます）。
 
 !!! note "ECR リポジトリの扱い"
     [`[container.main].ecr_name`](configuration.md#container) を明示指定している場合、
@@ -385,7 +385,7 @@ pocket.toml を読んで、stage をマージした設定を JSON で出力し�
 pocket-rs settings --stage=dev
 ```
 
-`--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです（`[neon]` 等の credential は環境変数と `.env` から読みます）。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
+`--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
 
 ### pocket-rs context {#pocket-rs-context}
 
@@ -785,7 +785,12 @@ toml を読まない静的導出には Python API の `pocket.naming.ecr_repo_na
 
 ### neon
 
+`pocket resource neon` のコマンド（`context` を除く）は、Neon の API キーを環境変数
+`NEON_API_KEY` から読みます。`.env` は読みません。API キーを読むのはこのコマンド群だけです。
+
 ```bash
+export NEON_API_KEY=...
+
 # Neon ブランチの状態確認
 pocket resource neon status --stage=dev
 
@@ -819,39 +824,6 @@ pocket resource neon store-url --stage=dev
 ```
 stage=dev → project=dev-myapp → branch=main → endpoint=ep-misty-cherry-xxxx.ap-southeast-1.aws.neon.tech
 Neon URL を DATABASE_URL (/dev-myapp-pocket-user/neon_database_url) に保存しました。
-```
-
-### tidb
-
-```bash
-# TiDB クラスターの状態確認
-pocket resource tidb status --stage=dev
-
-# コンテキストを表示
-pocket resource tidb context --stage=dev
-
-# クラスターの作成（通常は store-url が行う）
-pocket resource tidb create --stage=dev
-
-# データベースの削除 + 再作成
-pocket resource tidb reset-database --stage=dev
-
-# クラスターの削除
-pocket resource tidb delete --stage=dev
-
-# cluster / database を用意し、DATABASE_URL を user secret に保存
-# （既存があれば --force で上書き。TiDB は実行ごとに root password をローテーション）
-pocket resource tidb store-url --stage=dev
-```
-
-### upstash
-
-```bash
-# database を用意し、REDIS_URL を user secret に保存（既存があれば --force で上書き）
-pocket resource upstash store-url --stage=dev
-
-# database の削除
-pocket resource upstash delete --stage=dev
 ```
 
 ### dsql

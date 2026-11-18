@@ -9,7 +9,6 @@ use crate::types::{RotationDuration, RotationSchedule};
 #[derive(Debug, Clone, Serialize)]
 pub struct NeonContext {
     pub pg_version: i64,
-    pub api_key: Option<String>,
     pub project_name: String,
     pub branch_name: String,
     /// branch_name が設定で明示されたか (未指定 = default branch)
@@ -20,24 +19,9 @@ pub struct NeonContext {
     pub role_name: String,
 }
 
+/// `[tidb]` が宣言されている目印 (Django の DB engine を django_tidb にする)
 #[derive(Debug, Clone, Serialize)]
-pub struct TiDbContext {
-    pub public_key: Option<String>,
-    pub private_key: Option<String>,
-    pub tidb_project: Option<String>,
-    pub cluster_name: String,
-    pub database_name: String,
-    pub region: String,
-    pub project_name: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct UpstashContext {
-    pub email: Option<String>,
-    pub api_key: Option<String>,
-    pub database_name: String,
-    pub budget: i64,
-}
+pub struct TiDbContext {}
 
 /// backup plan の 1 rule (GFS の 1 階層)
 #[derive(Debug, Clone, Serialize)]

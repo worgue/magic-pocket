@@ -1,0 +1,13 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_errors/legacy_tidb_key.toml",
+  "kind": "Value",
+  "message": "[tidb] cluster は廃止されました (pocket は TiDB Cloud の API を呼びません)。この行を削除してください。cluster は TiDB Cloud のコンソールで用意します。接続 URL は自分で Secrets Manager / SSM に保存し、[container.<name>.secrets.user] に `{ name = \"<secret 名>\" }` で宣言してください。",
+  "path": [
+    "tidb"
+  ],
+  "stage": "dev"
+}
