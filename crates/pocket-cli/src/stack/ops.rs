@@ -341,6 +341,15 @@ impl CfnClient {
         Ok(())
     }
 
+    /// deploy 済みの template のテキスト。stack が無ければ `None`
+    pub async fn template(&self, name: &str) -> Result<Option<String>> {
+        match self.client.get_template().stack_name(name).send().await {
+            Ok(response) => Ok(response.template_body().map(str::to_string)),
+            Err(e) if is_stack_not_exist(e.code(), e.message()) => Ok(None),
+            Err(e) => bail!("get_template {name}: {}", error_text(&e)),
+        }
+    }
+
     pub async fn delete(&self, name: &str) -> Result<()> {
         self.client
             .delete_stack()

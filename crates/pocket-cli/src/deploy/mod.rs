@@ -6,6 +6,7 @@
 // deploy に結合するまで、コマンドから呼ばれない部品がある。結合したら外す
 #![allow(dead_code)]
 
+pub mod container;
 pub mod ecr;
 pub mod generate;
 pub mod iam;

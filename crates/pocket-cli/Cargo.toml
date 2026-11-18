@@ -79,3 +79,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 # managed secret の生成 (乱数と RSA の鍵対)。aws-sdk の TLS (rustls) が使っているのと同じ
 # 暗号ライブラリを直接使う (依存ツリーは増えない)
 aws-lc-rs = { version = "1.18", default-features = false, features = ["aws-lc-sys", "alloc"] }
+# 外部 VPC の stack に consumer のタグを付ける (deploy)
+aws-sdk-resourcegroupstagging = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# deploy 済みの template と新しい template の比較 (ACM の手動対応が要るかの判定)
+serde_yaml_ng = "0.10"

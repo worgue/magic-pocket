@@ -6,7 +6,7 @@
 //! - それ以外: resource ごとの判定 (取得した事実から status を決める純関数)
 
 mod alerts;
-mod aws;
+pub(crate) mod aws;
 pub(crate) mod container;
 mod dsql;
 mod inbound;

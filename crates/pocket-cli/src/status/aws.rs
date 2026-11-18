@@ -484,7 +484,10 @@ impl<'a> AwsEvaluator<'a> {
         ))
     }
 
-    async fn container_template(&mut self, c: &ContainerContext) -> Result<StackTemplate> {
+    pub(crate) async fn container_template(
+        &mut self,
+        c: &ContainerContext,
+    ) -> Result<StackTemplate> {
         let rds = self.ctx.rds.as_ref().filter(|_| c.vpc.is_some());
         let rds_state = match rds.filter(|rds| rds.managed) {
             Some(rds) => self.rds_state_for_container(rds).await?,
