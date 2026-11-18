@@ -66,10 +66,23 @@ fn load(stage: &str, promote: Option<&str>) -> Result<(Context, PathBuf)> {
     Ok((ctx, toml_dir))
 }
 
-pub async fn run(args: DeployArgs) -> Result<()> {
-    let sdk = aws_config::defaults(aws_config::BehaviorVersion::latest())
+/// deploy / destroy 用の AWS の設定。
+///
+/// 1 回の deploy は数百回 API を呼ぶ。SDK の既定 (接続の timeout 約 3 秒・3 回まで) だと、
+/// 一時的な接続の失敗 1 つで途中で止まりやすいので、boto3 の既定 (5 回まで) に寄せる
+pub async fn load_sdk() -> SdkConfig {
+    let timeouts = aws_config::timeout::TimeoutConfig::builder()
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build();
+    aws_config::defaults(aws_config::BehaviorVersion::latest())
+        .retry_config(aws_config::retry::RetryConfig::standard().with_max_attempts(5))
+        .timeout_config(timeouts)
         .load()
-        .await;
+        .await
+}
+
+pub async fn run(args: DeployArgs) -> Result<()> {
+    let sdk = load_sdk().await;
     crate::image_build::check_aws_credentials(&sdk).await?;
     let (ctx, toml_dir) = load(&args.stage, args.promote.as_deref())?;
     if args.promote.is_some() && ctx.container.is_empty() {

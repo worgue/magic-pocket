@@ -49,9 +49,7 @@ pub struct DestroyArgs {
 }
 
 pub async fn run(args: DestroyArgs) -> Result<()> {
-    let sdk = aws_config::defaults(aws_config::BehaviorVersion::latest())
-        .load()
-        .await;
+    let sdk = super::run::load_sdk().await;
     crate::image_build::check_aws_credentials(&sdk).await?;
     let (ctx, _) = load_context(&args.stage)?;
     let prompt = Interaction {
