@@ -17,6 +17,7 @@ pub mod lambda;
 pub mod mediator;
 pub mod parts;
 pub mod poll;
+pub mod rds;
 pub mod s3;
 pub mod secret_store;
 pub mod stacks;
