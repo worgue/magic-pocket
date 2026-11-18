@@ -1,7 +1,7 @@
 //! deploy の部品を 1 つずつ実行する非表示サブコマンド (`pocket-rs deploy-parts`)。
 //!
-//! `pocket-rs deploy` を公開するまでの e2e の入口で、公開時に消す。利用者向けの
-//! コマンドではない (順序の保証・確認・後始末をしない)。
+//! moto 相手の e2e の入口 (通しの deploy は moto で作れない stack で止まるため、部品ごとに
+//! 通す)。利用者向けのコマンドではない (順序の保証・確認・後始末をしない)。
 
 use anyhow::{Context as _, Result};
 use aws_config::SdkConfig;

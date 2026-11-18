@@ -1,6 +1,7 @@
 """vpc / efs / rds / backup の書き込み (pocket-rs) を moto server 相手に確かめる。
 
-`pocket-rs deploy` を公開するまでは、非表示の `pocket-rs deploy-parts` が部品の入口。
+部品の入口は非表示の `pocket-rs deploy-parts` (通しの deploy は moto で作れない
+stack で止まるため、部品ごとに通す)。
 Rust が書いたものを Python 版の実装で読み、Python 版が書いたものを Rust が壊さないことを
 見る。
 

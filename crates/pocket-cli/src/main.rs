@@ -128,7 +128,7 @@ enum Top {
         #[arg(long, short = 'y')]
         yes: bool,
     },
-    /// deploy の部品を 1 つずつ実行する (e2e 用。`deploy` の公開時に消す)
+    /// deploy の部品を 1 つずつ実行する (e2e 用の非表示コマンド)
     #[command(hide = true)]
     DeployParts {
         #[command(subcommand)]

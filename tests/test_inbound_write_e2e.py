@@ -1,6 +1,7 @@
 """inbound / inbound-domain の手順 (pocket-rs) を moto server 相手に確かめる。
 
-`pocket-rs deploy` を公開するまでは、非表示の `pocket-rs deploy-parts` が部品の入口。
+部品の入口は非表示の `pocket-rs deploy-parts` (通しの deploy は moto で作れない
+stack で止まるため、部品ごとに通す)。
 
 moto は inbound / inbound-domain の stack を作れない (`AWS::SES::EmailIdentity` と
 `AWS::CloudWatch::Alarm` に対応していない)。stack の作成・更新・削除は Rust 側の fake の
