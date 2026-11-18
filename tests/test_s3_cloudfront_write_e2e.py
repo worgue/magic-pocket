@@ -383,8 +383,14 @@ def test_bucket_policy_written_by_rust_satisfies_python(
     result = _ok(pocket_rs, root, "cloudfront-delete", "--cloudfront", "web")
     assert _policy(s3, bucket) == {"Version": "2012-10-17", "Statement": [other]}
     s3.head_bucket(Bucket=bucket)
+    # moto server は他のテストと共有なので、この project の stack だけを見る
     stacks = _client("cloudformation", moto_endpoint).describe_stacks()["Stacks"]
-    assert [s for s in stacks if s["StackStatus"] != "DELETE_COMPLETE"] == []
+    assert [
+        s
+        for s in stacks
+        if s["StackName"].startswith(f"prod-{project}-")
+        and s["StackStatus"] != "DELETE_COMPLETE"
+    ] == []
 
 
 def test_bucket_policy_written_by_python_is_kept_by_rust(
