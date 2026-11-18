@@ -49,6 +49,38 @@ pub fn targets(ctx: &Context) -> Vec<AlertTarget> {
     list
 }
 
+/// deploy の最後に出す警告 (Python 版 `echo_dead_letter_alert_warnings`)。確認済みなら `None`
+pub fn deploy_warning(target: &AlertTarget, topic_arn: &str, state: &str) -> Option<String> {
+    let head = format!(
+        "DLQ alert subscription for {} ({})",
+        target.email, target.topic_name
+    );
+    Some(match state {
+        "Confirmed" => return None,
+        "PendingConfirmation" => format!(
+            "{head} is still PendingConfirmation. Alarm notifications will NOT be \
+             delivered until the confirmation link in the email is clicked."
+        ),
+        "Deleted" => format!(
+            "{head} has been unsubscribed (SubscriptionArn=Deleted). Alarm \
+             notifications will NOT be delivered. Re-subscribe the email and \
+             confirm it again."
+        ),
+        "NotSubscribed" => format!(
+            "{head} was not found on the topic. An unconfirmed subscription is removed \
+             by SNS once its confirmation expires (3 days). Alarm notifications \
+             will NOT be delivered. Re-subscribe and confirm it: aws sns \
+             subscribe --topic-arn {topic_arn} --protocol email \
+             --notification-endpoint {}",
+            target.email
+        ),
+        _ => format!(
+            "DLQ alert topic {} was not found. Check the container stack deployment.",
+            target.topic_name
+        ),
+    })
+}
+
 /// `list_subscriptions_by_topic` の 1 件
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Subscription {
@@ -155,5 +187,35 @@ mod tests {
     #[test]
     fn test_no_targets_without_alert_email() {
         assert!(targets(&vector_context("toml/rds.dev")).is_empty());
+    }
+
+    #[test]
+    fn test_deploy_warning_per_state() {
+        let target = AlertTarget {
+            region: "ap-northeast-1".to_string(),
+            topic_name: "dev-app-dlq".to_string(),
+            email: "ops@example.com".to_string(),
+        };
+        let arn = "arn:aws:sns:ap-northeast-1:123456789012:dev-app-dlq";
+        assert_eq!(deploy_warning(&target, arn, "Confirmed"), None);
+        assert_eq!(
+            deploy_warning(&target, arn, "PendingConfirmation").unwrap(),
+            "DLQ alert subscription for ops@example.com (dev-app-dlq) is still \
+             PendingConfirmation. Alarm notifications will NOT be delivered until the \
+             confirmation link in the email is clicked."
+        );
+        assert!(deploy_warning(&target, arn, "Deleted")
+            .unwrap()
+            .contains("has been unsubscribed (SubscriptionArn=Deleted)"));
+        assert!(deploy_warning(&target, arn, "NotSubscribed")
+            .unwrap()
+            .ends_with(&format!(
+                "aws sns subscribe --topic-arn {arn} --protocol email \
+                 --notification-endpoint ops@example.com"
+            )));
+        assert_eq!(
+            deploy_warning(&target, arn, "NotCreated").unwrap(),
+            "DLQ alert topic dev-app-dlq was not found. Check the container stack deployment."
+        );
     }
 }

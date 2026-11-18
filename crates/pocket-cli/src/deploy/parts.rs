@@ -723,7 +723,7 @@ pub async fn run(part: DeployPart) -> Result<()> {
 }
 
 /// state の JSON の `resources.<kind>` (無ければ null)
-fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Value> {
+pub(super) fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Value> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("{} を読めません", path.display()))?;
     let mut state: serde_json::Value = serde_json::from_str(&text)
@@ -731,7 +731,7 @@ fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Val
     Ok(state["resources"][kind].take())
 }
 
-fn inbound_deploy<'a>(
+pub(super) fn inbound_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsInbound<'a>,
 ) -> InboundDeploy<'a, AwsStacks<'a>, AwsInbound<'a>> {
@@ -743,7 +743,7 @@ fn inbound_deploy<'a>(
     }
 }
 
-fn inbound_domain_deploy<'a>(
+pub(super) fn inbound_domain_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsInboundDomain<'a>,
 ) -> InboundDomainDeploy<'a, AwsStacks<'a>, AwsInboundDomain<'a>> {
@@ -755,7 +755,11 @@ fn inbound_domain_deploy<'a>(
 }
 
 /// deploy が作る provider の設定。deploy の対象でなければ、その旨を出して `None`
-fn provider<'c, T>(ctx: &Context, kind: Provider, settings: Option<&'c T>) -> Option<&'c T> {
+pub(super) fn provider<'c, T>(
+    ctx: &Context,
+    kind: Provider,
+    settings: Option<&'c T>,
+) -> Option<&'c T> {
     let settings = settings.filter(|_| deploy_managed(ctx).contains(&kind));
     if settings.is_none() {
         println!("{kind:?}: skipped (宣言が無いか、provisioning = \"command\")");
@@ -764,7 +768,7 @@ fn provider<'c, T>(ctx: &Context, kind: Provider, settings: Option<&'c T>) -> Op
 }
 
 /// stage が管理する VPC (container と RDS が使うもの。名前の重複を除く)
-fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
+pub(super) fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
     let container_vpcs = ctx.container.values().filter_map(|c| c.vpc.as_ref());
     let rds_vpc = ctx.rds.as_ref().and_then(|rds| rds.vpc.as_ref());
     let mut vpcs: Vec<&VpcContext> = Vec::new();
@@ -776,11 +780,11 @@ fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
     vpcs
 }
 
-fn vpc_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsEfs<'_>, AwsVpcNetwork<'_>) {
+pub(super) fn vpc_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsEfs<'_>, AwsVpcNetwork<'_>) {
     (AwsStacks { sdk }, AwsEfs { sdk }, AwsVpcNetwork { sdk })
 }
 
-fn vpc_deploy<'a>(
+pub(super) fn vpc_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     efs: &'a AwsEfs<'a>,
     network: &'a AwsVpcNetwork<'a>,
@@ -793,13 +797,13 @@ fn vpc_deploy<'a>(
     }
 }
 
-fn rds_context(ctx: &Context) -> Result<&RdsContext> {
+pub(super) fn rds_context(ctx: &Context) -> Result<&RdsContext> {
     ctx.rds
         .as_ref()
         .context("rds がこの stage に設定されていません。")
 }
 
-fn rds_env<'a>(
+pub(super) fn rds_env<'a>(
     sdk: &'a SdkConfig,
     region: &'a str,
 ) -> (AwsRds<'a>, AwsStacks<'a>, AwsStoredValues<'a>) {
@@ -810,7 +814,7 @@ fn rds_env<'a>(
     )
 }
 
-fn rds_deploy<'a>(
+pub(super) fn rds_deploy<'a>(
     aws: &'a AwsRds<'a>,
     stacks: &'a AwsStacks<'a>,
     values: &'a AwsStoredValues<'a>,
@@ -823,13 +827,13 @@ fn rds_deploy<'a>(
     }
 }
 
-fn dsql_context(ctx: &Context) -> Result<&DsqlContext> {
+pub(super) fn dsql_context(ctx: &Context) -> Result<&DsqlContext> {
     ctx.dsql
         .as_ref()
         .context("dsql がこの stage に設定されていません。")
 }
 
-fn dsql_deploy<'a>(
+pub(super) fn dsql_deploy<'a>(
     api: &'a AwsDsql<'a>,
     values: &'a AwsStoredValues<'a>,
 ) -> DsqlDeploy<'a, AwsDsql<'a>, AwsStoredValues<'a>> {
@@ -840,7 +844,7 @@ fn dsql_deploy<'a>(
     }
 }
 
-fn backup_context(ctx: &Context) -> Result<&BackupContext> {
+pub(super) fn backup_context(ctx: &Context) -> Result<&BackupContext> {
     ctx.backup
         .as_ref()
         .context("backup がこの stage に設定されていません。")
@@ -848,7 +852,10 @@ fn backup_context(ctx: &Context) -> Result<&BackupContext> {
 
 /// backup の対象 (service → cluster の ARN)。cluster が未作成の service と、
 /// pocket が管理しない RDS (managed = false) は入れない
-async fn backup_targets(sdk: &SdkConfig, ctx: &Context) -> Result<BTreeMap<String, String>> {
+pub(super) async fn backup_targets(
+    sdk: &SdkConfig,
+    ctx: &Context,
+) -> Result<BTreeMap<String, String>> {
     let mut targets = BTreeMap::new();
     if let Some(dsql) = ctx.dsql.as_ref() {
         let found = super::dsql::find_cluster(sdk, &dsql.region, &dsql.tag_name).await?;
@@ -869,7 +876,9 @@ async fn backup_targets(sdk: &SdkConfig, ctx: &Context) -> Result<BTreeMap<Strin
     Ok(targets)
 }
 
-fn cloudfront_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecretStore) {
+pub(super) fn cloudfront_env(
+    sdk: &SdkConfig,
+) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecretStore) {
     (
         AwsStacks { sdk },
         AwsCloudFront { sdk },
@@ -877,7 +886,7 @@ fn cloudfront_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecr
     )
 }
 
-fn cloudfront_deploy<'a>(
+pub(super) fn cloudfront_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsCloudFront<'a>,
     store: &'a AwsSecretStore,
@@ -890,14 +899,14 @@ fn cloudfront_deploy<'a>(
     }
 }
 
-fn find<'c>(ctx: &'c Context, container: &str) -> Result<&'c ContainerContext> {
+pub(super) fn find<'c>(ctx: &'c Context, container: &str) -> Result<&'c ContainerContext> {
     ctx.container
         .get(container)
         .with_context(|| format!("container '{container}' がありません"))
 }
 
 /// AWS に繋いだ [`ContainerDeploy`] の材料
-struct Env<'a> {
+pub(super) struct Env<'a> {
     sdk: &'a SdkConfig,
     context_dir: std::path::PathBuf,
     account_id: String,
@@ -909,7 +918,11 @@ struct Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    async fn new(sdk: &'a SdkConfig, ctx: &Context, toml_dir: &std::path::Path) -> Result<Self> {
+    pub(super) async fn new(
+        sdk: &'a SdkConfig,
+        ctx: &Context,
+        toml_dir: &std::path::Path,
+    ) -> Result<Self> {
         let general = ctx
             .general
             .as_ref()
@@ -927,7 +940,7 @@ impl<'a> Env<'a> {
         })
     }
 
-    fn aws(&self) -> AwsContainer<'_> {
+    pub(super) fn aws(&self) -> AwsContainer<'_> {
         AwsContainer {
             build: BuildEnv {
                 sdk: self.sdk,
@@ -940,7 +953,7 @@ impl<'a> Env<'a> {
         }
     }
 
-    fn deploy<'d>(
+    pub(super) fn deploy<'d>(
         &'d self,
         aws: &'d AwsContainer<'d>,
     ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore, ProviderUrls> {
@@ -957,7 +970,7 @@ impl<'a> Env<'a> {
 /// API で作る role の service
 const API_ROLE_SERVICES: &[&str] = &["codebuild.amazonaws.com", "backup.amazonaws.com"];
 
-async fn roles_part(sdk: &SdkConfig, stage: &str, delete: bool) -> Result<()> {
+pub(super) async fn roles_part(sdk: &SdkConfig, stage: &str, delete: bool) -> Result<()> {
     let (ctx, _) = load_context(stage)?;
     let general = ctx
         .general

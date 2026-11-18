@@ -694,10 +694,11 @@ impl<'a> AwsEvaluator<'a> {
 
     // ---- 末尾の情報 ----
 
-    async fn alert_lines(&self, sink: &mut dyn Sink) -> Result<()> {
+    /// alert の宛先ごとの (宛先, topic の ARN, 購読の状態)
+    async fn alert_states(&self) -> Result<Vec<(alerts::AlertTarget, String, &'static str)>> {
         let targets = alerts::targets(self.ctx);
         if targets.is_empty() {
-            return Ok(());
+            return Ok(Vec::new());
         }
         let identity = aws_sdk_sts::Client::new(&self.sdk)
             .get_caller_identity()
@@ -705,6 +706,7 @@ impl<'a> AwsEvaluator<'a> {
             .await
             .map_err(|e| sdk_error("sts get_caller_identity", &e))?;
         let account = identity.account().unwrap_or_default();
+        let mut states = Vec::new();
         for target in targets {
             let client = aws_sdk_sns::Client::new(&self.config(&target.region));
             let topic_arn = format!(
@@ -733,6 +735,13 @@ impl<'a> AwsEvaluator<'a> {
                 Err(e) if has_code(&e, &["NotFound", "NotFoundException"]) => "NotCreated",
                 Err(e) => return Err(sdk_error("sns list_subscriptions_by_topic", &e)),
             };
+            states.push((target, topic_arn, state));
+        }
+        Ok(states)
+    }
+
+    async fn alert_lines(&self, sink: &mut dyn Sink) -> Result<()> {
+        for (target, _, state) in self.alert_states().await? {
             let line = format!(
                 "DLQ alert {} -> {}: {state}",
                 target.topic_name, target.email
@@ -746,7 +755,20 @@ impl<'a> AwsEvaluator<'a> {
         Ok(())
     }
 
-    async fn inbound_details(&mut self, sink: &mut dyn Sink) -> Result<()> {
+    /// 未確認の購読を警告する (deploy の最後。確認済みなら何も出さない)。
+    ///
+    /// 初回の deploy は宛先が確認メールを踏むまで必ず PendingConfirmation なので、
+    /// エラーにはしない
+    pub async fn alert_warnings(&self, sink: &mut dyn Sink) -> Result<()> {
+        for (target, topic_arn, state) in self.alert_states().await? {
+            if let Some(warning) = alerts::deploy_warning(&target, &topic_arn, state) {
+                sink.warning(&warning);
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn inbound_details(&mut self, sink: &mut dyn Sink) -> Result<()> {
         let ctx = self.ctx;
         for (name, inlet) in ctx.inbound.iter() {
             let description = self.describe(&inlet.region, &inlet.resource_name).await?;

@@ -8,7 +8,7 @@
 //! ECR repository の確保と build / push。
 
 pub(crate) mod codebuild;
-mod context_files;
+pub(crate) mod context_files;
 mod docker;
 pub(crate) mod runner;
 

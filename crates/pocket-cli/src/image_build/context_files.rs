@@ -157,6 +157,39 @@ pub fn find_files_without_world_read(context_dir: &Path) -> Result<Vec<(String, 
     Ok(found)
 }
 
+/// この process の build で警告した other-read の無いファイル ("path (mode)")
+static WARNED_FILES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// build のときの other-read の警告を、deploy の最後にもう一度出す文言。
+///
+/// build のログの途中の警告は大量の出力に埋もれて気付きにくい。警告が無ければ `None`
+pub fn world_read_warning_summary() -> Option<String> {
+    let warned = WARNED_FILES.lock().unwrap_or_else(|e| e.into_inner());
+    summarize_warned(&warned)
+}
+
+fn summarize_warned(warned: &[String]) -> Option<String> {
+    if warned.is_empty() {
+        return None;
+    }
+    let mut listed = warned
+        .iter()
+        .take(MAX_LISTED)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    if warned.len() > MAX_LISTED {
+        listed += &format!(" (他 {} 件)", warned.len() - MAX_LISTED);
+    }
+    Some(format!(
+        "注意: build context に other-read の無いファイルがありました ({} 件): \
+         {listed}。Dockerfile で `COPY --chmod` 等により正規化していない場合、Lambda の\
+         非 root 実行ユーザーが読めず INIT フェーズで失敗します。\
+         `chmod 644 <file>` で修正してください。",
+        warned.len()
+    ))
+}
+
 /// docker / depot backend の build 前の検査 (context は生の permission のまま image に入る)。
 ///
 /// 一般のファイルは警告だけにする (Dockerfile の `COPY --chmod` 等で正規化している構成が
@@ -174,6 +207,15 @@ pub fn warn_files_without_world_read(context_dir: &Path) -> Result<()> {
         .join(", ");
     if unreadable.len() > MAX_LISTED {
         listed += &format!(" (他 {} 件)", unreadable.len() - MAX_LISTED);
+    }
+    {
+        let mut warned = WARNED_FILES.lock().unwrap_or_else(|e| e.into_inner());
+        for (rel, mode) in &unreadable {
+            let entry = format!("{rel} ({mode:o})");
+            if !warned.contains(&entry) {
+                warned.push(entry);
+            }
+        }
     }
     eprintln!(
         "build context に other-read の無いファイルがあります ({} 件): {listed}。\

@@ -77,6 +77,42 @@ enum Top {
         #[arg(long)]
         allow_dirty: bool,
     },
+    /// stage を deploy する (image の build → リソースの作成・更新 → 静的ファイルの upload)
+    Deploy {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// deploy の後に、URL のこの path をブラウザで開く
+        #[arg(long)]
+        openpath: Option<String>,
+        /// route の upload をしない
+        #[arg(long)]
+        skip_frontend: bool,
+        /// 確認プロンプトを自動で承認する
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// build 済みの `:<commit-hash>` image へ stage を向けて deploy する (再 build しない)
+    ///
+    /// `pocket-rs build` で push した image に `:<stage>` の tag を移し、リソースと Lambda を
+    /// 更新する
+    Promote {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// 昇格する image の git commit hash
+        #[arg(long)]
+        commit_hash: String,
+        /// deploy の後に、URL のこの path をブラウザで開く
+        #[arg(long)]
+        openpath: Option<String>,
+        /// route の upload をしない
+        #[arg(long)]
+        skip_frontend: bool,
+        /// 確認プロンプトを自動で承認する
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
     /// deploy の部品を 1 つずつ実行する (e2e 用。`deploy` の公開時に消す)
     #[command(hide = true)]
     DeployParts {
@@ -262,6 +298,37 @@ async fn run(cli: Cli) -> Result<()> {
         Top::Status { stage, show_info } => return status::run(&stage, show_info).await,
         Top::Build { stage, allow_dirty } => {
             return image_build::run_build(&stage, allow_dirty).await
+        }
+        Top::Deploy {
+            stage,
+            openpath,
+            skip_frontend,
+            yes,
+        } => {
+            return deploy::run::run(deploy::run::DeployArgs {
+                stage,
+                promote: None,
+                openpath,
+                skip_frontend,
+                yes,
+            })
+            .await
+        }
+        Top::Promote {
+            stage,
+            commit_hash,
+            openpath,
+            skip_frontend,
+            yes,
+        } => {
+            return deploy::run::run(deploy::run::DeployArgs {
+                stage,
+                promote: Some(commit_hash),
+                openpath,
+                skip_frontend,
+                yes,
+            })
+            .await
         }
         Top::DeployParts { part } => return deploy::parts::run(part).await,
         Top::Version => {
