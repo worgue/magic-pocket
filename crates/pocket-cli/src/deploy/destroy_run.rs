@@ -9,7 +9,7 @@ use super::backup::{AwsBackup, BackupApi as _, BackupDeploy};
 use super::destroy::{
     self, ContainerFact, DestroyOps, DestroyOptions, Facts, RecoveryPoints, Step, VpcFact,
 };
-use super::edge::{EdgeDeploy, EdgeWaits};
+use super::edge::{EdgeDeploy, EdgeWaits, EDGE_REGION};
 use super::efs::{self, AwsEfs};
 use super::inbound::AwsInbound;
 use super::inbound_domain::AwsInboundDomain;
@@ -404,20 +404,25 @@ impl DestroyOps for AwsDestroy {
                             .await?;
                         sink.success(&format!("CloudFront '{name}' was destroyed."));
                     }
-                    if cf.domain.as_deref().is_none_or(str::is_empty) {
-                        continue;
-                    }
+                    let store = AwsSecretStore::new(sdk.clone());
+                    let edge = EdgeDeploy {
+                        stacks: &stacks,
+                        store: &store,
+                        waits: EdgeWaits::default(),
+                    };
                     let acm = cf_stack::acm_stack_name(cf);
-                    if self.stack_exists("us-east-1", &acm).await? {
+                    let has_domain = cf.domain.as_deref().is_some_and(|d| !d.is_empty());
+                    if has_domain && self.stack_exists(EDGE_REGION, &acm).await? {
                         sink.log(&format!("Destroying CloudFront ACM '{name}'..."));
-                        let store = AwsSecretStore::new(sdk.clone());
-                        let edge = EdgeDeploy {
-                            stacks: &stacks,
-                            store: &store,
-                            waits: EdgeWaits::default(),
-                        };
                         edge.acm_delete(cf, sink).await?;
                         sink.success(&format!("CloudFront ACM '{name}' was destroyed."));
+                    }
+                    // WebACL は distribution に付いている間は消せないので、distribution の後
+                    let waf = cf_stack::waf_stack_name(cf);
+                    if cf.waf.is_some() && self.stack_exists(EDGE_REGION, &waf).await? {
+                        sink.log(&format!("Destroying CloudFront WAF '{name}'..."));
+                        edge.waf_delete(cf, sink).await?;
+                        sink.success(&format!("CloudFront WAF '{name}' was destroyed."));
                     }
                 }
                 Ok(())

@@ -67,6 +67,9 @@ pub fn targets(ctx: &Context, facts: &Facts, options: DestroyOptions) -> Vec<Str
         if cf.domain.as_deref().is_some_and(|d| !d.is_empty()) {
             list.push(format!("CloudFront ACM '{name}' (us-east-1 証明書)"));
         }
+        if cf.waf.is_some() {
+            list.push(format!("CloudFront WAF '{name}' (us-east-1 WebACL)"));
+        }
     }
     for name in ctx.inbound.keys() {
         list.push(format!("Inbound {name} (原本バケットと配送DLQは保持)"));
@@ -260,6 +263,37 @@ pub fn container_delete_wait() -> WaitOptions {
     WaitOptions::new(1800, 10)
 }
 
+/// container の stack を消して、消え切るまで待つ。`in_progress` (削除中) なら、前回の
+/// destroy が出した削除の完了を待つだけにする。
+///
+/// API Gateway の ManagedOverrides は AWS 側の内部エラーで削除に失敗することがあり、
+/// もう一度削除すると通る。DELETE_FAILED のときだけ 1 回やり直す
+async fn delete_container_stack(
+    stacks: &impl Stacks,
+    region: &str,
+    name: &str,
+    in_progress: bool,
+    wait: WaitOptions,
+    sink: &mut dyn Sink,
+) -> Result<()> {
+    let target = ResourceStatus::NoExist;
+    if !in_progress {
+        stacks.delete(region, name).await?;
+    }
+    let Err(error) = stacks::wait(stacks, region, name, "container", target, wait).await else {
+        return Ok(());
+    };
+    let description = stacks.describe(region, name).await?;
+    if status_detail(description.as_ref()) != "DELETE_FAILED" {
+        return Err(error);
+    }
+    sink.warning(&format!(
+        "stack '{name}' の削除が失敗しました (DELETE_FAILED)。もう一度削除します:\n{error}"
+    ));
+    stacks.delete(region, name).await?;
+    stacks::wait(stacks, region, name, "container", target, wait).await
+}
+
 /// container 1 つの stack と ECR repository を消す
 pub async fn destroy_container(
     c: &ContainerContext,
@@ -272,12 +306,8 @@ pub async fn destroy_container(
     let description = stacks.describe(&c.region, &name).await?;
     if cfn_status(description.as_ref())? != ResourceStatus::NoExist {
         sink.log(&format!("Destroying container '{}' stack...", c.name));
-        // 削除中なら、前回の destroy が出した削除の完了を待つだけにする
-        if status_detail(description.as_ref()) != "DELETE_IN_PROGRESS" {
-            stacks.delete(&c.region, &name).await?;
-        }
-        let target = ResourceStatus::NoExist;
-        stacks::wait(stacks, &c.region, &name, "container", target, wait).await?;
+        let in_progress = status_detail(description.as_ref()) == "DELETE_IN_PROGRESS";
+        delete_container_stack(stacks, &c.region, &name, in_progress, wait, sink).await?;
         sink.success(&format!("Container '{}' stack was destroyed.", c.name));
     }
     if repos.exists(&c.region, &c.ecr_name).await? {
@@ -312,11 +342,8 @@ pub async fn destroy_legacy_containers(
     if let Some(status) = migrations::legacy_container_stack_status(ctx, stacks).await? {
         let name = migrations::legacy_container_stack_name(ctx);
         sink.log(&format!("Destroying legacy container stack '{name}'..."));
-        if status != "DELETE_IN_PROGRESS" {
-            stacks.delete(region, &name).await?;
-        }
-        let target = ResourceStatus::NoExist;
-        stacks::wait(stacks, region, &name, "container", target, wait).await?;
+        let in_progress = status == "DELETE_IN_PROGRESS";
+        delete_container_stack(stacks, region, &name, in_progress, wait, sink).await?;
         sink.success(&format!("Legacy container stack '{name}' was destroyed."));
     }
     if migrations::legacy_ecr_repo_exists(ctx, repos).await? {
@@ -414,6 +441,22 @@ mod tests {
             .filter(|(_, s, _)| *s == style)
             .map(|(_, _, text)| text.as_str())
             .collect()
+    }
+
+    #[test]
+    fn test_targets_list_waf_after_its_cloudfront() {
+        let ctx = vector_context("toml_vectors/cloudfront_full.dev");
+        let list = targets(&ctx, &Facts::default(), ALL);
+        for (name, cf) in ctx.cloudfront.iter() {
+            let waf = format!("CloudFront WAF '{name}' (us-east-1 WebACL)");
+            let at = list.iter().position(|line| *line == waf);
+            assert_eq!(at.is_some(), cf.waf.is_some(), "{name}");
+            if let Some(at) = at {
+                let cloudfront = format!("CloudFront '{name}' (CFNスタック + バケットポリシー)");
+                assert!(list.iter().position(|line| *line == cloudfront).unwrap() < at);
+            }
+        }
+        assert!(list.iter().any(|line| line.starts_with("CloudFront WAF ")));
     }
 
     #[test]
@@ -722,6 +765,44 @@ mod tests {
             .unwrap();
         assert!(sink.0.is_empty());
         assert_eq!(repos.deleted.borrow().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_destroy_container_retries_delete_failed_once() {
+        let c = container();
+        let name = container_stack::stack_name(&c);
+        let put = |stacks: &FakeStacks| {
+            stacks.put(&name, FakeStacks::description("UPDATE_COMPLETE", "h", &[]));
+        };
+        let delete = format!("delete {} {name}", c.region);
+
+        // 1 回目の削除だけが DELETE_FAILED: もう一度削除して通る
+        let stacks = FakeStacks::default();
+        put(&stacks);
+        stacks.delete_failures.set(1);
+        let repos = FakeRepositories::with(&[c.ecr_name.as_str()]);
+        let mut sink = Recorded::default();
+        destroy_container(&c, &stacks, &repos, fast(2), &mut sink)
+            .await
+            .unwrap();
+        assert_eq!(stacks.writes(), vec![delete.clone(), delete.clone()]);
+        assert!(sink
+            .0
+            .iter()
+            .any(|(_, _, text)| text.contains("もう一度削除します")));
+        assert_eq!(repos.deleted.borrow().len(), 1);
+
+        // 2 回続けて失敗したら止まる (3 回目は出さず、repository も消さない)
+        let stacks = FakeStacks::default();
+        put(&stacks);
+        stacks.delete_failures.set(2);
+        let repos = FakeRepositories::with(&[c.ecr_name.as_str()]);
+        let error = destroy_container(&c, &stacks, &repos, fast(2), &mut Recorded::default())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("DELETE_FAILED"), "{error}");
+        assert_eq!(stacks.writes(), vec![delete.clone(), delete]);
+        assert!(repos.deleted.borrow().is_empty());
     }
 
     #[tokio::test]

@@ -89,6 +89,12 @@
   （これまでは平文で出ていました。`pocket context` と同じ扱いです）。
 - `[rds]` を使う stage の `pocket deploy` が、DB Subnet Group の作成後・cluster の作成前に失敗すると、
   再実行が `DBSubnetGroupAlreadyExists` で止まる不具合を修正しました。既存の DB Subnet Group を再利用します。
+- `pocket destroy` / `pocket-rs destroy` が、`[cloudfront.<name>.waf]` の WAF の stack（us-east-1 の
+  Web ACL と IP set）を削除せずに残す不具合を修正しました。CloudFront の削除の後に削除します。
+  過去の destroy で残った stack `<stage>-<project>-<name>-waf` は、CloudFormation（us-east-1）で削除してください。
+- `pocket destroy` / `pocket-rs destroy` が、container の stack の削除で API Gateway の resource
+  （`ApiGatewayManagedOverrides`）が AWS 側の内部エラーになると、そこで止まって RDS や VPC を残す不具合を修正しました。
+  `DELETE_FAILED` になったときは 1 回だけ削除をやり直します。
 
 ## [0.48.0](https://github.com/worgue/magic-pocket/releases/tag/0.48.0) - 2026-11-16
 

@@ -92,6 +92,8 @@ pub mod fake {
         pub outputs: RefCell<BTreeMap<String, Vec<(String, String)>>>,
         /// create / update / delete の後に遷移する状態 (既定は成功)
         pub after_write: RefCell<Option<String>>,
+        /// delete が DELETE_FAILED で終わる残り回数 (AWS 側の一時的な失敗の再現)
+        pub delete_failures: std::cell::Cell<u32>,
         /// `resources` が返す stack の resource
         pub resources: RefCell<Vec<StackResource>>,
         pub calls: RefCell<Vec<String>>,
@@ -199,6 +201,14 @@ pub mod fake {
             self.calls
                 .borrow_mut()
                 .push(format!("delete {region} {name}"));
+            let failures = self.delete_failures.get();
+            if failures > 0 {
+                self.delete_failures.set(failures - 1);
+                if let Some(found) = self.stacks.borrow_mut().get_mut(name) {
+                    found.status = "DELETE_FAILED".to_string();
+                }
+                return Ok(());
+            }
             match self.after_write.borrow().clone() {
                 Some(status) => {
                     if let Some(found) = self.stacks.borrow_mut().get_mut(name) {

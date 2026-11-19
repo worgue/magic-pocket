@@ -10,6 +10,7 @@ from pocket_cli.migrations import (
     legacy_ecr_repo_name,
 )
 from pocket_cli.resources.aws.builders.codebuild import CodeBuildBuilder
+from pocket_cli.resources.aws.cloudformation import ContainerStack
 from pocket_cli.resources.aws.state import (
     context_resource_prefix,
     create_state_store,
@@ -18,6 +19,7 @@ from pocket_cli.resources.backup import Backup
 from pocket_cli.resources.cloudfront import CloudFront
 from pocket_cli.resources.cloudfront_acm import CloudFrontAcm
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
+from pocket_cli.resources.cloudfront_waf import CloudFrontWaf
 from pocket_cli.resources.container import Container
 from pocket_cli.resources.dsql import Dsql
 from pocket_cli.resources.inbound import Inbound
@@ -182,6 +184,8 @@ def _collect_targets(context: Context, with_secrets: bool, with_state_bucket: bo
         targets.append("CloudFront '%s' (CFNスタック + バケットポリシー)" % name)
         if cf_ctx.domain:
             targets.append("CloudFront ACM '%s' (us-east-1 証明書)" % name)
+        if cf_ctx.waf:
+            targets.append("CloudFront WAF '%s' (us-east-1 WebACL)" % name)
 
     targets.extend(
         f"Inbound {name} (原本バケットと配送DLQは保持)" for name in context.inbound
@@ -233,6 +237,30 @@ def _destroy_log_groups(context: Context):
                 pass
 
 
+def _delete_container_stack(stack: ContainerStack):
+    """container の stack を消して、消え切るまで待つ。
+
+    Lambda が VPC 内にある場合、ENI 解放を含む削除完了を待たないと
+    後続の VPC 削除が subnet 使用中で DELETE_FAILED になる。
+
+    API Gateway の ManagedOverrides は AWS 側の内部エラーで削除に失敗することが
+    あり、もう一度削除すると通る。DELETE_FAILED のときだけ 1 回やり直す。
+    """
+    stack.delete()
+    try:
+        stack.wait_status("NOEXIST", timeout=1800, interval=10)
+    except RuntimeError as error:
+        stack.clear_status()
+        if stack.status_detail != "DELETE_FAILED":
+            raise
+        echo.warning(
+            "stack '%s' の削除が失敗しました (DELETE_FAILED)。もう一度削除します:\n%s"
+            % (stack.name, error)
+        )
+        stack.delete()
+        stack.wait_status("NOEXIST", timeout=1800, interval=10)
+
+
 def _destroy_containers(context: Context, with_secrets: bool):
     """Container 関連リソースを削除"""
     if not context.container:
@@ -243,10 +271,7 @@ def _destroy_containers(context: Context, with_secrets: bool):
         c = Container(c_ctx)
         if c.stack.status != "NOEXIST":
             echo.log("Destroying container '%s' stack..." % c_name)
-            c.stack.delete()
-            # Lambda が VPC 内にある場合、ENI 解放を含む削除完了を待たないと
-            # 後続の VPC 削除が subnet 使用中で DELETE_FAILED になる
-            c.stack.wait_status("NOEXIST", timeout=1800, interval=10)
+            _delete_container_stack(c.stack)
             echo.success("Container '%s' stack was destroyed." % c_name)
 
         if c.ecr.exists():
@@ -415,6 +440,13 @@ def _destroy_cloudfront_and_acm(context: Context):
                 echo.log("Destroying CloudFront ACM '%s'..." % name)
                 acm.delete()
                 echo.success("CloudFront ACM '%s' was destroyed." % name)
+        if cf_ctx.waf:
+            # WebACL は distribution に付いている間は消せないので、distribution の後
+            waf = CloudFrontWaf(cf_ctx)
+            if waf.stack.status != "NOEXIST":
+                echo.log("Destroying CloudFront WAF '%s'..." % name)
+                waf.delete()
+                echo.success("CloudFront WAF '%s' was destroyed." % name)
 
 
 def _destroy_resources(
