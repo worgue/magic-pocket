@@ -2,7 +2,7 @@ kits = ["core", "uv", "just", "postgres", "docker", "aws", "llmcore", "claude", 
 aws_region = "ap-northeast-1"
 
 [git]
-github_token_type = "app"
+github_token_type = "hostd"
 
 [[mounts]]
 type = "overlay"
