@@ -10,6 +10,7 @@ use magic_pocket_settings::context::{InboundContext, InboundDomainContext};
 use magic_pocket_settings::pyjson;
 use serde_json::{Map, Value as Json};
 
+use super::inbound_ops::{inbound_outputs, AwsInboundOps};
 use super::{load, InboundCommand};
 use crate::aws_util::sdk_error;
 use crate::deploy::inbound::AwsInbound;
@@ -43,6 +44,45 @@ pub async fn run(
     let Some(inlet) = context.inbound.get(&target.name) else {
         bail!("inbound.{} がありません", target.name);
     };
+    match command {
+        InboundCommand::Copy {
+            identifier,
+            to_stage,
+            to_name,
+        } => {
+            return super::inbound_ops::run_copy(
+                &sdk,
+                inlet,
+                &identifier,
+                &to_stage,
+                &to_name,
+                sink,
+            )
+            .await;
+        }
+        InboundCommand::Import {
+            manifest_key,
+            handler_ref,
+        } => {
+            let ops = AwsInboundOps::new(&sdk, &inlet.region).await;
+            return super::inbound_ops::import(
+                &ops,
+                &context,
+                inlet,
+                &manifest_key,
+                &handler_ref,
+                sink,
+            )
+            .await;
+        }
+        InboundCommand::Redrive { queue, limit } => {
+            let outputs = inbound_outputs(&sdk, inlet).await?;
+            let ops = AwsInboundOps::new(&sdk, &inlet.region).await;
+            return super::inbound_ops::redrive(&ops, inlet, outputs.as_ref(), queue, limit, sink)
+                .await;
+        }
+        _ => {}
+    }
     let mut evaluator = super::evaluator(&context, &sdk);
     match command {
         InboundCommand::Yaml => {
@@ -119,7 +159,10 @@ pub async fn run(
             sink.print("原本に対応する受信情報を確認しました。");
             Ok(())
         }
-        InboundCommand::Destroy { .. } => unreachable!("先頭で処理する"),
+        InboundCommand::Destroy { .. }
+        | InboundCommand::Copy { .. }
+        | InboundCommand::Import { .. }
+        | InboundCommand::Redrive { .. } => unreachable!("先頭で処理する"),
     }
 }
 

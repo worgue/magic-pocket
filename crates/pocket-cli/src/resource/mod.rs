@@ -16,6 +16,7 @@ mod db;
 pub(crate) mod dsql_backup;
 mod edge;
 mod inbound;
+mod inbound_ops;
 mod pyrepr;
 mod vpc;
 mod write;
@@ -416,6 +417,30 @@ pub enum InboundCommand {
         /// 確認プロンプトをスキップ
         #[arg(long, short = 'y')]
         yes: bool,
+    },
+    /// 指定した1件の原本と受信情報を別stageへコピーしmanifestを最後に保存する。
+    Copy {
+        #[arg(long = "receipt-id")]
+        identifier: String,
+        #[arg(long)]
+        to_stage: String,
+        #[arg(long)]
+        to_name: String,
+    },
+    /// コピー済みmanifestを指定し、利用側の取り込みhandlerを同期実行する。
+    Import {
+        #[arg(long)]
+        manifest_key: String,
+        /// 取り込み用handlerの参照
+        #[arg(long = "handler")]
+        handler_ref: String,
+    },
+    /// DLQの保存形式を検証し、受信queueへ戻す。成功した送信だけ削除する。
+    Redrive {
+        #[arg(long, value_enum)]
+        queue: inbound_ops::RedriveQueue,
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u32).range(1..=100))]
+        limit: u32,
     },
 }
 

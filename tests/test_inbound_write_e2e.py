@@ -19,12 +19,15 @@ SES の active な rule set は region ごとに 1 つなので、テストご�
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 import boto3
+
+from pocket.inbound import receipt_id
 
 _PY_NAMES = """
 import json, sys
@@ -476,3 +479,215 @@ def test_inbound_domain_cleanup(pocket_rs, moto_endpoint, tmp_path):
     names = [s["StackName"] for s in cfn.describe_stacks()["Stacks"]]
     assert stack in names
     assert "old-domain-stack" not in names
+
+
+def _inbound_cmd(pocket_rs, root: Path, region: str, name: str, *args: str):
+    return subprocess.run(  # noqa: S603 shell=False + 制御された引数
+        [
+            str(pocket_rs.binary),
+            "resource",
+            "inbound",
+            "--stage",
+            "prod",
+            "--name",
+            name,
+            *args,
+        ],
+        cwd=root,
+        env=_env(pocket_rs, region),
+        capture_output=True,
+        text=True,
+    )
+
+
+def _queue_bodies(sqs, url: str) -> list[str]:
+    """queue の message を全部読む (見えなくする時間 0 で、消さない)。"""
+    bodies = []
+    for _ in range(10):
+        messages = sqs.receive_message(
+            QueueUrl=url, MaxNumberOfMessages=10, VisibilityTimeout=0
+        ).get("Messages", [])
+        if not messages:
+            break
+        bodies.extend(m["Body"] for m in messages)
+        if len(messages) < 10:
+            break
+    return sorted(set(bodies))
+
+
+def _ses_notification(topic: str, bucket: str, key: str) -> str:
+    message = {
+        "notificationType": "Received",
+        "receipt": {"action": {"type": "S3", "bucketName": bucket, "objectKey": key}},
+    }
+    return json.dumps(
+        {"Type": "Notification", "TopicArn": topic, "Message": json.dumps(message)}
+    )
+
+
+def test_inbound_redrive_moves_only_valid_messages(pocket_rs, moto_endpoint, tmp_path):
+    region = "ap-southeast-1"
+    root = _project(tmp_path, _toml(region, "inbredrive", _inbound()))
+    stack = _names(pocket_rs, root, region)["inbound"]["support"]
+    # 受信スタックが無ければ止まる
+    result = _inbound_cmd(
+        pocket_rs, root, region, "support", "redrive", "--queue", "delivery"
+    )
+    assert result.returncode != 0
+    assert "受信スタックがありません" in result.stderr
+
+    _activate_rule_set(moto_endpoint, region)
+    rule = _deployed_inbound(moto_endpoint, region, stack, enabled=True)
+    action = rule["Actions"][0]["S3Action"]
+    outputs = {
+        o["OutputKey"]: o["OutputValue"]
+        for o in _client("cloudformation", moto_endpoint, region).describe_stacks(
+            StackName=stack
+        )["Stacks"][0]["Outputs"]
+    }
+    sqs = _client("sqs", moto_endpoint, region)
+    dlq, main = outputs["DeliveryDLQUrl"], outputs["QueueUrl"]
+    # 空の DLQ では何も動かさない
+    result = _inbound_cmd(
+        pocket_rs, root, region, "support", "redrive", "--queue", "delivery"
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("0件を受信queueへ再投入しました。")
+
+    valid = [
+        _ses_notification(action["TopicArn"], action["BucketName"], f"raw/m{i}")
+        for i in range(3)
+    ]
+    for body in valid:
+        sqs.send_message(QueueUrl=dlq, MessageBody=body)
+    result = _inbound_cmd(
+        pocket_rs,
+        root,
+        region,
+        "support",
+        "redrive",
+        "--queue",
+        "delivery",
+        "--limit",
+        "2",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("2件を受信queueへ再投入しました。")
+    assert len(_queue_bodies(sqs, main)) == 2
+    assert len(_queue_bodies(sqs, dlq)) == 1
+
+    # 保存先が受信口と違う message は送らず、DLQ から消さない
+    sqs.purge_queue(QueueUrl=dlq)
+    sqs.purge_queue(QueueUrl=main)
+    foreign = _ses_notification(action["TopicArn"], "someone-else", "raw/x")
+    sqs.send_message(QueueUrl=dlq, MessageBody=foreign)
+    result = _inbound_cmd(
+        pocket_rs, root, region, "support", "redrive", "--queue", "delivery"
+    )
+    assert result.returncode != 0
+    assert "想定外のSES保存先です。DLQから削除せず中止します" in result.stderr
+    assert _queue_bodies(sqs, main) == []
+    attributes = sqs.get_queue_attributes(QueueUrl=dlq, AttributeNames=["All"])[
+        "Attributes"
+    ]
+    remaining = int(attributes["ApproximateNumberOfMessages"]) + int(
+        attributes["ApproximateNumberOfMessagesNotVisible"]
+    )
+    assert remaining == 1
+
+
+def test_inbound_copy_writes_import_set_and_keeps_source(
+    pocket_rs, moto_endpoint, tmp_path
+):
+    region = "ap-southeast-2"
+    # 受信口ごとに handler を分ける (同じ handler は 2 つの受信口に使えない)
+    archive = _inbound("archive").replace('"web.mail"', '"web.archive"')
+    handler = (
+        "\n[container.web.handlers.archive]\n"
+        'command = "handler.archive"\n'
+        "sqs = { dead_letter_alert = { enabled = false } }\n"
+    )
+    toml = _toml(region, "inbcopy", _inbound() + "\n" + archive + handler)
+    root = _project(tmp_path, toml)
+    names = _names(pocket_rs, root, region)["inbound"]
+    s3 = _client("s3", moto_endpoint, region)
+    buckets = {}
+    for name in ("support", "archive"):
+        bucket = f"{names[name]}-bucket"
+        s3.create_bucket(
+            Bucket=bucket, CreateBucketConfiguration={"LocationConstraint": region}
+        )
+        s3.put_bucket_versioning(
+            Bucket=bucket, VersioningConfiguration={"Status": "Enabled"}
+        )
+        _put_stack(moto_endpoint, region, names[name], {"Bucket": bucket})
+        buckets[name] = bucket
+    raw = b"From: a@example.com\r\n\r\nhello"
+    raw_key = "raw/abc"
+    version = s3.put_object(Bucket=buckets["support"], Key=raw_key, Body=raw)[
+        "VersionId"
+    ]
+    identifier = receipt_id(buckets["support"], raw_key)
+    metadata = json.dumps(
+        {
+            "receipt_id": identifier,
+            "source": {
+                "bucket": buckets["support"],
+                "key": raw_key,
+                "version_id": version,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            },
+        }
+    ).encode()
+    s3.put_object(
+        Bucket=buckets["support"], Key=f"metadata/{identifier}.json", Body=metadata
+    )
+    # 原本が書き換わっていれば (最新版でなく受信時の版を読むので) 一致する。
+    # 受信 ID の形が違えば何も読まずに止まる
+    s3.put_object(Bucket=buckets["support"], Key=raw_key, Body=b"overwritten")
+    copy = ("copy", "--to-stage", "prod", "--to-name", "archive", "--receipt-id")
+    result = _inbound_cmd(pocket_rs, root, region, "support", *copy, "short")
+    assert result.returncode != 0
+    assert "受信IDは64桁のSHA256です" in result.stderr
+
+    result = _inbound_cmd(pocket_rs, root, region, "support", *copy, identifier)
+    assert result.returncode == 0, result.stderr
+    prefix = f"imports/{identifier}/"
+    assert result.stdout.splitlines()[0] == f"{prefix}manifest.json"
+    copied = {
+        o["Key"]
+        for o in s3.list_objects_v2(Bucket=buckets["archive"], Prefix=prefix)[
+            "Contents"
+        ]
+    }
+    assert copied == {
+        f"{prefix}{f}" for f in ("raw.eml", "metadata.json", "manifest.json")
+    }
+    body = s3.get_object(Bucket=buckets["archive"], Key=f"{prefix}raw.eml")
+    assert body["Body"].read() == raw
+    assert body["ContentType"] == "message/rfc822"
+    manifest = s3.get_object(Bucket=buckets["archive"], Key=f"{prefix}manifest.json")
+    assert json.loads(manifest["Body"].read()) == {
+        "schema_version": 1,
+        "receipt_id": identifier,
+    }
+    # コピー元は減らない
+    source_keys = {
+        o["Key"] for o in s3.list_objects_v2(Bucket=buckets["support"])["Contents"]
+    }
+    assert source_keys == {raw_key, f"metadata/{identifier}.json"}
+
+    # 受信情報の参照先が設定と違えば、何も書かずに止まる
+    s3.delete_object(Bucket=buckets["archive"], Key=f"{prefix}manifest.json")
+    tampered = json.loads(metadata)
+    tampered["source"]["bucket"] = "elsewhere"
+    s3.put_object(
+        Bucket=buckets["support"],
+        Key=f"metadata/{identifier}.json",
+        Body=json.dumps(tampered).encode(),
+    )
+    result = _inbound_cmd(pocket_rs, root, region, "support", *copy, identifier)
+    assert result.returncode != 0
+    assert "原本の参照先が設定と一致しません" in result.stderr
+    remaining = s3.list_objects_v2(Bucket=buckets["archive"], Prefix=prefix)["Contents"]
+    assert f"{prefix}manifest.json" not in {o["Key"] for o in remaining}
