@@ -300,8 +300,14 @@ pub enum DsqlCommand {
         /// 復元前に現用クラスターのバックアップを取らない
         #[arg(long)]
         skip_backup: bool,
+        /// 中断した復元を再開する (新しい job は始めず、--job-id の完了を待って切り替える)
+        #[arg(long)]
+        resume: bool,
+        /// 再開する restore job ID (--resume と一緒に指定する)
+        #[arg(long)]
+        job_id: Option<String>,
     },
-    /// 復元 job の状態確認（完了していれば切り替えを完了させる）
+    /// 復元 job の状態確認（読むだけ。切り替えは restore --resume）
     RestoreStatus {
         #[command(flatten)]
         stage: Stage,
@@ -328,6 +334,8 @@ pub enum DsqlBackupCommand {
         latest: bool,
         yes: bool,
         skip_backup: bool,
+        resume: bool,
+        job_id: Option<String>,
     },
     RestoreStatus {
         job_id: String,
@@ -499,6 +507,8 @@ async fn run_dsql(command: DsqlCommand, sink: &mut dyn crate::status::sink::Sink
             latest,
             yes,
             skip_backup,
+            resume,
+            job_id,
         } => (
             stage,
             DsqlBackupCommand::Restore {
@@ -506,6 +516,8 @@ async fn run_dsql(command: DsqlCommand, sink: &mut dyn crate::status::sink::Sink
                 latest,
                 yes,
                 skip_backup,
+                resume,
+                job_id,
             },
         ),
         DsqlCommand::RestoreStatus { stage, job_id } => {

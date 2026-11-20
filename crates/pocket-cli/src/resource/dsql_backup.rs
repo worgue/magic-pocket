@@ -3,8 +3,9 @@
 //!
 //! DSQL には組み込みの自動 backup が無く、AWS Backup の backup job が唯一の手段。restore は
 //! 常に**新しい cluster** を作るので、`Name` タグを新しい cluster へ付け替えて現用を切り
-//! 替える。付け替えと endpoint の公開は冪等で、待機が途中で止まっても `restore-status`
-//! から続きを進められる。
+//! 替える。付け替えと endpoint の公開は冪等で、待機が途中で止まっても
+//! `restore --resume --job-id` から続きを進められる。`restore-status` は読むだけで、
+//! 切り替えはしない (過去の job の ID を渡して現用が切り替わり直す事故を防ぐ)。
 //!
 //! 切り替えの順 (Python 版と同じ):
 //! 1. (`--skip-backup` でなければ) 現用 cluster の backup を取り、完了を待つ
@@ -13,7 +14,7 @@
 //! 4. 新 cluster に `Name` を付ける
 //! 5. endpoint を公開する
 //!
-//! 3 の後で止まると `Name` を持つ cluster が無くなるが、再実行 (`restore-status`) では
+//! 3 の後で止まると `Name` を持つ cluster が無くなるが、再開 (`restore --resume`) では
 //! 旧 cluster が見つからないので 4 から進む
 
 use std::cell::RefCell;
@@ -149,6 +150,57 @@ fn with_api_name(error: anyhow::Error) -> anyhow::Error {
         })
         .collect();
     anyhow!("{} (API: {pascal}): {}", aws.code, aws.message)
+}
+
+/// `restore` の引数の組み合わせ
+#[derive(Debug, PartialEq)]
+pub enum RestoreRequest<'a> {
+    /// 新しい restore job を始める
+    Start {
+        recovery_point_arn: Option<&'a str>,
+        latest: bool,
+        skip_backup: bool,
+    },
+    /// 中断した restore job の続き (完了を待って切り替える)
+    Resume { job_id: &'a str },
+}
+
+/// `restore` の引数を検査する (recovery point と `--latest` の組み合わせは
+/// [`DsqlBackup::restore`] が見る)
+pub fn restore_request<'a>(
+    recovery_point_arn: Option<&'a str>,
+    latest: bool,
+    skip_backup: bool,
+    resume: bool,
+    job_id: Option<&'a str>,
+) -> Result<RestoreRequest<'a>> {
+    if !resume {
+        if job_id.is_some() {
+            bail!("--job-id は --resume と一緒に指定してください");
+        }
+        return Ok(RestoreRequest::Start {
+            recovery_point_arn,
+            latest,
+            skip_backup,
+        });
+    }
+    if recovery_point_arn.is_some() || latest || skip_backup {
+        bail!("--resume は recovery point の指定・--latest・--skip-backup と同時に使えません");
+    }
+    let Some(job_id) = job_id else {
+        bail!("--resume には --job-id が必要です");
+    };
+    Ok(RestoreRequest::Resume { job_id })
+}
+
+/// 復元先の cluster の identifier (ARN の末尾 = `arn:aws:dsql:<region>:<account>:cluster/<id>`)
+fn identifier_of(arn: &str) -> &str {
+    arn.rsplit(['/', ':']).next().unwrap_or(arn)
+}
+
+/// 中断した restore を再開するコマンド
+fn resume_command(stage: &str, job_id: &str) -> String {
+    format!("pocket resource dsql restore --stage={stage} --resume --job-id={job_id}")
 }
 
 /// 先に現れた最大値 (Python の `max(key=...)` と同じく同値なら先のもの)
@@ -444,11 +496,30 @@ impl<A: DsqlBackupApi, V: StoredValues> DsqlBackup<'_, A, V> {
             )
             .await?;
         sink.success(&format!("Restore job started: {job_id}"));
-        self.finish_restore(stage, &job_id, Some(cluster), sink)
+        sink.info(&format!(
+            "If interrupted, resume with: {}",
+            resume_command(stage, &job_id)
+        ));
+        self.finish_restore(stage, &job_id, Some(cluster), None, sink)
             .await
     }
 
-    /// `restore-status` コマンド
+    /// `restore --resume` コマンド: 新しい job は始めず、指定した job の完了を待って
+    /// 切り替える。現用が job の cluster と違うときは確認を出す (過去の job の ID を渡した
+    /// 取り違えで現用を戻さないため)。現用の backup は取らない (最初の `restore` で済んでいる)
+    pub async fn resume_restore(
+        &self,
+        stage: &str,
+        job_id: &str,
+        prompt: &dyn Prompt,
+        sink: &mut dyn Sink,
+    ) -> Result<()> {
+        sink.info(&format!("Job ID: {job_id}"));
+        self.finish_restore(stage, job_id, None, Some(prompt), sink)
+            .await
+    }
+
+    /// `restore-status` コマンド。AWS に何も書かない (切り替えは `restore --resume`)
     pub async fn restore_status(
         &self,
         stage: &str,
@@ -461,19 +532,54 @@ impl<A: DsqlBackupApi, V: StoredValues> DsqlBackup<'_, A, V> {
         if let Some(message) = job.status_message.as_deref().filter(|m| !m.is_empty()) {
             sink.info(&format!("Message: {message}"));
         }
-        self.finish_restore(stage, job_id, None, sink).await
+        if job.status != "COMPLETED" {
+            if !RESTORE_TERMINAL_STATES.contains(&job.status.as_str()) {
+                sink.info(&format!(
+                    "Restore job is still running. To wait and switch: {}",
+                    resume_command(stage, job_id)
+                ));
+            }
+            return Ok(());
+        }
+        let Some(new_arn) = job.created_resource_arn.filter(|arn| !arn.is_empty()) else {
+            bail!("restore job は完了しましたが復元先 ARN を取得できませんでした: {job_id}");
+        };
+        sink.info(&format!("Restored cluster: {}", identifier_of(&new_arn)));
+        let current = self.api.find_cluster(self.dsql).await?;
+        match current {
+            Some(cluster) if cluster.arn == new_arn => {
+                sink.success("The restored cluster is current.");
+                if !self.endpoint_published(&cluster).await? {
+                    sink.warning(&format!(
+                        "endpoint が {} に公開されていません。公開するには: {}",
+                        self.dsql.endpoint_secret_name,
+                        resume_command(stage, job_id)
+                    ));
+                }
+            }
+            other => {
+                sink.info(&format!(
+                    "Current cluster: {}",
+                    other.as_ref().map_or("(none)", |c| c.identifier.as_str())
+                ));
+                sink.warning("The restored cluster is not current.");
+                sink.info(&format!("To switch: {}", resume_command(stage, job_id)));
+            }
+        }
+        Ok(())
     }
 
     /// restore job の完了を待ち、現用の cluster を切り替える (冪等。途中で止まっても
-    /// `restore-status` から再実行できる)。
+    /// `restore --resume` から再実行できる)。
     ///
     /// `known` は呼び出し側が既に引いた現用の cluster (`restore`)。`None` なら待機の後に引く
-    /// (`restore-status`)
+    /// (`restore --resume`)。`confirm` があれば、現用が job の cluster と違うときに確認する
     async fn finish_restore(
         &self,
         stage: &str,
         job_id: &str,
         known: Option<Option<DsqlCluster>>,
+        confirm: Option<&dyn Prompt>,
         sink: &mut dyn Sink,
     ) -> Result<()> {
         let job = self.wait_restore(job_id).await?;
@@ -491,6 +597,18 @@ impl<A: DsqlBackupApi, V: StoredValues> DsqlBackup<'_, A, V> {
             Some(current) => current,
             None => self.api.find_cluster(self.dsql).await?,
         };
+        if let Some(prompt) = confirm {
+            if current.as_ref().map(|c| c.arn.as_str()) != Some(new_arn.as_str()) {
+                sink.info(&format!(
+                    "Current cluster: {}",
+                    current.as_ref().map_or("(none)", |c| c.identifier.as_str())
+                ));
+                sink.info(&format!("Switch to: {}", identifier_of(&new_arn)));
+                if !prompt.confirm("Switch the current cluster to the restored cluster?", false)? {
+                    bail!("Aborted!");
+                }
+            }
+        }
         let previous = current.as_ref().map(|c| c.identifier.clone());
         self.switch_to_cluster(current.as_ref(), &new_arn, sink)
             .await?;
@@ -539,17 +657,31 @@ impl<A: DsqlBackupApi, V: StoredValues> DsqlBackup<'_, A, V> {
         self.api.tag_name(new_arn, &self.dsql.tag_name).await
     }
 
+    /// endpoint が正準名の stored secret に公開済みか (公開先が無ければ `true`)
+    async fn endpoint_published(&self, cluster: &DsqlCluster) -> Result<bool> {
+        let name = &self.dsql.endpoint_secret_name;
+        if name.is_empty() {
+            return Ok(true);
+        }
+        let value = endpoint(self.dsql, &cluster.identifier);
+        let current = self
+            .values
+            .read(name, self.dsql.endpoint_secret_store, &self.dsql.region)
+            .await?;
+        Ok(current.as_deref() == Some(value.as_str()))
+    }
+
     /// endpoint を正準名の stored secret に書く (値が同じなら書かない)
     async fn publish_endpoint(&self, cluster: &DsqlCluster, sink: &mut dyn Sink) -> Result<()> {
         let name = &self.dsql.endpoint_secret_name;
         if name.is_empty() {
             return Ok(());
         }
-        let value = endpoint(self.dsql, &cluster.identifier);
-        let (store, region) = (self.dsql.endpoint_secret_store, &self.dsql.region);
-        if self.values.read(name, store, region).await?.as_deref() == Some(value.as_str()) {
+        if self.endpoint_published(cluster).await? {
             return Ok(());
         }
+        let value = endpoint(self.dsql, &cluster.identifier);
+        let (store, region) = (self.dsql.endpoint_secret_store, &self.dsql.region);
         self.values.put(name, store, &value, region).await?;
         sink.log(&format!("Published DSQL endpoint to {name}"));
         Ok(())
@@ -785,6 +917,24 @@ pub fn is_access_denied(error: &anyhow::Error) -> bool {
 }
 
 pub async fn run(stage: &str, command: DsqlBackupCommand, sink: &mut dyn Sink) -> Result<()> {
+    // 引数の組み合わせの誤りは設定や AWS を読む前に止める
+    if let DsqlBackupCommand::Restore {
+        recovery_point_arn,
+        latest,
+        skip_backup,
+        resume,
+        job_id,
+        ..
+    } = &command
+    {
+        restore_request(
+            recovery_point_arn.as_deref(),
+            *latest,
+            *skip_backup,
+            *resume,
+            job_id.as_deref(),
+        )?;
+    }
     let (context, _) = crate::context::load_context(stage)?;
     let Some(dsql) = context.dsql.as_ref() else {
         bail!("dsql is not configured for this stage");
@@ -826,17 +976,37 @@ pub async fn run(stage: &str, command: DsqlBackupCommand, sink: &mut dyn Sink) -
             latest,
             yes,
             skip_backup,
+            resume,
+            job_id,
         } => {
             let prompt = Interaction { assume_yes: yes };
-            ops.restore(
-                stage,
+            let request = restore_request(
                 recovery_point_arn.as_deref(),
                 latest,
                 skip_backup,
-                &prompt,
-                sink,
-            )
-            .await
+                resume,
+                job_id.as_deref(),
+            )?;
+            match request {
+                RestoreRequest::Start {
+                    recovery_point_arn,
+                    latest,
+                    skip_backup,
+                } => {
+                    ops.restore(
+                        stage,
+                        recovery_point_arn,
+                        latest,
+                        skip_backup,
+                        &prompt,
+                        sink,
+                    )
+                    .await
+                }
+                RestoreRequest::Resume { job_id } => {
+                    ops.resume_restore(stage, job_id, &prompt, sink).await
+                }
+            }
         }
         DsqlBackupCommand::RestoreStatus { job_id } => {
             ops.restore_status(stage, &job_id, sink).await
@@ -1241,6 +1411,17 @@ mod tests {
         Ok(sink)
     }
 
+    fn resume(
+        api: &FakeApi,
+        values: &FakeStoredValues,
+        dsql: &DsqlContext,
+        prompt: &FakePrompt,
+    ) -> Result<Recorded> {
+        let mut sink = Recorded::default();
+        run(ops(api, values, dsql).resume_restore("dev", "rj-1", prompt, &mut sink))?;
+        Ok(sink)
+    }
+
     /// 切り替え後の状態: 新 cluster が現用、旧 cluster は退避名で残る、endpoint は新
     fn assert_switched(api: &FakeApi, values: &FakeStoredValues, dsql: &DsqlContext) {
         let replaced = format!("{}-replaced-c1", dsql.tag_name);
@@ -1337,11 +1518,96 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_status_resumes_after_each_switch_step() {
+    fn test_restore_prints_resume_command() {
         let dsql = dsql();
-        // 旧 cluster の改名で失敗 → 再実行で改名から
+        let api = FakeApi::with_cluster("c1", &dsql.tag_name);
+        let values = FakeStoredValues::default();
+        let sink = restore(&api, &values, &dsql, true).expect("restore");
+        assert!(texts(&sink).contains(
+            &"If interrupted, resume with: \
+              pocket resource dsql restore --stage=dev --resume --job-id=rj-1"
+                .to_string()
+        ));
+    }
+
+    #[test]
+    fn test_restore_status_never_writes() {
+        let dsql = dsql();
+        let resume_line = "pocket resource dsql restore --stage=dev --resume --job-id=rj-1";
+        // 進行中・失敗: 待たずに終わり、何も書かない。進行中なら再開の方法を案内する
+        for (state, hint) in [("RUNNING", true), ("FAILED", false), ("ABORTED", false)] {
+            let api = FakeApi {
+                restore_state: Some(state),
+                ..FakeApi::with_cluster("c1", &dsql.tag_name)
+            };
+            let values = FakeStoredValues::default();
+            let sink = restore_status(&api, &values, &dsql).expect("status");
+            let lines = texts(&sink);
+            assert_eq!(
+                lines[..2],
+                ["Job ID: rj-1".to_string(), format!("Status: {state}")]
+            );
+            assert_eq!(
+                lines.iter().any(|l| l.ends_with(resume_line)),
+                hint,
+                "{state}"
+            );
+            assert!(api.calls().is_empty(), "{state}");
+            assert!(values.calls().is_empty(), "{state}");
+        }
+
+        // 完了しているが現用でない (過去の job の ID を渡した場合も同じ): 切り替えず案内だけ
+        let api = FakeApi::with_cluster("c1", &dsql.tag_name);
+        let values = FakeStoredValues::default();
+        let sink = restore_status(&api, &values, &dsql).expect("status");
+        assert_eq!(
+            texts(&sink),
+            [
+                "Job ID: rj-1".to_string(),
+                "Status: COMPLETED".to_string(),
+                "Restored cluster: new".to_string(),
+                "Current cluster: c1".to_string(),
+                "The restored cluster is not current.".to_string(),
+                format!("To switch: {resume_line}"),
+            ]
+        );
+        assert!(api.calls().is_empty());
+        assert!(values.calls().is_empty());
+        assert_eq!(api.names()[0], ("c1".to_string(), dsql.tag_name.clone()));
+
+        // 切り替え済み: 現用と表示する
+        resume(&api, &values, &dsql, &FakePrompt::yes()).expect("resume");
+        let (calls, puts) = (api.calls().len(), values.calls().len());
+        let sink = restore_status(&api, &values, &dsql).expect("status");
+        assert_eq!(
+            texts(&sink)[2..],
+            [
+                "Restored cluster: new".to_string(),
+                "The restored cluster is current.".to_string()
+            ]
+        );
+        assert_eq!((api.calls().len(), values.calls().len()), (calls, puts));
+
+        // 現用だが endpoint が公開されていない: 警告して再開を案内する (書かない)
+        values.set(
+            dsql.endpoint_secret_store,
+            &dsql.endpoint_secret_name,
+            "stale",
+        );
+        let sink = restore_status(&api, &values, &dsql).expect("status");
+        assert!(sink
+            .0
+            .iter()
+            .any(|r| r.1 == Style::Warning && r.2.ends_with(resume_line)));
+        assert_eq!((api.calls().len(), values.calls().len()), (calls, puts));
+    }
+
+    #[test]
+    fn test_resume_switches_after_each_interrupted_step() {
+        let dsql = dsql();
+        // 旧 cluster の改名で失敗 → 再開で改名から
         // 新 cluster の Name 付けで失敗 (旧は改名済み = Name を持つ cluster が無い) →
-        // 再実行では旧 cluster が見つからないので、Name 付けから
+        // 再開では旧 cluster が見つからないので、Name 付けから
         for failing in ["tag arn:c1", "tag arn:new"] {
             let api = FakeApi::with_cluster("c1", &dsql.tag_name);
             let values = FakeStoredValues::default();
@@ -1352,30 +1618,128 @@ mod tests {
                 values.calls().is_empty(),
                 "切り替え前に endpoint を書かない"
             );
-            restore_status(&api, &values, &dsql).expect("resume");
+            let before = api.calls().len();
+            resume(&api, &values, &dsql, &FakePrompt::yes()).expect("resume");
+            assert!(
+                !api.calls()[before..]
+                    .iter()
+                    .any(|c| c.starts_with("start_")),
+                "新しい job も現用の backup も始めない"
+            );
             assert_switched(&api, &values, &dsql);
         }
 
-        // endpoint の公開で失敗 → 再実行では付け替えずに公開だけ
+        // endpoint の公開で失敗 → 再開では確認も付け替えもせず公開だけ
         let api = FakeApi::with_cluster("c1", &dsql.tag_name);
         let values = FakeStoredValues::default();
         values.fail_put.set(true);
         restore(&api, &values, &dsql, true).unwrap_err();
         values.fail_put.set(false);
         let before = api.calls().len();
-        let sink = restore_status(&api, &values, &dsql).expect("resume");
+        let prompt = FakePrompt::answering(false);
+        let sink = resume(&api, &values, &dsql, &prompt).expect("resume");
+        assert!(prompt.asked.borrow().is_empty(), "既に現用なら確認しない");
         assert_eq!(api.calls()[before..], ["tag arn:new"]);
         assert_switched(&api, &values, &dsql);
         let lines = texts(&sink);
-        assert_eq!(lines[..2], ["Job ID: rj-1", "Status: COMPLETED"]);
+        assert_eq!(lines[0], "Job ID: rj-1");
         // 切り替え済みなので旧 cluster の案内は出ない
         assert!(!lines.iter().any(|l| l.starts_with("旧クラスター")));
 
         // 完了後の再実行も冪等 (公開済みなら書かない)
         let puts = values.calls().len();
-        restore_status(&api, &values, &dsql).expect("again");
+        resume(&api, &values, &dsql, &prompt).expect("again");
+        assert!(prompt.asked.borrow().is_empty());
         assert_eq!(values.calls().len(), puts);
         assert_switched(&api, &values, &dsql);
+    }
+
+    #[test]
+    fn test_resume_confirms_before_switching_to_other_cluster() {
+        let dsql = dsql();
+        // 現用 (c1) と job の cluster (new) が違う: 両方を表示して確認し、No なら何も書かない
+        let api = FakeApi::with_cluster("c1", &dsql.tag_name);
+        let values = FakeStoredValues::default();
+        let prompt = FakePrompt::answering(false);
+        let mut sink = Recorded::default();
+        let error =
+            run(ops(&api, &values, &dsql).resume_restore("dev", "rj-1", &prompt, &mut sink))
+                .unwrap_err();
+        assert_eq!(error.to_string(), "Aborted!");
+        assert_eq!(
+            *prompt.asked.borrow(),
+            ["Switch the current cluster to the restored cluster?"]
+        );
+        let lines = texts(&sink);
+        assert!(lines.contains(&"Current cluster: c1".to_string()));
+        assert!(lines.contains(&"Switch to: new".to_string()));
+        assert!(api.calls().is_empty());
+        assert!(values.calls().is_empty());
+        assert_eq!(api.names()[0], ("c1".to_string(), dsql.tag_name.clone()));
+
+        // Yes なら切り替える
+        resume(&api, &values, &dsql, &FakePrompt::answering(true)).expect("resume");
+        assert_switched(&api, &values, &dsql);
+
+        // job が失敗していれば確認の前に止まる
+        let api = FakeApi {
+            restore_state: Some("FAILED"),
+            ..FakeApi::with_cluster("c1", &dsql.tag_name)
+        };
+        let prompt = FakePrompt::answering(true);
+        resume(&api, &values, &dsql, &prompt).unwrap_err();
+        assert!(prompt.asked.borrow().is_empty());
+        assert!(api.calls().is_empty());
+    }
+
+    #[test]
+    fn test_restore_request_combinations() {
+        assert_eq!(
+            restore_request(Some("arn:rp"), false, true, false, None).unwrap(),
+            RestoreRequest::Start {
+                recovery_point_arn: Some("arn:rp"),
+                latest: false,
+                skip_backup: true
+            }
+        );
+        assert_eq!(
+            restore_request(None, false, false, true, Some("rj-1")).unwrap(),
+            RestoreRequest::Resume { job_id: "rj-1" }
+        );
+        let conflict =
+            "--resume は recovery point の指定・--latest・--skip-backup と同時に使えません";
+        for (arn, latest, skip_backup, resume, job_id, message) in [
+            (
+                None,
+                false,
+                false,
+                true,
+                None,
+                "--resume には --job-id が必要です",
+            ),
+            (
+                None,
+                false,
+                false,
+                false,
+                Some("rj-1"),
+                "--job-id は --resume と一緒に指定してください",
+            ),
+            (Some("arn:rp"), false, false, true, Some("rj-1"), conflict),
+            (None, true, false, true, Some("rj-1"), conflict),
+            (None, false, true, true, Some("rj-1"), conflict),
+        ] {
+            let error = restore_request(arn, latest, skip_backup, resume, job_id).unwrap_err();
+            assert_eq!(error.to_string(), message);
+        }
+    }
+
+    #[test]
+    fn test_identifier_of_arn() {
+        assert_eq!(
+            identifier_of("arn:aws:dsql:us-east-1:123456789012:cluster/abc123"),
+            "abc123"
+        );
     }
 
     #[test]

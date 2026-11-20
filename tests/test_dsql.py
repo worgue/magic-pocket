@@ -886,3 +886,169 @@ def test_restore_cli_requires_source():
         result = runner.invoke(dsql_cli.dsql, ["restore", "--stage", "dev"])
     assert result.exit_code == 1
     assert "--latest" in result.stderr
+
+
+RESTORED_ARN = "arn:aws:dsql:us-east-1:123456789012:cluster/new123"
+RESUME_COMMAND = "pocket resource dsql restore --stage=dev --resume --job-id=rj-1"
+
+
+def _restore_job_response(status: str) -> dict:
+    job: dict = {"RestoreJobId": "rj-1", "Status": status}
+    if status == "COMPLETED":
+        job["CreatedResourceArn"] = RESTORED_ARN
+    return job
+
+
+def _invoke_restore_cli(monkeypatch, dsql: Dsql, args: list[str], **kwargs):
+    """dsql_cli を呼ぶ。cluster の client は応答を登録しない Stubber で包むので、
+    tag_resource 等の書き込みが呼ばれると失敗する。"""
+    monkeypatch.setattr(dsql_cli, "_get_dsql_resource", lambda stage: dsql)
+    with Stubber(dsql._client) as client_stub:
+        result = CliRunner().invoke(dsql_cli.dsql, args, **kwargs)
+        client_stub.assert_no_pending_responses()
+    return result
+
+
+@pytest.mark.parametrize("status", ["RUNNING", "FAILED", "COMPLETED"])
+def test_restore_status_never_switches(monkeypatch, status):
+    """restore-status は読むだけ。完了済みで現用でない job (過去の job の ID を
+    渡した場合も同じ) でも切り替えず、restore --resume を案内するだけ。"""
+    store = _StoreRecorder(monkeypatch, stored=None)
+    monkeypatch.setattr(dsql_cli, "read_stored_value", store._read)
+    dsql, _ = _make_dsql(ENDPOINT_SECRET_NAME)
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    backup_stub = Stubber(dsql._backup)
+    backup_stub.add_response(
+        "describe_restore_job", _restore_job_response(status), {"RestoreJobId": "rj-1"}
+    )
+    with backup_stub:
+        result = _invoke_restore_cli(
+            monkeypatch,
+            dsql,
+            ["restore-status", "--stage", "dev", "--job-id", "rj-1"],
+        )
+    backup_stub.assert_no_pending_responses()
+    assert result.exit_code == 0, result.output
+    # echo は端末幅で折り返すので空白を詰めて比べる
+    stderr = " ".join(result.stderr.split())
+    assert "Status: %s" % status in stderr
+    assert (
+        "Restore job is still running. To wait and switch: %s" % RESUME_COMMAND
+        in stderr
+    ) == (status == "RUNNING")
+    if status == "COMPLETED":
+        assert "Restored cluster: new123" in stderr
+        assert "Current cluster: abc123" in stderr
+        assert "To switch: %s" % RESUME_COMMAND in stderr
+    assert store.puts == []
+
+
+def test_restore_status_reports_current_cluster(monkeypatch):
+    """復元先が既に現用なら、そう表示する (書き込みはしない)。"""
+    endpoint = f"new123.dsql.{REGION}.on.aws"
+    store = _StoreRecorder(monkeypatch, stored=endpoint)
+    monkeypatch.setattr(dsql_cli, "read_stored_value", store._read)
+    dsql, _ = _make_dsql(ENDPOINT_SECRET_NAME)
+    dsql.__dict__["cluster"] = {
+        **_get_cluster_response("new123"),
+        "arn": RESTORED_ARN,
+    }
+    monkeypatch.setattr(
+        Dsql, "get_restore_job", lambda self, job_id: _restore_job_response("COMPLETED")
+    )
+    result = _invoke_restore_cli(
+        monkeypatch, dsql, ["restore-status", "--stage", "dev", "--job-id", "rj-1"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "The restored cluster is current." in result.stderr
+    assert "公開されていません" not in result.stderr
+    assert store.puts == []
+
+
+def test_restore_resume_confirms_before_switching(monkeypatch):
+    """現用と違う cluster への --resume は両方を表示して確認し、No なら何も書かない。"""
+    store = _StoreRecorder(monkeypatch, stored=None)
+    dsql, _ = _make_dsql(ENDPOINT_SECRET_NAME)
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    monkeypatch.setattr(
+        Dsql, "wait_restore", lambda self, job_id: _restore_job_response("COMPLETED")
+    )
+    result = _invoke_restore_cli(
+        monkeypatch,
+        dsql,
+        ["restore", "--stage", "dev", "--resume", "--job-id", "rj-1"],
+        input="n\n",
+    )
+    assert result.exit_code == 1, result.output
+    assert "Current cluster: abc123" in result.stderr
+    assert "Switch to: new123" in result.stderr
+    assert "Switch the current cluster to the restored cluster?" in result.output
+    assert store.puts == []
+
+
+def test_restore_resume_switches_with_yes(monkeypatch):
+    """--yes なら確認を省いて切り替え、新しい job も現用の backup も始めない。"""
+    switched: list[str] = []
+    dsql, _ = _make_dsql()
+    dsql.__dict__["cluster"] = _get_cluster_response("abc123")
+    monkeypatch.setattr(
+        Dsql, "wait_restore", lambda self, job_id: _restore_job_response("COMPLETED")
+    )
+    monkeypatch.setattr(
+        Dsql, "switch_to_cluster", lambda self, arn: switched.append(arn)
+    )
+    monkeypatch.setattr(Dsql, "start_restore", lambda self, arn: pytest.fail("start"))
+    monkeypatch.setattr(Dsql, "start_backup", lambda self, *a, **k: pytest.fail("bk"))
+    result = _invoke_restore_cli(
+        monkeypatch,
+        dsql,
+        ["restore", "--stage", "dev", "--resume", "--job-id", "rj-1", "--yes"],
+    )
+    assert result.exit_code == 0, result.output
+    assert switched == [RESTORED_ARN]
+
+
+def test_restore_resume_skips_confirm_when_already_current(monkeypatch):
+    """既に現用なら確認なしで endpoint の公開だけを確かめる (冪等)。"""
+    endpoint = f"new123.dsql.{REGION}.on.aws"
+    store = _StoreRecorder(monkeypatch, stored=endpoint)
+    switched: list[str] = []
+    dsql, _ = _make_dsql(ENDPOINT_SECRET_NAME)
+    dsql.__dict__["cluster"] = {
+        **_get_cluster_response("new123"),
+        "arn": RESTORED_ARN,
+    }
+    monkeypatch.setattr(
+        Dsql, "wait_restore", lambda self, job_id: _restore_job_response("COMPLETED")
+    )
+    monkeypatch.setattr(
+        Dsql, "switch_to_cluster", lambda self, arn: switched.append(arn)
+    )
+    result = _invoke_restore_cli(
+        monkeypatch,
+        dsql,
+        ["restore", "--stage", "dev", "--resume", "--job-id", "rj-1"],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Switch the current cluster" not in result.output
+    assert switched == [RESTORED_ARN]
+    assert store.puts == []
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--resume"], "--resume には --job-id が必要です"),
+        (["--job-id", "rj-1"], "--job-id は --resume と一緒に指定してください"),
+        (["--resume", "--job-id", "rj-1", "arn:rp"], "同時に使えません"),
+        (["--resume", "--job-id", "rj-1", "--latest"], "同時に使えません"),
+        (["--resume", "--job-id", "rj-1", "--skip-backup"], "同時に使えません"),
+    ],
+)
+def test_restore_option_combinations(monkeypatch, args, message):
+    monkeypatch.setattr(
+        dsql_cli, "_get_dsql_resource", lambda stage: pytest.fail("AWS を読まない")
+    )
+    result = CliRunner().invoke(dsql_cli.dsql, ["restore", "--stage", "dev", *args])
+    assert result.exit_code == 1, result.output
+    assert message in result.stderr

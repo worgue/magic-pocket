@@ -537,7 +537,7 @@ pocket-rs resource neon url --stage=dev
 | `image` | `repo` / `uri` |
 | `s3` | `context` / `status` / `create` / `destroy` |
 | `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`）/ `destroy` |
-| `dsql` | `backup`（`--vault` / `--iam-role-arn` / `--retention-days` / `--watch`）/ `backup-status`（`--job-id` / `--watch`）/ `restore`（recovery point の ARN か `--latest`、`--yes` / `--skip-backup`）/ `restore-status`（`--job-id`）。手順は [dsql](#dsql) と同じ |
+| `dsql` | `backup`（`--vault` / `--iam-role-arn` / `--retention-days` / `--watch`）/ `backup-status`（`--job-id` / `--watch`）/ `restore`（recovery point の ARN か `--latest`、`--yes` / `--skip-backup`。再開は `--resume --job-id`）/ `restore-status`（`--job-id`）。手順は [dsql](#dsql) と同じ |
 | `neon` | `context` / `status` / `create` / `reset-database` / `branch-out`（`--base-stage`）/ `delete`（`-y`）/ `store-url`（`--key` / `--force`）/ `url`（`--live`）。API key は環境変数 `NEON_API_KEY` から読む。**実験的**（Neon の実アカウントでは確認していない。[neon](#neon)） |
 | `cloudfront` | `yaml` / `context` / `status` / `create` / `update` / `destroy`（`-y`）/ `upload`（`--skip-build`）/ `prune`（`--route` / `--dry-run` / `-y`）。`--name` を省略すると全部 |
 | `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` / `destroy`（`-y`） |
@@ -551,7 +551,7 @@ Python 版との違いは次のとおりです。
 - 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
 - `inbound` は Context を組んでから受信口を選ぶので、Context の組み立てに要る照会（hosted zone など）も行います
 - 受信口の `copy` / `redrive` で、受信情報や DLQ の message が JSON でない（必要な項目が無い）ときは、検査に落ちたときと同じ文言で止まります（Python 版は traceback で止まります。どちらも何も書かず、何も消しません）
-- `dsql restore` / `restore-status` で、切り替えの後に新しい cluster が `Name` タグで見つからないときは、endpoint を公開せずにエラーで止まります（`restore-status` の再実行で続きから進みます）
+- `dsql restore` / `restore-status` で、切り替えの後に新しい cluster が `Name` タグで見つからないときは、endpoint を公開せずにエラーで止まります（`restore --resume` の再実行で続きから進みます）
 
 `backup cleanup` と `cleanup-deprecated` も Rust 版があります（`pocket-rs backup cleanup --stage=dev` / `pocket-rs cleanup-deprecated --stage=dev`）。オプション・出力・確認は [pocket backup cleanup](#pocket-backup-cleanup) / [pocket cleanup-deprecated](#pocket-cleanup-deprecated) と同じです。
 
@@ -975,8 +975,15 @@ pocket resource dsql backup-status --stage=dev --job-id=<id> --watch
 pocket resource dsql restore --stage=dev --latest
 pocket resource dsql restore --stage=dev <recovery-point-arn>
 
-# 待機が中断された場合に、切り替えを再開・完了させる（冪等）
+# restore job の状態確認（読むだけで、切り替えはしない）。完了していれば復元先の
+# cluster と、それが現用かどうかを表示する。進行中でも待たずに終わる
 pocket resource dsql restore-status --stage=dev --job-id=<id>
+
+# 待機が中断された復元を再開する（新しい job は始めず、job の完了を待って切り替え、
+# endpoint を公開する。冪等）。現用と違う cluster へ切り替えるときは、現用と切り替え先を
+# 表示して確認する（既定は No、--yes で省略）。現用の backup は取らない
+# （最初の restore で取っている。取り直したい場合は先に backup を実行する）
+pocket resource dsql restore --stage=dev --resume --job-id=<id>
 
 # クラスターの削除（確認プロンプト付き）
 pocket resource dsql destroy --stage=dev
