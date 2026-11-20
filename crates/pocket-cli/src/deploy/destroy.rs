@@ -79,48 +79,7 @@ pub fn targets(ctx: &Context, facts: &Facts, options: DestroyOptions) -> Vec<Str
             "Inbound domain {domain} (SES identity / DKIM / MX)"
         ));
     }
-    if !ctx.container.is_empty() {
-        for container in &facts.containers {
-            let mut parts = vec!["CFNスタック"];
-            if container.ecr_exists {
-                parts.push(if container.ecr_name_overridden {
-                    "ECR は ecr_name 明示指定のため削除対象外"
-                } else {
-                    "ECR"
-                });
-            }
-            list.push(format!(
-                "Container '{}' ({})",
-                container.name,
-                parts.join(" + ")
-            ));
-        }
-        if facts.legacy_stack {
-            list.push(format!(
-                "旧形式の container stack '{}' (0.29.0 以前の [awscontainer] 命名。CFNスタック)",
-                migrations::legacy_container_stack_name(ctx)
-            ));
-        }
-        if facts.legacy_ecr {
-            if let Ok(repo) = migrations::legacy_ecr_repo_name(ctx) {
-                list.push(format!(
-                    "旧形式の ECR repository '{repo}' (0.29.0 以前の命名)"
-                ));
-            }
-        }
-        let mut shared = Vec::new();
-        let has_secrets =
-            ctx.secrets.is_some() || ctx.container.values().any(|c| c.secrets.is_some());
-        if options.with_secrets && has_secrets {
-            shared.push("secrets");
-        }
-        if facts.codebuild {
-            shared.push("CodeBuild");
-        }
-        if !shared.is_empty() {
-            list.push(format!("Container 共有リソース ({})", shared.join(" + ")));
-        }
-    }
+    list.extend(container_targets(ctx, facts, options.with_secrets));
     for plan in &facts.backup_plans {
         list.push(format!(
             "AWS Backup plan: {plan} (recovery point と vault は残ります)"
@@ -161,6 +120,55 @@ pub fn targets(ctx: &Context, facts: &Facts, options: DestroyOptions) -> Vec<Str
     }
     if options.with_state_bucket {
         list.push("ステートバケット".to_string());
+    }
+    list
+}
+
+/// container 関連の削除対象 (Python 版 `_collect_container_targets`。
+/// `pocket resource container destroy` もこれを使う)
+pub fn container_targets(ctx: &Context, facts: &Facts, with_secrets: bool) -> Vec<String> {
+    let mut list = Vec::new();
+    if ctx.container.is_empty() {
+        return list;
+    }
+    for container in &facts.containers {
+        let mut parts = vec!["CFNスタック"];
+        if container.ecr_exists {
+            parts.push(if container.ecr_name_overridden {
+                "ECR は ecr_name 明示指定のため削除対象外"
+            } else {
+                "ECR"
+            });
+        }
+        list.push(format!(
+            "Container '{}' ({})",
+            container.name,
+            parts.join(" + ")
+        ));
+    }
+    if facts.legacy_stack {
+        list.push(format!(
+            "旧形式の container stack '{}' (0.29.0 以前の [awscontainer] 命名。CFNスタック)",
+            migrations::legacy_container_stack_name(ctx)
+        ));
+    }
+    if facts.legacy_ecr {
+        if let Ok(repo) = migrations::legacy_ecr_repo_name(ctx) {
+            list.push(format!(
+                "旧形式の ECR repository '{repo}' (0.29.0 以前の命名)"
+            ));
+        }
+    }
+    let mut shared = Vec::new();
+    let has_secrets = ctx.secrets.is_some() || ctx.container.values().any(|c| c.secrets.is_some());
+    if with_secrets && has_secrets {
+        shared.push("secrets");
+    }
+    if facts.codebuild {
+        shared.push("CodeBuild");
+    }
+    if !shared.is_empty() {
+        list.push(format!("Container 共有リソース ({})", shared.join(" + ")));
     }
     list
 }

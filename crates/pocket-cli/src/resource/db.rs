@@ -25,6 +25,8 @@ pub async fn run_s3(command: S3Command, sink: &mut dyn Sink) -> Result<()> {
             sink.print(&pyrepr::pformat(&dump));
             Ok(())
         }
+        S3Command::Create(stage) => super::write::s3_create(&stage.stage, sink).await,
+        S3Command::Destroy(stage) => super::write::s3_destroy(&stage.stage, sink).await,
         S3Command::Status(stage) => {
             let (context, sdk) = load(&stage.stage).await?;
             let Some(s3) = context.s3.as_ref() else {
@@ -49,6 +51,7 @@ pub async fn run_s3(command: S3Command, sink: &mut dyn Sink) -> Result<()> {
 
 pub async fn run_rds(command: DbCommand, sink: &mut dyn Sink) -> Result<()> {
     match command {
+        DbCommand::Destroy(stage) => super::write::rds_destroy(&stage.stage, sink).await,
         DbCommand::Status(stage) => {
             let (context, sdk) = load(&stage.stage).await?;
             let rds = rds_context(context.rds.as_ref())?;
@@ -70,6 +73,7 @@ pub async fn run_rds(command: DbCommand, sink: &mut dyn Sink) -> Result<()> {
 
 pub async fn run_dsql(command: DbCommand, sink: &mut dyn Sink) -> Result<()> {
     match command {
+        DbCommand::Destroy(stage) => super::write::dsql_destroy(&stage.stage, sink).await,
         DbCommand::Status(stage) => {
             let (context, sdk) = load(&stage.stage).await?;
             let dsql = dsql_context(context.dsql.as_ref())?;

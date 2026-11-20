@@ -85,6 +85,25 @@ pub async fn run(command: ContainerCommand, sink: &mut dyn Sink) -> Result<()> {
             let (context, sdk) = load(&stage.stage).await?;
             list_secrets(&context, &sdk, show_values, sink).await
         }
+        ContainerCommand::Create(target) => super::write::container_create(&target, sink).await,
+        ContainerCommand::Update(target) => super::write::container_update(&target, sink).await,
+        ContainerCommand::Destroy {
+            stage,
+            with_secrets,
+            yes,
+        } => {
+            crate::deploy::destroy_run::destroy_containers(&stage.stage, with_secrets, yes, sink)
+                .await
+        }
+        ContainerCommand::ReloadEnv { target, handler } => {
+            super::write::reload_env(&target, handler.as_deref(), sink).await
+        }
+        ContainerCommand::Secrets {
+            command: SecretsCommand::CreatePocketManaged(stage),
+        } => super::write::create_pocket_managed(&stage.stage, sink).await,
+        ContainerCommand::Secrets {
+            command: SecretsCommand::DeletePocketManaged(stage),
+        } => super::write::delete_pocket_managed(&stage.stage, sink).await,
         ContainerCommand::StatusEnv { target, handler } => {
             let (context, sdk) = load(&target.stage.stage).await?;
             if context.container.is_empty() {

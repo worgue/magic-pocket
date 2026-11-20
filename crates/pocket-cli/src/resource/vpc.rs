@@ -19,6 +19,9 @@ pub async fn run(command: VpcCommand, sink: &mut dyn Sink) -> Result<()> {
             sink.print(&vpc_template(&sdk, &vpc).await?.body);
             Ok(())
         }
+        VpcCommand::Create(target) => super::write::vpc_create(&target, sink).await,
+        VpcCommand::Update(target) => super::write::vpc_update(&target, sink).await,
+        VpcCommand::Destroy(target) => super::write::vpc_destroy(&target, sink).await,
         VpcCommand::Status(target) => {
             let vpc = vpc_context(&target)?;
             let sdk = crate::aws_util::load_sdk().await;
@@ -38,7 +41,7 @@ pub async fn run(command: VpcCommand, sink: &mut dyn Sink) -> Result<()> {
 
 /// `--stage` があればその stage の `[vpc]`、無ければ共通の `[vpc]` (Python の
 /// `get_vpc_resource`。AWS は見ない)
-fn vpc_context(target: &VpcTarget) -> Result<VpcContext> {
+pub(super) fn vpc_context(target: &VpcTarget) -> Result<VpcContext> {
     let toml_path = find_toml_path()?;
     let Some(stage) = target.stage.as_deref() else {
         return match Settings::load_common_vpc(&toml_path)? {

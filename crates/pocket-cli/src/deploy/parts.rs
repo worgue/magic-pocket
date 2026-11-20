@@ -667,7 +667,7 @@ pub async fn run(part: DeployPart) -> Result<()> {
 }
 
 /// state の JSON の `resources.<kind>` (無ければ null)
-pub(super) fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Value> {
+pub(crate) fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serde_json::Value> {
     let text = std::fs::read_to_string(path)
         .with_context(|| format!("{} を読めません", path.display()))?;
     let mut state: serde_json::Value = serde_json::from_str(&text)
@@ -699,7 +699,7 @@ pub(crate) fn inbound_domain_deploy<'a>(
 }
 
 /// stage が管理する VPC (container と RDS が使うもの。名前の重複を除く)
-pub(super) fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
+pub(crate) fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
     let container_vpcs = ctx.container.values().filter_map(|c| c.vpc.as_ref());
     let rds_vpc = ctx.rds.as_ref().and_then(|rds| rds.vpc.as_ref());
     let mut vpcs: Vec<&VpcContext> = Vec::new();
@@ -711,11 +711,11 @@ pub(super) fn managed_vpcs(ctx: &Context) -> Vec<&VpcContext> {
     vpcs
 }
 
-pub(super) fn vpc_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsEfs<'_>, AwsVpcNetwork<'_>) {
+pub(crate) fn vpc_env(sdk: &SdkConfig) -> (AwsStacks<'_>, AwsEfs<'_>, AwsVpcNetwork<'_>) {
     (AwsStacks { sdk }, AwsEfs { sdk }, AwsVpcNetwork { sdk })
 }
 
-pub(super) fn vpc_deploy<'a>(
+pub(crate) fn vpc_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     efs: &'a AwsEfs<'a>,
     network: &'a AwsVpcNetwork<'a>,
@@ -728,13 +728,13 @@ pub(super) fn vpc_deploy<'a>(
     }
 }
 
-pub(super) fn rds_context(ctx: &Context) -> Result<&RdsContext> {
+pub(crate) fn rds_context(ctx: &Context) -> Result<&RdsContext> {
     ctx.rds
         .as_ref()
         .context("rds がこの stage に設定されていません。")
 }
 
-pub(super) fn rds_env<'a>(
+pub(crate) fn rds_env<'a>(
     sdk: &'a SdkConfig,
     region: &'a str,
 ) -> (AwsRds<'a>, AwsStacks<'a>, AwsStoredValues<'a>) {
@@ -745,7 +745,7 @@ pub(super) fn rds_env<'a>(
     )
 }
 
-pub(super) fn rds_deploy<'a>(
+pub(crate) fn rds_deploy<'a>(
     aws: &'a AwsRds<'a>,
     stacks: &'a AwsStacks<'a>,
     values: &'a AwsStoredValues<'a>,
@@ -758,13 +758,13 @@ pub(super) fn rds_deploy<'a>(
     }
 }
 
-pub(super) fn dsql_context(ctx: &Context) -> Result<&DsqlContext> {
+pub(crate) fn dsql_context(ctx: &Context) -> Result<&DsqlContext> {
     ctx.dsql
         .as_ref()
         .context("dsql がこの stage に設定されていません。")
 }
 
-pub(super) fn dsql_deploy<'a>(
+pub(crate) fn dsql_deploy<'a>(
     api: &'a AwsDsql<'a>,
     values: &'a AwsStoredValues<'a>,
 ) -> DsqlDeploy<'a, AwsDsql<'a>, AwsStoredValues<'a>> {
@@ -775,7 +775,7 @@ pub(super) fn dsql_deploy<'a>(
     }
 }
 
-pub(super) fn backup_context(ctx: &Context) -> Result<&BackupContext> {
+pub(crate) fn backup_context(ctx: &Context) -> Result<&BackupContext> {
     ctx.backup
         .as_ref()
         .context("backup がこの stage に設定されていません。")
@@ -783,7 +783,7 @@ pub(super) fn backup_context(ctx: &Context) -> Result<&BackupContext> {
 
 /// backup の対象 (service → cluster の ARN)。cluster が未作成の service と、
 /// pocket が管理しない RDS (managed = false) は入れない
-pub(super) async fn backup_targets(
+pub(crate) async fn backup_targets(
     sdk: &SdkConfig,
     ctx: &Context,
 ) -> Result<BTreeMap<String, String>> {
@@ -807,7 +807,7 @@ pub(super) async fn backup_targets(
     Ok(targets)
 }
 
-pub(super) fn cloudfront_env(
+pub(crate) fn cloudfront_env(
     sdk: &SdkConfig,
 ) -> (AwsStacks<'_>, AwsCloudFront<'_>, AwsSecretStore) {
     (
@@ -817,7 +817,7 @@ pub(super) fn cloudfront_env(
     )
 }
 
-pub(super) fn cloudfront_deploy<'a>(
+pub(crate) fn cloudfront_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsCloudFront<'a>,
     store: &'a AwsSecretStore,
@@ -830,14 +830,14 @@ pub(super) fn cloudfront_deploy<'a>(
     }
 }
 
-pub(super) fn find<'c>(ctx: &'c Context, container: &str) -> Result<&'c ContainerContext> {
+pub(crate) fn find<'c>(ctx: &'c Context, container: &str) -> Result<&'c ContainerContext> {
     ctx.container
         .get(container)
         .with_context(|| format!("container '{container}' がありません"))
 }
 
 /// AWS に繋いだ [`ContainerDeploy`] の材料
-pub(super) struct Env<'a> {
+pub(crate) struct Env<'a> {
     sdk: &'a SdkConfig,
     context_dir: std::path::PathBuf,
     account_id: String,
@@ -848,7 +848,7 @@ pub(super) struct Env<'a> {
 }
 
 impl<'a> Env<'a> {
-    pub(super) async fn new(
+    pub(crate) async fn new(
         sdk: &'a SdkConfig,
         ctx: &Context,
         toml_dir: &std::path::Path,
@@ -869,7 +869,7 @@ impl<'a> Env<'a> {
         })
     }
 
-    pub(super) fn aws(&self) -> AwsContainer<'_> {
+    pub(crate) fn aws(&self) -> AwsContainer<'_> {
         AwsContainer {
             build: BuildEnv {
                 sdk: self.sdk,
@@ -882,7 +882,7 @@ impl<'a> Env<'a> {
         }
     }
 
-    pub(super) fn deploy<'d>(
+    pub(crate) fn deploy<'d>(
         &'d self,
         aws: &'d AwsContainer<'d>,
     ) -> ContainerDeploy<'d, AwsContainer<'d>, AwsLambda, AwsSecretStore> {
@@ -898,7 +898,7 @@ impl<'a> Env<'a> {
 /// API で作る role の service
 const API_ROLE_SERVICES: &[&str] = &["codebuild.amazonaws.com", "backup.amazonaws.com"];
 
-pub(super) async fn roles_part(sdk: &SdkConfig, stage: &str, delete: bool) -> Result<()> {
+pub(crate) async fn roles_part(sdk: &SdkConfig, stage: &str, delete: bool) -> Result<()> {
     let (ctx, _) = load_context(stage)?;
     let general = ctx
         .general

@@ -36,6 +36,9 @@ pub async fn run(
     command: InboundCommand,
     sink: &mut dyn Sink,
 ) -> Result<()> {
+    if let InboundCommand::Destroy { yes } = command {
+        return super::write::inbound_destroy(&target.stage, &target.name, yes, sink).await;
+    }
     let (context, sdk) = load(&target.stage).await?;
     let Some(inlet) = context.inbound.get(&target.name) else {
         bail!("inbound.{} がありません", target.name);
@@ -116,6 +119,7 @@ pub async fn run(
             sink.print("原本に対応する受信情報を確認しました。");
             Ok(())
         }
+        InboundCommand::Destroy { .. } => unreachable!("先頭で処理する"),
     }
 }
 

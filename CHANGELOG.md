@@ -26,8 +26,12 @@
 - `pocket-rs resource` に読み取り・表示のコマンドを追加しました（`vpc` / `container` / `cloudfront` /
   `cloudfront-keys` / `cloudfront-waf` / `inbound` の `yaml`・`status`、`s3` / `cloudfront` の `context`、
   `rds` / `dsql` の `status`・`endpoint`、`container url` / `secrets list` / `status-env`、`image repo` / `uri`、
-  `inbound reconcile`）。Python 版 `pocket resource` と同じ出力で、Python 版も残ります。作成・更新・削除と
-  `neon` は引き続き Python 版です。
+  `inbound reconcile`）。Python 版 `pocket resource` と同じ出力で、Python 版も残ります。
+- `pocket-rs resource` に作成・更新・削除のコマンドを追加しました（`vpc` / `container` / `cloudfront` の
+  `create`・`update`・`destroy`、`s3` の `create`・`destroy`、`rds` / `dsql` / `cloudfront-keys` /
+  `cloudfront-waf` / `inbound` の `destroy`、`container reload-env` / `secrets create-pocket-managed` /
+  `delete-pocket-managed`、`cloudfront upload` / `prune`）。確認プロンプトと `-y` の扱いは Python 版と同じで、
+  処理は `pocket-rs deploy` / `destroy` と同じ実装です。`neon` と `dsql` の backup・restore は引き続き Python 版です。
   [pocket-rs resource](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-resource)
 
 ### Changed
@@ -84,6 +88,13 @@
   [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
 
 ### Fixed
+- `pocket resource cloudfront create` / `update` が secret を読まずに CloudFront の stack を作成・更新する
+  不具合を修正しました。`enable_origin_verify` を使う distribution は origin verify の header が空になり、
+  container 側の検証と一致しなくなっていました。`pocket deploy` と同じく secret を読んでから stack を書きます。
+- `pocket resource cloudfront prune` / `upload` が、`upload_dir` が無い（build していない）ときに空の
+  ディレクトリとして扱う不具合を修正しました。prune は S3 の全 key を旧版とみなして削除し、
+  `delete_stale = true` の route の upload も既存の key を全部削除していました。`upload_dir` が無ければ
+  エラーで止まります。
 - `pocket resource cloudfront status` / `yaml` と `pocket resource cloudfront-keys status` / `yaml` が、
   secret を読まずに template を描くため、`enable_origin_verify` や `signing_key` を使う stack を
   deploy 済みでも `REQUIRE_UPDATE` と表示する不具合を修正しました。`pocket status` と同じく

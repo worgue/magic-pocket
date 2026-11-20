@@ -13,7 +13,7 @@ use super::edge::{EdgeDeploy, EdgeWaits, EDGE_REGION};
 use super::efs::{self, AwsEfs};
 use super::inbound::AwsInbound;
 use super::inbound_domain::AwsInboundDomain;
-use super::interaction::Interaction;
+use super::interaction::{Interaction, Prompt as _};
 use super::migrations::{self, Repositories as _};
 use super::parts;
 use super::run::AwsRepositories;
@@ -67,6 +67,57 @@ pub async fn run(args: DestroyArgs) -> Result<()> {
         &mut Terminal::new(),
     )
     .await
+}
+
+/// container 関連のリソースだけを消す (Python 版 `pocket resource container destroy`)。
+///
+/// `pocket-rs destroy` と同じ手順 (stack の削除完了待ち・共有 ECR の保護・CodeBuild・
+/// log group の掃除) を使う。secret は `with_secrets` のときだけ消す
+pub async fn destroy_containers(
+    stage: &str,
+    with_secrets: bool,
+    yes: bool,
+    sink: &mut dyn Sink,
+) -> Result<()> {
+    let sdk = crate::aws_util::load_sdk().await;
+    let (ctx, _) = load_context(stage)?;
+    if ctx.container.is_empty() {
+        sink.warning("container is not configured for this stage");
+        return Ok(());
+    }
+    let mut ops = AwsDestroy {
+        sdk,
+        ctx,
+        prompt: Interaction { assume_yes: yes },
+    };
+    let facts = ops.container_facts().await?;
+    let targets = destroy::container_targets(&ops.ctx, &facts, with_secrets);
+    if targets.is_empty() {
+        sink.warning("削除対象のリソースが見つかりません。");
+        return Ok(());
+    }
+    sink.danger("以下のリソースを削除します:");
+    for target in &targets {
+        sink.info(&format!("  - {target}"));
+    }
+    sink.danger("この操作は取り消せません！");
+    let question = format!("stage '{stage}' の Container リソースを削除しますか？");
+    if !ops.prompt.confirm(&question, false)? {
+        anyhow::bail!("Aborted!");
+    }
+    let mut steps = vec![
+        Step::Containers,
+        Step::LegacyContainers,
+        Step::CodeBuild,
+        Step::LogGroups,
+    ];
+    if with_secrets {
+        steps.push(Step::Secrets);
+    }
+    for step in steps {
+        ops.step(step, sink).await?;
+    }
+    Ok(())
 }
 
 struct AwsDestroy {
@@ -156,7 +207,8 @@ impl AwsDestroy {
         Ok(cfn_status(description.as_ref())? != ResourceStatus::NoExist)
     }
 
-    async fn facts(&self, sink: &mut dyn Sink) -> Result<Facts> {
+    /// container 関連の事実だけを集める (`pocket resource container destroy` 用)
+    async fn container_facts(&self) -> Result<Facts> {
         let (sdk, ctx) = (&self.sdk, &self.ctx);
         let stacks = AwsStacks { sdk };
         let repos = AwsRepositories { sdk };
@@ -178,6 +230,13 @@ impl AwsDestroy {
             facts.legacy_ecr = migrations::legacy_ecr_repo_exists(ctx, &repos).await?;
             facts.codebuild = self.codebuild_exists().await?;
         }
+        Ok(facts)
+    }
+
+    async fn facts(&self, sink: &mut dyn Sink) -> Result<Facts> {
+        let (sdk, ctx) = (&self.sdk, &self.ctx);
+        let stacks = AwsStacks { sdk };
+        let mut facts = self.container_facts().await?;
         if let Some(backup) = ctx.backup.as_ref() {
             let api = AwsBackup {
                 sdk,

@@ -392,6 +392,12 @@ class CloudFront:
         if not route.upload_dir:
             raise RuntimeError("route.upload_dir is not set")
         local_dir = project_path(route.upload_dir)
+        if not local_dir.is_dir():
+            # 無い dir を空として扱うと、prune が S3 の全 key を旧版とみなして消す
+            raise RuntimeError(
+                "upload_dir '%s' がありません。build の出力先を確認してください。"
+                % local_dir
+            )
         files: dict[str, Path] = {}
         for file in local_dir.rglob("*"):
             if file.is_dir():

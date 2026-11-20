@@ -73,9 +73,12 @@ def context(stage, name):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def create(stage, name):
-    for cf in get_cloudfront_resources(stage, name):
+    context = Context.from_toml(stage=stage)
+    mediator = Mediator(context)
+    for cf in get_cloudfront_resources(stage, name, context):
         echo.info("[%s]" % cf.context.name)
-        cf.create()
+        # mediator を渡さないと origin verify 等の secret が template に入らない
+        cf.create(mediator)
     echo.success("cloudfront store was created")
 
 
@@ -101,7 +104,9 @@ def destroy(stage, name, yes):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def update(stage, name):
-    for cf in get_cloudfront_resources(stage, name):
+    context = Context.from_toml(stage=stage)
+    mediator = Mediator(context)
+    for cf in get_cloudfront_resources(stage, name, context):
         echo.info("[%s]" % cf.context.name)
         if cf.status == "NOEXIST":
             echo.warning("CloudFront resource has not created yet.")
@@ -114,7 +119,7 @@ def update(stage, name):
         if cf.status == "PROGRESS":
             echo.warning("CloudFront is updating. Please wait.")
             continue
-        cf.update()
+        cf.update(mediator)
 
 
 @cloudfront.command()

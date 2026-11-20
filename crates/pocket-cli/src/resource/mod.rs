@@ -17,6 +17,7 @@ mod edge;
 mod inbound;
 mod pyrepr;
 mod vpc;
+mod write;
 
 use anyhow::{bail, Result};
 use clap::{Args, Subcommand, ValueEnum};
@@ -123,6 +124,12 @@ pub enum VpcCommand {
     Yaml(VpcTarget),
     /// stack の状態を表示する
     Status(VpcTarget),
+    /// stack を作る (完了は待たない)
+    Create(VpcTarget),
+    /// stack を更新する (template が変わっていれば)
+    Update(VpcTarget),
+    /// stack と EFS を削除する (確認あり)
+    Destroy(VpcTarget),
 }
 
 #[derive(Subcommand)]
@@ -152,6 +159,36 @@ pub enum ContainerCommand {
         #[arg(long)]
         handler: Option<String>,
     },
+    /// stack を作る (image の build はしない)
+    Create(ContainerTarget),
+    /// image の差し替え・stack の更新・DEPLOY_HASH の同期
+    Update(ContainerTarget),
+    /// Container 関連リソース (全 container) を削除する
+    ///
+    /// トップレベル `pocket-rs destroy` と同じ実装を使う (共有 ECR の削除ガード /
+    /// stack 削除完了待ち / CodeBuild / log group 掃除を含む)
+    Destroy {
+        #[command(flatten)]
+        stage: Stage,
+        /// pocket managed secret も削除する
+        #[arg(long)]
+        with_secrets: bool,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// SSM/Secrets Manager の最新値で Lambda env を即時更新する (CFn を介さない)
+    ///
+    /// deploy 時の CFn snapshot を base に、secrets (managed + user) の最新値で上書きして
+    /// Lambda に反映する。warm container 内の古い環境変数もリセットされる。
+    /// 次の deploy で CFn の値に戻る
+    ReloadEnv {
+        #[command(flatten)]
+        target: ContainerTarget,
+        /// 特定 handler のみ対象 (省略時は全 handler)
+        #[arg(long)]
+        handler: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -164,6 +201,10 @@ pub enum SecretsCommand {
         #[arg(long)]
         show_values: bool,
     },
+    /// pocket managed secret を作る (既にあるものは作り直さない)
+    CreatePocketManaged(Stage),
+    /// pocket managed secret を削除する (確認あり)
+    DeletePocketManaged(Stage),
 }
 
 #[derive(Subcommand)]
@@ -172,6 +213,11 @@ pub enum S3Command {
     Context(Stage),
     /// bucket の有無を表示する
     Status(Stage),
+    /// S3 バケットを作成、または既存バケットの設定 (PAB / CORS / versioning /
+    /// lifecycle) を冪等に reconcile する
+    Create(Stage),
+    /// bucket を中身ごと削除する (確認あり)
+    Destroy(Stage),
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -192,6 +238,8 @@ pub enum DbCommand {
         #[arg(long = "format", value_enum, default_value = "text")]
         format: Format,
     },
+    /// 確認付き削除
+    Destroy(Stage),
 }
 
 #[derive(Subcommand)]
@@ -202,6 +250,43 @@ pub enum CloudFrontCommand {
     Context(EdgeTarget),
     /// stack の状態を表示する
     Status(EdgeTarget),
+    /// stack を作る (create と update は同じ手順。完了を待って bucket policy と KVS を書く)
+    Create(EdgeTarget),
+    /// stack を更新する
+    Update(EdgeTarget),
+    /// distribution を削除する (bucket は残す)
+    Destroy {
+        #[command(flatten)]
+        target: EdgeTarget,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// build / upload_dir を持つ route を build して S3 へ上げる
+    Upload {
+        #[command(flatten)]
+        target: EdgeTarget,
+        /// build を実行しない
+        #[arg(long)]
+        skip_build: bool,
+    },
+    /// ローカルの成果物に無い S3 key (旧版) を削除する
+    ///
+    /// delete_stale = false (content_hash の既定) で残した旧版の掃除用。ビルドは
+    /// 実行しないので、upload_dir を最新のビルドにしてから実行する
+    Prune {
+        #[command(flatten)]
+        target: EdgeTarget,
+        /// 対象 route の path_pattern (省略時は build / upload_dir を持つ全 route)
+        #[arg(long = "route")]
+        path_pattern: Option<String>,
+        /// 削除せず一覧だけ表示
+        #[arg(long)]
+        dry_run: bool,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -210,6 +295,14 @@ pub enum EdgeCommand {
     Yaml(EdgeTarget),
     /// stack の状態を表示する
     Status(EdgeTarget),
+    /// stack を削除する
+    Destroy {
+        #[command(flatten)]
+        target: EdgeTarget,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -231,6 +324,15 @@ pub enum InboundCommand {
     Yaml,
     /// 原本に対応する受信情報の欠落を検出する（復元・推測はしない）
     Reconcile,
+    /// 無効化・配送猶予・滞留解消後に自分のルールとスタックを削除する
+    ///
+    /// 同じdomainを使う受信口が他に残っていなければ、domainのstack
+    /// (SES identity / DKIM / MX) も削除する
+    Destroy {
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 pub async fn run(command: ResourceCommand) -> Result<()> {

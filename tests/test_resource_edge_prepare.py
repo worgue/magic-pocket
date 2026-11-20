@@ -7,6 +7,7 @@ template hash と一致せず、毎回 REQUIRE_UPDATE になる (`pocket status`
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -63,3 +64,44 @@ def test_prepare_before_render(monkeypatch, module, group, getter, command):
     assert events == ["prepare", "status" if command == "status" else "yaml"]
     # Context は 1 回だけ作る
     assert contexts == ["dev"]
+
+
+@pytest.mark.parametrize("command", ["create", "update"])
+def test_cloudfront_create_update_pass_mediator(monkeypatch, command):
+    """mediator を渡さないと origin verify 等の secret が template に入らない"""
+    received: list[object] = []
+
+    class _Fake:
+        context = SimpleNamespace(name="web")
+        status = "COMPLETED"
+
+        def create(self, mediator=None):
+            received.append(mediator)
+
+        def update(self, mediator=None):
+            received.append(mediator)
+
+    monkeypatch.setattr(cloudfront_cli.Context, "from_toml", lambda stage: "context")
+    monkeypatch.setattr(cloudfront_cli, "Mediator", lambda context: "mediator")
+    monkeypatch.setattr(
+        cloudfront_cli, "get_cloudfront_resources", lambda s, n, c: [_Fake()]
+    )
+    result = CliRunner().invoke(cloudfront_cli.cloudfront, [command, "--stage", "dev"])
+    assert result.exit_code == 0, result.output
+    assert received == ["mediator"]
+
+
+def test_local_files_requires_upload_dir(tmp_path, monkeypatch):
+    """無い upload_dir を空として扱うと、prune / delete_stale が全 key を消す"""
+    from pocket_cli.resources import cloudfront as cloudfront_resource
+
+    monkeypatch.setattr(
+        cloudfront_resource, "project_path", lambda path: tmp_path / path
+    )
+    route: Any = SimpleNamespace(upload_dir="build/assets")
+    with pytest.raises(RuntimeError, match="build の出力先を確認してください"):
+        cloudfront_resource.CloudFront._local_files(route, "assets")
+    (tmp_path / "build/assets").mkdir(parents=True)
+    (tmp_path / "build/assets/a.js").write_text("x")
+    files = cloudfront_resource.CloudFront._local_files(route, "assets")
+    assert list(files) == ["assets/a.js"]

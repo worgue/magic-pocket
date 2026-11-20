@@ -89,6 +89,23 @@ pub async fn run_cloudfront(command: CloudFrontCommand, sink: &mut dyn Sink) -> 
     match command {
         CloudFrontCommand::Yaml(target) => yaml(Kind::CloudFront, &target, sink).await,
         CloudFrontCommand::Status(target) => status(Kind::CloudFront, &target, sink).await,
+        CloudFrontCommand::Create(target) => super::write::cloudfront_create(&target, sink).await,
+        CloudFrontCommand::Update(target) => super::write::cloudfront_update(&target, sink).await,
+        CloudFrontCommand::Destroy { target, yes } => {
+            super::write::cloudfront_destroy(&target, yes, sink).await
+        }
+        CloudFrontCommand::Upload { target, skip_build } => {
+            super::write::cloudfront_upload(&target, skip_build, sink).await
+        }
+        CloudFrontCommand::Prune {
+            target,
+            path_pattern,
+            dry_run,
+            yes,
+        } => {
+            super::write::cloudfront_prune(&target, path_pattern.as_deref(), dry_run, yes, sink)
+                .await
+        }
         CloudFrontCommand::Context(target) => {
             let (context, _sdk) = load(&target.stage.stage).await?;
             for cf in Kind::CloudFront.targets(&context, target.name.as_deref())? {
@@ -113,6 +130,9 @@ async fn edge(kind: Kind, command: EdgeCommand, sink: &mut dyn Sink) -> Result<(
     match command {
         EdgeCommand::Yaml(target) => yaml(kind, &target, sink).await,
         EdgeCommand::Status(target) => status(kind, &target, sink).await,
+        EdgeCommand::Destroy { target, yes } => {
+            super::write::edge_destroy(kind == Kind::Keys, &target, yes, sink).await
+        }
     }
 }
 

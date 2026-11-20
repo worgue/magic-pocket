@@ -350,7 +350,7 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
 | `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方）。`pocket django deploy` / `promote` は Python 版のみ |
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
-| `resource` の読み取り系（`status` / `yaml` / `context` / `endpoint` / `container url` / `container secrets list` / `container status-env` / `image` / `inbound status`・`yaml`・`reconcile`） | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
+| `resource`（`neon`、`dsql` の backup・restore、`inbound` の `copy`・`import`・`redrive` を除く） | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
 | `backup` / `resource`（上記以外）/ `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
@@ -506,7 +506,7 @@ pocket-rs destroy --stage=dev
 
 ### pocket-rs resource {#pocket-rs-resource}
 
-リソース単位で状態・テンプレート・接続情報を表示します。コマンド名・オプション・出力は Python 版の [リソースコマンド](#resource-commands)（`pocket resource …`）と同じです。AWS には読み取りだけで接続します。
+リソース単位で状態・テンプレート・接続情報を表示し、作成・更新・削除を行います。コマンド名・オプション・出力・確認プロンプトは Python 版の [リソースコマンド](#resource-commands)（`pocket resource …`）と同じです。作成・更新・削除は `pocket-rs deploy` / `destroy` と同じ実装を使います。
 
 ```bash
 pocket-rs resource container status --stage=dev
@@ -527,16 +527,18 @@ pocket-rs resource inbound --stage=dev --name=inbox status
 
 | リソース | コマンド |
 |---|---|
-| `vpc` | `yaml` / `status`（`--stage` を省略すると共通の `[vpc]` を使う） |
-| `container` | `yaml` / `status` / `url`（`--openpath`）/ `secrets list`（`--show-values`）/ `status-env`（`--handler`）。`--container` は container が 1 つなら省略可 |
+| `vpc` | `yaml` / `status` / `create` / `update` / `destroy`（`--stage` を省略すると共通の `[vpc]` を使う） |
+| `container` | `yaml` / `status` / `url`（`--openpath`）/ `create` / `update` / `destroy`（`--with-secrets` / `-y`）/ `reload-env` / `status-env`（`--handler`）/ `secrets list`（`--show-values`）・`create-pocket-managed`・`delete-pocket-managed`。`--container` は container が 1 つなら省略可 |
 | `image` | `repo` / `uri` |
-| `s3` | `context` / `status` |
-| `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`） |
-| `cloudfront` | `yaml` / `context` / `status`（`--name` を省略すると全部） |
-| `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` |
-| `inbound` | `status` / `yaml` / `reconcile`（`--stage` と `--name` はサブコマンドの前に書く） |
+| `s3` | `context` / `status` / `create` / `destroy` |
+| `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`）/ `destroy` |
+| `cloudfront` | `yaml` / `context` / `status` / `create` / `update` / `destroy`（`-y`）/ `upload`（`--skip-build`）/ `prune`（`--route` / `--dry-run` / `-y`）。`--name` を省略すると全部 |
+| `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` / `destroy`（`-y`） |
+| `inbound` | `status` / `yaml` / `reconcile` / `destroy`（`-y`）。`--stage` と `--name` はサブコマンドの前に書く |
 
-作成・更新・削除のコマンドと `neon`、受信口の `copy` / `import` / `redrive` は、まだ Python 版 `pocket resource` だけです。
+削除は確認してから行います。`vpc` / `s3` / `rds` / `dsql` の `destroy` と `container secrets delete-pocket-managed` には `-y` が無く、必ず確認します（Python 版と同じ）。標準入力が閉じている（非対話）ときは何も消さずに終了します。
+
+`neon`、`dsql` の `backup` / `restore`、受信口の `copy` / `import` / `redrive` は、まだ Python 版 `pocket resource` だけです。
 
 Python 版との違いは次のとおりです。
 
