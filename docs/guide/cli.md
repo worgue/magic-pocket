@@ -154,7 +154,6 @@ pocket destroy --stage=dev
 | `--without-secrets` | pocket管理シークレットを削除せずに残す |
 | `--with-state-bucket` | ステートバケットも削除 |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
-| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 デフォルトでpocket管理シークレット（SSM / Secrets Manager）も削除されます。
 残したい場合は `--without-secrets` を指定してください。
@@ -225,7 +224,6 @@ pocket backup cleanup --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
-| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 削除対象はこの stage の pocket 管理 vault（`{stage}-{project}-{namespace}-backup`）にある、**現存する**対象 DB（dsql / managed rds）の recovery point です。plan（スケジュール）には触りません。`--vault` で利用者の vault に取ったオンデマンドバックアップは利用者の管理物とみなし削除しません。削除済み cluster の recovery point は ARN で引けないため対象外です（AWS Backup コンソールから削除してください）。
 
@@ -691,7 +689,6 @@ pocket django resetdb --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--yes`, `-y` | 確認プロンプトをスキップ |
-| `--skip-migrate` | `migrate` を実行しない（確認も出さない）。`-y` と併用可 |
 
 リセット後は `pocket django manage migrate --stage=dev` でマイグレーションをやり直してください。
 
