@@ -2386,7 +2386,7 @@ dependencies = [
  "aws-sdk-sts",
  "aws-sdk-wafv2",
  "aws-sigv4",
- "base64 0.22.1",
+ "base64 0.23.1",
  "clap",
  "flate2",
  "hex",
