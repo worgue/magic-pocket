@@ -40,6 +40,12 @@
   `pocket-rs cleanup-deprecated` を追加しました。出力・確認プロンプトは Python 版と同じで、Python 版も残ります。
   `neon` の API key は Python 版と同じく環境変数 `NEON_API_KEY` から読みます。
   `neon` は実験的な扱いで、Rust 版は Neon の実アカウントでは確認していません（要求と応答の分岐はテストで確認）。
+- `pocket-rs waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`）と `pocket-rs django`
+  （`init` / `manage` / `resetdb`）を追加しました。出力・確認プロンプトは Python 版 `pocket waf` /
+  `pocket django` と同じで、Python 版も残ります。`pocket-rs django` はローカルの Django を読み込まないので、
+  Django が入っていない環境でも動きます（`deploy` / `promote` / `deploystatic` などは引き続き Python 版です）。
+  [pocket-rs waf](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-waf) /
+  [pocket-rs django](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-django)
 
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。

@@ -808,6 +808,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-wafv2"
+version = "1.144.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f9ee7d9da3a332866db5721cefbe635d35943ba259a3c0afa0fe11f3f04ef7"
+dependencies = [
+ "arc-swap",
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-schema",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sigv4"
 version = "1.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2359,6 +2384,7 @@ dependencies = [
  "aws-sdk-sqs",
  "aws-sdk-ssm",
  "aws-sdk-sts",
+ "aws-sdk-wafv2",
  "aws-sigv4",
  "base64 0.22.1",
  "clap",

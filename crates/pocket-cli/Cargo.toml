@@ -97,3 +97,5 @@ aws-sdk-sesv2 = { version = "1", default-features = false, features = ["default-
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # destroy: Lambda が自動で作った log group を消す
 aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
+# `pocket-rs waf` (IPSet の読み書きと rate rule の managed keys)。rustc の最大メモリは約 1.0GB
+aws-sdk-wafv2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

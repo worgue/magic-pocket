@@ -10,6 +10,7 @@ mod aws_util;
 mod backup_cleanup;
 mod context;
 mod deploy;
+mod django;
 mod ec2;
 mod image_build;
 mod mapfile;
@@ -19,6 +20,7 @@ mod resource;
 mod sources;
 mod stack;
 mod status;
+mod waf;
 
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -162,6 +164,16 @@ enum Top {
     Resource {
         #[command(subcommand)]
         command: resource::ResourceCommand,
+    },
+    /// Django の運用 (雛形の生成・management command の実行・DB のリセット)
+    Django {
+        #[command(subcommand)]
+        command: django::DjangoCommand,
+    },
+    /// CloudFront の WAF の運用 (IP allowlist・rate limit)
+    Waf {
+        #[command(subcommand)]
+        command: waf::WafCommand,
     },
     /// deploy の部品を 1 つずつ実行する (e2e 用の非表示コマンド)
     #[command(hide = true)]
@@ -395,6 +407,8 @@ async fn run(cli: Cli) -> Result<()> {
             .await
         }
         Top::Resource { command } => return resource::run(command).await,
+        Top::Waf { command } => return waf::run(command).await,
+        Top::Django { command } => return django::run(command).await,
         Top::Backup { command } => {
             let mut sink = status::sink::Terminal::new();
             return backup_cleanup::run_backup(command, &mut sink).await;

@@ -20,6 +20,8 @@ pub enum Style {
     Danger,
     Log,
     Plain,
+    /// Python の `print(text, end="", flush=True)` (stdout、改行しない)
+    Inline,
 }
 
 impl Style {
@@ -32,7 +34,7 @@ impl Style {
             Style::Warning => Some("35"),
             Style::Danger => Some("1;31"),
             Style::Log => Some("2"),
-            Style::Plain => None,
+            Style::Plain | Style::Inline => None,
         }
     }
 }
@@ -59,6 +61,10 @@ pub trait Sink {
     fn print(&mut self, text: &str) {
         self.emit(Stream::Stdout, Style::Plain, text);
     }
+    /// Python の `print(text, end="", flush=True)`
+    fn print_inline(&mut self, text: &str) {
+        self.emit(Stream::Stdout, Style::Inline, text);
+    }
 }
 
 /// 端末への出力。色は stderr が端末のときだけ付ける
@@ -77,6 +83,10 @@ impl Terminal {
 impl Sink for Terminal {
     fn emit(&mut self, stream: Stream, style: Style, text: &str) {
         match stream {
+            Stream::Stdout if style == Style::Inline => {
+                print!("{text}");
+                let _ = std::io::stdout().flush();
+            }
             Stream::Stdout => println!("{text}"),
             Stream::Stderr => {
                 // stdout と行が前後しないよう、先に stdout を流す

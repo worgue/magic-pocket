@@ -350,11 +350,13 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
 | `resource` | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
 | `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket-rs backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `waf` / `permissions` / `migrate` | Python 版 `pocket` | |
+| `waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`） | **Rust 版 `pocket-rs waf`** | Python 版 `pocket waf` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `permissions` / `migrate` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
-| `django` | Python 版 `pocket` | |
+| `django init` / `manage` / `resetdb` | **Rust 版 `pocket-rs django`** | Python 版 `pocket django` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `django deploy` / `promote` / `build` / `deploystatic` / `storage upload` | Python 版 `pocket` | |
 
 移植が進んだらこの表を更新します。
 
@@ -551,6 +553,42 @@ Python 版との違いは次のとおりです。
 - `dsql restore` / `restore-status` で、切り替えの後に新しい cluster が `Name` タグで見つからないときは、endpoint を公開せずにエラーで止まります（`restore-status` の再実行で続きから進みます）
 
 `backup cleanup` と `cleanup-deprecated` も Rust 版があります（`pocket-rs backup cleanup --stage=dev` / `pocket-rs cleanup-deprecated --stage=dev`）。オプション・出力・確認は [pocket backup cleanup](#pocket-backup-cleanup) / [pocket cleanup-deprecated](#pocket-cleanup-deprecated) と同じです。
+
+### pocket-rs waf {#pocket-rs-waf}
+
+CloudFront の WAF の IP allowlist（IPSet の中身）と、レート超過として追跡中の IP を扱います。コマンド名・オプション・出力・確認は Python 版 `pocket waf …` と同じです（使い方は [設定ガイドの waf](configuration.md#waf)）。
+
+```bash
+pocket-rs waf ip list --name=admin --stage=dev
+pocket-rs waf ip add self --name=admin --stage=dev
+pocket-rs waf ip add 203.0.113.0/24 --name=admin --stage=dev
+pocket-rs waf ip remove 203.0.113.0/24 --name=admin --stage=dev
+pocket-rs waf ip clear --name=admin --stage=dev     # 確認あり (--yes で省略)
+pocket-rs waf ratelimit list --name=admin --stage=dev
+```
+
+`ratelimit list` は pocket.toml の宣言ではなく、deploy 済みの WebACL の rate rule を読みます。IPSet の更新は LockToken を付けて行い、別の更新と競合したとき（`WAFOptimisticLockException`）は再試行せずにエラーで止まります（Python 版と同じ。もう一度実行してください）。
+
+Python 版との違いは、`--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときに入力を求めずエラーで止まることです。
+
+### pocket-rs django {#pocket-rs-django}
+
+Django の [`init`](#pocket-django-init) / [`manage`](#pocket-django-manage) / [`resetdb`](#pocket-django-resetdb) の Rust 版です。コマンド名・オプション・出力・確認は Python 版 `pocket django …` と同じです。ローカルの Django を読み込まないので、Django が入っていない環境でも動きます。`deploy` / `promote` / `build` / `deploystatic` / `storage upload` は Python 版だけです。
+
+```bash
+pocket-rs django init
+pocket-rs django manage migrate --stage=dev
+pocket-rs django manage createsuperuser --username=admin --noinput --stage=dev
+pocket-rs django resetdb --stage=dev
+```
+
+`manage` は Python 版と同じく、management command の handler を非同期で呼び出し、CloudWatch Logs の出力を表示します。handler が成功の印を出さないまま終わったとき・`--timeout-seconds`（既定 120 秒）までに終わらなかったときは終了コード 1 で止まります。`--stage` と `--timeout-seconds` は command の後ろに書いても読みます（`--` より後ろは command にそのまま渡します）。
+
+Python 版との違いは次のとおりです。
+
+- `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります
+- `init` は django-environ が入っているかを project の Python（`uv` があれば `uv run python`、無ければ `python3` / `python`）に聞きます。Python 版は pocket を動かしている Python で確かめます
+- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
 
 ### pocket-rs version {#pocket-rs-version}
 
@@ -1046,7 +1084,7 @@ pocket resource cloudfront-keys yaml --stage=dev --name=media
 
 ### cloudfront_waf
 
-CloudFront にアタッチする WAFv2 (IP allowlist / レートリミット) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。IPSet の中身の更新は `pocket waf ip ...`、レート超過として追跡中の IP の表示は `pocket waf ratelimit list` で行います（[設定ガイドの waf](configuration.md#waf) 参照）。
+CloudFront にアタッチする WAFv2 (IP allowlist / レートリミット) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。IPSet の中身の更新は `pocket waf ip ...`、レート超過として追跡中の IP の表示は `pocket waf ratelimit list` で行います（Rust 版は [`pocket-rs waf`](#pocket-rs-waf)。[設定ガイドの waf](configuration.md#waf) 参照）。
 
 ```bash
 # 状態確認

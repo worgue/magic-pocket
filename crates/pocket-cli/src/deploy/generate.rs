@@ -52,6 +52,11 @@ fn random_string(length: i64, chars: &str) -> Result<String> {
     Ok(out)
 }
 
+/// Django の `get_random_secret_key()` (50 文字。文字の集合は password と同じ)
+pub fn django_secret_key() -> Result<String> {
+    random_string(50, PASSWORD_CHARS)
+}
+
 /// Aurora PostgreSQL の master password (Python の `_generate_master_password`)。
 ///
 /// master password には `/` `"` `@` と空白を使えない。quote の事故を避けるため `'` `\\`
