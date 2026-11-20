@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::context::VpcContext;
 use crate::error::{from_serde, path, SettingsError};
 use crate::model::cloudfront::reject_legacy_route_keys;
 use crate::model::misc::fill_default_scheduler;
@@ -40,6 +41,55 @@ impl Settings {
             project_name_fallback: project_name_fallback(&cwd),
         };
         Settings::from_parts(&text, stage, &ctx)
+    }
+
+    /// stage を指定しないときの `[vpc]` (Python の `VpcContext.from_toml`)。
+    ///
+    /// `[general]` と top-level の `[vpc]` だけを読み、stage の上書きは見ない。
+    /// `[vpc]` が無ければ `None`
+    pub fn load_common_vpc(toml_path: &Path) -> Result<Option<VpcContext>, SettingsError> {
+        let text = std::fs::read_to_string(toml_path).map_err(|e| {
+            SettingsError::value(
+                Vec::new(),
+                format!("{} を読めません: {e}", toml_path.display()),
+            )
+        })?;
+        let cwd = std::env::current_dir()
+            .map_err(|e| SettingsError::value(Vec::new(), format!("cwd を取得できません: {e}")))?;
+        let ctx = LoadContext {
+            project_name_fallback: project_name_fallback(&cwd),
+        };
+        Settings::common_vpc_from_parts(&text, &ctx)
+    }
+
+    /// stage の `[vpc]` の Context (Python の `VpcContext.from_settings`)。宣言が無ければ `None`
+    pub fn vpc_context(&self) -> Option<VpcContext> {
+        self.vpc
+            .as_ref()
+            .map(|vpc| VpcContext::from_settings(vpc, &self.general))
+    }
+
+    /// [`Settings::load_common_vpc`] の純粋層
+    pub fn common_vpc_from_parts(
+        toml_text: &str,
+        ctx: &LoadContext,
+    ) -> Result<Option<VpcContext>, SettingsError> {
+        let data: toml::Table =
+            toml::from_str(toml_text).map_err(|e| SettingsError::syntax(e.to_string()))?;
+        let stages = stages(&data)?;
+        let Some(stage) = stages.first() else {
+            return Ok(None);
+        };
+        // stage の table を落とした最小の toml を、通常の読み込みに通す
+        let mut minimal = toml::Table::new();
+        for key in ["general", "vpc"] {
+            if let Some(value) = data.get(key) {
+                minimal.insert(key.to_string(), value.clone());
+            }
+        }
+        let text = toml::to_string(&minimal).map_err(|e| SettingsError::syntax(e.to_string()))?;
+        let (settings, _) = Settings::from_parts(&text, stage, ctx)?;
+        Ok(settings.vpc_context())
     }
 
     /// toml の本文と明示の入力だけから読む (ファイル・環境を見ない)。
@@ -314,6 +364,26 @@ mod tests {
     }
 
     const BASE: &str = "[general]\nregion = \"r\"\nstages = [\"dev\"]\n";
+
+    #[test]
+    fn test_common_vpc_ignores_stage_override() {
+        let ctx = LoadContext {
+            project_name_fallback: "prj".to_string(),
+        };
+        let text = "[general]\nregion = \"ap-northeast-1\"\nstages = [\"prd\", \"dev\"]\n\
+                    [vpc]\nref = \"main\"\nzone_suffixes = [\"a\"]\nnat_gateway = false\ninternet_gateway = false\n\
+                    [prd.vpc]\nnat_gateway = true\ninternet_gateway = true\n\
+                    [container.web]\nhandlers = {}\n";
+        let vpc = Settings::common_vpc_from_parts(text, &ctx)
+            .unwrap()
+            .expect("[vpc] がある");
+        assert_eq!(vpc.name, "main-pocket");
+        assert!(!vpc.nat_gateway);
+        assert_eq!(vpc.region, "ap-northeast-1");
+        assert!(Settings::common_vpc_from_parts(BASE, &ctx)
+            .unwrap()
+            .is_none());
+    }
 
     #[test]
     fn test_error_path_and_kind() {

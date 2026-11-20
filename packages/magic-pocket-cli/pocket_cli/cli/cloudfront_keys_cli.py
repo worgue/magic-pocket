@@ -3,6 +3,7 @@ import click
 from pocket.context import Context
 from pocket.utils import echo
 from pocket_cli.cli.resource_helper import require_configured
+from pocket_cli.mediator import Mediator
 from pocket_cli.resources.cloudfront_keys import CloudFrontKeys
 
 
@@ -11,8 +12,9 @@ def cloudfront_keys():
     pass
 
 
-def get_cloudfront_keys_resources(stage, name=None):
-    context = Context.from_toml(stage=stage)
+def get_cloudfront_keys_resources(stage, name=None, context: Context | None = None):
+    if context is None:
+        context = Context.from_toml(stage=stage)
     require_configured(
         context.cloudfront, "cloudfront is not configured for this stage"
     )
@@ -28,11 +30,25 @@ def get_cloudfront_keys_resources(stage, name=None):
     return results
 
 
+def _prepared_cloudfront_keys_resources(stage, name=None):
+    """署名の公開鍵を managed secret から読んだ CloudFrontKeys。
+
+    status / yaml は deploy と同じ template を描く必要がある。公開鍵を読まずに
+    描くと deploy 済みの hash と一致せず、毎回 REQUIRE_UPDATE になる。
+    """
+    context = Context.from_toml(stage=stage)
+    resources = get_cloudfront_keys_resources(stage, name, context)
+    mediator = Mediator(context)
+    for cfk in resources:
+        cfk.prepare_deploy(mediator)
+    return resources
+
+
 @cloudfront_keys.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml(stage, name):
-    for cfk in get_cloudfront_keys_resources(stage, name):
+    for cfk in _prepared_cloudfront_keys_resources(stage, name):
         echo.info("[%s]" % cfk.context.name)
         print(cfk.stack.yaml)
 
@@ -50,7 +66,7 @@ def yaml_diff(stage, name):
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def status(stage, name):
-    for cfk in get_cloudfront_keys_resources(stage, name):
+    for cfk in _prepared_cloudfront_keys_resources(stage, name):
         echo.info("[%s]" % cfk.context.name)
         if cfk.status == "COMPLETED":
             echo.success("COMPLETED")

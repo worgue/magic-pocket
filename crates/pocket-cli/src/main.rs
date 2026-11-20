@@ -14,6 +14,7 @@ mod image_build;
 mod mapfile;
 mod publisher;
 mod release;
+mod resource;
 mod sources;
 mod stack;
 mod status;
@@ -127,6 +128,11 @@ enum Top {
         /// 確認プロンプトを自動で承認する (backup のデータは `-y` では削除しない)
         #[arg(long, short = 'y')]
         yes: bool,
+    },
+    /// resource 単位の操作 (状態・template・接続情報の表示など)
+    Resource {
+        #[command(subcommand)]
+        command: resource::ResourceCommand,
     },
     /// deploy の部品を 1 つずつ実行する (e2e 用の非表示コマンド)
     #[command(hide = true)]
@@ -359,6 +365,7 @@ async fn run(cli: Cli) -> Result<()> {
             })
             .await
         }
+        Top::Resource { command } => return resource::run(command).await,
         Top::DeployParts { part } => return deploy::parts::run(part).await,
         Top::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));

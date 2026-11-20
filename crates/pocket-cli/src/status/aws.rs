@@ -68,7 +68,11 @@ impl<'a> AwsEvaluator<'a> {
 
     // ---- stack ----
 
-    async fn describe(&mut self, region: &str, name: &str) -> Result<Option<StackDescription>> {
+    pub(crate) async fn describe(
+        &mut self,
+        region: &str,
+        name: &str,
+    ) -> Result<Option<StackDescription>> {
         let key = (region.to_string(), name.to_string());
         if let Some(found) = self.stacks.get(&key) {
             return Ok(found.clone());
@@ -119,6 +123,16 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
+        let template = self.waf_template(cf, sink).await?;
+        stack_status(description.as_ref(), &template)
+    }
+
+    /// WAF の template (allow secret の値を store から読んで描く)
+    pub(crate) async fn waf_template(
+        &mut self,
+        cf: &CloudFrontContext,
+        sink: &mut dyn Sink,
+    ) -> Result<StackTemplate> {
         let keys: &[String] = cf
             .waf
             .as_ref()
@@ -134,7 +148,7 @@ impl<'a> AwsEvaluator<'a> {
                 }
             }
         }
-        stack_status(description.as_ref(), &cloudfront::waf_stack(cf, &values)?)
+        cloudfront::waf_stack(cf, &values)
     }
 
     async fn keys(
@@ -147,8 +161,18 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
+        let template = self.keys_template(cf, sink).await?;
+        stack_status(description.as_ref(), &template)
+    }
+
+    /// signing key の template (公開鍵を managed secret から読んで描く)
+    pub(crate) async fn keys_template(
+        &mut self,
+        cf: &CloudFrontContext,
+        sink: &mut dyn Sink,
+    ) -> Result<StackTemplate> {
         let pem = self.signing_public_key_pem(cf, sink).await?;
-        stack_status(description.as_ref(), &cloudfront::keys_stack(cf, &pem)?)
+        cloudfront::keys_stack(cf, &pem)
     }
 
     /// managed secret から署名用の公開鍵 (PEM) を読む。無ければ空文字
@@ -178,6 +202,16 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
+        let template = self.cloudfront_template(cf, sink).await?;
+        stack_status(description.as_ref(), &template)
+    }
+
+    /// CloudFront の template (ACM・WAF の output と origin verify の secret を引いて描く)
+    pub(crate) async fn cloudfront_template(
+        &mut self,
+        cf: &CloudFrontContext,
+        sink: &mut dyn Sink,
+    ) -> Result<StackTemplate> {
         self.warn_kvs_secrets(cf, sink).await?;
         let origin_verify_secret = self.origin_verify_secret(cf, sink).await?;
         let acm_output = match cf.domain.as_deref().filter(|d| !d.is_empty()) {
@@ -199,10 +233,7 @@ impl<'a> AwsEvaluator<'a> {
             waf_output,
             origin_verify_secret,
         };
-        stack_status(
-            description.as_ref(),
-            &cloudfront::cloudfront_stack(cf, &inputs)?,
-        )
+        cloudfront::cloudfront_stack(cf, &inputs)
     }
 
     /// token_secret / basic_auth は template には入らない (deploy 後に KVS へ書く) が、
@@ -248,33 +279,13 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
-        let efs_id = match v.efs.as_ref() {
-            Some(efs) => self.efs_filesystem_id(&efs.region, &efs.name).await?,
-            None => None,
-        };
-        stack_status(description.as_ref(), &vpc::vpc_stack(v, efs_id.as_deref())?)
+        let template = self.vpc_template(v).await?;
+        stack_status(description.as_ref(), &template)
     }
 
-    /// Name タグが一致する EFS の id
-    async fn efs_filesystem_id(&self, region: &str, name: &str) -> Result<Option<String>> {
-        let client = aws_sdk_efs::Client::new(&self.config(region));
-        let response = client
-            .describe_file_systems()
-            .send()
-            .await
-            .map_err(|e| sdk_error("efs describe_file_systems", &e))?;
-        if response.next_marker().is_some() {
-            bail!("Your efs number is over 100. Please implement here.");
-        }
-        Ok(response
-            .file_systems()
-            .iter()
-            .find(|fs| {
-                fs.tags()
-                    .iter()
-                    .any(|tag| tag.key() == "Name" && tag.value() == name)
-            })
-            .map(|fs| fs.file_system_id().to_string()))
+    /// VPC の template (EFS の filesystem id を引いて描く)
+    pub(crate) async fn vpc_template(&self, v: &VpcContext) -> Result<StackTemplate> {
+        vpc_template(&self.sdk, v).await
     }
 
     async fn inbound_domain(
@@ -286,6 +297,16 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
+        let stack = self.inbound_domain_template(domain, sink).await?;
+        stack_status(description.as_ref(), &stack)
+    }
+
+    /// 受信ドメインの template (manage_dns なら hosted zone を引いて描く)
+    pub(crate) async fn inbound_domain_template(
+        &mut self,
+        domain: &InboundDomainContext,
+        sink: &mut dyn Sink,
+    ) -> Result<StackTemplate> {
         let zone = if domain.manage_dns {
             Some(
                 self.hosted_zone_id(
@@ -298,8 +319,7 @@ impl<'a> AwsEvaluator<'a> {
         } else {
             None
         };
-        let stack = inbound::inbound_domain_stack(domain, zone.as_deref());
-        stack_status(description.as_ref(), &stack)
+        Ok(inbound::inbound_domain_stack(domain, zone.as_deref()))
     }
 
     /// domain の hosted zone の id (override があればそれ。無ければ Route53 から探す)
@@ -353,11 +373,20 @@ impl<'a> AwsEvaluator<'a> {
         if cfn_status(description.as_ref())? != ResourceStatus::Completed {
             return cfn_status(description.as_ref());
         }
+        let stack = self.inbound_template(inlet).await?;
+        stack_status(description.as_ref(), &stack)
+    }
+
+    /// 受信口の template (active set と既存の binding を照会して描く)
+    pub(crate) async fn inbound_template(
+        &mut self,
+        inlet: &InboundContext,
+    ) -> Result<StackTemplate> {
+        let description = self.describe(&inlet.region, &inlet.resource_name).await?;
         let active = self.active_rule_set(&inlet.region).await?;
         let outputs = stack_outputs(description.as_ref());
         let (rule_set, after) = inbound_rules::resolve_rules(&active, inlet, outputs.as_ref())?;
-        let stack = inbound::inbound_stack(inlet, &rule_set, after.as_deref());
-        stack_status(description.as_ref(), &stack)
+        Ok(inbound::inbound_stack(inlet, &rule_set, after.as_deref()))
     }
 
     async fn active_rule_set(&self, region: &str) -> Result<ActiveRuleSet> {
@@ -428,7 +457,7 @@ impl<'a> AwsEvaluator<'a> {
     }
 
     /// ECR の `:<stage>` tag の image の digest (repository か image が無ければ `None`)
-    async fn image_hash(&self, c: &ContainerContext) -> Result<Option<String>> {
+    pub(crate) async fn image_hash(&self, c: &ContainerContext) -> Result<Option<String>> {
         let client = aws_sdk_ecr::Client::new(&self.config(&c.region));
         let response = client
             .describe_images()
@@ -461,7 +490,7 @@ impl<'a> AwsEvaluator<'a> {
 
     // ---- RDS ----
 
-    async fn rds_cluster(&self, rds: &RdsContext) -> Result<Option<ClusterState>> {
+    pub(crate) async fn rds_cluster(&self, rds: &RdsContext) -> Result<Option<ClusterState>> {
         let client = aws_sdk_rds::Client::new(&self.config(&rds.region));
         let response = client
             .describe_db_clusters()
@@ -609,7 +638,10 @@ impl<'a> AwsEvaluator<'a> {
     // ---- DSQL ----
 
     /// Name タグが一致する最初の cluster の (identifier, 状態)。全ページを辿る
-    async fn dsql_cluster(&self, dsql: &DsqlContext) -> Result<Option<(String, String)>> {
+    pub(crate) async fn dsql_cluster(
+        &self,
+        dsql: &DsqlContext,
+    ) -> Result<Option<(String, String)>> {
         let found = crate::deploy::dsql::find_cluster(&self.sdk, &dsql.region, &dsql.tag_name);
         Ok(found
             .await?
@@ -805,6 +837,37 @@ fn inbound_alarm_lines(outputs: &[StackOutput]) -> Vec<String> {
         }
     }
     lines
+}
+
+/// VPC の template (EFS の filesystem id を引いて描く。Context が無くても使える)
+pub(crate) async fn vpc_template(sdk: &SdkConfig, v: &VpcContext) -> Result<StackTemplate> {
+    let efs_id = match v.efs.as_ref() {
+        Some(efs) => efs_filesystem_id(sdk, &efs.region, &efs.name).await?,
+        None => None,
+    };
+    vpc::vpc_stack(v, efs_id.as_deref())
+}
+
+/// Name タグが一致する EFS の id
+async fn efs_filesystem_id(sdk: &SdkConfig, region: &str, name: &str) -> Result<Option<String>> {
+    let client = aws_sdk_efs::Client::new(&crate::aws_util::regional_config(sdk, region));
+    let response = client
+        .describe_file_systems()
+        .send()
+        .await
+        .map_err(|e| sdk_error("efs describe_file_systems", &e))?;
+    if response.next_marker().is_some() {
+        bail!("Your efs number is over 100. Please implement here.");
+    }
+    Ok(response
+        .file_systems()
+        .iter()
+        .find(|fs| {
+            fs.tags()
+                .iter()
+                .any(|tag| tag.key() == "Name" && tag.value() == name)
+        })
+        .map(|fs| fs.file_system_id().to_string()))
 }
 
 /// domain を含む hosted zone のうち、名前が最も長いもの

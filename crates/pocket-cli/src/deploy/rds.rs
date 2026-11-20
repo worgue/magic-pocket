@@ -1086,6 +1086,7 @@ mod tests {
                 endpoint: Some("db.example".to_string()),
                 port: Some(5432),
                 arn: Some("arn:cluster".to_string()),
+                engine_version: None,
             });
             *fake.instance.borrow_mut() = Some("available".to_string());
             *fake.security_group.borrow_mut() = Some("sg-1".to_string());
@@ -1142,6 +1143,7 @@ mod tests {
                 endpoint: Some("db.example".to_string()),
                 port: Some(5432),
                 arn: Some("arn:cluster".to_string()),
+                engine_version: None,
             });
             Ok(())
         }

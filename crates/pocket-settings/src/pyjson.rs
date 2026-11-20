@@ -26,6 +26,13 @@ pub fn dumps_unicode(value: &Value) -> String {
     out
 }
 
+/// `json.dumps(value, ensure_ascii=False, indent=2)`
+pub fn dumps_indent2_unicode(value: &Value) -> String {
+    let mut out = String::new();
+    write_value(value, Some(0), false, &mut out);
+    out
+}
+
 /// `level` が `None` なら 1 行 (indent なし)
 fn write_value(value: &Value, level: Option<usize>, ascii: bool, out: &mut String) {
     let inner = level.map(|l| l + 1);

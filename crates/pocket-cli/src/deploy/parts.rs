@@ -675,7 +675,7 @@ pub(super) fn saved_resources(path: &std::path::Path, kind: &str) -> Result<serd
     Ok(state["resources"][kind].take())
 }
 
-pub(super) fn inbound_deploy<'a>(
+pub(crate) fn inbound_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsInbound<'a>,
 ) -> InboundDeploy<'a, AwsStacks<'a>, AwsInbound<'a>> {
@@ -687,7 +687,7 @@ pub(super) fn inbound_deploy<'a>(
     }
 }
 
-pub(super) fn inbound_domain_deploy<'a>(
+pub(crate) fn inbound_domain_deploy<'a>(
     stacks: &'a AwsStacks<'a>,
     aws: &'a AwsInboundDomain<'a>,
 ) -> InboundDomainDeploy<'a, AwsStacks<'a>, AwsInboundDomain<'a>> {

@@ -5,6 +5,7 @@ import click
 from pocket.context import Context
 from pocket.utils import echo, mask_secret_values
 from pocket_cli.cli.resource_helper import require_configured
+from pocket_cli.mediator import Mediator
 from pocket_cli.resources.cloudfront import CloudFront
 
 
@@ -13,8 +14,9 @@ def cloudfront():
     pass
 
 
-def get_cloudfront_resources(stage, name=None):
-    context = Context.from_toml(stage=stage)
+def get_cloudfront_resources(stage, name=None, context: Context | None = None):
+    if context is None:
+        context = Context.from_toml(stage=stage)
     require_configured(
         context.cloudfront, "cloudfront is not configured for this stage"
     )
@@ -25,11 +27,25 @@ def get_cloudfront_resources(stage, name=None):
     return [CloudFront(cf_ctx) for cf_ctx in context.cloudfront.values()]
 
 
+def _prepared_cloudfront_resources(stage, name=None):
+    """template hash に影響する secret 値 (origin verify 等) を読んだ CloudFront。
+
+    status / yaml は deploy と同じ template を描く必要がある。secret を読まずに
+    描くと deploy 済みの hash と一致せず、毎回 REQUIRE_UPDATE になる。
+    """
+    context = Context.from_toml(stage=stage)
+    resources = get_cloudfront_resources(stage, name, context)
+    mediator = Mediator(context)
+    for cf in resources:
+        cf.prepare_deploy(mediator)
+    return resources
+
+
 @cloudfront.command()
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def yaml(stage, name):
-    for cf in get_cloudfront_resources(stage, name):
+    for cf in _prepared_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)
         print(cf.stack.yaml)
 
@@ -184,7 +200,7 @@ def _collect_stale_keys(
 @click.option("--stage", envvar="POCKET_DEPLOY_STAGE", prompt=True)
 @click.option("--name", default=None)
 def status(stage, name):
-    for cf in get_cloudfront_resources(stage, name):
+    for cf in _prepared_cloudfront_resources(stage, name):
         echo.info("[%s]" % cf.context.name)
         if cf.status == "COMPLETED":
             echo.success("COMPLETED")

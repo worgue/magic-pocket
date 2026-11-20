@@ -16,6 +16,7 @@ pub struct ClusterState {
     pub endpoint: Option<String>,
     pub port: Option<i64>,
     pub arn: Option<String>,
+    pub engine_version: Option<String>,
 }
 
 /// `describe_db_clusters` の応答から判定に使う項目を取り出す
@@ -32,6 +33,7 @@ pub fn cluster_state(cluster: &aws_sdk_rds::types::DbCluster) -> ClusterState {
         endpoint: cluster.endpoint().map(str::to_string),
         port: cluster.port().map(i64::from),
         arn: cluster.db_cluster_arn().map(str::to_string),
+        engine_version: cluster.engine_version().map(str::to_string),
     }
 }
 

@@ -266,7 +266,7 @@ pub fn container_endpoints(
 }
 
 /// URL をブラウザで開く (開けなくても deploy は成功のまま)
-fn open_browser(url: &str) {
+pub(crate) fn open_browser(url: &str) {
     let opener = if cfg!(target_os = "macos") {
         "open"
     } else {

@@ -350,7 +350,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
 | `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方）。`pocket django deploy` / `promote` は Python 版のみ |
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
-| `backup` / `resource` / `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
+| `resource` の読み取り系（`status` / `yaml` / `context` / `endpoint` / `container url` / `container secrets list` / `container status-env` / `image` / `inbound status`・`yaml`・`reconcile`） | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
+| `backup` / `resource`（上記以外）/ `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
@@ -502,6 +503,46 @@ pocket-rs destroy --stage=dev
 - バックアップのデータ（recovery point）は `-y` では削除しません。`[backup] deletable = true` を宣言していて、対話で明示的に yes と答えたときだけ削除します
 - 途中で止まったときは、同じコマンドを再実行すると続きから進みます（削除中の stack は完了を待つだけで、削除の指示を出し直しません）
 - 受信口（`[inbound.*]`）は、受信を止めてデプロイしてから 36 時間が過ぎ、queue に滞留が無いときだけ削除します。条件を満たさないと、そこで止まります（[メール受信](../inbound.md)）
+
+### pocket-rs resource {#pocket-rs-resource}
+
+リソース単位で状態・テンプレート・接続情報を表示します。コマンド名・オプション・出力は Python 版の [リソースコマンド](#resource-commands)（`pocket resource …`）と同じです。AWS には読み取りだけで接続します。
+
+```bash
+pocket-rs resource container status --stage=dev
+pocket-rs resource container yaml --stage=dev --container=main
+pocket-rs resource container url --stage=dev --openpath=admin/
+pocket-rs resource container secrets list --stage=dev
+pocket-rs resource container status-env --stage=dev --handler=wsgi
+pocket-rs resource image uri --stage=dev
+pocket-rs resource s3 status --stage=dev
+pocket-rs resource dsql endpoint --stage=dev --format=json
+pocket-rs resource rds status --stage=dev
+pocket-rs resource cloudfront status --stage=dev --name=web
+pocket-rs resource cloudfront-keys yaml --stage=dev
+pocket-rs resource cloudfront-waf status --stage=dev
+pocket-rs resource vpc yaml            # --stage を省略すると共通の [vpc]
+pocket-rs resource inbound --stage=dev --name=inbox status
+```
+
+| リソース | コマンド |
+|---|---|
+| `vpc` | `yaml` / `status`（`--stage` を省略すると共通の `[vpc]` を使う） |
+| `container` | `yaml` / `status` / `url`（`--openpath`）/ `secrets list`（`--show-values`）/ `status-env`（`--handler`）。`--container` は container が 1 つなら省略可 |
+| `image` | `repo` / `uri` |
+| `s3` | `context` / `status` |
+| `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`） |
+| `cloudfront` | `yaml` / `context` / `status`（`--name` を省略すると全部） |
+| `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` |
+| `inbound` | `status` / `yaml` / `reconcile`（`--stage` と `--name` はサブコマンドの前に書く） |
+
+作成・更新・削除のコマンドと `neon`、受信口の `copy` / `import` / `redrive` は、まだ Python 版 `pocket resource` だけです。
+
+Python 版との違いは次のとおりです。
+
+- `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります（`vpc` を除く）
+- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
+- `inbound` は Context を組んでから受信口を選ぶので、Context の組み立てに要る照会（hosted zone など）も行います
 
 ### pocket-rs version {#pocket-rs-version}
 
@@ -713,7 +754,7 @@ pocket django storage upload management --stage=dev
 
 ---
 
-## リソースコマンド
+## リソースコマンド {#resource-commands}
 
 個別リソースの状態確認や管理を行います。
 

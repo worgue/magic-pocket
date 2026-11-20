@@ -21,8 +21,9 @@ ec2 = ["dep:aws-sdk-ec2"]
 
 [dependencies]
 # runtime lib。pocket.toml の読み込み (StaticConfig) と key 名 / URL encode / 論理 path
-# の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない
-magic-pocket-rs = { path = "../pocket-rs", features = ["static"] }
+# の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない。
+# inbound: 受信 ID の導出 (`pocket-rs resource inbound reconcile`)
+magic-pocket-rs = { path = "../pocket-rs", features = ["static", "inbound"] }
 # pocket.toml の設定モデル (`pocket-rs settings`)
 magic-pocket-settings = { path = "../pocket-settings", features = ["context"] }
 clap = { version = "4", features = ["derive", "env"] }

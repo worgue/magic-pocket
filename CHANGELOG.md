@@ -23,6 +23,12 @@
   Python 版でデプロイ済みのステージにそのまま使えます（設定が変わっていなければ stack の更新は
   起きません）。Python 版も残ります。`pocket django deploy` / `promote` は引き続き Python 版です。
   [pocket-rs deploy](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-deploy)
+- `pocket-rs resource` に読み取り・表示のコマンドを追加しました（`vpc` / `container` / `cloudfront` /
+  `cloudfront-keys` / `cloudfront-waf` / `inbound` の `yaml`・`status`、`s3` / `cloudfront` の `context`、
+  `rds` / `dsql` の `status`・`endpoint`、`container url` / `secrets list` / `status-env`、`image repo` / `uri`、
+  `inbound reconcile`）。Python 版 `pocket resource` と同じ出力で、Python 版も残ります。作成・更新・削除と
+  `neon` は引き続き Python 版です。
+  [pocket-rs resource](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-resource)
 
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。
@@ -78,6 +84,10 @@
   [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
 
 ### Fixed
+- `pocket resource cloudfront status` / `yaml` と `pocket resource cloudfront-keys status` / `yaml` が、
+  secret を読まずに template を描くため、`enable_origin_verify` や `signing_key` を使う stack を
+  deploy 済みでも `REQUIRE_UPDATE` と表示する不具合を修正しました。`pocket status` と同じく
+  secret を store から読んで判定します（読むだけで作りません）。
 - 作成に失敗して `ROLLBACK_COMPLETE` のまま残った CloudFormation stack があると、`pocket status` や
   `pocket deploy` が `KeyError: 'DeletionTime'` で止まる不具合を修正しました。この状態の stack は
   FAILED と表示され、`pocket deploy` は状態名を添えたエラーで止まります（stack を削除してから
