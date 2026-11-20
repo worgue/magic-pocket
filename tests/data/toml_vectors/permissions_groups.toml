@@ -1,0 +1,33 @@
+# permissions list の条件付き group のうち、他の fixture に無い組み合わせ。
+# dev: [dsql] 無しの [backup.rds] (backup group が rds 側だけで有効になる)
+# prod: schedule の無い [scheduler] (scheduler group は付かない)
+# mail: dead_letter_alert が無効の handler だけで [inbound] (sqs_alert group が inbound 側で付く)
+[general]
+region = "ap-northeast-1"
+project_name = "perm"
+stages = ["dev", "prod", "mail"]
+
+[vpc]
+ref = "main"
+zone_suffixes = ["a", "c"]
+
+[container.app]
+dockerfile_path = "Dockerfile"
+
+[container.app.handlers.mail]
+command = "app.mail"
+sqs = { dead_letter_alert = { enabled = false } }
+
+[dev.rds]
+
+[dev.backup]
+rds = { weekly = { cron = "0 2 ? * 7 *", delete_after_days = 35 } }
+
+[prod.scheduler]
+
+[mail.inbound.support]
+domain = "mail.example.com"
+recipients = ["support@mail.example.com"]
+handler = "app.mail"
+retention_days = 30
+delivery_alert = { enabled = false }

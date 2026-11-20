@@ -26,6 +26,7 @@ test *args: _target-gc-guard
 vectors:
     uv run python tests/vectors/generate_settings_vectors.py
     uv run python tests/vectors/generate_template_vectors.py
+    uv run python tests/vectors/generate_permissions_vectors.py
 
 # Python の lint (ruff)。pre-commit と同じ検査で、Dependabot の auto-merge の関門が呼ぶ
 lint:

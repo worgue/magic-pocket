@@ -46,6 +46,10 @@
   Django が入っていない環境でも動きます（`deploy` / `promote` / `deploystatic` などは引き続き Python 版です）。
   [pocket-rs waf](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-waf) /
   [pocket-rs django](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-django)
+- `pocket-rs permissions`（`list` / `roles` / `role-names`）を追加しました。出力は Python 版
+  `pocket permissions` と同じで、Python 版も残ります。`roles` は Context を組むときに `domain` の
+  hosted zone を引くので、Route53 に hosted zone が無い環境ではエラーになります（Python 版は引きません）。
+  [pocket-rs permissions](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-permissions)
 
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。

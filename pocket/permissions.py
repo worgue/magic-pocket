@@ -330,14 +330,8 @@ def external_role_names(settings: Settings) -> dict[str, str]:
     return {kind: f"{prefix}{kind}-role" for kind in EXTERNAL_ROLE_KINDS}
 
 
-def compute_actions(settings: Settings) -> list[str]:
-    """settings から必要な AWS Action 一覧を算出する。
-
-    順序は `docs/permissions/aws.md` のテーブル順を踏襲し、出力は決定的。
-    重複は最初の出現位置を保ったまま除去する。group の中身は
-    `action_groups()` を単一のソースとして参照する。
-    """
-    groups = action_groups()
+def _enabled_groups(settings: Settings) -> list[str]:
+    """settings で付与する group の名前 (`action_groups()` の順)。"""
     rules: list[tuple[str, bool]] = [
         ("core", True),
         ("ssm", _uses_ssm(settings)),
@@ -358,14 +352,23 @@ def compute_actions(settings: Settings) -> list[str]:
         ("tag", _uses_external_vpc(settings)),
         ("external_roles", settings.iam.external_roles),
     ]
+    return [name for name, condition in rules if condition]
+
+
+def compute_actions(settings: Settings) -> list[str]:
+    """settings から必要な AWS Action 一覧を算出する。
+
+    順序は `docs/permissions/aws.md` のテーブル順を踏襲し、出力は決定的。
+    重複は最初の出現位置を保ったまま除去する。group の中身は
+    `action_groups()` を単一のソースとして参照する。
+    """
+    groups = action_groups()
     # external_roles: role は利用者が事前に作るため IAM の書き込みは要らない
     excluded = _IAM_ROLE_WRITE_ACTIONS if settings.iam.external_roles else frozenset()
 
     seen: set[str] = set()
     deduped: list[str] = []
-    for name, condition in rules:
-        if not condition:
-            continue
+    for name in _enabled_groups(settings):
         for action in groups[name]:
             if action in excluded:
                 continue

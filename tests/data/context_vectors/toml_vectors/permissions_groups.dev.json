@@ -1,0 +1,264 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/permissions_groups.toml",
+  "masked_text": "{\n  \"general\": {\n    \"namespace\": \"pocket\",\n    \"prefix_template\": \"{stage}-{project}-{namespace}-\",\n    \"region\": \"ap-northeast-1\",\n    \"project_name\": \"perm\",\n    \"stages\": [\n      \"dev\",\n      \"prod\",\n      \"mail\"\n    ],\n    \"s3_fallback_bucket_name\": null,\n    \"django_fallback\": {\n      \"storages\": {\n        \"default\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": false,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        },\n        \"staticfiles\": {\n          \"store\": \"filesystem\",\n          \"location\": null,\n          \"static\": true,\n          \"manifest\": false,\n          \"options\": {},\n          \"distribution\": null,\n          \"route\": null,\n          \"deploy_hash\": false,\n          \"deploy_hash_prefix\": null,\n          \"object_hash\": false,\n          \"publish\": \"deploy\",\n          \"link\": false\n        }\n      },\n      \"caches\": {\n        \"default\": {\n          \"store\": \"locmem\",\n          \"location_subdir\": \"{stage}\",\n          \"location\": null\n        }\n      },\n      \"settings\": {},\n      \"project_dir\": null\n    }\n  },\n  \"container\": {\n    \"app\": {\n      \"name\": \"app\",\n      \"vpc\": {\n        \"ref\": \"main\",\n        \"zone_suffixes\": [\n          \"a\",\n          \"c\"\n        ],\n        \"nat_gateway\": true,\n        \"internet_gateway\": true,\n        \"efs\": null,\n        \"name\": \"main-pocket\",\n        \"region\": \"ap-northeast-1\",\n        \"manage\": true,\n        \"sharable\": false,\n        \"private_route_table\": true,\n        \"zones\": [\n          \"ap-northeast-1a\",\n          \"ap-northeast-1c\"\n        ]\n      },\n      \"secrets\": null,\n      \"shared_secrets\": null,\n      \"dockerfile_path\": \"Dockerfile\",\n      \"envs\": {\n        \"DEPLOY_HASH\": \"abc1234\"\n      },\n      \"signing_key_imports\": {},\n      \"inbound\": {},\n      \"platform\": \"linux/amd64\",\n      \"django\": null,\n      \"region\": \"ap-northeast-1\",\n      \"slug\": \"dev-perm\",\n      \"stage\": \"dev\",\n      \"namespace\": \"pocket\",\n      \"resource_prefix\": \"dev-perm-pocket-\",\n      \"handlers\": {\n        \"mail\": {\n          \"command\": \"app.mail\",\n          \"timeout\": 30,\n          \"memory_size\": 512,\n          \"reserved_concurrency\": null,\n          \"envs\": {},\n          \"region\": \"ap-northeast-1\",\n          \"apigateway\": null,\n          \"sqs\": {\n            \"retain\": false,\n            \"batch_size\": 10,\n            \"message_retention_period\": 345600,\n            \"maximum_concurrency\": 2,\n            \"dead_letter_max_receive_count\": 5,\n            \"dead_letter_message_retention_period\": 1209600,\n            \"report_batch_item_failures\": true,\n            \"name\": \"dev-perm-pocket-app-mail\",\n            \"visibility_timeout\": 180,\n            \"dead_letter_alert\": null\n          },\n          \"key\": \"mail\",\n          \"function_name\": \"dev-perm-pocket-app-mail\",\n          \"log_group_name\": \"/aws/lambda/dev-perm-pocket-app-mail\",\n          \"export_api_domain\": null,\n          \"cloudformation_cert_ref_name\": \"MailCertificate\"\n        }\n      },\n      \"ecr_name\": \"dev-perm-pocket-app-lambda\",\n      \"ecr_name_overridden\": false,\n      \"promote_commit_hash\": null,\n      \"use_s3\": false,\n      \"use_ses\": false,\n      \"use_route53\": false,\n      \"use_sqs\": true,\n      \"use_efs\": false,\n      \"permissions_boundary\": null,\n      \"iam\": {\n        \"managed_policy_arns\": [],\n        \"inline_policies\": {}\n      },\n      \"external_roles\": false,\n      \"external_role_prefix\": \"dev-perm-pocket-\",\n      \"efs_local_mount_path\": \"\",\n      \"build\": {\n        \"backend\": \"codebuild\",\n        \"compute_type\": \"BUILD_GENERAL1_MEDIUM\",\n        \"depot_project_id\": null\n      },\n      \"lambda_architecture\": \"x86_64\",\n      \"allowed_sm_resources\": [],\n      \"allowed_ssm_resources\": [],\n      \"require_list_secrets\": false,\n      \"inbound_runtime_config\": {}\n    }\n  },\n  \"secrets\": null,\n  \"neon\": null,\n  \"tidb\": null,\n  \"dsql\": null,\n  \"rds\": {\n    \"managed\": true,\n    \"vpc\": {\n      \"ref\": \"main\",\n      \"zone_suffixes\": [\n        \"a\",\n        \"c\"\n      ],\n      \"nat_gateway\": true,\n      \"internet_gateway\": true,\n      \"efs\": null,\n      \"name\": \"main-pocket\",\n      \"region\": \"ap-northeast-1\",\n      \"manage\": true,\n      \"sharable\": false,\n      \"private_route_table\": true,\n      \"zones\": [\n        \"ap-northeast-1a\",\n        \"ap-northeast-1c\"\n      ]\n    },\n    \"min_capacity\": 0.5,\n    \"max_capacity\": 2.0,\n    \"snapshot_identifier\": null,\n    \"backup_retention_days\": 35,\n    \"region\": \"ap-northeast-1\",\n    \"cluster_identifier\": \"dev-perm-pocket-aurora\",\n    \"instance_identifier\": \"dev-perm-pocket-aurora-1\",\n    \"database_name\": \"dev_perm\",\n    \"master_username\": \"postgres\",\n    \"subnet_group_name\": \"dev-perm-pocket-aurora\",\n    \"security_group_name\": \"dev-perm-pocket-aurora-rds\",\n    \"slug\": \"dev-perm\",\n    \"password_strategy\": \"aws-managed\",\n    \"rotation_schedule\": null,\n    \"rotation_duration\": null,\n    \"credentials_secret_name\": \"dev-perm-pocket-aurora-credentials\",\n    \"secret_store\": \"sm\",\n    \"secret_arn\": null,\n    \"security_group_id\": null\n  },\n  \"backup\": {\n    \"region\": \"ap-northeast-1\",\n    \"vault_name\": \"dev-perm-pocket-backup\",\n    \"role_name\": \"dev-perm-pocket-backup-role\",\n    \"deletable\": false,\n    \"timezone\": \"UTC\",\n    \"plans\": [\n      {\n        \"service\": \"rds\",\n        \"plan_name\": \"dev-perm-pocket-backup-rds\",\n        \"rules\": [\n          {\n            \"name\": \"weekly\",\n            \"schedule_expression\": \"cron(0 2 ? * 7 *)\",\n            \"delete_after_days\": 35,\n            \"cold_storage_after_days\": 0\n          },\n          {\n            \"name\": \"monthly\",\n            \"schedule_expression\": \"cron(0 5 1 * ? *)\",\n            \"delete_after_days\": 1095,\n            \"cold_storage_after_days\": 0\n          }\n        ]\n      }\n    ],\n    \"cleanup_plan_names\": [\n      \"dev-perm-pocket-backup-rds\"\n    ],\n    \"legacy_plan_names\": [],\n    \"permissions_boundary\": null,\n    \"external_roles\": false\n  },\n  \"ses\": null,\n  \"inbound\": {},\n  \"inbound_domain\": {},\n  \"s3\": null,\n  \"cloudfront\": {},\n  \"scheduler\": {},\n  \"external_roles\": false,\n  \"external_role_prefix\": \"dev-perm-pocket-\",\n  \"project_name\": \"perm\",\n  \"stage\": \"dev\"\n}",
+  "result": {
+    "backup": {
+      "cleanup_plan_names": [
+        "dev-perm-pocket-backup-rds"
+      ],
+      "deletable": false,
+      "external_roles": false,
+      "legacy_plan_names": [],
+      "permissions_boundary": null,
+      "plans": [
+        {
+          "plan_name": "dev-perm-pocket-backup-rds",
+          "rules": [
+            {
+              "cold_storage_after_days": 0,
+              "delete_after_days": 35,
+              "name": "weekly",
+              "schedule_expression": "cron(0 2 ? * 7 *)"
+            },
+            {
+              "cold_storage_after_days": 0,
+              "delete_after_days": 1095,
+              "name": "monthly",
+              "schedule_expression": "cron(0 5 1 * ? *)"
+            }
+          ],
+          "service": "rds"
+        }
+      ],
+      "region": "ap-northeast-1",
+      "role_name": "dev-perm-pocket-backup-role",
+      "timezone": "UTC",
+      "vault_name": "dev-perm-pocket-backup"
+    },
+    "cloudfront": {},
+    "container": {
+      "app": {
+        "allowed_sm_resources": [],
+        "allowed_ssm_resources": [],
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": "dev-perm-pocket-app-lambda",
+        "ecr_name_overridden": false,
+        "efs_local_mount_path": "",
+        "envs": {
+          "DEPLOY_HASH": "abc1234"
+        },
+        "external_role_prefix": "dev-perm-pocket-",
+        "external_roles": false,
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "cloudformation_cert_ref_name": "MailCertificate",
+            "command": "app.mail",
+            "envs": {},
+            "export_api_domain": null,
+            "function_name": "dev-perm-pocket-app-mail",
+            "key": "mail",
+            "log_group_name": "/aws/lambda/dev-perm-pocket-app-mail",
+            "memory_size": 512,
+            "region": "ap-northeast-1",
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": null,
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "name": "dev-perm-pocket-app-mail",
+              "report_batch_item_failures": true,
+              "retain": false,
+              "visibility_timeout": 180
+            },
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "inbound": {},
+        "inbound_runtime_config": {},
+        "lambda_architecture": "x86_64",
+        "name": "app",
+        "namespace": "pocket",
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "promote_commit_hash": null,
+        "region": "ap-northeast-1",
+        "require_list_secrets": false,
+        "resource_prefix": "dev-perm-pocket-",
+        "secrets": null,
+        "shared_secrets": null,
+        "signing_key_imports": {},
+        "slug": "dev-perm",
+        "stage": "dev",
+        "use_efs": false,
+        "use_route53": false,
+        "use_s3": false,
+        "use_ses": false,
+        "use_sqs": true,
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "name": "main-pocket",
+          "nat_gateway": true,
+          "private_route_table": true,
+          "ref": "main",
+          "region": "ap-northeast-1",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ],
+          "zones": [
+            "ap-northeast-1a",
+            "ap-northeast-1c"
+          ]
+        }
+      }
+    },
+    "dsql": null,
+    "external_role_prefix": "dev-perm-pocket-",
+    "external_roles": false,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location": null,
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "deploy_hash": false,
+            "deploy_hash_prefix": null,
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "object_hash": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "perm",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "mail"
+      ]
+    },
+    "inbound": {},
+    "inbound_domain": {},
+    "neon": null,
+    "project_name": "perm",
+    "rds": {
+      "backup_retention_days": 35,
+      "cluster_identifier": "dev-perm-pocket-aurora",
+      "credentials_secret_name": "dev-perm-pocket-aurora-credentials",
+      "database_name": "dev_perm",
+      "instance_identifier": "dev-perm-pocket-aurora-1",
+      "managed": true,
+      "master_username": "postgres",
+      "max_capacity": 2.0,
+      "min_capacity": 0.5,
+      "password_strategy": "aws-managed",
+      "region": "ap-northeast-1",
+      "rotation_duration": null,
+      "rotation_schedule": null,
+      "secret_arn": null,
+      "secret_store": "sm",
+      "security_group_id": null,
+      "security_group_name": "dev-perm-pocket-aurora-rds",
+      "slug": "dev-perm",
+      "snapshot_identifier": null,
+      "subnet_group_name": "dev-perm-pocket-aurora",
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "name": "main-pocket",
+        "nat_gateway": true,
+        "private_route_table": true,
+        "ref": "main",
+        "region": "ap-northeast-1",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ],
+        "zones": [
+          "ap-northeast-1a",
+          "ap-northeast-1c"
+        ]
+      }
+    },
+    "s3": null,
+    "scheduler": {},
+    "secrets": null,
+    "ses": null,
+    "stage": "dev",
+    "tidb": null
+  },
+  "stage": "dev"
+}

@@ -14,6 +14,7 @@ mod django;
 mod ec2;
 mod image_build;
 mod mapfile;
+mod permissions;
 mod publisher;
 mod release;
 mod resource;
@@ -169,6 +170,11 @@ enum Top {
     Django {
         #[command(subcommand)]
         command: django::DjangoCommand,
+    },
+    /// IAM 権限関連 (deploy に要る Action・pocket が使う role の定義と名前)
+    Permissions {
+        #[command(subcommand)]
+        command: permissions::PermissionsCommand,
     },
     /// CloudFront の WAF の運用 (IP allowlist・rate limit)
     Waf {
@@ -408,6 +414,7 @@ async fn run(cli: Cli) -> Result<()> {
         }
         Top::Resource { command } => return resource::run(command).await,
         Top::Waf { command } => return waf::run(command).await,
+        Top::Permissions { command } => return permissions::run(command).await,
         Top::Django { command } => return django::run(command).await,
         Top::Backup { command } => {
             let mut sink = status::sink::Terminal::new();

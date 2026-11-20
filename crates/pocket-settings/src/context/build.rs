@@ -86,21 +86,7 @@ impl<'a> Builder<'a> {
     }
 
     fn external_role_prefix(&self) -> String {
-        let namespace = self
-            .s
-            .iam
-            .namespace
-            .as_deref()
-            .filter(|n| !n.is_empty())
-            .unwrap_or(&self.s.general.namespace);
-        pyformat(
-            &self.s.general.prefix_template,
-            &[
-                ("namespace", namespace),
-                ("stage", self.stage()),
-                ("project", self.s.project_name()),
-            ],
-        )
+        self.s.external_role_prefix()
     }
 
     /// `Settings.project_secrets_base` (store / pocket_key_format だけ)

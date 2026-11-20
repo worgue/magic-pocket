@@ -1,0 +1,157 @@
+{
+  "stack_name": "prod-perm-container-app",
+  "export": {
+    "vpc_id": "main-pocket-vpc-id",
+    "private_subnet_": "main-pocket-private-subnet-",
+    "efs_access_point_arn": "main-pocket-efs-access-point",
+    "efs_security_group": "main-pocket-efs-security-group"
+  },
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-prod-perm-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "prod-perm-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/prod-perm-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "app",
+  "vpc": {
+    "ref": "main",
+    "zone_suffixes": [
+      "a",
+      "c"
+    ],
+    "nat_gateway": true,
+    "internet_gateway": true,
+    "efs": null,
+    "name": "main-pocket",
+    "region": "ap-northeast-1",
+    "manage": true,
+    "sharable": false,
+    "private_route_table": true,
+    "zones": [
+      "ap-northeast-1a",
+      "ap-northeast-1c"
+    ]
+  },
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {},
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "prod-perm",
+  "stage": "prod",
+  "namespace": "pocket",
+  "resource_prefix": "prod-perm-pocket-",
+  "handlers": {
+    "mail": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": false,
+        "batch_size": 10,
+        "message_retention_period": 345600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "prod-perm-pocket-app-mail",
+        "visibility_timeout": 180,
+        "dead_letter_alert": null
+      },
+      "key": "mail",
+      "function_name": "prod-perm-pocket-app-mail",
+      "log_group_name": "/aws/lambda/prod-perm-pocket-app-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    }
+  },
+  "ecr_name": "prod-perm-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "prod-perm-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {}
+}

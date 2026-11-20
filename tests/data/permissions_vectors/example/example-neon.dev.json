@@ -1,0 +1,36 @@
+{
+  "account_id": "123456789012",
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "groups": [
+    "core",
+    "ssm"
+  ],
+  "input": "example-neon/pocket.toml",
+  "list_json": "{\n  \"actions\": [\n    \"cloudformation:*\",\n    \"ecr:*\",\n    \"lambda:*\",\n    \"apigateway:*\",\n    \"s3:*\",\n    \"iam:CreateRole\",\n    \"iam:DeleteRole\",\n    \"iam:GetRole\",\n    \"iam:PutRolePolicy\",\n    \"iam:DeleteRolePolicy\",\n    \"iam:AttachRolePolicy\",\n    \"iam:DetachRolePolicy\",\n    \"iam:PassRole\",\n    \"iam:TagRole\",\n    \"iam:UntagRole\",\n    \"iam:ListRoleTags\",\n    \"iam:ListRolePolicies\",\n    \"logs:*\",\n    \"sts:GetCallerIdentity\",\n    \"ssm:GetParameter\",\n    \"ssm:PutParameter\",\n    \"ssm:DeleteParameter\",\n    \"ssm:DeleteParameters\",\n    \"ssm:GetParametersByPath\"\n  ]\n}\n",
+  "list_text": "cloudformation:*\necr:*\nlambda:*\napigateway:*\ns3:*\niam:CreateRole\niam:DeleteRole\niam:GetRole\niam:PutRolePolicy\niam:DeleteRolePolicy\niam:AttachRolePolicy\niam:DetachRolePolicy\niam:PassRole\niam:TagRole\niam:UntagRole\niam:ListRoleTags\niam:ListRolePolicies\nlogs:*\nsts:GetCallerIdentity\nssm:GetParameter\nssm:PutParameter\nssm:DeleteParameter\nssm:DeleteParameters\nssm:GetParametersByPath\n",
+  "role_names": "{\n  \"lambda\": \"dev-pocket-example-neon-pocket-lambda-role\",\n  \"scheduler\": \"dev-pocket-example-neon-pocket-scheduler-role\",\n  \"codebuild\": \"dev-pocket-example-neon-pocket-codebuild-role\",\n  \"backup\": \"dev-pocket-example-neon-pocket-backup-role\"\n}\n",
+  "roles": null,
+  "stage": "dev"
+}

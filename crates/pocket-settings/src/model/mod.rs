@@ -100,6 +100,26 @@ impl Settings {
         format!("{}-{}", self.stage.as_str(), self.general.project_name)
     }
 
+    /// `[iam] external_roles` の role 名の prefix。e.g) dev-myprj-platform-
+    /// (Python の `Settings.external_role_prefix`)。resource_prefix と同じ形で、namespace
+    /// だけ `[iam] namespace` で上書きできる
+    pub fn external_role_prefix(&self) -> String {
+        let namespace = self
+            .iam
+            .namespace
+            .as_deref()
+            .filter(|n| !n.is_empty())
+            .unwrap_or(&self.general.namespace);
+        crate::context::pyformat(
+            &self.general.prefix_template,
+            &[
+                ("namespace", namespace),
+                ("stage", self.stage.as_str()),
+                ("project", self.project_name()),
+            ],
+        )
+    }
+
     /// Python の `model_dump(mode="json")` と同じ形の JSON
     /// (全 field を出し、`None` は `null`、computed field も出す)
     pub fn to_json(&self) -> serde_json::Value {

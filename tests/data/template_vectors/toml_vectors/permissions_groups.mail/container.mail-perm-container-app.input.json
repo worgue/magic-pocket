@@ -1,0 +1,275 @@
+{
+  "stack_name": "mail-perm-container-app",
+  "export": {
+    "vpc_id": "main-pocket-vpc-id",
+    "private_subnet_": "main-pocket-private-subnet-",
+    "efs_access_point_arn": "main-pocket-efs-access-point",
+    "efs_security_group": "main-pocket-efs-security-group"
+  },
+  "rds_security_group_id": null,
+  "rds_secret_store": null,
+  "rds_secret_arn": null,
+  "rds_ssm_param_name": null,
+  "rds_endpoint": null,
+  "rds_port": null,
+  "rds_dbname": null,
+  "use_rds": false,
+  "dsql_endpoint": null,
+  "dsql_region": null,
+  "use_dsql": false,
+  "scheduler": null,
+  "lambda_role": {
+    "external": false,
+    "cfn_properties": {
+      "RoleName": "lambda-mail-perm-app-pocket",
+      "AssumeRolePolicyDocument": {
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "lambda.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+          }
+        ]
+      },
+      "ManagedPolicyArns": [
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+        "arn:aws:iam::aws:policy/AmazonSQSFullAccess"
+      ],
+      "Policies": [
+        {
+          "PolicyName": "inbound-support",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:ListBucket"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}"
+                  }
+                ]
+              },
+              {
+                "Effect": "Deny",
+                "Action": [
+                  "s3:DeleteObject",
+                  "s3:DeleteObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/raw/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/imports/*"
+                  },
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:PutObject"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:${AWS::Partition}:s3:::mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}/metadata/*"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "PolicyName": "mail-perm-pocket-access-cloudformation",
+          "PolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "cloudformation:DescribeStacks"
+                ],
+                "Resource": [
+                  {
+                    "Fn::Sub": "arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/mail-perm-*"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "arn": {
+      "Fn::GetAtt": "LambdaRole.Arn"
+    }
+  },
+  "scheduler_role": null,
+  "name": "app",
+  "vpc": {
+    "ref": "main",
+    "zone_suffixes": [
+      "a",
+      "c"
+    ],
+    "nat_gateway": true,
+    "internet_gateway": true,
+    "efs": null,
+    "name": "main-pocket",
+    "region": "ap-northeast-1",
+    "manage": true,
+    "sharable": false,
+    "private_route_table": true,
+    "zones": [
+      "ap-northeast-1a",
+      "ap-northeast-1c"
+    ]
+  },
+  "secrets": null,
+  "shared_secrets": null,
+  "dockerfile_path": "Dockerfile",
+  "envs": {
+    "DEPLOY_HASH": "abc1234"
+  },
+  "signing_key_imports": {},
+  "inbound": {
+    "support": {
+      "name": "support",
+      "region": "ap-northeast-1",
+      "resource_name": "mail-perm-pocket-inbound-support-d2efa54d05",
+      "queue_name": "mail-perm-pocket-app-mail",
+      "config": {
+        "domain": "mail.example.com",
+        "manage_dns": true,
+        "hosted_zone_id_override": null,
+        "recipients": [
+          "support@mail.example.com"
+        ],
+        "handler": "app.mail",
+        "rule_set": null,
+        "enabled": true,
+        "tls_policy": "Require",
+        "scan_enabled": true,
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "retention_days": 30,
+        "delivery_alert": {
+          "enabled": false,
+          "email": null,
+          "eventbridge": false
+        }
+      },
+      "bucket_name": "mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:mail-perm-pocket-inbound-support-d2efa54d05",
+      "queue_arn": "arn:${AWS::Partition}:sqs:ap-northeast-1:${AWS::AccountId}:mail-perm-pocket-app-mail",
+      "runtime_config": {
+        "region": "ap-northeast-1",
+        "bucket": "mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}",
+        "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:mail-perm-pocket-inbound-support-d2efa54d05",
+        "raw_prefix": "raw/",
+        "metadata_prefix": "metadata/",
+        "import_prefix": "imports/",
+        "recipients": [
+          "support@mail.example.com"
+        ]
+      }
+    }
+  },
+  "platform": "linux/amd64",
+  "django": null,
+  "region": "ap-northeast-1",
+  "slug": "mail-perm",
+  "stage": "mail",
+  "namespace": "pocket",
+  "resource_prefix": "mail-perm-pocket-",
+  "handlers": {
+    "mail": {
+      "command": "app.mail",
+      "timeout": 30,
+      "memory_size": 512,
+      "reserved_concurrency": null,
+      "envs": {},
+      "region": "ap-northeast-1",
+      "apigateway": null,
+      "sqs": {
+        "retain": true,
+        "batch_size": 10,
+        "message_retention_period": 1209600,
+        "maximum_concurrency": 2,
+        "dead_letter_max_receive_count": 5,
+        "dead_letter_message_retention_period": 1209600,
+        "report_batch_item_failures": true,
+        "name": "mail-perm-pocket-app-mail",
+        "visibility_timeout": 180,
+        "dead_letter_alert": null
+      },
+      "key": "mail",
+      "function_name": "mail-perm-pocket-app-mail",
+      "log_group_name": "/aws/lambda/mail-perm-pocket-app-mail",
+      "export_api_domain": null,
+      "cloudformation_cert_ref_name": "MailCertificate"
+    }
+  },
+  "ecr_name": "mail-perm-pocket-app-lambda",
+  "ecr_name_overridden": false,
+  "promote_commit_hash": null,
+  "use_s3": false,
+  "use_ses": false,
+  "use_route53": false,
+  "use_sqs": true,
+  "use_efs": false,
+  "permissions_boundary": null,
+  "iam": {
+    "managed_policy_arns": [],
+    "inline_policies": {}
+  },
+  "external_roles": false,
+  "external_role_prefix": "mail-perm-pocket-",
+  "efs_local_mount_path": "",
+  "build": {
+    "backend": "codebuild",
+    "compute_type": "BUILD_GENERAL1_MEDIUM",
+    "depot_project_id": null
+  },
+  "lambda_architecture": "x86_64",
+  "allowed_sm_resources": [],
+  "allowed_ssm_resources": [],
+  "require_list_secrets": false,
+  "inbound_runtime_config": {
+    "support": {
+      "region": "ap-northeast-1",
+      "bucket": "mail-perm-pocket-inbound-support-d2efa54d05-${AWS::AccountId}",
+      "topic_arn": "arn:${AWS::Partition}:sns:ap-northeast-1:${AWS::AccountId}:mail-perm-pocket-inbound-support-d2efa54d05",
+      "raw_prefix": "raw/",
+      "metadata_prefix": "metadata/",
+      "import_prefix": "imports/",
+      "recipients": [
+        "support@mail.example.com"
+      ]
+    }
+  }
+}

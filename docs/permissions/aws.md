@@ -230,7 +230,7 @@ dsql はオンデマンドバックアップ / restore CLI が `[backup]` 宣言
 }
 ```
 
-## CLI: `pocket permissions list`
+## CLI: `pocket permissions list` {#permissions-list}
 
 `pocket.toml` の構成から、上記の表に基づいて必要な AWS Action 一覧を出力する CLI を提供しています。
 デプロイ用 IAM Role の inline policy を組み立てる際などに使用します。
@@ -242,6 +242,8 @@ pocket permissions list --stage=prod
 # JSON 形式（{"actions": [...]}）
 pocket permissions list --stage=prod --format=json
 ```
+
+Rust 版 `pocket-rs permissions list`（`roles` / `role-names` も同様）も同じ出力です（[pocket-rs permissions](../guide/cli.md#pocket-rs-permissions)）。
 
 出力に含まれる Action は、本ページ上部の「コア権限」「オプション権限」テーブルと同じ粒度
 （`cloudformation:*` `s3:*` などのワイルドカード中心）で、`pocket.toml` 内の `[cloudfront]`

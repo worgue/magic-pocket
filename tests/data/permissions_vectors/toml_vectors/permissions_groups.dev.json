@@ -1,0 +1,41 @@
+{
+  "account_id": "123456789012",
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "groups": [
+    "core",
+    "secretsmanager",
+    "vpc",
+    "rds",
+    "sqs",
+    "codebuild",
+    "backup"
+  ],
+  "input": "tests/data/toml_vectors/permissions_groups.toml",
+  "list_json": "{\n  \"actions\": [\n    \"cloudformation:*\",\n    \"ecr:*\",\n    \"lambda:*\",\n    \"apigateway:*\",\n    \"s3:*\",\n    \"iam:CreateRole\",\n    \"iam:DeleteRole\",\n    \"iam:GetRole\",\n    \"iam:PutRolePolicy\",\n    \"iam:DeleteRolePolicy\",\n    \"iam:AttachRolePolicy\",\n    \"iam:DetachRolePolicy\",\n    \"iam:PassRole\",\n    \"iam:TagRole\",\n    \"iam:UntagRole\",\n    \"iam:ListRoleTags\",\n    \"iam:ListRolePolicies\",\n    \"logs:*\",\n    \"sts:GetCallerIdentity\",\n    \"secretsmanager:*\",\n    \"ec2:*\",\n    \"rds:*\",\n    \"ec2:*SecurityGroup*\",\n    \"ssm:GetParameter\",\n    \"ssm:PutParameter\",\n    \"ssm:DeleteParameter\",\n    \"secretsmanager:DescribeSecret\",\n    \"secretsmanager:RotateSecret\",\n    \"sqs:*\",\n    \"codebuild:*\",\n    \"backup:*\",\n    \"backup-storage:MountCapsule\",\n    \"kms:CreateGrant\",\n    \"kms:Decrypt\",\n    \"kms:DescribeKey\",\n    \"kms:GenerateDataKey\",\n    \"kms:RetireGrant\"\n  ]\n}\n",
+  "list_text": "cloudformation:*\necr:*\nlambda:*\napigateway:*\ns3:*\niam:CreateRole\niam:DeleteRole\niam:GetRole\niam:PutRolePolicy\niam:DeleteRolePolicy\niam:AttachRolePolicy\niam:DetachRolePolicy\niam:PassRole\niam:TagRole\niam:UntagRole\niam:ListRoleTags\niam:ListRolePolicies\nlogs:*\nsts:GetCallerIdentity\nsecretsmanager:*\nec2:*\nrds:*\nec2:*SecurityGroup*\nssm:GetParameter\nssm:PutParameter\nssm:DeleteParameter\nsecretsmanager:DescribeSecret\nsecretsmanager:RotateSecret\nsqs:*\ncodebuild:*\nbackup:*\nbackup-storage:MountCapsule\nkms:CreateGrant\nkms:Decrypt\nkms:DescribeKey\nkms:GenerateDataKey\nkms:RetireGrant\n",
+  "role_names": "{\n  \"lambda\": \"dev-perm-pocket-lambda-role\",\n  \"scheduler\": \"dev-perm-pocket-scheduler-role\",\n  \"codebuild\": \"dev-perm-pocket-codebuild-role\",\n  \"backup\": \"dev-perm-pocket-backup-role\"\n}\n",
+  "roles": "{\n  \"stage\": \"dev\",\n  \"region\": \"ap-northeast-1\",\n  \"account_id\": \"123456789012\",\n  \"external_roles\": false,\n  \"roles\": [\n    {\n      \"name\": \"lambda-dev-perm-app-pocket\",\n      \"arn\": \"arn:aws:iam::123456789012:role/lambda-dev-perm-app-pocket\",\n      \"assume_role_policy\": {\n        \"Statement\": [\n          {\n            \"Effect\": \"Allow\",\n            \"Principal\": {\n              \"Service\": \"lambda.amazonaws.com\"\n            },\n            \"Action\": \"sts:AssumeRole\"\n          }\n        ]\n      },\n      \"managed_policy_arns\": [\n        \"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\",\n        \"arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole\",\n        \"arn:aws:iam::aws:policy/AmazonSQSFullAccess\"\n      ],\n      \"inline_policies\": {\n        \"dev-perm-pocket-access-rds-secret\": {\n          \"Version\": \"2012-10-17\",\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"secretsmanager:GetSecretValue\"\n              ],\n              \"Resource\": [\n                \"arn:aws:secretsmanager:ap-northeast-1:123456789012:secret:rds!cluster-*\"\n              ],\n              \"Condition\": {\n                \"StringEquals\": {\n                  \"aws:ResourceTag/aws:rds:primaryDBClusterArn\": \"arn:aws:rds:ap-northeast-1:123456789012:cluster:dev-perm-pocket-aurora\"\n                }\n              }\n            }\n          ]\n        },\n        \"dev-perm-pocket-access-cloudformation\": {\n          \"Version\": \"2012-10-17\",\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"cloudformation:DescribeStacks\"\n              ],\n              \"Resource\": [\n                \"arn:aws:cloudformation:ap-northeast-1:123456789012:stack/dev-perm-*\"\n              ]\n            }\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"dev-perm-pocket-codebuild-role\",\n      \"arn\": \"arn:aws:iam::123456789012:role/dev-perm-pocket-codebuild-role\",\n      \"assume_role_policy\": {\n        \"Version\": \"2012-10-17\",\n        \"Statement\": [\n          {\n            \"Effect\": \"Allow\",\n            \"Principal\": {\n              \"Service\": \"codebuild.amazonaws.com\"\n            },\n            \"Action\": \"sts:AssumeRole\"\n          }\n        ]\n      },\n      \"managed_policy_arns\": [],\n      \"inline_policies\": {\n        \"codebuild-policy\": {\n          \"Version\": \"2012-10-17\",\n          \"Statement\": [\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"ecr:GetAuthorizationToken\"\n              ],\n              \"Resource\": \"*\"\n            },\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"ecr:BatchCheckLayerAvailability\",\n                \"ecr:GetDownloadUrlForLayer\",\n                \"ecr:BatchGetImage\",\n                \"ecr:PutImage\",\n                \"ecr:InitiateLayerUpload\",\n                \"ecr:UploadLayerPart\",\n                \"ecr:CompleteLayerUpload\"\n              ],\n              \"Resource\": \"arn:aws:ecr:ap-northeast-1:123456789012:repository/*\"\n            },\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"s3:GetObject\",\n                \"s3:GetObjectVersion\"\n              ],\n              \"Resource\": \"arn:aws:s3:::dev-perm-pocket-state/codebuild/*\"\n            },\n            {\n              \"Effect\": \"Allow\",\n              \"Action\": [\n                \"logs:CreateLogGroup\",\n                \"logs:CreateLogStream\",\n                \"logs:PutLogEvents\"\n              ],\n              \"Resource\": \"arn:aws:logs:ap-northeast-1:123456789012:log-group:/aws/codebuild/dev-perm-pocket-codebuild*\"\n            }\n          ]\n        }\n      }\n    },\n    {\n      \"name\": \"dev-perm-pocket-backup-role\",\n      \"arn\": \"arn:aws:iam::123456789012:role/dev-perm-pocket-backup-role\",\n      \"assume_role_policy\": {\n        \"Version\": \"2012-10-17\",\n        \"Statement\": [\n          {\n            \"Effect\": \"Allow\",\n            \"Principal\": {\n              \"Service\": \"backup.amazonaws.com\"\n            },\n            \"Action\": \"sts:AssumeRole\"\n          }\n        ]\n      },\n      \"managed_policy_arns\": [\n        \"arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup\",\n        \"arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores\"\n      ],\n      \"inline_policies\": {}\n    }\n  ]\n}\n",
+  "stage": "dev"
+}

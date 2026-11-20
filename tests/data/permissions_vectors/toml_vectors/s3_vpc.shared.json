@@ -1,0 +1,36 @@
+{
+  "account_id": "123456789012",
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "groups": [
+    "core",
+    "secretsmanager"
+  ],
+  "input": "tests/data/toml_vectors/s3_vpc.toml",
+  "list_json": "{\n  \"actions\": [\n    \"cloudformation:*\",\n    \"ecr:*\",\n    \"lambda:*\",\n    \"apigateway:*\",\n    \"s3:*\",\n    \"iam:CreateRole\",\n    \"iam:DeleteRole\",\n    \"iam:GetRole\",\n    \"iam:PutRolePolicy\",\n    \"iam:DeleteRolePolicy\",\n    \"iam:AttachRolePolicy\",\n    \"iam:DetachRolePolicy\",\n    \"iam:PassRole\",\n    \"iam:TagRole\",\n    \"iam:UntagRole\",\n    \"iam:ListRoleTags\",\n    \"iam:ListRolePolicies\",\n    \"logs:*\",\n    \"sts:GetCallerIdentity\",\n    \"secretsmanager:*\"\n  ]\n}\n",
+  "list_text": "cloudformation:*\necr:*\nlambda:*\napigateway:*\ns3:*\niam:CreateRole\niam:DeleteRole\niam:GetRole\niam:PutRolePolicy\niam:DeleteRolePolicy\niam:AttachRolePolicy\niam:DetachRolePolicy\niam:PassRole\niam:TagRole\niam:UntagRole\niam:ListRoleTags\niam:ListRolePolicies\nlogs:*\nsts:GetCallerIdentity\nsecretsmanager:*\n",
+  "role_names": "{\n  \"lambda\": \"shared-s3vpc-pocket-lambda-role\",\n  \"scheduler\": \"shared-s3vpc-pocket-scheduler-role\",\n  \"codebuild\": \"shared-s3vpc-pocket-codebuild-role\",\n  \"backup\": \"shared-s3vpc-pocket-backup-role\"\n}\n",
+  "roles": "{\n  \"stage\": \"shared\",\n  \"region\": \"ap-northeast-1\",\n  \"account_id\": \"123456789012\",\n  \"external_roles\": false,\n  \"roles\": []\n}\n",
+  "stage": "shared"
+}

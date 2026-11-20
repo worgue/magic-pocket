@@ -1,0 +1,535 @@
+{
+  "account_id": "123456789012",
+  "distribution_id": "EVECTORDIST0001",
+  "s3": null,
+  "cloudfront": {},
+  "rds": {
+    "subnet_ids": [
+      "subnet-0aaaaaaaaaaaaaaaa",
+      "subnet-0bbbbbbbbbbbbbbbb"
+    ],
+    "vpc_id": "vpc-0123456789abcdef0",
+    "security_group_id": "sg-0123456789abcdef0",
+    "master_password": "vector-master-password",
+    "endpoint": "dev-perm-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com",
+    "port": 5432,
+    "snapshot_identifier": "vector-snapshot",
+    "create_db_subnet_group": {
+      "DBSubnetGroupName": "dev-perm-pocket-aurora",
+      "DBSubnetGroupDescription": "Aurora subnet group for dev-perm-pocket-aurora",
+      "SubnetIds": [
+        "subnet-0aaaaaaaaaaaaaaaa",
+        "subnet-0bbbbbbbbbbbbbbbb"
+      ],
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "dev-perm-pocket-aurora"
+        }
+      ]
+    },
+    "create_security_group": {
+      "GroupName": "dev-perm-pocket-aurora-rds",
+      "Description": "RDS Aurora security group for dev-perm-pocket-aurora",
+      "VpcId": "vpc-0123456789abcdef0",
+      "TagSpecifications": [
+        {
+          "ResourceType": "security-group",
+          "Tags": [
+            {
+              "Key": "Name",
+              "Value": "dev-perm-pocket-aurora-rds"
+            }
+          ]
+        }
+      ]
+    },
+    "create_db_instance": {
+      "DBInstanceIdentifier": "dev-perm-pocket-aurora-1",
+      "DBClusterIdentifier": "dev-perm-pocket-aurora",
+      "DBInstanceClass": "db.serverless",
+      "Engine": "aurora-postgresql",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "dev-perm-pocket-aurora-1"
+        }
+      ]
+    },
+    "create_cluster_static": {
+      "DBClusterIdentifier": "dev-perm-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "dev_perm",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "dev-perm-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "dev-perm-pocket-aurora"
+        }
+      ],
+      "MasterUserPassword": "vector-master-password"
+    },
+    "create_cluster_managed": {
+      "DBClusterIdentifier": "dev-perm-pocket-aurora",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "dev_perm",
+      "MasterUsername": "postgres",
+      "DBSubnetGroupName": "dev-perm-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "dev-perm-pocket-aurora"
+        }
+      ],
+      "ManageMasterUserPassword": true
+    },
+    "restore_cluster": {
+      "DBClusterIdentifier": "dev-perm-pocket-aurora",
+      "SnapshotIdentifier": "vector-snapshot",
+      "Engine": "aurora-postgresql",
+      "EngineMode": "provisioned",
+      "DatabaseName": "dev_perm",
+      "DBSubnetGroupName": "dev-perm-pocket-aurora",
+      "VpcSecurityGroupIds": [
+        "sg-0123456789abcdef0"
+      ],
+      "ServerlessV2ScalingConfiguration": {
+        "MinCapacity": 0.5,
+        "MaxCapacity": 2.0
+      },
+      "BackupRetentionPeriod": 35,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": "dev-perm-pocket-aurora"
+        }
+      ]
+    },
+    "cluster_api": "create_db_cluster",
+    "rotation_rules": null,
+    "static_credentials": "{\"username\": \"postgres\", \"password\": \"vector-master-password\", \"host\": \"dev-perm-pocket-aurora.cluster-vector.ap-northeast-1.rds.amazonaws.com\", \"port\": 5432, \"dbname\": \"dev_perm\", \"engine\": \"postgres\", \"dbClusterIdentifier\": \"dev-perm-pocket-aurora\"}"
+  },
+  "efs": {},
+  "dsql": null,
+  "backup": {
+    "role_arn": "arn:aws:iam::123456789012:role/vector-backup-role",
+    "target_arn": "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector",
+    "plans": [
+      {
+        "plan_name": "dev-perm-pocket-backup-rds",
+        "document": {
+          "BackupPlanName": "dev-perm-pocket-backup-rds",
+          "Rules": [
+            {
+              "RuleName": "weekly",
+              "TargetBackupVaultName": "dev-perm-pocket-backup",
+              "ScheduleExpression": "cron(0 2 ? * 7 *)",
+              "ScheduleExpressionTimezone": "UTC",
+              "Lifecycle": {
+                "DeleteAfterDays": 35
+              }
+            },
+            {
+              "RuleName": "monthly",
+              "TargetBackupVaultName": "dev-perm-pocket-backup",
+              "ScheduleExpression": "cron(0 5 1 * ? *)",
+              "ScheduleExpressionTimezone": "UTC",
+              "Lifecycle": {
+                "DeleteAfterDays": 1095
+              }
+            }
+          ]
+        },
+        "selection": {
+          "SelectionName": "dev-perm-pocket-backup-rds",
+          "IamRoleArn": "arn:aws:iam::123456789012:role/vector-backup-role",
+          "Resources": [
+            "arn:aws:dsql:ap-northeast-1:123456789012:cluster/vector"
+          ]
+        },
+        "match_cases": [
+          {
+            "name": "same",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "completed_by_aws",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-0",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095,
+                    "OptInToArchiveForSupportedResources": false
+                  },
+                  "RuleId": "rule-1",
+                  "StartWindowMinutes": 480,
+                  "CompletionWindowMinutes": 10080
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "reordered",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                },
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                }
+              ]
+            },
+            "matches": true
+          },
+          {
+            "name": "rule_removed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_added",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                },
+                {
+                  "RuleName": "vector-extra",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "rule_renamed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "vector-renamed",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "schedule_changed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 0 1 1 ? 2000)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_changed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "Etc/GMT+12",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "timezone_missing",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "vault_changed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "other",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "delete_after_changed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 36
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "cold_storage_changed",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 35,
+                    "MoveToColdStorageAfterDays": 1
+                  }
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "lifecycle_missing",
+            "current": {
+              "BackupPlanName": "dev-perm-pocket-backup-rds",
+              "Rules": [
+                {
+                  "RuleName": "weekly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 2 ? * 7 *)",
+                  "ScheduleExpressionTimezone": "UTC"
+                },
+                {
+                  "RuleName": "monthly",
+                  "TargetBackupVaultName": "dev-perm-pocket-backup",
+                  "ScheduleExpression": "cron(0 5 1 * ? *)",
+                  "ScheduleExpressionTimezone": "UTC",
+                  "Lifecycle": {
+                    "DeleteAfterDays": 1095
+                  }
+                }
+              ]
+            },
+            "matches": false
+          },
+          {
+            "name": "empty",
+            "current": {},
+            "matches": false
+          }
+        ]
+      }
+    ]
+  }
+}

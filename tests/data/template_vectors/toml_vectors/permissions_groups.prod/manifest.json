@@ -1,0 +1,76 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "external": {
+    "dir_files": {},
+    "git_short_hash": "abc1234",
+    "hosted_zones": [
+      {
+        "Id": "/hostedzone/ZEXAMPLE",
+        "Name": "example.com."
+      },
+      {
+        "Id": "/hostedzone/ZSANDBOX",
+        "Name": "sandbox.magic-pocket.example.com."
+      },
+      {
+        "Id": "/hostedzone/ZPROJECT",
+        "Name": "project.com."
+      }
+    ],
+    "secret_arns": {}
+  },
+  "input": "tests/data/toml_vectors/permissions_groups.toml",
+  "stack_external": {
+    "dsql_identifier": null,
+    "efs_filesystem_id": null,
+    "inbound_bindings": {},
+    "inbound_domain_hosted_zone_ids": {},
+    "rds": null,
+    "secrets": {
+      "origin_verify_secret": {},
+      "signing_public_key_pem": {},
+      "waf_allow_secret_values": {}
+    },
+    "stack_outputs": {}
+  },
+  "stacks": [
+    {
+      "capabilities": [],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "vpc.main-pocket-vpc.yaml",
+      "input_file": "vpc.main-pocket-vpc.input.json",
+      "kind": "vpc",
+      "name": "main-pocket-vpc",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "c5bcac07409dcc50"
+    },
+    {
+      "capabilities": [
+        "CAPABILITY_NAMED_IAM"
+      ],
+      "export": {
+        "efs_access_point_arn": "main-pocket-efs-access-point",
+        "efs_security_group": "main-pocket-efs-security-group",
+        "private_subnet_": "main-pocket-private-subnet-",
+        "vpc_id": "main-pocket-vpc-id"
+      },
+      "file": "container.prod-perm-container-app.yaml",
+      "input_file": "container.prod-perm-container-app.input.json",
+      "kind": "container",
+      "name": "prod-perm-container-app",
+      "region": "ap-northeast-1",
+      "tags": [],
+      "template_hash": "86eaa10c7ac5149c"
+    }
+  ],
+  "stage": "prod"
+}

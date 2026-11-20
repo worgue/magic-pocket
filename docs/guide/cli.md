@@ -351,7 +351,8 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `resource` | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
 | `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket-rs backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
 | `waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`） | **Rust 版 `pocket-rs waf`** | Python 版 `pocket waf` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `permissions` / `migrate` | Python 版 `pocket` | |
+| `permissions`（`list` / `roles` / `role-names`） | **Rust 版 `pocket-rs permissions`** | Python 版 `pocket permissions` も残っている（同じ出力。一本化まで不具合修正は両方） |
+| `migrate` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
@@ -570,6 +571,24 @@ pocket-rs waf ratelimit list --name=admin --stage=dev
 `ratelimit list` は pocket.toml の宣言ではなく、deploy 済みの WebACL の rate rule を読みます。IPSet の更新は LockToken を付けて行い、別の更新と競合したとき（`WAFOptimisticLockException`）は再試行せずにエラーで止まります（Python 版と同じ。もう一度実行してください）。
 
 Python 版との違いは、`--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときに入力を求めずエラーで止まることです。
+
+### pocket-rs permissions {#pocket-rs-permissions}
+
+deploy に要る AWS の Action と、pocket が使う IAM role の定義・名前を出力します。コマンド名・オプション・出力は Python 版 `pocket permissions …` と同じです（使い方は [AWS 権限](../permissions/aws.md#permissions-list) と [IAM role を事前に作る](../permissions/aws.md#external-roles)）。
+
+```bash
+pocket-rs permissions list --stage=prod                  # 1 行 1 Action
+pocket-rs permissions list --stage=prod --format=json    # {"actions": [...]}
+pocket-rs permissions roles --stage=prod --account-id=123456789012
+pocket-rs permissions role-names --stage=prod
+```
+
+`list` と `role-names` は pocket.toml だけを読み、AWS には接続しません。`roles` は `--account-id` を省略すると `sts:GetCallerIdentity` で account を取得します。
+
+Python 版との違いは次のとおりです。
+
+- `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります
+- `roles` は [`pocket-rs context`](#pocket-rs-context) と同じく Context を組むときに `domain` の hosted zone を引きます。Route53 に該当する hosted zone が無い（または `route53:ListHostedZones` の権限が無い）と、`hosted_zone_id` を指定していない限りエラーで止まります。Python 版の `roles` は hosted zone を引きません
 
 ### pocket-rs django {#pocket-rs-django}
 

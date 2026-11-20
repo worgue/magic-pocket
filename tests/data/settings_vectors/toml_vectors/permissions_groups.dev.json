@@ -1,0 +1,350 @@
+{
+  "context": {
+    "env": {},
+    "project_name_fallback": "vector-prj"
+  },
+  "input": "tests/data/toml_vectors/permissions_groups.toml",
+  "masked": {
+    "backup": {
+      "deletable": false,
+      "dsql": null,
+      "rds": {
+        "monthly": {
+          "cron": "0 5 1 * ? *",
+          "delete_after_days": 1095
+        },
+        "weekly": {
+          "cron": "0 2 ? * 7 *",
+          "delete_after_days": 35
+        }
+      },
+      "timezone": "UTC"
+    },
+    "cloudfront": {},
+    "container": {
+      "app": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "command": "app.mail",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": null,
+                "enabled": false,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": null,
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "perm",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "mail"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": {
+      "backup": {
+        "retention_days": 35
+      },
+      "database": null,
+      "managed": true,
+      "max_capacity": 2.0,
+      "min_capacity": 0.5,
+      "password_strategy": "aws-managed",
+      "rotation_duration": null,
+      "rotation_schedule": null,
+      "secret_arn": null,
+      "security_group_id": null,
+      "snapshot_identifier": null,
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
+    },
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-perm",
+    "stage": "dev",
+    "tidb": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "settings": {
+    "backup": {
+      "deletable": false,
+      "dsql": null,
+      "rds": {
+        "monthly": {
+          "cron": "0 5 1 * ? *",
+          "delete_after_days": 1095
+        },
+        "weekly": {
+          "cron": "0 2 ? * 7 *",
+          "delete_after_days": 35
+        }
+      },
+      "timezone": "UTC"
+    },
+    "cloudfront": {},
+    "container": {
+      "app": {
+        "build": {
+          "backend": "codebuild",
+          "compute_type": "BUILD_GENERAL1_MEDIUM",
+          "depot_project_id": null
+        },
+        "django": null,
+        "dockerfile_path": "Dockerfile",
+        "ecr_name": null,
+        "envs": {},
+        "handlers": {
+          "mail": {
+            "apigateway": null,
+            "command": "app.mail",
+            "envs": {},
+            "memory_size": 512,
+            "reserved_concurrency": null,
+            "sqs": {
+              "batch_size": 10,
+              "dead_letter_alert": {
+                "email": null,
+                "enabled": false,
+                "eventbridge": false
+              },
+              "dead_letter_max_receive_count": 5,
+              "dead_letter_message_retention_period": 1209600,
+              "maximum_concurrency": 2,
+              "message_retention_period": 345600,
+              "report_batch_item_failures": true
+            },
+            "timeout": 30
+          }
+        },
+        "iam": {
+          "inline_policies": {},
+          "managed_policy_arns": []
+        },
+        "permissions_boundary": null,
+        "platform": "linux/amd64",
+        "secrets": null,
+        "vpc": {
+          "efs": null,
+          "internet_gateway": true,
+          "manage": true,
+          "nat_gateway": true,
+          "ref": "main",
+          "sharable": false,
+          "zone_suffixes": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    },
+    "dsql": null,
+    "general": {
+      "django_fallback": {
+        "caches": {
+          "default": {
+            "location_subdir": "{stage}",
+            "store": "locmem"
+          }
+        },
+        "project_dir": null,
+        "settings": {},
+        "storages": {
+          "default": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": false,
+            "store": "filesystem"
+          },
+          "staticfiles": {
+            "distribution": null,
+            "link": false,
+            "location": null,
+            "manifest": false,
+            "options": {},
+            "publish": "deploy",
+            "route": null,
+            "static": true,
+            "store": "filesystem"
+          }
+        }
+      },
+      "namespace": "pocket",
+      "prefix_template": "{stage}-{project}-{namespace}-",
+      "project_name": "perm",
+      "region": "ap-northeast-1",
+      "s3_fallback_bucket_name": null,
+      "stages": [
+        "dev",
+        "prod",
+        "mail"
+      ]
+    },
+    "iam": {
+      "external_roles": false,
+      "namespace": null
+    },
+    "inbound": {},
+    "neon": null,
+    "rds": {
+      "backup": {
+        "retention_days": 35
+      },
+      "database": null,
+      "managed": true,
+      "max_capacity": 2.0,
+      "min_capacity": 0.5,
+      "password_strategy": "aws-managed",
+      "rotation_duration": null,
+      "rotation_schedule": null,
+      "secret_arn": null,
+      "security_group_id": null,
+      "snapshot_identifier": null,
+      "vpc": {
+        "efs": null,
+        "internet_gateway": true,
+        "manage": true,
+        "nat_gateway": true,
+        "ref": "main",
+        "sharable": false,
+        "zone_suffixes": [
+          "a",
+          "c"
+        ]
+      }
+    },
+    "s3": null,
+    "scheduler": null,
+    "ses": null,
+    "slug": "dev-perm",
+    "stage": "dev",
+    "tidb": null,
+    "vpc": {
+      "efs": null,
+      "internet_gateway": true,
+      "manage": true,
+      "nat_gateway": true,
+      "ref": "main",
+      "sharable": false,
+      "zone_suffixes": [
+        "a",
+        "c"
+      ]
+    }
+  },
+  "stage": "dev"
+}
