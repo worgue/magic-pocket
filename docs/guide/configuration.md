@@ -368,6 +368,9 @@ expiration_days = 30
 
 ## neon
 
+!!! warning "実験的な機能です"
+    Neon 対応は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket-rs resource neon`）は、予告なく変更・廃止することがあります。
+
 Neon PostgreSQLの設定です。Neon プロジェクトは事前に [Neon Console](https://console.neon.tech/){:target="_blank"} で作成しておく必要があります。magic-pocket はプロジェクト内にブランチ・データベース・ロールを作成します。
 
 ```toml

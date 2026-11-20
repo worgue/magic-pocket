@@ -39,6 +39,7 @@
   `reset-database`・`branch-out`・`delete`・`store-url`・`url`）です。あわせて `pocket-rs backup cleanup` と
   `pocket-rs cleanup-deprecated` を追加しました。出力・確認プロンプトは Python 版と同じで、Python 版も残ります。
   `neon` の API key は Python 版と同じく環境変数 `NEON_API_KEY` から読みます。
+  `neon` は実験的な扱いで、Rust 版は Neon の実アカウントでは確認していません（要求と応答の分岐はテストで確認）。
 
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。

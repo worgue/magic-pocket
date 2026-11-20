@@ -535,7 +535,7 @@ pocket-rs resource neon url --stage=dev
 | `s3` | `context` / `status` / `create` / `destroy` |
 | `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`）/ `destroy` |
 | `dsql` | `backup`（`--vault` / `--iam-role-arn` / `--retention-days` / `--watch`）/ `backup-status`（`--job-id` / `--watch`）/ `restore`（recovery point の ARN か `--latest`、`--yes` / `--skip-backup`）/ `restore-status`（`--job-id`）。手順は [dsql](#dsql) と同じ |
-| `neon` | `context` / `status` / `create` / `reset-database` / `branch-out`（`--base-stage`）/ `delete`（`-y`）/ `store-url`（`--key` / `--force`）/ `url`（`--live`）。API key は環境変数 `NEON_API_KEY` から読む（[neon](#neon)） |
+| `neon` | `context` / `status` / `create` / `reset-database` / `branch-out`（`--base-stage`）/ `delete`（`-y`）/ `store-url`（`--key` / `--force`）/ `url`（`--live`）。API key は環境変数 `NEON_API_KEY` から読む。**実験的**（Neon の実アカウントでは確認していない。[neon](#neon)） |
 | `cloudfront` | `yaml` / `context` / `status` / `create` / `update` / `destroy`（`-y`）/ `upload`（`--skip-build`）/ `prune`（`--route` / `--dry-run` / `-y`）。`--name` を省略すると全部 |
 | `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` / `destroy`（`-y`） |
 | `inbound` | `status` / `yaml` / `reconcile` / `destroy`（`-y`）/ `copy`（`--receipt-id` / `--to-stage` / `--to-name`）/ `import`（`--manifest-key` / `--handler`）/ `redrive`（`--queue delivery\|worker` / `--limit`）。`--stage` と `--name` はサブコマンドの前に書く |
@@ -832,6 +832,9 @@ toml を読まない静的導出には Python API の `pocket.naming.ecr_repo_na
 上書きしている構成では引数で渡す必要があります。詳細は docstring 参照）。
 
 ### neon
+
+!!! warning "実験的な機能です"
+    Neon 対応（[設定](configuration.md#neon)）は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket-rs resource neon`）は、予告なく変更・廃止することがあります。
 
 `pocket resource neon` のコマンド（`context` を除く）は、Neon の API キーを環境変数
 `NEON_API_KEY` から読みます。`.env` は読みません。API キーを読むのはこのコマンド群だけです。
