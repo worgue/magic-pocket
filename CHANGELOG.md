@@ -31,8 +31,14 @@
   `create`・`update`・`destroy`、`s3` の `create`・`destroy`、`rds` / `dsql` / `cloudfront-keys` /
   `cloudfront-waf` / `inbound` の `destroy`、`container reload-env` / `secrets create-pocket-managed` /
   `delete-pocket-managed`、`cloudfront upload` / `prune`）。確認プロンプトと `-y` の扱いは Python 版と同じで、
-  処理は `pocket-rs deploy` / `destroy` と同じ実装です。`neon` と `dsql` の backup・restore は引き続き Python 版です。
+  処理は `pocket-rs deploy` / `destroy` と同じ実装です。
   [pocket-rs resource](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-resource)
+- `pocket-rs resource` に残りのコマンドを追加し、`pocket resource` の全コマンドが Rust 版でも使えるように
+  なりました（`yaml-diff` を除く）。`dsql` の `backup`・`backup-status`・`restore`・`restore-status`、
+  `inbound` の `copy`・`import`・`redrive`、`neon` の全コマンド（`context`・`status`・`create`・
+  `reset-database`・`branch-out`・`delete`・`store-url`・`url`）です。あわせて `pocket-rs backup cleanup` と
+  `pocket-rs cleanup-deprecated` を追加しました。出力・確認プロンプトは Python 版と同じで、Python 版も残ります。
+  `neon` の API key は Python 版と同じく環境変数 `NEON_API_KEY` から読みます。
 
 ### Changed
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。

@@ -350,8 +350,9 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
 | `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方）。`pocket django deploy` / `promote` は Python 版のみ |
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
-| `resource`（`neon`、`dsql` の backup・restore、`inbound` の `copy`・`import`・`redrive` を除く） | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
-| `backup` / `resource`（上記以外）/ `waf` / `permissions` / `migrate` / `cleanup-deprecated` | Python 版 `pocket` | |
+| `resource` | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
+| `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket-rs backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `waf` / `permissions` / `migrate` | Python 版 `pocket` | |
 | `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
@@ -523,6 +524,9 @@ pocket-rs resource cloudfront-keys yaml --stage=dev
 pocket-rs resource cloudfront-waf status --stage=dev
 pocket-rs resource vpc yaml            # --stage を省略すると共通の [vpc]
 pocket-rs resource inbound --stage=dev --name=inbox status
+pocket-rs resource dsql backup --stage=dev --watch
+pocket-rs resource dsql restore --stage=dev --latest
+pocket-rs resource neon url --stage=dev
 ```
 
 | リソース | コマンド |
@@ -532,19 +536,23 @@ pocket-rs resource inbound --stage=dev --name=inbox status
 | `image` | `repo` / `uri` |
 | `s3` | `context` / `status` / `create` / `destroy` |
 | `rds` / `dsql` | `status` / `endpoint`（`--format text\|json`）/ `destroy` |
+| `dsql` | `backup`（`--vault` / `--iam-role-arn` / `--retention-days` / `--watch`）/ `backup-status`（`--job-id` / `--watch`）/ `restore`（recovery point の ARN か `--latest`、`--yes` / `--skip-backup`）/ `restore-status`（`--job-id`）。手順は [dsql](#dsql) と同じ |
+| `neon` | `context` / `status` / `create` / `reset-database` / `branch-out`（`--base-stage`）/ `delete`（`-y`）/ `store-url`（`--key` / `--force`）/ `url`（`--live`）。API key は環境変数 `NEON_API_KEY` から読む（[neon](#neon)） |
 | `cloudfront` | `yaml` / `context` / `status` / `create` / `update` / `destroy`（`-y`）/ `upload`（`--skip-build`）/ `prune`（`--route` / `--dry-run` / `-y`）。`--name` を省略すると全部 |
 | `cloudfront-keys` / `cloudfront-waf` | `yaml` / `status` / `destroy`（`-y`） |
-| `inbound` | `status` / `yaml` / `reconcile` / `destroy`（`-y`）。`--stage` と `--name` はサブコマンドの前に書く |
+| `inbound` | `status` / `yaml` / `reconcile` / `destroy`（`-y`）/ `copy`（`--receipt-id` / `--to-stage` / `--to-name`）/ `import`（`--manifest-key` / `--handler`）/ `redrive`（`--queue delivery\|worker` / `--limit`）。`--stage` と `--name` はサブコマンドの前に書く |
 
 削除は確認してから行います。`vpc` / `s3` / `rds` / `dsql` の `destroy` と `container secrets delete-pocket-managed` には `-y` が無く、必ず確認します（Python 版と同じ）。標準入力が閉じている（非対話）ときは何も消さずに終了します。
-
-`neon`、`dsql` の `backup` / `restore`、受信口の `copy` / `import` / `redrive` は、まだ Python 版 `pocket resource` だけです。
 
 Python 版との違いは次のとおりです。
 
 - `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります（`vpc` を除く）
 - 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
 - `inbound` は Context を組んでから受信口を選ぶので、Context の組み立てに要る照会（hosted zone など）も行います
+- 受信口の `copy` / `redrive` で、受信情報や DLQ の message が JSON でない（必要な項目が無い）ときは、検査に落ちたときと同じ文言で止まります（Python 版は traceback で止まります。どちらも何も書かず、何も消しません）
+- `dsql restore` / `restore-status` で、切り替えの後に新しい cluster が `Name` タグで見つからないときは、endpoint を公開せずにエラーで止まります（`restore-status` の再実行で続きから進みます）
+
+`backup cleanup` と `cleanup-deprecated` も Rust 版があります（`pocket-rs backup cleanup --stage=dev` / `pocket-rs cleanup-deprecated --stage=dev`）。オプション・出力・確認は [pocket backup cleanup](#pocket-backup-cleanup) / [pocket cleanup-deprecated](#pocket-cleanup-deprecated) と同じです。
 
 ### pocket-rs version {#pocket-rs-version}
 
