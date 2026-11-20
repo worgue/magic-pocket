@@ -197,31 +197,51 @@ pub fn init(
     prompt: &impl Prompt,
     sink: &mut dyn Sink,
 ) -> Result<()> {
-    std::fs::write(
-        dir.join("pocket.toml"),
-        render(POCKET_TOML_TEMPLATE, json!({}))?,
-    )?;
-    sink.success("Update: pocket.toml");
-    std::fs::write(
-        dir.join("pocket.Dockerfile"),
-        render(DOCKERFILE_TEMPLATE, json!({}))?,
-    )?;
-    sink.success("Update: pocket.Dockerfile");
+    let pocket_toml = dir.join("pocket.toml");
+    if confirm_overwrite(&pocket_toml, "pocket.toml", prompt, sink)? {
+        std::fs::write(&pocket_toml, render(POCKET_TOML_TEMPLATE, json!({}))?)?;
+        sink.success("Update: pocket.toml");
+    }
+    let dockerfile = dir.join("pocket.Dockerfile");
+    if confirm_overwrite(&dockerfile, "pocket.Dockerfile", prompt, sink)? {
+        std::fs::write(&dockerfile, render(DOCKERFILE_TEMPLATE, json!({}))?)?;
+        sink.success("Update: pocket.Dockerfile");
+    }
     if !environ_installed {
         sink.warning("django-environ is not installed");
         sink.warning("`settings.py` and `.env` file will be updated with it.");
         return Ok(());
     }
     let settings_path = dir.join(project_name).join("settings.py");
-    // Python 版は開いてから (書く前に) 報告する。開けなければ報告しない
-    let mut file = std::fs::File::create(&settings_path)
-        .with_context(|| format!("{} を開けません", settings_path.display()))?;
-    sink.success("Update: settings.py");
-    std::io::Write::write_all(
-        &mut file,
-        render(SETTINGS_TEMPLATE, json!({ "project_name": project_name }))?.as_bytes(),
-    )?;
+    if confirm_overwrite(&settings_path, "settings.py", prompt, sink)? {
+        // Python 版は開いてから (書く前に) 報告する。開けなければ報告しない
+        let mut file = std::fs::File::create(&settings_path)
+            .with_context(|| format!("{} を開けません", settings_path.display()))?;
+        sink.success("Update: settings.py");
+        std::io::Write::write_all(
+            &mut file,
+            render(SETTINGS_TEMPLATE, json!({ "project_name": project_name }))?.as_bytes(),
+        )?;
+    }
     update_dotenv(dir, secret_key, prompt, sink)
+}
+
+/// 既存のファイルは上書きしてよいか確かめる。無いファイルは聞かずに書く
+fn confirm_overwrite(
+    path: &Path,
+    label: &str,
+    prompt: &impl Prompt,
+    sink: &mut dyn Sink,
+) -> Result<bool> {
+    if !path.exists() {
+        return Ok(true);
+    }
+    sink.warning(&format!("{label} already exists"));
+    if prompt.confirm(&format!("Do you want to overwrite {label}?"), false)? {
+        return Ok(true);
+    }
+    sink.warning(&format!("Skip: {label}"));
+    Ok(false)
 }
 
 fn update_dotenv(
@@ -248,7 +268,7 @@ fn update_dotenv(
             return Ok(());
         } else if prompt.confirm("Log the deleting .env?", true)? {
             sink.info(&std::fs::read_to_string(&dotenv_path)?);
-            sink.danger("The contnet above was deleted");
+            sink.danger("The content above was deleted");
         }
     }
     std::fs::write(&dotenv_path, content)?;
@@ -838,7 +858,7 @@ mod tests {
                 (Style::Info, content),
                 (Style::Warning, ".env file already exists"),
                 (Style::Info, "OLD=1\n"),
-                (Style::Danger, "The contnet above was deleted"),
+                (Style::Danger, "The content above was deleted"),
                 (Style::Success, "Update: .env"),
             ]
         );
@@ -863,6 +883,45 @@ mod tests {
                 ),
                 (Style::Info, "sample .env file:"),
                 (Style::Info, content),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_init_confirms_before_overwriting_existing_files() {
+        let dir = init_dir(None);
+        for name in ["pocket.toml", "pocket.Dockerfile", "myproj/settings.py"] {
+            std::fs::write(dir.path().join(name), "KEEP\n").unwrap();
+        }
+        // pocket.toml は残す、pocket.Dockerfile は上書き、settings.py は残す、.env は作らない
+        let prompt = Scripted::new(&[false, true, false, false, false]);
+        let mut sink = Recorded::default();
+        init(dir.path(), "myproj", true, KEY, &prompt, &mut sink).unwrap();
+        let read = |p: &str| std::fs::read_to_string(dir.path().join(p)).unwrap();
+        assert_eq!(read("pocket.toml"), "KEEP\n");
+        assert_eq!(read("pocket.Dockerfile"), DOCKERFILE_TEMPLATE);
+        assert_eq!(read("myproj/settings.py"), "KEEP\n");
+        assert_eq!(
+            prompt.asked.borrow()[..3],
+            [
+                ("Do you want to overwrite pocket.toml?".to_string(), false),
+                (
+                    "Do you want to overwrite pocket.Dockerfile?".to_string(),
+                    false
+                ),
+                ("Do you want to overwrite settings.py?".to_string(), false),
+            ]
+        );
+        assert_eq!(
+            texts(&sink)[..7],
+            [
+                (Style::Warning, "pocket.toml already exists"),
+                (Style::Warning, "Skip: pocket.toml"),
+                (Style::Warning, "pocket.Dockerfile already exists"),
+                (Style::Success, "Update: pocket.Dockerfile"),
+                (Style::Warning, "settings.py already exists"),
+                (Style::Warning, "Skip: settings.py"),
+                (Style::Info, "You may need to update .env file"),
             ]
         );
     }

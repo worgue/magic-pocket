@@ -619,6 +619,8 @@ pocket django init
 | `settings.py` | 環境変数対応に書き換え（django-environが必要） |
 | `.env` | ローカル開発用の環境変数 |
 
+`pocket.toml` / `pocket.Dockerfile` / `settings.py` が既にあるときは、上書きするかをファイルごとに確認します（既定は上書きしない）。`.env` も既にあれば上書きを確認します。
+
 ### pocket django deploy
 
 デプロイ + マイグレーション + 静的ファイルをまとめて実行する便利コマンドです。

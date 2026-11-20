@@ -23,11 +23,14 @@ SECRET_KEY_LINE = re.compile(r"^SECRET_KEY=(.*)$", re.MULTILINE)
 SECRET_KEY_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*(-_=+)"
 
 
-def _project(root: Path, dotenv: str | None) -> Path:
+def _project(root: Path, dotenv: str | None, existing: bool = False) -> Path:
     project = root / "myproj"
     (project / "myproj").mkdir(parents=True)
     if dotenv is not None:
         (project / ".env").write_text(dotenv)
+    if existing:
+        for name in FILES[:3]:
+            (project / name).write_text("KEEP\n")
     return project
 
 
@@ -82,25 +85,29 @@ def _mask_secret_key(files: dict[str, str | None]) -> dict[str, str | None]:
 
 
 @pytest.mark.parametrize(
-    ("dotenv", "answers", "environ"),
+    ("dotenv", "answers", "environ", "existing"),
     [
         # .env が無い: 内容を見ずに作る
-        (None, "n\ny\n", True),
+        (None, "n\ny\n", True, False),
         # .env が無い: 内容を見て作らない
-        (None, "y\nn\n", True),
+        (None, "y\nn\n", True, False),
         # .env がある: 上書きする (消す内容も表示する)
-        ("OLD=1\n", "n\ny\ny\ny\n", True),
+        ("OLD=1\n", "n\ny\ny\ny\n", True, False),
         # .env がある: 上書きしない
-        ("OLD=1\n", "n\ny\nn\n", True),
+        ("OLD=1\n", "n\ny\nn\n", True, False),
         # django-environ が無い: settings.py と .env は書かない
-        ("OLD=1\n", "", False),
+        ("OLD=1\n", "", False, False),
+        # 既存の pocket.toml は残す・pocket.Dockerfile は上書き・settings.py は残す
+        (None, "n\ny\nn\nn\nn\n", True, True),
+        # django-environ が無い: 既存の pocket.toml / pocket.Dockerfile を上書きする
+        (None, "y\ny\n", False, True),
     ],
 )
 def test_init_writes_same_files_as_python(
-    pocket_rs_bin, tmp_path, monkeypatch, dotenv, answers, environ
+    pocket_rs_bin, tmp_path, monkeypatch, dotenv, answers, environ, existing
 ):
-    py_project = _project(tmp_path / "py", dotenv)
-    rs_project = _project(tmp_path / "rs", dotenv)
+    py_project = _project(tmp_path / "py", dotenv, existing)
+    rs_project = _project(tmp_path / "rs", dotenv, existing)
     _run_python(py_project, answers, environ, monkeypatch)
     _run_rust(pocket_rs_bin, rs_project, answers, environ, tmp_path)
 

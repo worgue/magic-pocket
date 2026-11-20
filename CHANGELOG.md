@@ -101,6 +101,10 @@
   [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
 
 ### Fixed
+- `pocket django init`（と `pocket-rs django init`）が、既存の `pocket.toml` / `pocket.Dockerfile` /
+  `settings.py` を確認なしで上書きしていた不具合を修正しました。既にあるファイルは上書きするかを
+  ファイルごとに確認します（既定は上書きしない）。`.env` を上書きしたときのメッセージの綴り
+  （`The content above was deleted`）も直しました。
 - `pocket resource cloudfront create` / `update` が secret を読まずに CloudFront の stack を作成・更新する
   不具合を修正しました。`enable_origin_verify` を使う distribution は origin verify の header が空になり、
   container 側の検証と一致しなくなっていました。`pocket deploy` と同じく secret を読んでから stack を書きます。

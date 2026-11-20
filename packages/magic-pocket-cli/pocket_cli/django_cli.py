@@ -36,24 +36,39 @@ def init():
         keep_trailing_newline=True,
     )
     project_name = Path(".").resolve().name
-    with open("pocket.toml", "w") as f:
-        f.write(jinja2_env.get_template(name="init/pocket_simple.toml").render())
-        echo.success("Update: pocket.toml")
-    with open("pocket.Dockerfile", "w") as f:
-        f.write(jinja2_env.get_template(name="init/pocket.Dockerfile").render())
-        echo.success("Update: pocket.Dockerfile")
+    if _confirm_overwrite(Path("pocket.toml"), "pocket.toml"):
+        with open("pocket.toml", "w") as f:
+            f.write(jinja2_env.get_template(name="init/pocket_simple.toml").render())
+            echo.success("Update: pocket.toml")
+    if _confirm_overwrite(Path("pocket.Dockerfile"), "pocket.Dockerfile"):
+        with open("pocket.Dockerfile", "w") as f:
+            f.write(jinja2_env.get_template(name="init/pocket.Dockerfile").render())
+            echo.success("Update: pocket.Dockerfile")
     if importlib.util.find_spec("environ") is not None:
-        with open(f"{project_name}/settings.py", "w") as f:
-            echo.success("Update: settings.py")
-            f.write(
-                jinja2_env.get_template(name="init/django-settings.py").render(
-                    project_name=project_name
+        settings_path = Path(project_name) / "settings.py"
+        if _confirm_overwrite(settings_path, "settings.py"):
+            with open(settings_path, "w") as f:
+                echo.success("Update: settings.py")
+                f.write(
+                    jinja2_env.get_template(name="init/django-settings.py").render(
+                        project_name=project_name
+                    )
                 )
-            )
         _update_dotenv(jinja2_env)
     else:
         echo.warning("django-environ is not installed")
         echo.warning("`settings.py` and `.env` file will be updated with it.")
+
+
+def _confirm_overwrite(path: Path, label: str) -> bool:
+    """既存のファイルは上書きしてよいか確かめる。無いファイルは聞かずに書く"""
+    if not path.exists():
+        return True
+    echo.warning(f"{label} already exists")
+    if click.confirm(f"Do you want to overwrite {label}?"):
+        return True
+    echo.warning(f"Skip: {label}")
+    return False
 
 
 def _update_dotenv(jinja2_env: Environment):
@@ -75,7 +90,7 @@ def _update_dotenv(jinja2_env: Environment):
             return
         elif click.confirm("Log the deleting .env?", default=True):
             echo.info(dotenv_path.read_text())
-            echo.danger("The contnet above was deleted")
+            echo.danger("The content above was deleted")
     with open(dotenv_path, "w") as f:
         f.write(dotenv_content)
         echo.success("Update: .env")
