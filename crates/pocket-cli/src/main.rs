@@ -7,6 +7,7 @@
 //! 静的系の実装はこちらだけで、Python 版の `pocket static` は移行先の案内だけを出す。
 
 mod aws_util;
+mod backup_cleanup;
 mod context;
 mod deploy;
 mod ec2;
@@ -126,6 +127,34 @@ enum Top {
         #[arg(long)]
         with_state_bucket: bool,
         /// 確認プロンプトを自動で承認する (backup のデータは `-y` では削除しない)
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
+    /// AWS Backup のバックアップデータの操作
+    Backup {
+        #[command(subcommand)]
+        command: backup_cleanup::BackupCommand,
+    },
+    /// 旧バージョンが残した account 共有リソースを削除する。
+    ///
+    /// 対象は 0.36 以前の backup vault (pocket-backup) とサービスロール
+    /// (forge-pocket-backup-role)。AWS account を共有している全 stage・全 project を
+    /// 0.37.0 以上で deploy し終えてから、account/region ごとに 1 回実行する
+    /// (--stage は region の解決に使う)。旧リソースをまだ参照している plan /
+    /// selection があれば中止する。IAM ロールは全 region 共通なので、複数 region で
+    /// pocket を使っている場合は全 region の更新後に実行すること。
+    CleanupDeprecated {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// 旧 vault に残るバックアップデータ (recovery point) も削除する
+        /// (account 内の他 project の分も含む)
+        #[arg(long)]
+        delete_recovery_points: bool,
+        /// 対象の表示だけ行う
+        #[arg(long)]
+        dry_run: bool,
+        /// 確認プロンプトをスキップ
         #[arg(long, short = 'y')]
         yes: bool,
     },
@@ -366,6 +395,26 @@ async fn run(cli: Cli) -> Result<()> {
             .await
         }
         Top::Resource { command } => return resource::run(command).await,
+        Top::Backup { command } => {
+            let mut sink = status::sink::Terminal::new();
+            return backup_cleanup::run_backup(command, &mut sink).await;
+        }
+        Top::CleanupDeprecated {
+            stage,
+            delete_recovery_points,
+            dry_run,
+            yes,
+        } => {
+            let mut sink = status::sink::Terminal::new();
+            return backup_cleanup::run_cleanup_deprecated(
+                &stage,
+                delete_recovery_points,
+                dry_run,
+                yes,
+                &mut sink,
+            )
+            .await;
+        }
         Top::DeployParts { part } => return deploy::parts::run(part).await,
         Top::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));

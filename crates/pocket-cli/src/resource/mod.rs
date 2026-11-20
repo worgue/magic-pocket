@@ -13,6 +13,7 @@
 
 mod container;
 mod db;
+pub(crate) mod dsql_backup;
 mod edge;
 mod inbound;
 mod pyrepr;
@@ -52,7 +53,7 @@ pub enum ResourceCommand {
     /// Aurora DSQL
     Dsql {
         #[command(subcommand)]
-        command: DbCommand,
+        command: DsqlCommand,
     },
     /// CloudFront distribution
     Cloudfront {
@@ -243,6 +244,89 @@ pub enum DbCommand {
 }
 
 #[derive(Subcommand)]
+pub enum DsqlCommand {
+    #[command(flatten)]
+    Db(DbCommand),
+    /// オンデマンドバックアップ (AWS Backup) を開始
+    Backup {
+        #[command(flatten)]
+        stage: Stage,
+        /// バックアップ先の AWS Backup vault 名 (省略時: pocket 管理の
+        /// '{stage}-{project}-...-backup' を自動作成して使用)
+        #[arg(long)]
+        vault: Option<String>,
+        /// AWS Backup が assume するロール ARN (省略時: pocket 管理の
+        /// '{stage}-{project}-...-backup-role' を自動作成して使用)
+        #[arg(long)]
+        iam_role_arn: Option<String>,
+        /// recovery point の保持日数 (省略時: [backup] の delete_after_days、宣言が無ければ
+        /// 1095 日。0 を指定すると無期限保持だが pocket からは削除できなくなる)
+        #[arg(long, value_parser = clap::value_parser!(i64).range(0..))]
+        retention_days: Option<i64>,
+        /// バックアップ完了まで待機する
+        #[arg(long)]
+        watch: bool,
+    },
+    /// バックアップ job の状態確認
+    BackupStatus {
+        #[command(flatten)]
+        stage: Stage,
+        /// 対象の backup job (省略時: このクラスターの最新 job)
+        #[arg(long)]
+        job_id: Option<String>,
+        /// 終端状態になるまで待機する
+        #[arg(long)]
+        watch: bool,
+    },
+    /// バックアップから復元し、現用クラスターを切り替える
+    Restore {
+        #[command(flatten)]
+        stage: Stage,
+        recovery_point_arn: Option<String>,
+        /// このクラスターの最新バックアップから復元する
+        #[arg(long)]
+        latest: bool,
+        /// 確認プロンプトを自動承認する
+        #[arg(long)]
+        yes: bool,
+        /// 復元前に現用クラスターのバックアップを取らない
+        #[arg(long)]
+        skip_backup: bool,
+    },
+    /// 復元 job の状態確認（完了していれば切り替えを完了させる）
+    RestoreStatus {
+        #[command(flatten)]
+        stage: Stage,
+        /// restore job ID
+        #[arg(long)]
+        job_id: String,
+    },
+}
+
+/// `resource dsql` の backup / restore (stage を除いた引数)
+pub enum DsqlBackupCommand {
+    Backup {
+        vault: Option<String>,
+        iam_role_arn: Option<String>,
+        retention_days: Option<i64>,
+        watch: bool,
+    },
+    BackupStatus {
+        job_id: Option<String>,
+        watch: bool,
+    },
+    Restore {
+        recovery_point_arn: Option<String>,
+        latest: bool,
+        yes: bool,
+        skip_backup: bool,
+    },
+    RestoreStatus {
+        job_id: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum CloudFrontCommand {
     /// 描画した template を表示する
     Yaml(EdgeTarget),
@@ -342,7 +426,7 @@ pub async fn run(command: ResourceCommand) -> Result<()> {
         ResourceCommand::Container { command } => container::run(command, &mut sink).await,
         ResourceCommand::S3 { command } => db::run_s3(command, &mut sink).await,
         ResourceCommand::Rds { command } => db::run_rds(command, &mut sink).await,
-        ResourceCommand::Dsql { command } => db::run_dsql(command, &mut sink).await,
+        ResourceCommand::Dsql { command } => run_dsql(command, &mut sink).await,
         ResourceCommand::Cloudfront { command } => edge::run_cloudfront(command, &mut sink).await,
         ResourceCommand::CloudfrontKeys { command } => edge::run_keys(command, &mut sink).await,
         ResourceCommand::CloudfrontWaf { command } => edge::run_waf(command, &mut sink).await,
@@ -351,6 +435,51 @@ pub async fn run(command: ResourceCommand) -> Result<()> {
             inbound::run(&target, command, &mut sink).await
         }
     }
+}
+
+async fn run_dsql(command: DsqlCommand, sink: &mut dyn crate::status::sink::Sink) -> Result<()> {
+    let (stage, command) = match command {
+        DsqlCommand::Db(command) => return db::run_dsql(command, sink).await,
+        DsqlCommand::Backup {
+            stage,
+            vault,
+            iam_role_arn,
+            retention_days,
+            watch,
+        } => (
+            stage,
+            DsqlBackupCommand::Backup {
+                vault,
+                iam_role_arn,
+                retention_days,
+                watch,
+            },
+        ),
+        DsqlCommand::BackupStatus {
+            stage,
+            job_id,
+            watch,
+        } => (stage, DsqlBackupCommand::BackupStatus { job_id, watch }),
+        DsqlCommand::Restore {
+            stage,
+            recovery_point_arn,
+            latest,
+            yes,
+            skip_backup,
+        } => (
+            stage,
+            DsqlBackupCommand::Restore {
+                recovery_point_arn,
+                latest,
+                yes,
+                skip_backup,
+            },
+        ),
+        DsqlCommand::RestoreStatus { stage, job_id } => {
+            (stage, DsqlBackupCommand::RestoreStatus { job_id })
+        }
+    };
+    dsql_backup::run(&stage.stage, command, sink).await
 }
 
 /// stage の Context (AWS に何も書かない) と、AWS の設定

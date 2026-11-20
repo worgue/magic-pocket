@@ -92,7 +92,7 @@ impl Sink for Terminal {
 
 /// テスト用: 出力を記録する
 #[cfg(test)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Recorded(pub Vec<(Stream, Style, String)>);
 
 #[cfg(test)]

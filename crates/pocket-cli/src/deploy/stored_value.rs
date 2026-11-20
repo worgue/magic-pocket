@@ -161,6 +161,8 @@ pub mod fake {
     pub struct FakeStoredValues {
         pub values: RefCell<BTreeMap<(String, String), String>>,
         pub calls: RefCell<Vec<String>>,
+        /// `true` なら put を失敗させる (途中で止まったときの再実行のテスト)
+        pub fail_put: std::cell::Cell<bool>,
     }
 
     fn label(store: StoreType) -> &'static str {
@@ -195,6 +197,9 @@ pub mod fake {
             value: &str,
             _region: &str,
         ) -> Result<PutResult> {
+            if self.fail_put.get() {
+                anyhow::bail!("put failed: {name}");
+            }
             self.calls
                 .borrow_mut()
                 .push(format!("put {} {name}", label(store)));
