@@ -159,11 +159,7 @@ pub(crate) fn capitalize(s: &str) -> String {
 }
 
 /// `pocket.naming.user_secret_path`
-pub(crate) fn user_secret_path(
-    pocket_key: &str,
-    segment: &str,
-    store: crate::model::StoreType,
-) -> String {
+pub fn user_secret_path(pocket_key: &str, segment: &str, store: crate::model::StoreType) -> String {
     let prefix = format!("{pocket_key}-user");
     match store {
         crate::model::StoreType::Ssm => format!("/{prefix}/{segment}"),

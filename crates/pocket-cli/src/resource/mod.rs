@@ -17,6 +17,8 @@ pub(crate) mod dsql_backup;
 mod edge;
 mod inbound;
 mod inbound_ops;
+mod neon;
+mod neon_api;
 mod pyrepr;
 mod vpc;
 mod write;
@@ -75,6 +77,11 @@ pub enum ResourceCommand {
     Image {
         #[command(subcommand)]
         command: ImageCommand,
+    },
+    /// Neon (branch・role・database と接続 URL)
+    Neon {
+        #[command(subcommand)]
+        command: neon::NeonCommand,
     },
     /// SES 受信口
     Inbound {
@@ -456,6 +463,7 @@ pub async fn run(command: ResourceCommand) -> Result<()> {
         ResourceCommand::CloudfrontKeys { command } => edge::run_keys(command, &mut sink).await,
         ResourceCommand::CloudfrontWaf { command } => edge::run_waf(command, &mut sink).await,
         ResourceCommand::Image { command } => container::run_image(command).await,
+        ResourceCommand::Neon { command } => neon::run(command, &mut sink).await,
         ResourceCommand::Inbound { target, command } => {
             inbound::run(&target, command, &mut sink).await
         }
