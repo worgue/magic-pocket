@@ -4,7 +4,7 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
-## [Unreleased]
+## [0.49.0](https://github.com/worgue/magic-pocket/releases/tag/0.49.0) - 2026-11-25
 
 ### Added
 - `pocket-rs build` を追加しました。Python 版 `pocket build` と同じく、作業ツリーを build して
