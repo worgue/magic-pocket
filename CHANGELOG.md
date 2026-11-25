@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [0.49.1](https://github.com/worgue/magic-pocket/releases/tag/0.49.1) - 2026-11-25
+
+### Fixed
+- Rust の runtime lib（`magic-pocket-rs`）を git 依存の `tag = "0.49.0"` で参照すると、依存の
+  `magic-pocket-settings` がコンパイルできずビルドが失敗する問題を修正しました（CLI 専用の機能を
+  有効にしない組み合わせで、CLI 専用の module を参照していました）。影響するのは Rust の runtime lib だけで、
+  Python パッケージと CLI のバイナリの内容は 0.49.0 と同じです。Rust の runtime lib を使う project は `tag = "0.49.1"` を
+  指定してください。
+
 ## [0.49.0](https://github.com/worgue/magic-pocket/releases/tag/0.49.0) - 2026-11-25
 
 ### Added
