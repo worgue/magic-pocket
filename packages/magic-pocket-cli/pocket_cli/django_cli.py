@@ -144,6 +144,8 @@ def _deploystatic_before_lambda_update(stage: str) -> bool:
     context = Context.from_toml(stage=stage)
     if _staticfiles_publish_mode(context) == "command":
         return False
+    if _staticfiles_object_hash(context):
+        return False
     c = resolve_django_container(context)
     storage = c.django.storages.get("staticfiles") if c and c.django else None
     if not storage or storage.store != "s3":
@@ -183,6 +185,8 @@ def _django_post_deploy(
             'staticfiles is publish = "command": skipping deploystatic. '
             "Publish with `pocket django deploystatic --stage %s`." % stage
         )
+    elif _staticfiles_object_hash(context):
+        echo.info(_object_hash_skip_message(stage))
     elif interaction.confirm("deploystatic?", default=True):
         collectstatic_locally(stage, link=_staticfiles_link(context))
         upload_collected_staticfiles(stage)
@@ -256,6 +260,34 @@ def _staticfiles_publish_mode(context: Context) -> str:
         if storage:
             return storage.publish
     return "deploy"
+
+
+def _staticfiles_object_hash(context: Context) -> bool:
+    """staticfiles の route が object_hash か (`pocket-rs static publish` で上げる)。
+
+    object_hash の backend は collectstatic のローカルの backend に対応しないので、
+    deploy / promote は deploystatic を飛ばし、deploystatic はエラーにする
+    """
+    c = resolve_django_container(context)
+    if c and c.django:
+        storage = c.django.storages.get("staticfiles")
+        if storage:
+            return storage.object_hash
+    return False
+
+
+def _object_hash_skip_message(stage: str) -> str:
+    return (
+        "staticfiles is object_hash: skipping deploystatic. "
+        "Publish with `pocket-rs static publish --stage %s`." % stage
+    )
+
+
+def _object_hash_deploystatic_error(stage: str) -> str:
+    return (
+        "staticfiles is object_hash: deploystatic does not support it. "
+        "Publish with `pocket-rs static publish --stage %s`." % stage
+    )
 
 
 def _staticfiles_link(context: Context) -> bool:
@@ -444,8 +476,11 @@ def _collectstatic_env(stage: str) -> dict[str, str]:
     " staticfiles 宣言 (link) に従う",
 )
 def deploystatic(stage: str, skip_collectstatic: bool, delete: bool, link: bool | None):
+    context = Context.from_toml(stage=stage)
+    if _staticfiles_object_hash(context):
+        raise click.ClickException(_object_hash_deploystatic_error(stage))
     if link is None:
-        link = _staticfiles_link(Context.from_toml(stage=stage))
+        link = _staticfiles_link(context)
     if not skip_collectstatic:
         collectstatic_locally(stage, link=link)
     upload_collected_staticfiles(stage, delete=delete)

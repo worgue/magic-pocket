@@ -64,7 +64,32 @@ pub struct DeployOptions {
     pub skip_frontend: bool,
 }
 
+/// Lambda の更新 (create / update) の直前に呼ぶ処理。`pocket-rs django deploy` が
+/// static を先に upload するのに使う (Python 版 `_deploy_pipeline` の `before_lambda_update`)
+pub trait BeforeLambdaUpdate {
+    async fn before_lambda_update(&mut self, sink: &mut dyn Sink) -> Result<()>;
+}
+
+/// 何もしない [`BeforeLambdaUpdate`] (`pocket-rs deploy` / `promote`)
+pub struct NoHook;
+
+impl BeforeLambdaUpdate for NoHook {
+    async fn before_lambda_update(&mut self, _sink: &mut dyn Sink) -> Result<()> {
+        Ok(())
+    }
+}
+
 pub async fn run(ops: &mut impl Ops, options: DeployOptions, sink: &mut dyn Sink) -> Result<()> {
+    run_with_hook(ops, options, &mut NoHook, sink).await
+}
+
+/// [`run`] に、Lambda の更新の直前に呼ぶ処理を足したもの
+pub async fn run_with_hook(
+    ops: &mut impl Ops,
+    options: DeployOptions,
+    hook: &mut impl BeforeLambdaUpdate,
+    sink: &mut dyn Sink,
+) -> Result<()> {
     for phase in [
         Phase::InboundPrepare,
         Phase::DeployHash,
@@ -82,6 +107,7 @@ pub async fn run(ops: &mut impl Ops, options: DeployOptions, sink: &mut dyn Sink
     if !options.skip_frontend {
         ops.phase(Phase::VersionedFrontend, sink).await?;
     }
+    hook.before_lambda_update(sink).await?;
     for (index, name) in names.iter().enumerate() {
         match ops.status(index, sink).await? {
             ResourceStatus::NoExist => {
@@ -188,6 +214,9 @@ pub fn state_info(resource: &Resource<'_>, extra: Option<&str>) -> Json {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use super::*;
     use crate::stack::testing::vector_context;
     use crate::status::resource::resources;
@@ -199,6 +228,18 @@ mod tests {
         statuses: Vec<ResourceStatus>,
         calls: Vec<String>,
         fail_on: Option<&'static str>,
+        /// hook と共有する呼び出しの記録 (hook の位置を見るテスト用)
+        shared: Option<Rc<RefCell<Vec<String>>>>,
+    }
+
+    /// 呼ばれたことを共有の記録に残す hook
+    struct MarkHook(Rc<RefCell<Vec<String>>>);
+
+    impl BeforeLambdaUpdate for MarkHook {
+        async fn before_lambda_update(&mut self, _sink: &mut dyn Sink) -> Result<()> {
+            self.0.borrow_mut().push("hook".to_string());
+            Ok(())
+        }
     }
 
     impl FakeOps {
@@ -208,12 +249,16 @@ mod tests {
                 statuses: resources.iter().map(|(_, status)| *status).collect(),
                 calls: Vec::new(),
                 fail_on: None,
+                shared: None,
             }
         }
 
         fn call(&mut self, call: String) -> Result<()> {
             if self.fail_on.is_some_and(|target| target == call) {
                 bail!("{call} failed");
+            }
+            if let Some(shared) = &self.shared {
+                shared.borrow_mut().push(call.clone());
             }
             self.calls.push(call);
             Ok(())
@@ -314,6 +359,41 @@ mod tests {
                 "CloudFront is already the latest version.",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn test_hook_runs_after_versioned_frontend_before_lambda_update() {
+        let shared = Rc::new(RefCell::new(Vec::new()));
+        let mut ops = three();
+        ops.shared = Some(shared.clone());
+        let mut hook = MarkHook(shared.clone());
+        run_with_hook(
+            &mut ops,
+            DeployOptions::default(),
+            &mut hook,
+            &mut Recorded::default(),
+        )
+        .await
+        .unwrap();
+        let calls = shared.borrow().clone();
+        let position = |name: &str| calls.iter().position(|c| c == name).expect(name);
+        // Python 版と同じく versioning route の upload の後、create / update の前
+        assert_eq!(position("hook"), position("VersionedFrontend") + 1);
+        assert_eq!(position("create S3"), position("hook") + 1);
+        // skip_frontend でも hook は呼ぶ (Python 版も skip_frontend によらず呼ぶ)
+        let shared = Rc::new(RefCell::new(Vec::new()));
+        let mut ops = three();
+        ops.shared = Some(shared.clone());
+        let options = DeployOptions {
+            skip_frontend: true,
+        };
+        let mut hook = MarkHook(shared.clone());
+        run_with_hook(&mut ops, options, &mut hook, &mut Recorded::default())
+            .await
+            .unwrap();
+        let calls = shared.borrow();
+        let hook_at = calls.iter().position(|c| c == "hook").expect("hook");
+        assert_eq!(calls[hook_at - 1], "init CloudFront");
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::context::VpcContext;
+use crate::context::{GeneralContext, VpcContext};
 use crate::error::{from_serde, path, SettingsError};
 use crate::model::cloudfront::reject_legacy_route_keys;
 use crate::model::misc::fill_default_scheduler;
@@ -60,6 +60,46 @@ impl Settings {
             project_name_fallback: project_name_fallback(&cwd),
         };
         Settings::common_vpc_from_parts(&text, &ctx)
+    }
+
+    /// stage を指定しないときの `GeneralContext` (Python の `GeneralContext.from_toml`)。
+    ///
+    /// `[general]` だけを読み、stage の上書き (`[<stage>.general]`) は見ない
+    pub fn load_general_context(toml_path: &Path) -> Result<GeneralContext, SettingsError> {
+        let text = std::fs::read_to_string(toml_path).map_err(|e| {
+            SettingsError::value(
+                Vec::new(),
+                format!("{} を読めません: {e}", toml_path.display()),
+            )
+        })?;
+        let cwd = std::env::current_dir()
+            .map_err(|e| SettingsError::value(Vec::new(), format!("cwd を取得できません: {e}")))?;
+        let ctx = LoadContext {
+            project_name_fallback: project_name_fallback(&cwd),
+        };
+        Settings::general_context_from_parts(&text, &ctx)
+    }
+
+    /// [`Settings::load_general_context`] の純粋層
+    pub fn general_context_from_parts(
+        toml_text: &str,
+        ctx: &LoadContext,
+    ) -> Result<GeneralContext, SettingsError> {
+        let data: toml::Table =
+            toml::from_str(toml_text).map_err(|e| SettingsError::syntax(e.to_string()))?;
+        let stages = stages(&data)?;
+        let Some(stage) = stages.first() else {
+            return Err(SettingsError::value(Vec::new(), "general.stages が空です"));
+        };
+        // stage の table を落とした最小の toml を、通常の読み込みに通す
+        let mut minimal = toml::Table::new();
+        if let Some(value) = data.get("general") {
+            minimal.insert("general".to_string(), value.clone());
+        }
+        let text = toml::to_string(&minimal).map_err(|e| SettingsError::syntax(e.to_string()))?;
+        let (settings, _) = Settings::from_parts(&text, stage, ctx)?;
+        GeneralContext::from_general_settings(&settings.general)
+            .map_err(|e| SettingsError::value(Vec::new(), e.0))
     }
 
     /// stage の `[vpc]` の Context (Python の `VpcContext.from_settings`)。宣言が無ければ `None`

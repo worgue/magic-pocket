@@ -62,6 +62,14 @@ fn load(stage: &str, promote: Option<&str>) -> Result<(Context, PathBuf)> {
 }
 
 pub async fn run(args: DeployArgs) -> Result<()> {
+    run_with_hook(args, &mut pipeline::NoHook).await
+}
+
+/// [`run`] に、Lambda の更新の直前に呼ぶ処理を足したもの (`pocket-rs django deploy`)
+pub async fn run_with_hook(
+    args: DeployArgs,
+    hook: &mut impl pipeline::BeforeLambdaUpdate,
+) -> Result<()> {
     let sdk = crate::aws_util::load_sdk().await;
     crate::image_build::check_aws_credentials(&sdk).await?;
     let (ctx, toml_dir) = load(&args.stage, args.promote.as_deref())?;
@@ -84,7 +92,7 @@ pub async fn run(args: DeployArgs) -> Result<()> {
     let options = DeployOptions {
         skip_frontend: args.skip_frontend,
     };
-    pipeline::run(&mut ops, options, &mut Terminal::new()).await
+    pipeline::run_with_hook(&mut ops, options, hook, &mut Terminal::new()).await
 }
 
 /// AWS に繋いだ [`Ops`]
@@ -195,43 +203,47 @@ impl AwsOps {
         Ok(())
     }
 
-    /// deploy の後に示す URL。CloudFront (独自ドメイン → 配られたドメイン) を優先し、
-    /// 無ければ API Gateway の endpoint (wsgi を優先)
     async fn deploy_url(&self) -> Result<Option<String>> {
-        let stacks = AwsStacks { sdk: &self.sdk };
-        for cf in self.ctx.cloudfront.values() {
-            if let Some(domain) = cf.domain.as_deref().filter(|d| !d.is_empty()) {
-                return Ok(Some(format!("https://{domain}")));
-            }
-            let name = cf_stack::cloudfront_stack_name(cf);
-            let description = stacks.describe(&cf.region, &name).await?;
-            let outputs = stack_outputs(description.as_ref()).unwrap_or_default();
-            if let Some(domain) = outputs.get("DistributionDomainName") {
-                return Ok(Some(format!("https://{domain}")));
-            }
-        }
-        let mut names: Vec<&String> = self.ctx.container.keys().collect();
-        names.sort();
-        for name in names {
-            let c = self.ctx.container.get(name).expect("container");
-            let stack_name = crate::stack::container::stack_name(c);
-            let description = stacks.describe(&c.region, &stack_name).await?;
-            let outputs = stack_outputs(description.as_ref()).unwrap_or_default();
-            let endpoints = container_endpoints(c, &outputs);
-            if let Some((_, url)) = endpoints.iter().find(|(key, _)| key == "wsgi") {
-                return Ok(Some(url.clone()));
-            }
-            if let Some((_, url)) = endpoints.first() {
-                return Ok(Some(url.clone()));
-            }
-        }
-        Ok(None)
+        deploy_url(&self.sdk, &self.ctx).await
     }
 
     /// state の `resources.<kind>` (記録が無ければ null)
     async fn saved(&self, kind: &str) -> Result<Json> {
         Ok(self.state.load().await?["resources"][kind].take())
     }
+}
+
+/// deploy の後に示す URL。CloudFront (独自ドメイン → 配られたドメイン) を優先し、
+/// 無ければ API Gateway の endpoint (wsgi を優先)
+pub async fn deploy_url(sdk: &SdkConfig, ctx: &Context) -> Result<Option<String>> {
+    let stacks = AwsStacks { sdk };
+    for cf in ctx.cloudfront.values() {
+        if let Some(domain) = cf.domain.as_deref().filter(|d| !d.is_empty()) {
+            return Ok(Some(format!("https://{domain}")));
+        }
+        let name = cf_stack::cloudfront_stack_name(cf);
+        let description = stacks.describe(&cf.region, &name).await?;
+        let outputs = stack_outputs(description.as_ref()).unwrap_or_default();
+        if let Some(domain) = outputs.get("DistributionDomainName") {
+            return Ok(Some(format!("https://{domain}")));
+        }
+    }
+    let mut names: Vec<&String> = ctx.container.keys().collect();
+    names.sort();
+    for name in names {
+        let c = ctx.container.get(name).expect("container");
+        let stack_name = crate::stack::container::stack_name(c);
+        let description = stacks.describe(&c.region, &stack_name).await?;
+        let outputs = stack_outputs(description.as_ref()).unwrap_or_default();
+        let endpoints = container_endpoints(c, &outputs);
+        if let Some((_, url)) = endpoints.iter().find(|(key, _)| key == "wsgi") {
+            return Ok(Some(url.clone()));
+        }
+        if let Some((_, url)) = endpoints.first() {
+            return Ok(Some(url.clone()));
+        }
+    }
+    Ok(None)
 }
 
 /// API Gateway を持つ handler の (handler 名, URL)。stack が未作成の handler は入らない

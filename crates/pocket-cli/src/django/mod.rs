@@ -1,6 +1,9 @@
-//! `pocket-rs django init` / `manage` / `resetdb` (Python 版 `pocket_cli/django_cli.py`)。
+//! `pocket-rs django …` (Python 版 `pocket_cli/django_cli.py`)。ここは `init` / `manage` /
+//! `resetdb`、deploy 系 (`deploy` / `promote` / `deploystatic` / `storage upload`) は
+//! [`deploy`]、storage の解決は [`storage`] にある。
 //!
-//! ローカルの Django を読み込まないコマンドだけを持つ (Rust 版は Python を import しない)。
+//! Rust 版は Django を import しない (storage は pocket.toml だけで決まる)。project の
+//! Python を呼ぶのは collectstatic と、`init` の django-environ の有無の確認だけ。
 //! `manage` / `resetdb` は Python 版と同じく management command の handler を非同期
 //! (InvocationType=Event) で invoke し、CloudWatch Logs を追って、handler の成功の印
 //! (`POCKET_MANAGE_HANDLER_SUCCESS`) が REPORT 行までに出たかで成否を決める。
@@ -12,6 +15,9 @@
 //!   `python3` / `python`) に問い合わせる。Python 版は pocket 自身の Python で確かめる
 //! - INIT の失敗の説明に、同じ process の build が検出した mode 600 のファイルを足さない
 //!   (`manage` は build をしないので、Python 版でも足されない)
+
+pub mod deploy;
+pub mod storage;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -45,14 +51,36 @@ const SUCCESS_SENTINEL: &str = "POCKET_MANAGE_HANDLER_SUCCESS";
 const DEFAULT_TIMEOUT_SECONDS: u64 = 120;
 
 /// `django init` が書くファイルの template (Python 版と同じファイル)
-const POCKET_TOML_TEMPLATE: &str =
-    include_str!("../../../packages/magic-pocket-cli/pocket_cli/templates/init/pocket_simple.toml");
-const DOCKERFILE_TEMPLATE: &str =
-    include_str!("../../../packages/magic-pocket-cli/pocket_cli/templates/init/pocket.Dockerfile");
-const SETTINGS_TEMPLATE: &str =
-    include_str!("../../../packages/magic-pocket-cli/pocket_cli/templates/init/django-settings.py");
-const DOTENV_TEMPLATE: &str =
-    include_str!("../../../packages/magic-pocket-cli/pocket_cli/templates/init/django-dotenv.env");
+const POCKET_TOML_TEMPLATE: &str = include_str!(
+    "../../../../packages/magic-pocket-cli/pocket_cli/templates/init/pocket_simple.toml"
+);
+const DOCKERFILE_TEMPLATE: &str = include_str!(
+    "../../../../packages/magic-pocket-cli/pocket_cli/templates/init/pocket.Dockerfile"
+);
+const SETTINGS_TEMPLATE: &str = include_str!(
+    "../../../../packages/magic-pocket-cli/pocket_cli/templates/init/django-settings.py"
+);
+const DOTENV_TEMPLATE: &str = include_str!(
+    "../../../../packages/magic-pocket-cli/pocket_cli/templates/init/django-dotenv.env"
+);
+
+#[derive(Subcommand)]
+pub enum StorageCommand {
+    /// stage 無しの FileSystemStorage のファイルを、stage の S3Boto3Storage に同期する
+    Upload {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// S3 側の不要なファイルを削除する
+        #[arg(long)]
+        delete: bool,
+        /// 上げる・消すファイルを表示するだけで、S3 には書かない
+        #[arg(long)]
+        dryrun: bool,
+        /// storage 名 (pocket.toml の django.storages のキー)
+        storage: String,
+    },
+}
 
 #[derive(Subcommand)]
 pub enum DjangoCommand {
@@ -77,6 +105,88 @@ pub enum DjangoCommand {
             value_name = "COMMAND [ARGS]..."
         )]
         words: Vec<String>,
+    },
+    /// stage を deploy し、static の upload・migrate を行う (`pocket-rs deploy` + Django の後処理)
+    Deploy {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// deploy の後に、URL のこの path をブラウザで開く
+        #[arg(long)]
+        openpath: Option<String>,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// migrate を実行しない (確認も出さない)。-y と併用可
+        #[arg(long)]
+        skip_migrate: bool,
+        /// (0.6.0 で廃止)
+        #[arg(long, hide = true)]
+        skip_check_existing: bool,
+    },
+    /// build 済みの `:<commit-hash>` image へ stage を向けて deploy する (再 build しない)
+    ///
+    /// `pocket-rs django build` で push した image に `:<stage>` の tag を移し、リソースと
+    /// Lambda を更新する。静的ファイルは deploy と同じくローカルで build して upload する
+    Promote {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// 昇格する image の git commit hash
+        #[arg(long)]
+        commit_hash: String,
+        /// deploy の後に、URL のこの path をブラウザで開く
+        #[arg(long)]
+        openpath: Option<String>,
+        /// 確認プロンプトをスキップ
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// migrate を実行しない (確認も出さない)。-y と併用可
+        #[arg(long)]
+        skip_migrate: bool,
+        /// (0.6.0 で廃止)
+        #[arg(long, hide = true)]
+        skip_check_existing: bool,
+    },
+    /// `pocket-rs build` の別名 (作業ツリーを build し、commit hash を tag にして ECR へ push する)
+    Build {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// working tree が dirty でも build する (ローカル検証用)
+        #[arg(long)]
+        allow_dirty: bool,
+    },
+    /// 静的ファイルだけを deploy する (ローカルで collectstatic → S3 に upload)
+    Deploystatic {
+        /// stage 名
+        #[arg(long, env = "POCKET_DEPLOY_STAGE")]
+        stage: String,
+        /// collectstatic をせず upload だけを行う
+        #[arg(long)]
+        skip_collectstatic: bool,
+        /// collectstatic の出力に無い S3 上のファイルを削除する。旧 deploy のアセットを
+        /// 参照中のリクエストや rollback を壊しうるため opt-in
+        #[arg(long)]
+        delete: bool,
+        /// collectstatic に --link を渡す。省略時は pocket.toml の staticfiles の link に従う
+        #[arg(long, overrides_with = "no_link")]
+        link: bool,
+        /// collectstatic に --link を渡さない
+        #[arg(long, overrides_with = "link")]
+        no_link: bool,
+    },
+    /// storage のファイルの操作
+    Storage {
+        #[command(subcommand)]
+        command: StorageCommand,
+    },
+    /// (照合テスト用) storages の BACKEND・bucket_name・location を JSON で出す
+    #[command(hide = true)]
+    Storages {
+        /// stage 名 (省略すると stage 無し = general の django_fallback)
+        #[arg(long)]
+        stage: Option<String>,
     },
     /// データベースの public スキーマをリセットする
     ///
@@ -124,6 +234,68 @@ pub async fn run(command: DjangoCommand) -> Result<()> {
             let payload = payload(&args.command, &args.args);
             manage(&api, handler, &payload, args.timeout_seconds, &mut sink).await
         }
+        DjangoCommand::Deploy {
+            stage,
+            openpath,
+            yes,
+            skip_migrate,
+            skip_check_existing,
+        } => {
+            let args = deploy::DjangoDeployArgs {
+                stage,
+                promote: None,
+                openpath,
+                yes,
+                skip_migrate,
+                skip_check_existing,
+            };
+            deploy::deploy(args, &mut sink).await
+        }
+        DjangoCommand::Promote {
+            stage,
+            commit_hash,
+            openpath,
+            yes,
+            skip_migrate,
+            skip_check_existing,
+        } => {
+            let args = deploy::DjangoDeployArgs {
+                stage,
+                promote: Some(commit_hash),
+                openpath,
+                yes,
+                skip_migrate,
+                skip_check_existing,
+            };
+            deploy::deploy(args, &mut sink).await
+        }
+        DjangoCommand::Build { stage, allow_dirty } => {
+            crate::image_build::run_build(&stage, allow_dirty).await
+        }
+        DjangoCommand::Deploystatic {
+            stage,
+            skip_collectstatic,
+            delete,
+            link,
+            no_link,
+        } => {
+            let link = match (link, no_link) {
+                (true, _) => Some(true),
+                (_, true) => Some(false),
+                _ => None,
+            };
+            deploy::deploystatic(&stage, skip_collectstatic, delete, link, &mut sink).await
+        }
+        DjangoCommand::Storage {
+            command:
+                StorageCommand::Upload {
+                    stage,
+                    delete,
+                    dryrun,
+                    storage,
+                },
+        } => deploy::storage_upload(&stage, &storage, delete, dryrun, &mut sink).await,
+        DjangoCommand::Storages { stage } => deploy::print_storages(stage.as_deref()),
         DjangoCommand::Resetdb { stage, yes } => {
             resetdb_confirm(&stage, &Interaction { assume_yes: yes }, &mut sink)?;
             let (context, _) = load_context_read_only(&stage)?;

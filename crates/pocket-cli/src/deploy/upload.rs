@@ -44,6 +44,20 @@ pub fn s3_prefix(route: &RouteContext) -> String {
         .to_string()
 }
 
+/// prefix と相対 path をつないだ key (prefix が空なら bucket の直下)
+fn join_key(prefix: &str, relative: &str) -> String {
+    if prefix.is_empty() {
+        relative.to_string()
+    } else {
+        format!("{prefix}/{relative}")
+    }
+}
+
+/// prefix 配下を list するときの prefix (空なら bucket 全体)
+fn list_prefix(prefix: &str) -> String {
+    join_key(prefix, "")
+}
+
 /// `dir` 配下のファイルを {S3 の key: ローカルの path} で返す。
 ///
 /// ディレクトリへの symlink はたどらない (Python の `rglob` と同じ)
@@ -70,7 +84,7 @@ pub fn local_files(dir: &Path, prefix: &str) -> Result<BTreeMap<String, PathBuf>
                 .components()
                 .map(|part| part.as_os_str().to_string_lossy().into_owned())
                 .collect();
-            files.insert(format!("{prefix}/{}", parts.join("/")), path);
+            files.insert(join_key(prefix, &parts.join("/")), path);
         }
         Ok(())
     }
@@ -161,6 +175,159 @@ pub fn managed_assets_dir(base: &Path, stage: &str) -> PathBuf {
     }
 }
 
+/// prefix 配下の {key: ETag} (ETag の前後の `"` は除く)
+async fn list_objects(
+    client: &Client,
+    bucket: &str,
+    prefix: &str,
+) -> Result<BTreeMap<String, String>> {
+    let mut pages = client
+        .list_objects_v2()
+        .bucket(bucket)
+        .prefix(prefix)
+        .into_paginator()
+        .send();
+    let mut objects = BTreeMap::new();
+    while let Some(page) = pages.next().await {
+        let page = page.map_err(|e| sdk_error("s3 list_objects_v2", &e))?;
+        for object in page.contents() {
+            if let Some(key) = object.key() {
+                let etag = object.e_tag().unwrap_or_default().trim_matches('"');
+                objects.insert(key.to_string(), etag.to_string());
+            }
+        }
+    }
+    Ok(objects)
+}
+
+async fn put_object(
+    client: &Client,
+    bucket: &str,
+    key: &str,
+    file: &Path,
+    cache_control: Option<String>,
+) -> Result<()> {
+    let size = std::fs::metadata(file)?.len();
+    if size > MAX_PUT_BYTES {
+        bail!(
+            "{} は 5GB を超えているため upload できません ({size} bytes)。",
+            file.display()
+        );
+    }
+    let body = ByteStream::from_path(file)
+        .await
+        .with_context(|| format!("{} を読めません", file.display()))?;
+    client
+        .put_object()
+        .bucket(bucket)
+        .key(key)
+        .body(body)
+        .content_type(content_type_of(&file.to_string_lossy()))
+        .set_cache_control(cache_control)
+        .send()
+        .await
+        .map_err(|e| sdk_error("s3 put_object", &e))?;
+    Ok(())
+}
+
+async fn delete_object(client: &Client, bucket: &str, key: &str) -> Result<()> {
+    client
+        .delete_object()
+        .bucket(bucket)
+        .key(key)
+        .send()
+        .await
+        .map_err(|e| sdk_error("s3 delete_object", &e))?;
+    Ok(())
+}
+
+/// [`sync_dir`] の指定
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SyncOptions {
+    /// prefix 配下でローカルに無い key を消す
+    pub delete: bool,
+    /// `delete` のとき、ローカルのファイルが 1 つも無ければ消さずにエラーにする
+    /// (build の失敗や path の誤りで prefix を丸ごと消さないため)
+    pub refuse_empty_delete: bool,
+    /// `.` で始まる要素を path に含むファイルを除く (`aws s3 sync --exclude ".*"
+    /// --exclude "*/.*"` と同じ。S3 側の該当 key も消さない)
+    pub exclude_hidden: bool,
+    /// 上げる・消す key を表示するだけで、S3 には書かない
+    pub dryrun: bool,
+}
+
+/// [`sync_dir`] の結果
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SyncResult {
+    pub uploaded: usize,
+    pub skipped: usize,
+    /// prefix 配下でローカルに無い key (`delete` なら消した key)
+    pub stale: Vec<String>,
+}
+
+/// key の prefix より後ろに `.` で始まる要素があるか
+fn is_hidden(key: &str, prefix: &str) -> bool {
+    let relative = key.strip_prefix(&list_prefix(prefix)).unwrap_or(key);
+    relative.split('/').any(|part| part.starts_with('.'))
+}
+
+/// ローカルの `dir` を `s3://<bucket>/<prefix>/` に同期する。内容 (ETag とローカルの MD5)
+/// が同じ object は上げ直さない。
+///
+/// route の upload (`Uploader`) と Django の deploystatic / storage upload が使う
+pub async fn sync_dir(
+    client: &Client,
+    bucket: &str,
+    dir: &Path,
+    prefix: &str,
+    cache_control: &dyn Fn(&Path) -> Option<String>,
+    options: SyncOptions,
+    sink: &mut dyn Sink,
+) -> Result<SyncResult> {
+    let mut files = local_files(dir, prefix)?;
+    let mut existing = list_objects(client, bucket, &list_prefix(prefix)).await?;
+    if options.exclude_hidden {
+        files.retain(|key, _| !is_hidden(key, prefix));
+        existing.retain(|key, _| !is_hidden(key, prefix));
+    }
+    if options.delete && options.refuse_empty_delete && files.is_empty() {
+        bail!(
+            "{} にファイルがありません。S3 の object を消さずに止めます              (collectstatic の出力先を確認してください)。",
+            dir.display()
+        );
+    }
+    let mut result = SyncResult::default();
+    for (key, file) in &files {
+        if is_unchanged(&md5_hex(file)?, existing.get(key).map(String::as_str)) {
+            result.skipped += 1;
+            continue;
+        }
+        if options.dryrun {
+            sink.log(&format!("(dryrun) アップロード: s3://{bucket}/{key}"));
+        } else {
+            put_object(client, bucket, key, file, cache_control(file)).await?;
+            sink.log(&format!("アップロード: s3://{bucket}/{key}"));
+        }
+        result.uploaded += 1;
+    }
+    result.stale = existing
+        .keys()
+        .filter(|key| !files.contains_key(*key))
+        .cloned()
+        .collect();
+    if options.delete {
+        for key in &result.stale {
+            if options.dryrun {
+                sink.log(&format!("(dryrun) 削除: s3://{bucket}/{key}"));
+            } else {
+                delete_object(client, bucket, key).await?;
+                sink.log(&format!("削除: s3://{bucket}/{key}"));
+            }
+        }
+    }
+    Ok(result)
+}
+
 /// cloudfront 1 つの bucket への upload
 pub struct Uploader<'a> {
     pub sdk: &'a SdkConfig,
@@ -175,61 +342,16 @@ impl Uploader<'_> {
         &self.cf.bucket_name
     }
 
-    /// prefix 配下の {key: ETag} (ETag の前後の `"` は除く)
     async fn list_objects(&self, prefix: &str) -> Result<BTreeMap<String, String>> {
-        let mut pages = self
-            .client
-            .list_objects_v2()
-            .bucket(self.bucket())
-            .prefix(prefix)
-            .into_paginator()
-            .send();
-        let mut objects = BTreeMap::new();
-        while let Some(page) = pages.next().await {
-            let page = page.map_err(|e| sdk_error("s3 list_objects_v2", &e))?;
-            for object in page.contents() {
-                if let Some(key) = object.key() {
-                    let etag = object.e_tag().unwrap_or_default().trim_matches('"');
-                    objects.insert(key.to_string(), etag.to_string());
-                }
-            }
-        }
-        Ok(objects)
+        list_objects(self.client, self.bucket(), prefix).await
     }
 
     async fn put(&self, key: &str, file: &Path, cache_control: Option<String>) -> Result<()> {
-        let size = std::fs::metadata(file)?.len();
-        if size > MAX_PUT_BYTES {
-            bail!(
-                "{} は 5GB を超えているため upload できません ({size} bytes)。",
-                file.display()
-            );
-        }
-        let body = ByteStream::from_path(file)
-            .await
-            .with_context(|| format!("{} を読めません", file.display()))?;
-        self.client
-            .put_object()
-            .bucket(self.bucket())
-            .key(key)
-            .body(body)
-            .content_type(content_type_of(&file.to_string_lossy()))
-            .set_cache_control(cache_control)
-            .send()
-            .await
-            .map_err(|e| sdk_error("s3 put_object", &e))?;
-        Ok(())
+        put_object(self.client, self.bucket(), key, file, cache_control).await
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        self.client
-            .delete_object()
-            .bucket(self.bucket())
-            .key(key)
-            .send()
-            .await
-            .map_err(|e| sdk_error("s3 delete_object", &e))?;
-        Ok(())
+        delete_object(self.client, self.bucket(), key).await
     }
 
     /// managed_assets のファイルを `pocket_managed/` に同期する (全件 upload + 不要な
@@ -342,28 +464,22 @@ impl Uploader<'_> {
             .filter(|dir| !dir.is_empty())
             .context("route.upload_dir is not set")?;
         let prefix = s3_prefix(route);
-        let existing = self.list_objects(&format!("{prefix}/")).await?;
-        let files = local_files(&self.project_dir.join(upload_dir), &prefix)?;
-        let bucket = self.bucket();
-        let (mut uploaded, mut skipped) = (0, 0);
-        for (key, file) in &files {
-            if is_unchanged(&md5_hex(file)?, existing.get(key).map(String::as_str)) {
-                skipped += 1;
-                continue;
-            }
-            self.put(key, file, cache_control(route, file)).await?;
-            uploaded += 1;
-            sink.log(&format!("アップロード: s3://{bucket}/{key}"));
-        }
-        let stale: Vec<&String> = existing
-            .keys()
-            .filter(|key| !files.contains_key(*key))
-            .collect();
-        if route.delete_stale == Some(true) {
-            for key in &stale {
-                self.delete(key).await?;
-                sink.log(&format!("削除: s3://{bucket}/{key}"));
-            }
+        let delete = route.delete_stale == Some(true);
+        let result = sync_dir(
+            self.client,
+            self.bucket(),
+            &self.project_dir.join(upload_dir),
+            &prefix,
+            &|file| cache_control(route, file),
+            SyncOptions {
+                delete,
+                ..SyncOptions::default()
+            },
+            sink,
+        )
+        .await?;
+        let (uploaded, skipped, stale) = (result.uploaded, result.skipped, result.stale);
+        if delete {
             sink.info(&format!(
                 "{uploaded} ファイルをアップロードしました (skip {skipped} / 削除 {}、prefix: {prefix})",
                 stale.len()

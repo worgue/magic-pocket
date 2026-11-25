@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from click.testing import CliRunner
 from pocket_cli import django_cli
 from pocket_cli.cli import deploy_cli
 
@@ -114,14 +115,24 @@ def test_pipeline_uploads_static_before_lambda_update(monkeypatch):
 def django_static_env(monkeypatch):
     """_deploystatic_before_lambda_update の外部依存を差し替える。"""
     state = SimpleNamespace(
-        publish="deploy", store="s3", bucket_exists=True, confirm=True, calls=[]
+        publish="deploy",
+        store="s3",
+        object_hash=False,
+        bucket_exists=True,
+        confirm=True,
+        calls=[],
     )
 
     def fake_from_toml(cls, stage):
         return SimpleNamespace(s3=object())
 
     def fake_container(context):
-        storage = SimpleNamespace(store=state.store, publish=state.publish, link=False)
+        storage = SimpleNamespace(
+            store=state.store,
+            publish=state.publish,
+            object_hash=state.object_hash,
+            link=False,
+        )
         return SimpleNamespace(
             django=SimpleNamespace(storages={"staticfiles": storage})
         )
@@ -169,6 +180,8 @@ def test_django_static_declined_is_not_asked_again(django_static_env):
     [
         {"bucket_exists": False},  # 初回 deploy
         {"publish": "command"},
+        # object_hash は pocket-rs static publish で上げる (collectstatic に対応しない)
+        {"object_hash": True},
         {"store": "filesystem"},
     ],
 )
@@ -195,3 +208,36 @@ def test_post_deploy_skips_static_when_already_handled(monkeypatch):
         "dev", yes=False, openpath=None, skip_migrate=True, static_handled=True
     )
     assert not any("deploystatic" in c for c in confirms)
+
+
+def test_post_deploy_guides_object_hash_to_static_publish(
+    django_static_env, monkeypatch, capsys
+):
+    """object_hash の staticfiles は deploystatic を聞かず static publish を案内する"""
+    django_static_env.object_hash = True
+    confirms: list[str] = []
+    monkeypatch.setattr(
+        django_cli.interaction,
+        "confirm",
+        lambda message, default=True: confirms.append(message) or False,
+    )
+    monkeypatch.setattr(django_cli.interaction, "set_assume_yes", lambda v: None)
+    monkeypatch.setattr("pocket_cli.cli.deploy_cli._get_deploy_url", lambda ctx: None)
+    django_cli._django_post_deploy("dev", yes=False, openpath=None, skip_migrate=True)
+    assert confirms == []
+    assert django_static_env.calls == []
+    out = capsys.readouterr()
+    # echo は端末幅で折り返すので、空白を詰めて比べる
+    printed = " ".join((out.out + out.err).split())
+    assert "Publish with `pocket-rs static publish --stage dev`." in printed
+
+
+def test_deploystatic_refuses_object_hash(django_static_env):
+    django_static_env.object_hash = True
+    result = CliRunner().invoke(django_cli.django, ["deploystatic", "--stage", "dev"])
+    assert result.exit_code == 1
+    assert (
+        "staticfiles is object_hash: deploystatic does not support it. "
+        "Publish with `pocket-rs static publish --stage dev`." in result.output
+    )
+    assert django_static_env.calls == []

@@ -166,7 +166,8 @@ enum Top {
         #[command(subcommand)]
         command: resource::ResourceCommand,
     },
-    /// Django の運用 (雛形の生成・management command の実行・DB のリセット)
+    /// Django の運用 (雛形の生成・deploy・静的ファイルの upload・management command の実行・
+    /// DB のリセット)
     Django {
         #[command(subcommand)]
         command: django::DjangoCommand,
