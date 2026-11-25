@@ -1,7 +1,7 @@
-"""`pocket settings` (Python 版) と `pocket-rs settings` の出力が一致すること。
+"""`pocket settings` (Python 版) と `pocket settings` の出力が一致すること。
 
 代表的な fixture を project dir (pocket.toml + pyproject.toml、必要なら .env) に
-置き、両方の CLI を実行して stdout をバイト単位で比べる。pocket-rs のバイナリは
+置き、両方の CLI を実行して stdout をバイト単位で比べる。pocket のバイナリは
 tests/conftest.py の fixture が cargo build する。
 """
 

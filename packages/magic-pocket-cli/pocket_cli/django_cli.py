@@ -263,7 +263,7 @@ def _staticfiles_publish_mode(context: Context) -> str:
 
 
 def _staticfiles_object_hash(context: Context) -> bool:
-    """staticfiles の route が object_hash か (`pocket-rs static publish` で上げる)。
+    """staticfiles の route が object_hash か (`pocket static publish` で上げる)。
 
     object_hash の backend は collectstatic のローカルの backend に対応しないので、
     deploy / promote は deploystatic を飛ばし、deploystatic はエラーにする
@@ -279,14 +279,14 @@ def _staticfiles_object_hash(context: Context) -> bool:
 def _object_hash_skip_message(stage: str) -> str:
     return (
         "staticfiles is object_hash: skipping deploystatic. "
-        "Publish with `pocket-rs static publish --stage %s`." % stage
+        "Publish with `pocket static publish --stage %s`." % stage
     )
 
 
 def _object_hash_deploystatic_error(stage: str) -> str:
     return (
         "staticfiles is object_hash: deploystatic does not support it. "
-        "Publish with `pocket-rs static publish --stage %s`." % stage
+        "Publish with `pocket static publish --stage %s`." % stage
     )
 
 

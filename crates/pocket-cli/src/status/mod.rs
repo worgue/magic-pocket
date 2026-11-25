@@ -1,4 +1,4 @@
-//! `pocket-rs status`: deploy が管理する resource の状態を一覧で出す (Python 版 `pocket status`)。
+//! `pocket status`: deploy が管理する resource の状態を一覧で出す (Python 版 `pocket status`)。
 //!
 //! - [`resource`]: resource の並び (deploy と同じ順)
 //! - [`report`]: 表示 (順・文言・出力先)。判定は [`report::Evaluator`] 越しに呼ぶ

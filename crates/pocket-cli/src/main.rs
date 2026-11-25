@@ -1,4 +1,4 @@
-//! `pocket-rs`: magic-pocket の Rust 版 CLI。
+//! `pocket`: magic-pocket の Rust 版 CLI。
 //!
 //! object_hash route の publish / adopt / purge / status / hash generate と、
 //! 設定・Context の表示 (`settings` / `context`)、版の表示 (`version`)、image の build
@@ -34,7 +34,7 @@ use magic_pocket_rs::config::{find_toml_path, load_static_config_from_path};
 use crate::publisher::{status_report, PublishOptions, StaticPublisher};
 
 #[derive(Parser)]
-#[command(name = "pocket-rs", version, about = "magic-pocket の Rust 版 CLI")]
+#[command(name = "pocket", version, about = "magic-pocket の Rust 版 CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Top,
@@ -99,7 +99,7 @@ enum Top {
     },
     /// build 済みの `:<commit-hash>` image へ stage を向けて deploy する (再 build しない)
     ///
-    /// `pocket-rs build` で push した image に `:<stage>` の tag を移し、リソースと Lambda を
+    /// `pocket build` で push した image に `:<stage>` の tag を移し、リソースと Lambda を
     /// 更新する
     Promote {
         /// stage 名
@@ -347,7 +347,7 @@ async fn get_publishers(target: &Target, jobs: usize) -> Result<Vec<Arc<StaticPu
     Ok(publishers)
 }
 
-/// `pocket-rs settings`: Python の `pocket settings` と同じ JSON (マスク済み、indent 2)
+/// `pocket settings`: Python の `pocket settings` と同じ JSON (マスク済み、indent 2)
 fn print_settings(stage: &str) -> Result<()> {
     let toml_path = find_toml_path()?;
     let (settings, advisories) = magic_pocket_settings::Settings::load(&toml_path, stage)?;

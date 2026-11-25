@@ -80,9 +80,9 @@ def aws_test_env(monkeypatch):
     monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
 
 
-# --- pocket-rs バイナリを moto server 相手に叩く e2e 用 (KN2215) ---
+# --- pocket バイナリを moto server 相手に叩く e2e 用 (KN2215) ---
 #
-# Rust 版 CLI (`pocket-rs`) をコマンドとして実行し、S3 等は moto server
+# Rust 版 CLI (`pocket`) をコマンドとして実行し、S3 等は moto server
 # (ThreadedMotoServer) で受ける。static の e2e (tests/test_static_e2e.py) のほか、
 # 設定モデル・読み取り系の移植でも同じ fixture を使う。
 
@@ -92,15 +92,15 @@ MOTO_REGION = "ap-northeast-1"
 
 @pytest.fixture(scope="session")
 def pocket_rs_bin() -> Path:
-    """`cargo build` した pocket-rs のパス。
+    """`cargo build` した pocket のパス。
 
     cargo が無い環境では skip するが、CI (`CI` 環境変数あり) では失敗にする
     (e2e 未実行で緑にしない)。
     """
     if shutil.which("cargo") is None:
         if os.environ.get("CI"):
-            pytest.fail("CI に cargo がありません (pocket-rs の e2e を実行できません)")
-        pytest.skip("cargo が無いため pocket-rs の e2e を skip します")
+            pytest.fail("CI に cargo がありません (pocket の e2e を実行できません)")
+        pytest.skip("cargo が無いため pocket の e2e を skip します")
     # 開発用 VM (FORGE=1) はメモリ上限が小さく aws-sdk-ec2 をコンパイルできないので、
     # feature `ec2` を外す (justfile の cli_features と同じ条件)
     features = (
@@ -115,7 +115,7 @@ def pocket_rs_bin() -> Path:
         env={**os.environ, "TARGET_GC": "never"},
     )
     target_dir = Path(os.environ.get("CARGO_TARGET_DIR", REPO_ROOT / "target"))
-    binary = target_dir / "debug" / "pocket-rs"
+    binary = target_dir / "debug" / "pocket"
     assert binary.is_file(), binary
     return binary
 
@@ -146,7 +146,7 @@ def moto_s3(moto_endpoint):
 
 
 class PocketRs:
-    """pocket-rs を moto server 向けの環境変数で実行する。"""
+    """pocket を moto server 向けの環境変数で実行する。"""
 
     def __init__(self, binary: Path, endpoint: str):
         self.binary = binary

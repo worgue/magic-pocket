@@ -1,9 +1,9 @@
-"""`pocket context` (Python 版) と `pocket-rs context` の出力が一致すること。
+"""`pocket context` (Python 版) と `pocket context` の出力が一致すること。
 
 代表的な fixture を project dir (pocket.toml + pyproject.toml) に置き、両方の CLI を
 moto server 向けの同じ環境で実行して stdout をバイト単位で比べる。Route53 の
 hosted zone と、一部の managed secret (Secrets Manager) は moto に作っておく
-(作っていない secret は「未作成」の経路を通る)。pocket-rs のバイナリは
+(作っていない secret は「未作成」の経路を通る)。pocket のバイナリは
 tests/conftest.py の fixture が cargo build する。
 """
 

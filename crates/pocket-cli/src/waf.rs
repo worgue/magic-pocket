@@ -1,4 +1,4 @@
-//! `pocket-rs waf ip …` / `pocket-rs waf ratelimit …` (Python 版 `cli/waf_cli.py`)。
+//! `pocket waf ip …` / `pocket waf ratelimit …` (Python 版 `cli/waf_cli.py`)。
 //!
 //! WebACL / IPSet は CloudFormation (WAF の stack) が us-east-1 に作り、template 上の
 //! Addresses は常に空。実際の CIDR の一覧はこのコマンドが UpdateIPSet で直接書き換える

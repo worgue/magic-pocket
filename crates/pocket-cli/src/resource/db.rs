@@ -1,4 +1,4 @@
-//! `pocket-rs resource s3` / `rds` / `dsql` の読み取り (Python 版 `s3_cli.py` の context・
+//! `pocket resource s3` / `rds` / `dsql` の読み取り (Python 版 `s3_cli.py` の context・
 //! status、`rds_cli.py` / `dsql_cli.py` の status・endpoint)。
 
 use anyhow::{bail, Result};

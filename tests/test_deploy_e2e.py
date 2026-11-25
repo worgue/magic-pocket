@@ -1,4 +1,4 @@
-"""`pocket-rs deploy` / `destroy` を moto server 相手に確かめる。
+"""`pocket deploy` / `destroy` を moto server 相手に確かめる。
 
 moto は CloudFront・ACM・WAF・SES の stack や Lambda の image を扱えないので、ここでは
 S3 だけの最小の stage で、パイプライン全体 (state bucket の確保 → 状態の判定 → 作成 →

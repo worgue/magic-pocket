@@ -1,7 +1,7 @@
 # example-dsql
 
 Aurora DSQL + Rust (axum) の example。`example-neon` / `example-tidb` が Django なのに対し、
-こちらは **pocket-rs (Rust runtime) と DSQL の組み合わせ**を実機で示す。
+こちらは **magic-pocket-rs (Rust runtime) と DSQL の組み合わせ**を実機で示す。
 
 ## 構成
 

@@ -1,4 +1,4 @@
-//! `pocket-rs resource inbound --stage … --name … copy / import / redrive` (Python 版
+//! `pocket resource inbound --stage … --name … copy / import / redrive` (Python 版
 //! `inbound_cli.py` の `copy` / `import` / `redrive`)。
 //!
 //! 順序が安全装置になっているので変えない:

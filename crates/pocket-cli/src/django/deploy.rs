@@ -1,4 +1,4 @@
-//! `pocket-rs django deploy` / `promote` / `deploystatic` / `storage upload` (Python 版
+//! `pocket django deploy` / `promote` / `deploystatic` / `storage upload` (Python 版
 //! `pocket_cli/django_cli.py`)。
 //!
 //! collectstatic だけは project の Python で実行する (Python 版も subprocess)。storage の
@@ -69,14 +69,14 @@ fn skip_message(context: &Context, stage: &str) -> Result<Option<String>> {
 pub fn object_hash_skip_message(stage: &str) -> String {
     format!(
         "staticfiles is object_hash: skipping deploystatic. \
-         Publish with `pocket-rs static publish --stage {stage}`."
+         Publish with `pocket static publish --stage {stage}`."
     )
 }
 
 pub fn object_hash_deploystatic_error(stage: &str) -> String {
     format!(
         "staticfiles is object_hash: deploystatic does not support it. \
-         Publish with `pocket-rs static publish --stage {stage}`."
+         Publish with `pocket static publish --stage {stage}`."
     )
 }
 
@@ -610,8 +610,9 @@ mod tests {
 
     #[test]
     fn test_object_hash_messages_point_to_static_publish() {
-        assert!(object_hash_skip_message("dev").contains("`pocket-rs static publish --stage dev`"));
-        assert!(object_hash_deploystatic_error("dev")
-            .contains("`pocket-rs static publish --stage dev`"));
+        assert!(object_hash_skip_message("dev").contains("`pocket static publish --stage dev`"));
+        assert!(
+            object_hash_deploystatic_error("dev").contains("`pocket static publish --stage dev`")
+        );
     }
 }

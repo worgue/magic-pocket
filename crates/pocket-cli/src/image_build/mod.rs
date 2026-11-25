@@ -1,4 +1,4 @@
-//! `pocket-rs build`: 作業ツリーを build し、git commit hash を tag にして ECR へ push する。
+//! `pocket build`: 作業ツリーを build し、git commit hash を tag にして ECR へ push する。
 //!
 //! Python 版 `pocket build` (`build_cli.py` / `deploy_cli.build_image` / `Ecr` / builders)
 //! の移植。deploy はしない (build once)。昇格 (`promote`) は deploy の Rust 化と一緒に行う。

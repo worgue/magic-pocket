@@ -66,7 +66,7 @@ async fn show_info_message(
             sink.info("pocket resource container secrets create-pocket-managed");
         }
     }
-    // `pocket-rs context` と同じく secret (API key 等) はマスクする
+    // `pocket context` と同じく secret (API key 等) はマスクする
     let masked = mask_secret_values(&resource.context_json());
     sink.print(&pyjson::dumps_indent2(&masked));
     Ok(())

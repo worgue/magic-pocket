@@ -1,4 +1,4 @@
-//! `pocket-rs resource dsql backup` / `backup-status` / `restore` / `restore-status`
+//! `pocket resource dsql backup` / `backup-status` / `restore` / `restore-status`
 //! (Python 版 `dsql_cli.py` と `resources/dsql.py` の backup / restore)。
 //!
 //! DSQL には組み込みの自動 backup が無く、AWS Backup の backup job が唯一の手段。restore は

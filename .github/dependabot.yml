@@ -9,7 +9,7 @@ updates:
     groups:
       python:
         update-types: [minor, patch]
-  - package-ecosystem: cargo # Rust (pocket-rs)。group を patch / minor で分割する
+  - package-ecosystem: cargo # Rust (CLI と runtime lib)。group を patch / minor で分割する
     directory: /
     schedule:
       interval: weekly

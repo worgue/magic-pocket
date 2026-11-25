@@ -1,7 +1,7 @@
 """CloudFormation template の共有 test vector を生成する (`just vectors`)。
 
 Python 版の deploy が作る stack の template を、入力 (toml × その stages) ごとに
-`tests/data/template_vectors/<group>/<名前>.<stage>/` へ書く。Rust 版 (`pocket-rs`) は
+`tests/data/template_vectors/<group>/<名前>.<stage>/` へ書く。Rust 版 (`pocket`) は
 同じ入力から template を組み、この出力とバイト一致することを確かめる
 (stack の `pocket:template_hash` タグは template のテキストの hash なので、
 1 バイトでも違うと既存 stack が REQUIRE_UPDATE になる)。

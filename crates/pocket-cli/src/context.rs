@@ -1,4 +1,4 @@
-//! `pocket-rs context`: Python の `pocket context` と同じ JSON (マスク済み、indent 2)。
+//! `pocket context`: Python の `pocket context` と同じ JSON (マスク済み、indent 2)。
 //!
 //! Context の導出は `magic_pocket_settings::context` (純粋層) にあり、ここでは外部入力
 //! ([`ExternalInputs`]) を AWS (Route53 / Secrets Manager)・git・ファイルシステムで

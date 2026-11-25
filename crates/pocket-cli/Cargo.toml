@@ -5,10 +5,9 @@ edition = "2021"
 description = "magic-pocket の Rust 版 CLI (static 系・settings・context・version・build・status・deploy・promote・destroy)"
 publish = false
 
-# bin 名は `pocket-rs`。Python の `pocket` と両立させる期間は別名で配る。
-# 全面移行後に `pocket` へ rename する
+# bin 名は `pocket` (crate 名と directory は magic-pocket-cli-rs / crates/pocket-cli のまま)
 [[bin]]
-name = "pocket-rs"
+name = "pocket"
 path = "src/main.rs"
 
 [features]
@@ -22,9 +21,9 @@ ec2 = ["dep:aws-sdk-ec2"]
 [dependencies]
 # runtime lib。pocket.toml の読み込み (StaticConfig) と key 名 / URL encode / 論理 path
 # の検査を共有する (導出を 1 か所に保つ)。CLI 用の依存は lib に足さない。
-# inbound: 受信 ID の導出 (`pocket-rs resource inbound reconcile`)
+# inbound: 受信 ID の導出 (`pocket resource inbound reconcile`)
 magic-pocket-rs = { path = "../pocket-rs", features = ["static", "inbound"] }
-# pocket.toml の設定モデル (`pocket-rs settings`)
+# pocket.toml の設定モデル (`pocket settings`)
 magic-pocket-settings = { path = "../pocket-settings", features = ["context"] }
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
@@ -33,7 +32,7 @@ aws-config = { version = "1", features = ["behavior-version-latest"] }
 # aws-sdk-* は default の `rustls` feature が legacy TLS スタックを依存ツリーに残すため
 # 外す (lib と同じ方針)
 aws-sdk-s3 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
-# `pocket-rs context` の外部入力 (hosted zone の一覧 / managed secret の ARN)
+# `pocket context` の外部入力 (hosted zone の一覧 / managed secret の ARN)
 aws-sdk-route53 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-secretsmanager = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 sha2 = "0.11"
@@ -48,7 +47,7 @@ serde_json = { version = "1", features = ["preserve_order"] }
 ignore = "0.4"
 # PutObject の Content-Type (旧 Python 版は mimetypes)
 mime_guess = "2"
-# `pocket-rs build` (ECR repository / 認証 token、CodeBuild backend の project・role・
+# `pocket build` (ECR repository / 認証 token、CodeBuild backend の project・role・
 # account id)
 aws-sdk-ecr = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-iam = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
@@ -65,7 +64,7 @@ minijinja = { version = "3.1.0", features = ["preserve_order", "serde"] }
 minijinja-contrib = { version = "3.1.0", features = ["pycompat"] }
 # stack の作成・更新・削除と状態の取得 (deploy / status / destroy)
 aws-sdk-cloudformation = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
-# `pocket-rs status` が読むリソース (Lambda / RDS / security group / EFS / DSQL /
+# `pocket status` が読むリソース (Lambda / RDS / security group / EFS / DSQL /
 # SES の rule set / SNS の購読 / SSM)
 aws-sdk-lambda = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 aws-sdk-rds = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
@@ -97,5 +96,5 @@ aws-sdk-sesv2 = { version = "1", default-features = false, features = ["default-
 aws-sdk-sqs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
 # destroy: Lambda が自動で作った log group を消す
 aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }
-# `pocket-rs waf` (IPSet の読み書きと rate rule の managed keys)。rustc の最大メモリは約 1.0GB
+# `pocket waf` (IPSet の読み書きと rate rule の managed keys)。rustc の最大メモリは約 1.0GB
 aws-sdk-wafv2 = { version = "1", default-features = false, features = ["default-https-client", "rt-tokio"] }

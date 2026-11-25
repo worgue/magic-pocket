@@ -484,7 +484,7 @@ pub fn warn_contents(cf: &CloudFrontContext, sink: &mut dyn Sink) {
         if route.is_object_hash {
             sink.info(&format!(
                 "{label} は object_hash route です。\
-                 `pocket-rs static publish --stage {}` で上げてください \
+                 `pocket static publish --stage {}` で上げてください \
                  (deploy は触りません)",
                 cf.stage
             ));
@@ -1132,7 +1132,7 @@ mod tests {
         let lines: Vec<&str> = sink.0.iter().map(|r| r.2.as_str()).collect();
         // upload_dir のある route (default / assets / deploy) は案内しない
         assert!(lines.contains(
-            &"/static/* は object_hash route です。`pocket-rs static publish --stage dev` \
+            &"/static/* は object_hash route です。`pocket static publish --stage dev` \
               で上げてください (deploy は触りません)"
         ));
         let media = format!(

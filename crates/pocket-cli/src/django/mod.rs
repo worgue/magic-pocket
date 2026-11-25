@@ -1,4 +1,4 @@
-//! `pocket-rs django …` (Python 版 `pocket_cli/django_cli.py`)。ここは `init` / `manage` /
+//! `pocket django …` (Python 版 `pocket_cli/django_cli.py`)。ここは `init` / `manage` /
 //! `resetdb`、deploy 系 (`deploy` / `promote` / `deploystatic` / `storage upload`) は
 //! [`deploy`]、storage の解決は [`storage`] にある。
 //!
@@ -106,7 +106,7 @@ pub enum DjangoCommand {
         )]
         words: Vec<String>,
     },
-    /// stage を deploy し、static の upload・migrate を行う (`pocket-rs deploy` + Django の後処理)
+    /// stage を deploy し、static の upload・migrate を行う (`pocket deploy` + Django の後処理)
     Deploy {
         /// stage 名
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
@@ -126,7 +126,7 @@ pub enum DjangoCommand {
     },
     /// build 済みの `:<commit-hash>` image へ stage を向けて deploy する (再 build しない)
     ///
-    /// `pocket-rs django build` で push した image に `:<stage>` の tag を移し、リソースと
+    /// `pocket django build` で push した image に `:<stage>` の tag を移し、リソースと
     /// Lambda を更新する。静的ファイルは deploy と同じくローカルで build して upload する
     Promote {
         /// stage 名
@@ -148,7 +148,7 @@ pub enum DjangoCommand {
         #[arg(long, hide = true)]
         skip_check_existing: bool,
     },
-    /// `pocket-rs build` の別名 (作業ツリーを build し、commit hash を tag にして ECR へ push する)
+    /// `pocket build` の別名 (作業ツリーを build し、commit hash を tag にして ECR へ push する)
     Build {
         /// stage 名
         #[arg(long, env = "POCKET_DEPLOY_STAGE")]
@@ -1134,7 +1134,7 @@ mod tests {
     }
 
     fn parse_manage(argv: &[&str]) -> Result<ManageArgs> {
-        let cli = TestCli::try_parse_from(["pocket-rs", "manage"].iter().chain(argv.iter()))?;
+        let cli = TestCli::try_parse_from(["pocket", "manage"].iter().chain(argv.iter()))?;
         let DjangoCommand::Manage {
             stage,
             timeout_seconds,

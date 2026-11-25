@@ -1,4 +1,4 @@
-//! `pocket-rs resource neon` (Python 版 `neon_cli.py` / `store_url_helper.py` /
+//! `pocket resource neon` (Python 版 `neon_cli.py` / `store_url_helper.py` /
 //! `url_helper.py`)。
 //!
 //! deploy / status は Neon の API を呼ばない。API key を読むのはこのコマンドだけで、
@@ -68,7 +68,7 @@ pub enum NeonCommand {
     },
     /// 接続 URL を stdout に出力する (default: stored-first / --live: provider API)。
     ///
-    /// 移行ツール等が `$(pocket-rs resource neon url --stage <s>)` で食える純 URL のみを
+    /// 移行ツール等が `$(pocket resource neon url --stage <s>)` で食える純 URL のみを
     /// stdout に出す (診断は stderr)。
     Url {
         #[command(flatten)]

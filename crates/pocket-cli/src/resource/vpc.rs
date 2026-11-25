@@ -1,4 +1,4 @@
-//! `pocket-rs resource vpc` の読み取り (Python 版 `vpc_cli.py` の yaml / status)。
+//! `pocket resource vpc` の読み取り (Python 版 `vpc_cli.py` の yaml / status)。
 
 use anyhow::{bail, Result};
 use magic_pocket_rs::config::find_toml_path;

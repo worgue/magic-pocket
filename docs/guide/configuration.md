@@ -57,7 +57,7 @@ pocket.toml に書く相対パスは、**pocket.toml のあるディレクトリ
 | `[container.<name>] dockerfile_path` | Docker ビルドコンテキスト（= pocket.toml のディレクトリ）内の Dockerfile |
 | `[[cloudfront.<name>.routes]] build` | `cmd` は pocket.toml のディレクトリで実行し、`dir` もそこからのパス |
 | `[[cloudfront.<name>.routes]] upload_dir` | アップロードするディレクトリ |
-| `[[cloudfront.<name>.routes]] sources` / `map` | object_hash の入力と map（`pocket-rs static`） |
+| `[[cloudfront.<name>.routes]] sources` / `map` | object_hash の入力と map（`pocket static`） |
 | `[cloudfront.<name>] managed_assets` | ステージ別アセットのディレクトリ |
 | `[container.<name>.django] project_dir` | `pocket django deploy` 等が `manage.py collectstatic` を実行するディレクトリ |
 
@@ -98,7 +98,7 @@ stages = ["dev", "prod"]
 
 ### region を移すときの state bucket {#state-bucket-region}
 
-pocket は stage ごとに state bucket（`{stage}-{project}-{namespace}-state`。deploy の記録 `resources.json` と CodeBuild の source を置く）を `region` に作ります。**既存の stage の `region` を変えても state bucket は自動では移りません**。旧 region に残ったままだと、`pocket deploy` / `pocket build` / `pocket promote` / `pocket-rs build` は次のエラーで止まります。
+pocket は stage ごとに state bucket（`{stage}-{project}-{namespace}-state`。deploy の記録 `resources.json` と CodeBuild の source を置く）を `region` に作ります。**既存の stage の `region` を変えても state bucket は自動では移りません**。旧 region に残ったままだと、`pocket deploy` / `pocket build` / `pocket promote` / `pocket build` は次のエラーで止まります。
 
 ```
 state bucket dev-myapp-pocket-state は ap-northeast-1 にありますが、[general] region は ap-southeast-1 です。…
@@ -369,7 +369,7 @@ expiration_days = 30
 ## neon
 
 !!! warning "実験的な機能です"
-    Neon 対応は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket-rs resource neon`）は、予告なく変更・廃止することがあります。
+    Neon 対応は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket resource neon`）は、予告なく変更・廃止することがあります。
 
 Neon PostgreSQLの設定です。Neon プロジェクトは事前に [Neon Console](https://console.neon.tech/){:target="_blank"} で作成しておく必要があります。magic-pocket はプロジェクト内にブランチ・データベース・ロールを作成します。
 
@@ -1550,7 +1550,7 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     `deploystatic` のすべての経路で collectstatic に `--link` が付きます。
     ビルド先が全量 symlink（0 バイト）になり、大容量資産の複製コストが
     かかりません。upload は symlink の指す先の内容を上げるので
-    （Python 版の `aws s3 sync`・Rust 版 `pocket-rs django` とも）、
+    （Python 版の `aws s3 sync`・Rust 版 `pocket django` とも）、
     従来と互換です。CLI の `pocket django deploystatic --link/--no-link`
     フラグは宣言の上書き用に使えます。
 
@@ -2058,7 +2058,7 @@ middleware の挙動:
 
 #### axum (Rust) middleware の組み込み
 
-Rust container には pocket-rs 同梱の axum middleware (feature `axum`) を使います。
+Rust container には magic-pocket-rs 同梱の axum middleware (feature `axum`) を使います。
 挙動は Django 版と同じで、secret の env 注入は `set_envs()` が自動で行います。
 組み込み方は「[Rust 連携](rust.md#origin-verify-middleware)」を参照してください。
     rotate 直後は、新 header を受け取る warm Lambda がまだ旧 env を保持する一瞬の窓で
@@ -2112,7 +2112,7 @@ routes = [
 | `build` | `{ dir, cmd }` \| None | None | pocket にビルドさせる宣言。`dir`（成果物ディレクトリ = アップロード対象）と `cmd`（ビルドコマンド、deploy が upload 前に shell 実行）は**両方必須** |
 | `upload_dir` | str \| None | None | ビルドは外部（CI 等）の責任と宣言し、このディレクトリの中身をアップロードだけする。**deploy はビルドを実行しない**ため、成果物を最新にするのは利用者の責任 |
 | `delete_stale` | bool \| None | None | `build` / `upload_dir` のアップロードで、今回の成果物に無い S3 key を削除するか。省略時は `versioning = "content_hash"` なら `false`（旧版を残す）、それ以外は `true`（下記 note 参照） |
-| `sources` | list[StaticSource] | `[]` | `versioning = "object_hash"` の入力（ローカルファイルの集合）。`pocket-rs static publish` が上げる。下記 [object_hash](#object_hash) 参照 |
+| `sources` | list[StaticSource] | `[]` | `versioning = "object_hash"` の入力（ローカルファイルの集合）。`pocket static publish` が上げる。下記 [object_hash](#object_hash) 参照 |
 | `map` | str \| None | None | `object_hash` の map ファイル（path → 内容 hash）のパス。省略時は `pocket_static/<cloudfront 名>-<route 名>.map` |
 | `require_token` | bool | `false` | SPA トークン認証を有効化（`is_spa = true` 必須） |
 | `login_path` | str | `"/api/auth/login"` | 未認証時のリダイレクト先パス |
@@ -2369,7 +2369,7 @@ routes = [
 | URL の形 | `/static/<git hash>/img/a.jpg` | `/static/img/a.<hash>.jpg`（Django の manifest が付ける） | `/static/img/a.<内容 hash 16 hex>.jpg` |
 | code だけの deploy | 全 URL が変わる（CDN / ブラウザのキャッシュがすべて外れる） | 変わらない | 変わらない |
 | 1 ファイルの差し替え | 全 URL が変わる | その URL だけ変わる | その URL だけ変わる |
-| 上げる経路 | deploy（collectstatic） | deploy（collectstatic + manifest） | **`pocket-rs static publish`**（deploy は触らない） |
+| 上げる経路 | deploy（collectstatic） | deploy（collectstatic + manifest） | **`pocket static publish`**（deploy は触らない） |
 | 想定規模 | 小〜中 | 小〜中（manifest 計算が全件を読む） | 数万件・数十 GB |
 
 **仕組み**
@@ -2420,7 +2420,7 @@ sources = [
 
 **map（release の正本）**
 
-`pocket-rs static hash generate` / `pocket-rs static publish --hash-generate` が、ローカルの `sources` を hash して map ファイルに書きます。既定の置き場所は `pocket_static/<cloudfront 名>-<route 名>.map`（`map` で変更可）。テキストで path 順に並び、1 行 1 entry（`path<TAB>sha256<TAB>source<TAB>H|P`）なので、変更が少ないときの diff は小さく、レビューできます。
+`pocket static hash generate` / `pocket static publish --hash-generate` が、ローカルの `sources` を hash して map ファイルに書きます。既定の置き場所は `pocket_static/<cloudfront 名>-<route 名>.map`（`map` で変更可）。テキストで path 順に並び、1 行 1 entry（`path<TAB>sha256<TAB>source<TAB>H|P`）なので、変更が少ないときの diff は小さく、レビューできます。
 
 ```
 # magic-pocket static map v1
@@ -2430,7 +2430,7 @@ img/photo.jpg	ca978112...	data	H
 thumb/photo.webp	559aead0...	derived	H
 ```
 
-**map は git に commit してください。** release id は map の内容から決まり、`pocket-rs static publish`（照合モード）は commit 済みの map とローカルを照合してから上げるので、**同じ map から publish した stage は同じ内容を配信します**（dev で確かめた release と同じものが prod に出る）。コマンドの使い方は [pocket-rs static](cli.md#pocket-static) を参照してください。
+**map は git に commit してください。** release id は map の内容から決まり、`pocket static publish`（照合モード）は commit 済みの map とローカルを照合してから上げるので、**同じ map から publish した stage は同じ内容を配信します**（dev で確かめた release と同じものが prod に出る）。コマンドの使い方は [pocket static](cli.md#pocket-static) を参照してください。
 
 **S3 上の metadata**
 
@@ -2443,8 +2443,8 @@ bucket 直下の `.pocket/` は、どのルートの key prefix にも含まれ�
 
 !!! note "運用の注意"
     - **map から path を消さない**: runtime は常に最新の `current` を追います。map から path を消して publish すると、ロールバック中の古い app などがその path を解決できなくなります（`StaticPathNotFound`）。app が参照する path は map に残してください。
-    - **旧 object は消しません**: 差し替え前の URL は前の内容を返し続けます。掃除は `pocket-rs static purge`（配信を止める操作）で行い、参照されなくなった object だけを消す GC は後続の機能です。
-    - deploy は `object_hash` のルートに触りません（`pocket deploy` の案内に `pocket-rs static publish` を使う旨が出ます）。
+    - **旧 object は消しません**: 差し替え前の URL は前の内容を返し続けます。掃除は `pocket static purge`（配信を止める操作）で行い、参照されなくなった object だけを消す GC は後続の機能です。
+    - deploy は `object_hash` のルートに触りません（`pocket deploy` の案内に `pocket static publish` を使う旨が出ます）。
 
 ### CloudFront 経由の API Gateway（Cookie 認証）
 

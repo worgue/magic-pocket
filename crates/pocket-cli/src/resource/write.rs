@@ -1,7 +1,7 @@
-//! `pocket-rs resource` の書き込み (Python 版の create / update / destroy、container の
+//! `pocket resource` の書き込み (Python 版の create / update / destroy、container の
 //! secret・env 操作、cloudfront の upload / prune)。
 //!
-//! 操作の本体は `deploy/` の部品 (`pocket-rs deploy` / `destroy` と同じ実装) を使い、
+//! 操作の本体は `deploy/` の部品 (`pocket deploy` / `destroy` と同じ実装) を使い、
 //! ここは対象の選択・状態による分岐・確認・文言だけを持つ。確認の有無と `-y` の扱いは
 //! Python 版と同じ (vpc / s3 / rds / dsql の destroy と delete-pocket-managed は `-y` を
 //! 持たず、常に聞く)

@@ -1,16 +1,17 @@
 #!/bin/sh
-# Rust 版 CLI `pocket-rs` を GitHub Release から入れる。Python は要らない。
+# Rust 版 CLI `pocket` を GitHub Release から入れる。Python は要らない。
 #
 #   sh install.sh X.Y.Z
 #   curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z
 #
 # - 版 (X.Y.Z) は必須。project の pin と同じ版を入れる (省略時に latest を入れない)
-# - 置き場所は ${POCKET_RS_INSTALL_DIR:-$HOME/.local/bin}/pocket-rs。既存があれば版を表示して上書きする
+# - 置き場所は ${POCKET_INSTALL_DIR:-$HOME/.local/bin}/pocket。既存があれば版を表示して上書きする
+# - 同じ場所に旧名の pocket-rs があれば、不要になった旨を出す (消さない)
 # - tar.gz は同じ Release の .sha256 で検証してから置く
 # - 依存は curl / tar / sha256sum か shasum だけ
 set -eu
 
-BIN="pocket-rs"
+BIN="pocket"
 
 die() {
     echo "install.sh: $*" >&2
@@ -65,7 +66,7 @@ command -v tar >/dev/null 2>&1 || die "tar がありません"
 target=$(detect_target)
 name="$BIN-$target"
 base="https://github.com/worgue/magic-pocket/releases/download/$version"
-install_dir=${POCKET_RS_INSTALL_DIR:-$HOME/.local/bin}
+install_dir=${POCKET_INSTALL_DIR:-$HOME/.local/bin}
 dest="$install_dir/$BIN"
 
 tmp=$(mktemp -d)
@@ -97,6 +98,9 @@ fi
 mv -f "$dest.tmp.$$" "$dest"
 
 echo "入れました: $dest ($new)"
+if [ -e "$install_dir/pocket-rs" ]; then
+    echo "注意: 旧名の $install_dir/pocket-rs は不要になりました (消して構いません)" >&2
+fi
 case ":$PATH:" in
     *":$install_dir:"*) ;;
     *) echo "注意: $install_dir が PATH にありません" >&2 ;;

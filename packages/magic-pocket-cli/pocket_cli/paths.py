@@ -4,7 +4,7 @@ pocket.toml は cwd から上方向に探すので、下位ディレクトリ (�
 実行しても設定は読める。pocket.toml に書く相対パス (`dockerfile_path` / route の
 `build` / `upload_dir` / `managed_assets` / django の `project_dir`) とビルド
 コンテキストも、cwd ではなく見つけた pocket.toml のディレクトリを基準にする
-(Rust 版 `pocket-rs static` と同じ基準)。
+(Rust 版 `pocket static` と同じ基準)。
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-//! `pocket-rs destroy` の本体。手順の順と文言は [`super::destroy`]、ここは各手順を
+//! `pocket destroy` の本体。手順の順と文言は [`super::destroy`]、ここは各手順を
 //! AWS の部品につなぐ
 
 use anyhow::{Context as _, Result};
@@ -71,7 +71,7 @@ pub async fn run(args: DestroyArgs) -> Result<()> {
 
 /// container 関連のリソースだけを消す (Python 版 `pocket resource container destroy`)。
 ///
-/// `pocket-rs destroy` と同じ手順 (stack の削除完了待ち・共有 ECR の保護・CodeBuild・
+/// `pocket destroy` と同じ手順 (stack の削除完了待ち・共有 ECR の保護・CodeBuild・
 /// log group の掃除) を使う。secret は `with_secrets` のときだけ消す
 pub async fn destroy_containers(
     stage: &str,

@@ -7,7 +7,7 @@
 |---------|-----------|-----|-------------|
 | [`example-neon`](https://github.com/worgue/magic-pocket/tree/main/example-neon) | Django | Neon (PostgreSQL) | 最小構成。Django + CloudFront + S3 静的配信 |
 | [`example-tidb`](https://github.com/worgue/magic-pocket/tree/main/example-tidb) | Django | TiDB Serverless (MySQL) | 自分で保存した接続 URL を `name =` で参照する user secret、MySQL 系バックエンド |
-| [`example-dsql`](https://github.com/worgue/magic-pocket/tree/main/example-dsql) | Rust (axum) | Aurora DSQL | pocket-rs、SQS worker、`pocket.sqs_scheduler` による定期実行、SPA (SvelteKit) |
+| [`example-dsql`](https://github.com/worgue/magic-pocket/tree/main/example-dsql) | Rust (axum) | Aurora DSQL | pocket、SQS worker、`pocket.sqs_scheduler` による定期実行、SPA (SvelteKit) |
 
 ## それぞれの読みどころ
 

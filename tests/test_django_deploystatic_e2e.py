@@ -1,4 +1,4 @@
-"""`pocket-rs django deploystatic` / `storage upload` を moto server 相手に確かめる。
+"""`pocket django deploystatic` / `storage upload` を moto server 相手に確かめる。
 
 collectstatic は PATH に置いた偽の `uv` が代わりに行う (`uv run python manage.py
 collectstatic …` の引数・環境変数・cwd を記録し、override の出力先にファイルを書く)。
@@ -280,5 +280,5 @@ def test_deploystatic_refuses_object_hash(pocket_rs, tmp_path, moto_s3):
     assert result.returncode != 0
     assert (
         "staticfiles is object_hash: deploystatic does not support it. "
-        "Publish with `pocket-rs static publish --stage dev`." in result.stderr
+        "Publish with `pocket static publish --stage dev`." in result.stderr
     )

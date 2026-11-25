@@ -16,7 +16,7 @@ thiserror = "2"
 regex = "1"
 # deserialize エラーの path (どの field か) を Python のエラーと比べるため
 serde_path_to_error = "0.1"
-# Context (`pocket-rs context`) の受信口の命名 (Python の hashlib.sha256)。runtime lib
+# Context (`pocket context`) の受信口の命名 (Python の hashlib.sha256)。runtime lib
 # (crates/pocket-rs) は Context を使わないので feature で切り離す
 sha2 = { version = "0.11", optional = true }
 

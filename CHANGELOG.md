@@ -4,6 +4,15 @@
 書き方は[Keep a Changelog](http://keepachangelog.com/en/1.0.0/)に基づきます。<br>
 バージョンは[Semantic Versioning](http://semver.org/spec/v2.0.0.html)に従います。
 
+## [Unreleased]
+
+### Changed
+- **破壊的変更**: Rust 版 CLI のコマンド名を `pocket-rs` から `pocket` に変えました。`install.sh` が入れる
+  名前・GitHub Release の asset 名（`pocket-<target>.tar.gz`）・`--version` の表示も `pocket` です。
+  `pocket-rs` の名前では入りません（別名は作りません）。置き場所を変える環境変数は
+  `POCKET_RS_INSTALL_DIR` から `POCKET_INSTALL_DIR` に変わりました（旧名は読みません）。
+  同じ場所に古い `pocket-rs` があれば、`install.sh` が不要になった旨を表示します（消しません）。
+
 ## [0.49.1](https://github.com/worgue/magic-pocket/releases/tag/0.49.1) - 2026-11-25
 
 ### Fixed

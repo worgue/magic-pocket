@@ -250,7 +250,7 @@ impl Route {
             if self.build.is_some() || has_upload_dir {
                 return err(
                     "versioning = \"object_hash\" と build / upload_dir は同時に\
-                     設定できません (object_hash は pocket-rs static publish で\
+                     設定できません (object_hash は pocket static publish で\
                      上げます)",
                 );
             }
@@ -525,7 +525,7 @@ pub struct CloudFront {
 }
 
 /// route の path_pattern から CFn 論理 ID 用の名前を導出する (Python の
-/// `route_logical_name`。pocket-rs の `config::route_logical_name` と同じ規則)
+/// `route_logical_name`。magic-pocket-rs の `config::route_logical_name` と同じ規則)
 pub fn route_logical_name(path_pattern: &str) -> String {
     if path_pattern.is_empty() {
         return "root".to_string();

@@ -1,4 +1,4 @@
-"""`pocket-rs django init` が Python 版 `pocket django init` と同じファイルを書くか。
+"""`pocket django init` が Python 版 `pocket django init` と同じファイルを書くか。
 
 SECRET_KEY は乱数なので行ごと伏せて比べる (Rust 側は形だけ確かめる)。
 django-environ の有無は、Python 版は pocket 自身の Python で、Rust 版は project の

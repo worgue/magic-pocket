@@ -1,4 +1,4 @@
-//! `pocket-rs destroy` の手順 (Python 版 `cli/destroy_cli.py`)。
+//! `pocket destroy` の手順 (Python 版 `cli/destroy_cli.py`)。
 //!
 //! 削除対象を集めて一覧で見せ、確認してから deploy の逆順に消す。対象の文言と削除の順は
 //! ここで決め、AWS への操作は [`DestroyOps`] の裏に置く (本番の実装は [`super::destroy_run`])。

@@ -1,4 +1,4 @@
-//! `pocket-rs resource cloudfront` / `cloudfront-keys` / `cloudfront-waf` の読み取り
+//! `pocket resource cloudfront` / `cloudfront-keys` / `cloudfront-waf` の読み取り
 //! (Python 版 `cloudfront_cli.py` / `cloudfront_keys_cli.py` / `cloudfront_waf_cli.py` の
 //! yaml・context・status)。
 

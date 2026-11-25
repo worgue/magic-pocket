@@ -282,7 +282,7 @@ class Stack:
         差し替えが必要なサブクラスは加工済み dict を渡す)。
 
         値だけを入れる (メソッドを持つオブジェクトを入れない)。Rust 版
-        (`pocket-rs`) が同じテンプレートを同じ変数で描画し、結果がバイト一致する
+        (`pocket`) が同じテンプレートを同じ変数で描画し、結果がバイト一致する
         ことを `tests/data/template_vectors` で固定している。
         """
         if context_data is None:

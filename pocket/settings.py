@@ -1011,7 +1011,7 @@ Versioning = Literal["content_hash", "deploy_hash", "object_hash"]
 class StaticSource(BaseModel):
     """`versioning = "object_hash"` の route に載せるローカルファイルの集合。
 
-    `pocket-rs static publish` が `dir` 配下を列挙し、`prefix` + 相対 path を論理 path
+    `pocket static publish` が `dir` 配下を列挙し、`prefix` + 相対 path を論理 path
     (= map の path、`static_url(path)` の引数) にする。`hashed = false` は Vite の
     `_app/immutable` のように名前に内容 hash を持つ出力向けで、名前を変えずに置く。
     """
@@ -1254,7 +1254,7 @@ class Route(BaseModel):
 
     @model_validator(mode="after")
     def check_object_hash(self):
-        """object_hash は sources から `pocket-rs static publish` で上げる route。
+        """object_hash は sources から `pocket static publish` で上げる route。
 
         deploy が触る build / upload_dir と排他にし (publish の経路を 1 つにする)、
         署名 URL は第 1 段では扱わない。
@@ -1268,7 +1268,7 @@ class Route(BaseModel):
             if self.build or self.upload_dir:
                 raise ValueError(
                     'versioning = "object_hash" と build / upload_dir は同時に'
-                    "設定できません (object_hash は pocket-rs static publish で"
+                    "設定できません (object_hash は pocket static publish で"
                     "上げます)"
                 )
             if self.signed:

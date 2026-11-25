@@ -1,4 +1,4 @@
-"""`pocket-rs resource` の書き込み系を moto server 相手に確かめる。
+"""`pocket resource` の書き込み系を moto server 相手に確かめる。
 
 部品 (`deploy/*.rs`) の中身は `test_*_write_e2e.py` (`deploy-parts` 経由) で見る。
 ここは公開の入口の分岐・確認・文言と、Python 版が読める結果になることを見る。

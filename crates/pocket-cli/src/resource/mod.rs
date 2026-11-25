@@ -1,8 +1,8 @@
-//! `pocket-rs resource`: resource 単位の操作 (Python 版 `pocket resource …`)。
+//! `pocket resource`: resource 単位の操作 (Python 版 `pocket resource …`)。
 //!
 //! 読み取り・表示のコマンド (status / yaml / context / endpoint / url / secrets list /
 //! status-env / image / inbound status・reconcile)。判定と template の描画は
-//! `pocket-rs status` と同じもの ([`crate::status::aws::AwsEvaluator`]) を使う。
+//! `pocket status` と同じもの ([`crate::status::aws::AwsEvaluator`]) を使う。
 //!
 //! Python 版との違い:
 //! - `--stage` を省略したら入力を求めずエラー (env `POCKET_DEPLOY_STAGE` は読む)。
@@ -174,7 +174,7 @@ pub enum ContainerCommand {
     Update(ContainerTarget),
     /// Container 関連リソース (全 container) を削除する
     ///
-    /// トップレベル `pocket-rs destroy` と同じ実装を使う (共有 ECR の削除ガード /
+    /// トップレベル `pocket destroy` と同じ実装を使う (共有 ECR の削除ガード /
     /// stack 削除完了待ち / CodeBuild / log group 掃除を含む)
     Destroy {
         #[command(flatten)]

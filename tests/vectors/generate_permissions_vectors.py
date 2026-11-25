@@ -3,7 +3,7 @@
 settings の vector と同じ入力 (toml × その stages) について、Python 版の
 `pocket permissions list` (text / json)・`role-names`・`roles` の stdout を
 `tests/data/permissions_vectors/<group>/<名前>.<stage>.json` に書く。Rust 版
-(`pocket-rs permissions`) は同じ入力から同じ文字列を出すことを確かめる
+(`pocket permissions`) は同じ入力から同じ文字列を出すことを確かめる
 (`crates/pocket-cli/src/permissions.rs` のテスト)。
 
 - `roles` は `--account-id` に固定の fake を渡す (sts を呼ばない)。Context の外部入力は

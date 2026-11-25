@@ -3,7 +3,7 @@
 `magic-pocket` (runtime lib) と `magic-pocket-cli` (deploy CLI) を PyPI へ
 リリースするときの手順。**tag `X.Y.Z` の push で GitHub Actions
 (`.github/workflows/release.yml`、PyPI Trusted Publishing / OIDC) が両パッケージを
-build & publish** し、あわせて **Rust 版 CLI `pocket-rs` の 4 target のバイナリをビルドして
+build & publish** し、あわせて **Rust 版 CLI `pocket` の 4 target のバイナリをビルドして
 GitHub Release (本文は CHANGELOG の当該節) に添付**する。
 
 役割は 2 つに分かれる:
@@ -35,7 +35,7 @@ GitHub Release (本文は CHANGELOG の当該節) に添付**する。
      `magic-pocket>=X.Y.Z,<X.(Y+1)` (**上限も同 minor に束縛する**。0.x では minor が
      breaking の単位のため、上限なしだと cli を version pin した消費者にも lib の
      破壊的変更がリリース当日に届いて deploy が壊れる)
-   - `crates/pocket-cli/Cargo.toml` の `version` (Rust 版 CLI `pocket-rs`。`--version` と
+   - `crates/pocket-cli/Cargo.toml` の `version` (Rust 版 CLI `pocket`。`--version` と
      Release の asset の版がこれになる。`release.yml` の build-cli も tag との一致を検証する)
 2. **`uv.lock` と `Cargo.lock` を反映する** (version バンプで差分が出る。`uv lock` か
    `uv run` と、`cargo check -p magic-pocket-cli-rs` で更新)。
@@ -101,7 +101,7 @@ GitHub Release (本文は CHANGELOG の当該節) に添付**する。
        ときだけ、一時的に `[tool.uv.sources]` でローカル wheel を override する。
 
 9. **GitHub Release を確認する** (作成は `release.yml` の `github-release` job が行う。
-   本文は CHANGELOG の `## [X.Y.Z]` 節、asset は `pocket-rs` の 4 target × (tar.gz + sha256) =
+   本文は CHANGELOG の `## [X.Y.Z]` 節、asset は `pocket` の 4 target × (tar.gz + sha256) =
    8 個):
 
    ```bash

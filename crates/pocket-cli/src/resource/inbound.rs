@@ -1,4 +1,4 @@
-//! `pocket-rs resource inbound --stage … --name … <command>` の読み取り (Python 版
+//! `pocket resource inbound --stage … --name … <command>` の読み取り (Python 版
 //! `inbound_cli.py` の status / yaml / reconcile)。
 
 use std::collections::BTreeSet;

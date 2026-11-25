@@ -1,4 +1,4 @@
-//! `pocket-rs permissions`: Python 版 `pocket permissions` (`pocket_cli/cli/permissions_cli.py`)。
+//! `pocket permissions`: Python 版 `pocket permissions` (`pocket_cli/cli/permissions_cli.py`)。
 //!
 //! - `list`: pocket.toml の構成から deploy に必要な AWS IAM Action を出す
 //!   (表と判定は Python の `pocket/permissions.py` の写し)

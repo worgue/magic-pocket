@@ -1,4 +1,4 @@
-//! `pocket-rs deploy` / `promote` の本体 (Python 版 `cli/deploy_cli.py` の `run_deploy` /
+//! `pocket deploy` / `promote` の本体 (Python 版 `cli/deploy_cli.py` の `run_deploy` /
 //! `run_promote`)。手順の順は [`super::pipeline`]、ここは各手順を AWS の部品につなぐ
 
 use std::collections::BTreeSet;
@@ -65,7 +65,7 @@ pub async fn run(args: DeployArgs) -> Result<()> {
     run_with_hook(args, &mut pipeline::NoHook).await
 }
 
-/// [`run`] に、Lambda の更新の直前に呼ぶ処理を足したもの (`pocket-rs django deploy`)
+/// [`run`] に、Lambda の更新の直前に呼ぶ処理を足したもの (`pocket django deploy`)
 pub async fn run_with_hook(
     args: DeployArgs,
     hook: &mut impl pipeline::BeforeLambdaUpdate,

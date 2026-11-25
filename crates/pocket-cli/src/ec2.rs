@@ -193,7 +193,7 @@ pub async fn vpc_contents(_config: &SdkConfig, _vpc_ids: &[String]) -> Result<Vp
 #[cfg(not(feature = "ec2"))]
 fn unavailable(operation: &str) -> anyhow::Error {
     anyhow::anyhow!(
-        "この pocket-rs は EC2 の API 抜き (--no-default-features) でビルドされているため、\
+        "この pocket は EC2 の API 抜き (--no-default-features) でビルドされているため、\
          ec2 {operation} を呼べません。feature `ec2` を付けてビルドしたバイナリを使ってください"
     )
 }

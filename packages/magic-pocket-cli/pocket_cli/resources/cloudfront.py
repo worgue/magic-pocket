@@ -462,7 +462,7 @@ class CloudFront:
             if route.is_object_hash:
                 echo.info(
                     "%s は object_hash route です。"
-                    "`pocket-rs static publish --stage %s` で上げてください"
+                    "`pocket static publish --stage %s` で上げてください"
                     " (deploy は触りません)"
                     % (route.path_pattern or "default", self.context.stage)
                 )

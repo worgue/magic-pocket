@@ -1,6 +1,6 @@
 name: release
 # tag push (例: 0.2.0) で magic-pocket / magic-pocket-cli を PyPI へ publish し、Rust 版 CLI
-# (`pocket-rs`) の各 target のバイナリをビルドして GitHub Release に tar.gz + sha256 を置く
+# (`pocket`) の各 target のバイナリをビルドして GitHub Release に tar.gz + sha256 を置く
 # (Release の本文は CHANGELOG の当該節)。
 # PyPI の認証は Trusted Publishing (OIDC)。両 PyPI プロジェクトに、この repo /
 # この workflow ファイル名 / environment "pypi" を Trusted Publisher として登録する。
@@ -14,7 +14,7 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 permissions: {}
 env:
-  BIN: pocket-rs
+  BIN: pocket
   # .cargo/config.toml の `jobs = 2` は開発用 VM の保護用。runner では上限を外す
   CARGO_BUILD_JOBS: default
 jobs:

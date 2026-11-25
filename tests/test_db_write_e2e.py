@@ -1,6 +1,6 @@
-"""vpc / efs / rds / backup の書き込み (pocket-rs) を moto server 相手に確かめる。
+"""vpc / efs / rds / backup の書き込み (pocket) を moto server 相手に確かめる。
 
-部品の入口は非表示の `pocket-rs deploy-parts` (通しの deploy は moto で作れない
+部品の入口は非表示の `pocket deploy-parts` (通しの deploy は moto で作れない
 stack で止まるため、部品ごとに通す)。
 Rust が書いたものを Python 版の実装で読み、Python 版が書いたものを Rust が壊さないことを
 見る。
@@ -28,11 +28,11 @@ import pytest
 
 REGION = "ap-southeast-1"
 
-# 開発用 VM (FORGE=1) の pocket-rs は EC2 の API 抜きでビルドされる
+# 開発用 VM (FORGE=1) の pocket は EC2 の API 抜きでビルドされる
 # (conftest と同じ条件)
 needs_ec2 = pytest.mark.skipif(
     os.environ.get("FORGE") == "1" and not os.environ.get("CI"),
-    reason="EC2 抜きでビルドした pocket-rs では RDS の security group を扱えない",
+    reason="EC2 抜きでビルドした pocket では RDS の security group を扱えない",
 )
 
 _PY_EFS = """

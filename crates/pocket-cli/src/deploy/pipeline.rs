@@ -64,13 +64,13 @@ pub struct DeployOptions {
     pub skip_frontend: bool,
 }
 
-/// Lambda の更新 (create / update) の直前に呼ぶ処理。`pocket-rs django deploy` が
+/// Lambda の更新 (create / update) の直前に呼ぶ処理。`pocket django deploy` が
 /// static を先に upload するのに使う (Python 版 `_deploy_pipeline` の `before_lambda_update`)
 pub trait BeforeLambdaUpdate {
     async fn before_lambda_update(&mut self, sink: &mut dyn Sink) -> Result<()>;
 }
 
-/// 何もしない [`BeforeLambdaUpdate`] (`pocket-rs deploy` / `promote`)
+/// 何もしない [`BeforeLambdaUpdate`] (`pocket deploy` / `promote`)
 pub struct NoHook;
 
 impl BeforeLambdaUpdate for NoHook {

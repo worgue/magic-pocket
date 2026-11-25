@@ -1,8 +1,8 @@
-"""`pocket-rs django` の storage の解決が Python 版 `get_storages` と一致すること。
+"""`pocket django` の storage の解決が Python 版 `get_storages` と一致すること。
 
-`pocket-rs django deploystatic` / `storage upload` は upload 先 (BACKEND・bucket_name・
+`pocket django deploystatic` / `storage upload` は upload 先 (BACKEND・bucket_name・
 location) を Rust で計算する。Python の `pocket.django.utils.get_storages(stage=…)` の
-結果から同じ 3 つを取り出し、非表示の `pocket-rs django storages` の出力と比べる。
+結果から同じ 3 つを取り出し、非表示の `pocket django storages` の出力と比べる。
 """
 
 from __future__ import annotations

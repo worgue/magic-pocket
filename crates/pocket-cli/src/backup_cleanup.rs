@@ -1,4 +1,4 @@
-//! `pocket-rs backup cleanup` と `pocket-rs cleanup-deprecated` (Python 版 `backup_cli.py` /
+//! `pocket backup cleanup` と `pocket cleanup-deprecated` (Python 版 `backup_cli.py` /
 //! `cleanup_deprecated_cli.py` と `resources/backup.py` / `resources/aws/backup_legacy.py`)。
 //!
 //! どちらもバックアップの「データ」(recovery point) を消しうる操作なので、宣言と利用者の

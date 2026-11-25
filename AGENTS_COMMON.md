@@ -125,9 +125,9 @@ uv run pyright
 
 - **`magic-pocket` (runtime, リポジトリルート)**: Lambda ランタイムに同梱される。全ユーザーの Lambda にバンドルされるため、**依存は最小限に保つ**こと。新規の実行時依存を安易に追加しない。
 - **`magic-pocket-cli` (`packages/magic-pocket-cli/`)**: deploy / CLI 専用。`requests` 等の重い依存はこちらに置く。
-- **`magic-pocket-cli-rs` (`crates/pocket-cli/`、bin `pocket-rs`)**: CLI の Rust 版 (段階移行中。
+- **`magic-pocket-cli-rs` (`crates/pocket-cli/`、bin `pocket`)**: CLI の Rust 版 (段階移行中。
   現状は `static` 系と `settings`)。**Rust に移したコマンドの新機能は Rust 版だけに実装する**
-  (静的系は Rust 版に一本化済みで、Python 版 `pocket static` は `pocket-rs static` への
+  (静的系は Rust 版に一本化済みで、Python 版 `pocket static` は Rust 版の導入への
   案内だけを出す stub)。
   未移植のコマンドは Python 版だけに実装する。
   どのコマンドがどちらかは `docs/guide/cli.md` の「コマンドごとの実装の所在」の表が正で、
@@ -179,7 +179,7 @@ forge の VM (コンテナ) はメモリの上限が約 4GB で、超えても O
 - aws-sdk-ec2 は CLI の feature `ec2` (既定で有効) の後ろにある。**EC2 を呼ぶコードは
   `crates/pocket-cli/src/ec2.rs` に集め、feature あり・なしの両方に同じ関数を置く**。
   feature ありの側は VM ではコンパイルされないので、触ったら push して CI (ec2 込みの
-  clippy / test) で確かめる。VM でビルドした `pocket-rs` は EC2 を呼ぶ箇所でエラーになる
+  clippy / test) で確かめる。VM でビルドした `pocket` は EC2 を呼ぶ箇所でエラーになる
 - **root の `Cargo.toml` の `[profile.dev]` と `.cargo/config.toml` の `jobs = 2` は外さない**
   (依存の debuginfo を切ってリンクのメモリと `target/` を減らし、重い crate の同時コンパイルを
   2 個までにする)。CI は `CARGO_BUILD_JOBS: default` で並列数の上限を外している

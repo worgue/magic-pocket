@@ -55,10 +55,10 @@ sources = [
 ]
 ```
 
-この backend は **`url(name)` だけ**を提供します。URL は S3 上の release 表から解決し（[runtime](runtime.md#static_url)）、release 表に無い `name` は `pocket.static.StaticPathNotFound` を raise します（hash なしの URL を黙って返しません）。ファイルを上げるのは `pocket-rs static publish` なので、保存系の操作（`save` / `delete` / `open` 等）は `NotImplementedError` です。
+この backend は **`url(name)` だけ**を提供します。URL は S3 上の release 表から解決し（[runtime](runtime.md#static_url)）、release 表に無い `name` は `pocket.static.StaticPathNotFound` を raise します（hash なしの URL を黙って返しません）。ファイルを上げるのは `pocket static publish` なので、保存系の操作（`save` / `delete` / `open` 等）は `NotImplementedError` です。
 
-- `collectstatic` は Lambda では走らせません。ローカルで `STATIC_ROOT`（例 `staticfiles/`）に出力し、そのディレクトリを `sources` の `dir` に向けて `pocket-rs static publish --hash-generate` で上げます
-- `pocket django deploy` / `promote`（Rust 版も同じ）は deploystatic を飛ばし、`pocket-rs static publish` を案内します。`pocket django deploystatic` はエラーで止まります
+- `collectstatic` は Lambda では走らせません。ローカルで `STATIC_ROOT`（例 `staticfiles/`）に出力し、そのディレクトリを `sources` の `dir` に向けて `pocket static publish --hash-generate` で上げます
+- `pocket django deploy` / `promote`（Rust 版も同じ）は deploystatic を飛ばし、`pocket static publish` を案内します。`pocket django deploystatic` はエラーで止まります
 - ローカル開発（`runserver`）は `POCKET_STATICFILES_BACKEND_OVERRIDE` で filesystem の backend に切り替えます（[deploystatic](cli.md#pocket-django-deploystatic) と同じ仕組み）
 - `static = false` の storage（media など）には使えません（検証エラー）
 - `options` の `refresh_interval`（秒）で release 表の再読み込み間隔を変えられます（既定 60）

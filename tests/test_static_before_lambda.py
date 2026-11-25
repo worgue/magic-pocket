@@ -180,7 +180,7 @@ def test_django_static_declined_is_not_asked_again(django_static_env):
     [
         {"bucket_exists": False},  # 初回 deploy
         {"publish": "command"},
-        # object_hash は pocket-rs static publish で上げる (collectstatic に対応しない)
+        # object_hash は pocket static publish で上げる (collectstatic に対応しない)
         {"object_hash": True},
         {"store": "filesystem"},
     ],
@@ -229,7 +229,7 @@ def test_post_deploy_guides_object_hash_to_static_publish(
     out = capsys.readouterr()
     # echo は端末幅で折り返すので、空白を詰めて比べる
     printed = " ".join((out.out + out.err).split())
-    assert "Publish with `pocket-rs static publish --stage dev`." in printed
+    assert "Publish with `pocket static publish --stage dev`." in printed
 
 
 def test_deploystatic_refuses_object_hash(django_static_env):
@@ -238,6 +238,6 @@ def test_deploystatic_refuses_object_hash(django_static_env):
     assert result.exit_code == 1
     assert (
         "staticfiles is object_hash: deploystatic does not support it. "
-        "Publish with `pocket-rs static publish --stage dev`." in result.output
+        "Publish with `pocket static publish --stage dev`." in result.output
     )
     assert django_static_env.calls == []

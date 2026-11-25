@@ -73,7 +73,7 @@ pocket deploy --stage=dev
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 
-Rust 版は [`pocket-rs deploy`](#pocket-rs-deploy) です（同じ処理。今後の新機能は Rust 版だけに入ります）。
+Rust 版は [`pocket deploy`](#pocket-rs-deploy) です（同じ処理。今後の新機能は Rust 版だけに入ります）。
 
 ### pocket build
 
@@ -96,7 +96,7 @@ pocket build --stage=dev
 | `--allow-dirty` | 作業ツリーが dirty でもビルドする（ローカル検証用） |
 
 Django の導入は不要です。Rust / axum でも同じコマンドを使います。
-Rust 版 [`pocket-rs build`](#pocket-rs-build) も同じ動作です。
+Rust 版 [`pocket build`](#pocket-rs-build) も同じ動作です。
 ビルド後は `pocket promote --stage=<stage> --commit-hash=<sha>` で反映します。
 Django の static / migration 処理も必要な場合は `pocket django promote` を使います。
 
@@ -123,7 +123,7 @@ pocket promote --stage=stg --commit-hash=<full-sha>
 | `--skip-frontend` | フロントエンドのビルド・アップロードをスキップ |
 | `--yes`, `-y` | 確認プロンプトをスキップ（非対話実行用） |
 
-Rust 版は [`pocket-rs promote`](#pocket-rs-promote) です。
+Rust 版は [`pocket promote`](#pocket-rs-promote) です。
 
 ### pocket status
 
@@ -138,7 +138,7 @@ pocket status --stage=dev
 | `--stage` | 対象ステージ |
 | `--show-info` | 各リソースの説明と Context の JSON（secret は `****` に伏せる）も出す |
 
-Rust 版は [`pocket-rs status`](#pocket-rs-status) です（同じ表示。今後の新機能は Rust 版だけに入ります）。
+Rust 版は [`pocket status`](#pocket-rs-status) です（同じ表示。今後の新機能は Rust 版だけに入ります）。
 
 ### pocket destroy
 
@@ -183,7 +183,7 @@ pocket destroy --stage=dev
 
 実行前に削除対象の一覧が表示され、確認プロンプトが出ます。
 
-Rust 版は [`pocket-rs destroy`](#pocket-rs-destroy) です。
+Rust 版は [`pocket destroy`](#pocket-rs-destroy) です。
 
 ### リソースの撤去手順
 
@@ -252,27 +252,27 @@ pocket cleanup-deprecated --stage=dev
 
 `versioning = "object_hash"` のルート（[設定ファイル - object_hash](configuration.md#object_hash)）の静的ファイルを、内容 hash 付きの immutable key で S3 に上げます。deploy はこのルートに触りません。
 
-!!! warning "静的系は Rust 版 `pocket-rs` だけです"
-    `pocket static` 系は Rust 版 CLI の `pocket-rs static ...` に一本化しました。Python 版の `pocket static` は廃止し、何を渡しても `pocket-rs static ...` への案内を出して終了コード 2 で止まります。サブコマンド・オプション・出力と map / release / current の形式は旧 Python 版と同じなので、`pocket static ...` を `pocket-rs static ...` に読み替えるだけで移れます。導入は下の [Rust 版 CLI の導入](#pocket-rs) を参照してください。
+!!! warning "静的系は Rust 版 CLI だけです"
+    `pocket static` 系は Rust 版 CLI に一本化しました。Python 版（`magic-pocket-cli`）の `pocket static` は廃止し、何を渡しても Rust 版の導入の案内を出して終了コード 2 で止まります。サブコマンド・オプション・出力と map / release / current の形式は旧 Python 版と同じで、Rust 版 CLI のコマンド名も `pocket` なので、同じコマンドのまま移れます（以前の版の Rust 版 CLI は `pocket-rs` という名前でした）。導入は下の [Rust 版 CLI の導入](#pocket-rs) を参照してください。
 
 ```bash
 # map（path → 内容 hash）を書くだけ（upload しない）
-pocket-rs static hash generate --stage=dev
+pocket static hash generate --stage=dev
 
 # dev 向け: map を作り直してから publish（map は commit する）
-pocket-rs static publish --stage=dev --hash-generate
+pocket static publish --stage=dev --hash-generate
 
 # prod 向け: commit 済みの map と照合してから publish（op が host で実行）
-pocket-rs static publish --stage=prod
+pocket static publish --stage=prod
 
 # 既存の平置き key から server-side copy で移行
-pocket-rs static adopt --stage=dev --hash-generate
+pocket static adopt --stage=dev --hash-generate
 
 # current の release と map の release の一致を表示
-pocket-rs static status --stage=dev
+pocket static status --stage=dev
 
 # release が参照する object を全部消す（配信を止める操作）
-pocket-rs static purge --stage=dev --dry-run
+pocket static purge --stage=dev --dry-run
 ```
 
 | コマンド | 動作 |
@@ -302,17 +302,17 @@ pocket-rs static purge --stage=dev --dry-run
 !!! note "既存 key の内容照合"
     `hashed = false` の source（名前に hash が無い）は、S3 に既にある key の内容を**必ず** HEAD で照合します（同じ名前で内容を変えた publish を止めるため）。`hashed = true` の key は名前に内容 hash が入っているので既定では存在確認だけで skip します。`--verify-existing` を付けると全件を照合します（件数分の HEAD が走ります）。
 
-#### Rust 版 CLI の導入（`pocket-rs`） {#pocket-rs}
+#### Rust 版 CLI の導入（`pocket`） {#pocket-rs}
 
-`pocket-rs` は単一のバイナリで、Python は要りません。版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に 4 target（`aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`）のバイナリが添付されます。repo ルートの `install.sh` が環境に合う target を選び、sha256 を検証してから入れます。
+`pocket` は単一のバイナリで、Python は要りません。版は Python パッケージと同じ tag（`X.Y.Z`）で、その版の GitHub Release に 4 target（`aarch64-apple-darwin` / `x86_64-unknown-linux-gnu` / `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`）のバイナリが添付されます。repo ルートの `install.sh` が環境に合う target を選び、sha256 を検証してから入れます。
 
 ```bash
 # X.Y.Z は project の pin（magic-pocket の版）と同じ版。省略はできません（latest は入れません）
 curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z
-pocket-rs --version   # pocket-rs X.Y.Z
+pocket --version   # pocket X.Y.Z
 ```
 
-- 置き場所は `~/.local/bin/pocket-rs`（`POCKET_RS_INSTALL_DIR` で変更）。既存があれば版を表示してから上書きします
+- 置き場所は `~/.local/bin/pocket`（`POCKET_INSTALL_DIR` で変更）。既存があれば版を表示してから上書きします。同じ場所に旧名の `pocket-rs` があれば、不要になった旨を表示します（消しません）
 - target は `uname` から決めます。Linux の x86_64 は glibc があれば `gnu`、無ければ（Alpine 等）静的リンクの `musl`、aarch64 は常に `musl` です。Intel Mac 向けは配っていません
 - 依存は `curl` / `tar` / `sha256sum`（または `shasum`）だけです。取得・検証に失敗すると非 0 で止まります
 - **CLI の版を project の pin と揃えてください**。map / release の format version が違うとエラーで止まります（黙って食い違うことはありません）
@@ -321,9 +321,9 @@ pocket-rs --version   # pocket-rs X.Y.Z
 
 prod への publish は、op が host で実行します（CI には prod の credential を置かない。数十 GB を runner に通さない）。
 
-- host には上の `install.sh` で `pocket-rs` を入れます（project と独立。`deploy` 等に使う Python 版 `pocket` とは別に入れます）
+- host には上の `install.sh` で `pocket` を入れます（project と独立。Python 版 CLI も `pocket` という名前なので、project の venv に Python 版を入れている場合は `uv run pocket` が Python 版、venv の外の `pocket` が Rust 版になります）
 - `pocket.toml` のあるディレクトリで、その stage の AWS profile を使って実行します
-- 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket-rs` がそのまま読めます
+- 上げるファイル（`sources` の `dir`）は worktree の中（git ignore でよい）に置きます。VM で生成したファイルも、host と VM の共有 mount にあれば host の `pocket` がそのまま読めます
 
 **VM / CI で使う**
 
@@ -331,11 +331,11 @@ dev の publish を VM や CI で行うときも同じ `install.sh` で入れま
 
 ```yaml
 # GitHub Actions の例 (版は project の pin に合わせる)
-- name: pocket-rs を入れる
+- name: pocket を入れる
   run: |
     curl -fsSL https://github.com/worgue/magic-pocket/raw/main/install.sh | sh -s -- X.Y.Z
     echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-- run: pocket-rs static publish --stage=dev
+- run: pocket static publish --stage=dev
 ```
 
 #### コマンドごとの実装の所在 {#implementation-map}
@@ -344,20 +344,20 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 
 | コマンド | 実装 | 補足 |
 |---|---|---|
-| `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
-| `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
-| `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方） |
-| `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
-| `resource` | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
-| `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket-rs backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`） | **Rust 版 `pocket-rs waf`** | Python 版 `pocket waf` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `permissions`（`list` / `roles` / `role-names`） | **Rust 版 `pocket-rs permissions`** | Python 版 `pocket permissions` も残っている（同じ出力。一本化まで不具合修正は両方） |
+| `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
+| `build` | **Rust 版 `pocket build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
+| `deploy` / `promote` / `destroy` | **Rust 版 `pocket deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方） |
+| `status` | **Rust 版 `pocket status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
+| `resource` | **Rust 版 `pocket resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
+| `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`） | **Rust 版 `pocket waf`** | Python 版 `pocket waf` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `permissions`（`list` / `roles` / `role-names`） | **Rust 版 `pocket permissions`** | Python 版 `pocket permissions` も残っている（同じ出力。一本化まで不具合修正は両方） |
 | `migrate` | Python 版 `pocket` | |
-| `settings` | **Rust 版 `pocket-rs settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
-| `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
-| `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
-| `django init` / `manage` / `resetdb` | **Rust 版 `pocket-rs django`** | Python 版 `pocket django` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `django deploy` / `promote` / `build` / `deploystatic` / `storage upload` | **Rust 版 `pocket-rs django`** | Python 版 `pocket django` も残っている（同じ順・同じ確認。一本化まで不具合修正は両方）。Rust 版は S3 への upload に AWS CLI を使わない（[違い](#pocket-rs-django)） |
+| `settings` | **Rust 版 `pocket settings`** | Python 版 `pocket settings` も残っている（同じ出力。一本化まで不具合修正のみ） |
+| `context` | **Rust 版 `pocket context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
+| `version` | **Rust 版 `pocket version`** | Python 版 `pocket version` も残っている（同じ出力） |
+| `django init` / `manage` / `resetdb` | **Rust 版 `pocket django`** | Python 版 `pocket django` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
+| `django deploy` / `promote` / `build` / `deploystatic` / `storage upload` | **Rust 版 `pocket django`** | Python 版 `pocket django` も残っている（同じ順・同じ確認。一本化まで不具合修正は両方）。Rust 版は S3 への upload に AWS CLI を使わない（[違い](#pocket-rs-django)） |
 
 移植が進んだらこの表を更新します。
 
@@ -366,10 +366,10 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 `adopt` は route の `versioning` を `object_hash` に変えた pocket.toml を読みますが、deploy は要りません。**切り替え前に adopt を済ませておき、app の切り替えと pocket.toml の deploy を同じ commit で行う**と、配信と app が同時に切り替わります。
 
 1. ルートの `versioning` を `object_hash` に変え、`sources` を宣言する（[設定ファイル](configuration.md#object_hash)）。この時点では deploy しない
-2. `pocket-rs static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）。CloudFront はまだ旧構成のままだが、hash 付きの名前の URL（`/static/img/a.<hash>.png`）は旧構成でもそのまま配信される（`deploy_hash` の hash を外す Function は `/static/` 直後の要素が git hash のときだけ働く）
+2. `pocket static adopt --stage=dev --hash-generate`（平置き key と同じ内容は copy、無いものは upload）。CloudFront はまだ旧構成のままだが、hash 付きの名前の URL（`/static/img/a.<hash>.png`）は旧構成でもそのまま配信される（`deploy_hash` の hash を外す Function は `/static/` 直後の要素が git hash のときだけ働く）
 3. map を commit する
 4. app の URL 解決を object_hash に切り替え（[Django](django.md#object_hash) / [runtime](runtime.md#static_url)）、pocket.toml の変更と同じ commit で `pocket deploy --stage=dev`（CloudFront Function の構成が変わる）
-5. prod は host で `pocket-rs static adopt --stage=prod`（照合モード）を先に済ませてから、同じ順で deploy する
+5. prod は host で `pocket static adopt --stage=prod`（照合モード）を先に済ませてから、同じ順で deploy する
 6. 平置きの旧 key は凍結して残す（更新しない）
 
 **旧形式の URL がいつまで使えるか**は、移行元で異なります。
@@ -380,22 +380,22 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 !!! warning "purge は配信を止める操作です"
     `purge` は release が参照する object を全部消します。**消してから次の publish までの間、そのルートの URL は 404** になります。`purge` → `publish` で同じ内容は同じ key に戻るので URL は変わらず、CDN とブラウザのキャッシュはそのまま使えます。`--dry-run` で件数だけ確認でき、実行には確認プロンプト（`-y` で省略）があります。一部の object が消せなかったとき（S3 の DeleteObjects は一部失敗でも HTTP 200 を返す）は、消せなかった key を列挙して終了コード 1 で止まります。原因を直して再実行すると残りが対象になります。
 
-### pocket-rs settings {#pocket-rs-settings}
+### pocket settings {#pocket-rs-settings}
 
 pocket.toml を読んで、stage をマージした設定を JSON で出力します。AWS には接続しません。secret の値（`api_key` / `private_key` / `public_key` / `token_secret` / `password`）は `****` に伏せます。
 
 ```bash
-pocket-rs settings --stage=dev
+pocket settings --stage=dev
 ```
 
 `--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。設定の解釈と検証は Python 版 `pocket settings` と同じで、出力も同じです。設定に誤りがあるとエラーの場所と理由を出して終了コード 1 で止まります。
 
-### pocket-rs context {#pocket-rs-context}
+### pocket context {#pocket-rs-context}
 
 設定から deploy 用の値（リソース名・ARN・hosted zone ID・`DEPLOY_HASH` 等）を導出した Context を JSON で出力します。secret の値は `settings` と同じく `****` に伏せます。
 
 ```bash
-pocket-rs context --stage=dev
+pocket context --stage=dev
 ```
 
 `--stage` を省略すると `POCKET_DEPLOY_STAGE` を使います。導出は Python 版 `pocket context` と同じで、出力も同じです。AWS には読み取りのために接続します。
@@ -405,13 +405,13 @@ pocket-rs context --stage=dev
 
 どちらも要らない設定なら AWS の認証情報は不要です。`DEPLOY_HASH` は環境変数 → git の short hash の順に決まります（Python 版と同じ）。
 
-### pocket-rs status {#pocket-rs-status}
+### pocket status {#pocket-rs-status}
 
 deploy が管理するリソースの状態を一覧で出します。表示の順・文言は Python 版 [`pocket status`](#pocket-status) と同じです。
 
 ```bash
-pocket-rs status --stage=dev
-pocket-rs status --stage=dev --show-info
+pocket status --stage=dev
+pocket status --stage=dev --show-info
 ```
 
 | オプション | 説明 |
@@ -423,16 +423,16 @@ pocket-rs status --stage=dev --show-info
 
 AWS には読み取りだけで接続し、何も書き込みません。Python 版との違いは次の 3 点です。
 
-- 削除予定の managed secret を restore しません（まだ無いものとして扱います）。Python 版 `pocket status` と `pocket-rs context` は restore してから読みます
+- 削除予定の managed secret を restore しません（まだ無いものとして扱います）。Python 版 `pocket status` と `pocket context` は restore してから読みます
 - Lambda 関数と DSQL cluster の照会で権限不足や throttling が起きたら、エラーで止まります。Python 版は「存在しない」と同じ扱いにするため、権限が足りないだけでも `NOEXIST` と表示されます
 - 同じ stack を何度も照会しないので、`pocket:template_hash` タグが無い stack への案内（`pocket migrate` を実行してください）は 1 回だけ出ます
 
-### pocket-rs build {#pocket-rs-build}
+### pocket build {#pocket-rs-build}
 
 現在の作業ツリーからコンテナイメージをビルドし、git commit hash（full）をタグにして ECR へ push します。デプロイは行いません。動作とオプションは Python 版 [`pocket build`](#pocket-build) と同じです。
 
 ```bash
-pocket-rs build --stage=dev
+pocket build --stage=dev
 ```
 
 | オプション | 説明 |
@@ -445,14 +445,14 @@ pocket-rs build --stage=dev
 - `[container.<name>] build` の backend（`codebuild` / `docker` / `depot`）は Python 版と同じものを使います。CodeBuild の project・IAM role・source の置き場（state bucket）も Python 版と同じ名前なので、同じ stage を Python 版と Rust 版のどちらから build しても構いません
 - `docker` / `depot` では build 前に、other-read の無いファイルを警告します（`pocket.toml` はエラー）。`codebuild` は source zip の作成時に mode を 0644 / 0755 にそろえます
 
-昇格は [`pocket-rs promote`](#pocket-rs-promote) で行います。
+昇格は [`pocket promote`](#pocket-rs-promote) で行います。
 
-### pocket-rs deploy {#pocket-rs-deploy}
+### pocket deploy {#pocket-rs-deploy}
 
 全リソースをデプロイします。処理の順・作るリソースの名前・表示の文言は Python 版 [`pocket deploy`](#pocket-deploy) と同じです。
 
 ```bash
-pocket-rs deploy --stage=dev
+pocket deploy --stage=dev
 ```
 
 | オプション | 説明 |
@@ -467,13 +467,13 @@ pocket-rs deploy --stage=dev
 - `--stage` を省略し `POCKET_DEPLOY_STAGE` も無いときは、エラーで止まります（Python 版は入力を求めます）
 - Django の static のアップロードと migration を伴うデプロイは、引き続き Python 版 `pocket django deploy` を使います
 
-### pocket-rs promote {#pocket-rs-promote}
+### pocket promote {#pocket-rs-promote}
 
 ビルド済みのコンテナイメージへステージを向けてデプロイします（再ビルドなし）。動作は Python 版 [`pocket promote`](#pocket-promote) と同じです。
 
 ```bash
-pocket-rs build --stage=dev            # :<commit hash> で push
-pocket-rs promote --stage=stg --commit-hash=<full-sha>
+pocket build --stage=dev            # :<commit hash> で push
+pocket promote --stage=stg --commit-hash=<full-sha>
 ```
 
 | オプション | 説明 |
@@ -486,12 +486,12 @@ pocket-rs promote --stage=stg --commit-hash=<full-sha>
 
 container の無いステージではエラーになります。指定した commit hash のイメージが ECR に無い場合もエラーになります（勝手にビルドしません）。
 
-### pocket-rs destroy {#pocket-rs-destroy}
+### pocket destroy {#pocket-rs-destroy}
 
 ステージの全リソースを一括削除します。削除対象の一覧・削除の順・確認は Python 版 [`pocket destroy`](#pocket-destroy) と同じです。
 
 ```bash
-pocket-rs destroy --stage=dev
+pocket destroy --stage=dev
 ```
 
 | オプション | 説明 |
@@ -506,28 +506,28 @@ pocket-rs destroy --stage=dev
 - 途中で止まったときは、同じコマンドを再実行すると続きから進みます（削除中の stack は完了を待つだけで、削除の指示を出し直しません）
 - 受信口（`[inbound.*]`）は、受信を止めてデプロイしてから 36 時間が過ぎ、queue に滞留が無いときだけ削除します。条件を満たさないと、そこで止まります（[メール受信](../inbound.md)）
 
-### pocket-rs resource {#pocket-rs-resource}
+### pocket resource {#pocket-rs-resource}
 
-リソース単位で状態・テンプレート・接続情報を表示し、作成・更新・削除を行います。コマンド名・オプション・出力・確認プロンプトは Python 版の [リソースコマンド](#resource-commands)（`pocket resource …`）と同じです。作成・更新・削除は `pocket-rs deploy` / `destroy` と同じ実装を使います。
+リソース単位で状態・テンプレート・接続情報を表示し、作成・更新・削除を行います。コマンド名・オプション・出力・確認プロンプトは Python 版の [リソースコマンド](#resource-commands)（`pocket resource …`）と同じです。作成・更新・削除は `pocket deploy` / `destroy` と同じ実装を使います。
 
 ```bash
-pocket-rs resource container status --stage=dev
-pocket-rs resource container yaml --stage=dev --container=main
-pocket-rs resource container url --stage=dev --openpath=admin/
-pocket-rs resource container secrets list --stage=dev
-pocket-rs resource container status-env --stage=dev --handler=wsgi
-pocket-rs resource image uri --stage=dev
-pocket-rs resource s3 status --stage=dev
-pocket-rs resource dsql endpoint --stage=dev --format=json
-pocket-rs resource rds status --stage=dev
-pocket-rs resource cloudfront status --stage=dev --name=web
-pocket-rs resource cloudfront-keys yaml --stage=dev
-pocket-rs resource cloudfront-waf status --stage=dev
-pocket-rs resource vpc yaml            # --stage を省略すると共通の [vpc]
-pocket-rs resource inbound --stage=dev --name=inbox status
-pocket-rs resource dsql backup --stage=dev --watch
-pocket-rs resource dsql restore --stage=dev --latest
-pocket-rs resource neon url --stage=dev
+pocket resource container status --stage=dev
+pocket resource container yaml --stage=dev --container=main
+pocket resource container url --stage=dev --openpath=admin/
+pocket resource container secrets list --stage=dev
+pocket resource container status-env --stage=dev --handler=wsgi
+pocket resource image uri --stage=dev
+pocket resource s3 status --stage=dev
+pocket resource dsql endpoint --stage=dev --format=json
+pocket resource rds status --stage=dev
+pocket resource cloudfront status --stage=dev --name=web
+pocket resource cloudfront-keys yaml --stage=dev
+pocket resource cloudfront-waf status --stage=dev
+pocket resource vpc yaml            # --stage を省略すると共通の [vpc]
+pocket resource inbound --stage=dev --name=inbox status
+pocket resource dsql backup --stage=dev --watch
+pocket resource dsql restore --stage=dev --latest
+pocket resource neon url --stage=dev
 ```
 
 | リソース | コマンド |
@@ -548,39 +548,39 @@ pocket-rs resource neon url --stage=dev
 Python 版との違いは次のとおりです。
 
 - `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります（`vpc` を除く）
-- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
+- 削除予定の managed secret を restore しません（[`pocket status`](#pocket-rs-status) と同じ）
 - `inbound` は Context を組んでから受信口を選ぶので、Context の組み立てに要る照会（hosted zone など）も行います
 - 受信口の `copy` / `redrive` で、受信情報や DLQ の message が JSON でない（必要な項目が無い）ときは、検査に落ちたときと同じ文言で止まります（Python 版は traceback で止まります。どちらも何も書かず、何も消しません）
 - `dsql restore` / `restore-status` で、切り替えの後に新しい cluster が `Name` タグで見つからないときは、endpoint を公開せずにエラーで止まります（`restore --resume` の再実行で続きから進みます）
 
-`backup cleanup` と `cleanup-deprecated` も Rust 版があります（`pocket-rs backup cleanup --stage=dev` / `pocket-rs cleanup-deprecated --stage=dev`）。オプション・出力・確認は [pocket backup cleanup](#pocket-backup-cleanup) / [pocket cleanup-deprecated](#pocket-cleanup-deprecated) と同じです。
+`backup cleanup` と `cleanup-deprecated` も Rust 版があります（`pocket backup cleanup --stage=dev` / `pocket cleanup-deprecated --stage=dev`）。オプション・出力・確認は [pocket backup cleanup](#pocket-backup-cleanup) / [pocket cleanup-deprecated](#pocket-cleanup-deprecated) と同じです。
 
-### pocket-rs waf {#pocket-rs-waf}
+### pocket waf {#pocket-rs-waf}
 
 CloudFront の WAF の IP allowlist（IPSet の中身）と、レート超過として追跡中の IP を扱います。コマンド名・オプション・出力・確認は Python 版 `pocket waf …` と同じです（使い方は [設定ガイドの waf](configuration.md#waf)）。
 
 ```bash
-pocket-rs waf ip list --name=admin --stage=dev
-pocket-rs waf ip add self --name=admin --stage=dev
-pocket-rs waf ip add 203.0.113.0/24 --name=admin --stage=dev
-pocket-rs waf ip remove 203.0.113.0/24 --name=admin --stage=dev
-pocket-rs waf ip clear --name=admin --stage=dev     # 確認あり (--yes で省略)
-pocket-rs waf ratelimit list --name=admin --stage=dev
+pocket waf ip list --name=admin --stage=dev
+pocket waf ip add self --name=admin --stage=dev
+pocket waf ip add 203.0.113.0/24 --name=admin --stage=dev
+pocket waf ip remove 203.0.113.0/24 --name=admin --stage=dev
+pocket waf ip clear --name=admin --stage=dev     # 確認あり (--yes で省略)
+pocket waf ratelimit list --name=admin --stage=dev
 ```
 
 `ratelimit list` は pocket.toml の宣言ではなく、deploy 済みの WebACL の rate rule を読みます。IPSet の更新は LockToken を付けて行い、別の更新と競合したとき（`WAFOptimisticLockException`）は再試行せずにエラーで止まります（Python 版と同じ。もう一度実行してください）。
 
 Python 版との違いは、`--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときに入力を求めずエラーで止まることです。
 
-### pocket-rs permissions {#pocket-rs-permissions}
+### pocket permissions {#pocket-rs-permissions}
 
 deploy に要る AWS の Action と、pocket が使う IAM role の定義・名前を出力します。コマンド名・オプション・出力は Python 版 `pocket permissions …` と同じです（使い方は [AWS 権限](../permissions/aws.md#permissions-list) と [IAM role を事前に作る](../permissions/aws.md#external-roles)）。
 
 ```bash
-pocket-rs permissions list --stage=prod                  # 1 行 1 Action
-pocket-rs permissions list --stage=prod --format=json    # {"actions": [...]}
-pocket-rs permissions roles --stage=prod --account-id=123456789012
-pocket-rs permissions role-names --stage=prod
+pocket permissions list --stage=prod                  # 1 行 1 Action
+pocket permissions list --stage=prod --format=json    # {"actions": [...]}
+pocket permissions roles --stage=prod --account-id=123456789012
+pocket permissions role-names --stage=prod
 ```
 
 `list` と `role-names` は pocket.toml だけを読み、AWS には接続しません。`roles` は `--account-id` を省略すると `sts:GetCallerIdentity` で account を取得します。
@@ -588,24 +588,24 @@ pocket-rs permissions role-names --stage=prod
 Python 版との違いは次のとおりです。
 
 - `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります
-- `roles` は [`pocket-rs context`](#pocket-rs-context) と同じく Context を組むときに `domain` の hosted zone を引きます。Route53 に該当する hosted zone が無い（または `route53:ListHostedZones` の権限が無い）と、`hosted_zone_id` を指定していない限りエラーで止まります。Python 版の `roles` は hosted zone を引きません
+- `roles` は [`pocket context`](#pocket-rs-context) と同じく Context を組むときに `domain` の hosted zone を引きます。Route53 に該当する hosted zone が無い（または `route53:ListHostedZones` の権限が無い）と、`hosted_zone_id` を指定していない限りエラーで止まります。Python 版の `roles` は hosted zone を引きません
 
-### pocket-rs django {#pocket-rs-django}
+### pocket django {#pocket-rs-django}
 
 Django の [`init`](#pocket-django-init) / [`deploy`](#pocket-django-deploy) / [`promote`](#pocket-django-promote) / [`build`](#pocket-django-build) / [`manage`](#pocket-django-manage) / [`resetdb`](#pocket-django-resetdb) / [`deploystatic`](#pocket-django-deploystatic) / [`storage upload`](#pocket-django-storage-upload) の Rust 版です。コマンド名・オプション・確認の順は Python 版 `pocket django …` と同じです。Rust 版は Django を import しません（storage の upload 先は pocket.toml だけで決まります）。project の Python を呼ぶのは collectstatic（`manage.py collectstatic`）と、`init` の django-environ の確認だけです。
 
 ```bash
-pocket-rs django init
-pocket-rs django deploy --stage=dev
-pocket-rs django promote --stage=stg --commit-hash=<full-sha>
-pocket-rs django deploystatic --stage=dev
-pocket-rs django storage upload management --stage=dev
-pocket-rs django manage migrate --stage=dev
-pocket-rs django manage createsuperuser --username=admin --noinput --stage=dev
-pocket-rs django resetdb --stage=dev
+pocket django init
+pocket django deploy --stage=dev
+pocket django promote --stage=stg --commit-hash=<full-sha>
+pocket django deploystatic --stage=dev
+pocket django storage upload management --stage=dev
+pocket django manage migrate --stage=dev
+pocket django manage createsuperuser --username=admin --noinput --stage=dev
+pocket django resetdb --stage=dev
 ```
 
-`deploy` / `promote` は [`pocket-rs deploy`](#pocket-rs-deploy) / [`promote`](#pocket-rs-promote) と同じ手順で stage を deploy し、Python 版と同じく static を Lambda の更新より先に upload して、deploy の後に migrate と URL の表示を行います。同じ stack・同じ bucket・同じ state を使うので、Python 版 `pocket django deploy` と同じ stage を行き来して構いません。`build` は [`pocket-rs build`](#pocket-rs-build) の別名です。
+`deploy` / `promote` は [`pocket deploy`](#pocket-rs-deploy) / [`promote`](#pocket-rs-promote) と同じ手順で stage を deploy し、Python 版と同じく static を Lambda の更新より先に upload して、deploy の後に migrate と URL の表示を行います。同じ stack・同じ bucket・同じ state を使うので、Python 版 `pocket django deploy` と同じ stage を行き来して構いません。`build` は [`pocket build`](#pocket-rs-build) の別名です。
 
 `manage` は Python 版と同じく、management command の handler を非同期で呼び出し、CloudWatch Logs の出力を表示します。handler が成功の印を出さないまま終わったとき・`--timeout-seconds`（既定 120 秒）までに終わらなかったときは終了コード 1 で止まります。`--stage` と `--timeout-seconds` は command の後ろに書いても読みます（`--` より後ろは command にそのまま渡します）。
 
@@ -617,14 +617,14 @@ Python 版との違いは次のとおりです。
     - `--delete` で、ローカルの出力先にファイルが 1 つも無いときは、S3 の object を消さずにエラーで止まります（build の失敗や path の誤りで prefix を丸ごと消さないため）
     - `storage upload` は `aws s3 sync …` のコマンド行の代わりに `<ローカル> -> s3://<bucket>/<location>` を 1 行出し、上げる・消すファイルを 1 行ずつ出します（`--dryrun` も同じ）
 - `init` は django-environ が入っているかを project の Python（`uv` があれば `uv run python`、無ければ `python3` / `python`）に聞きます。Python 版は pocket を動かしている Python で確かめます
-- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ。`manage` / `resetdb`）
+- 削除予定の managed secret を restore しません（[`pocket status`](#pocket-rs-status) と同じ。`manage` / `resetdb`）
 
-### pocket-rs version {#pocket-rs-version}
+### pocket version {#pocket-rs-version}
 
-版の番号だけを 1 行で出力します（`pocket-rs --version` は `pocket-rs X.Y.Z` の形）。
+版の番号だけを 1 行で出力します（`pocket --version` は `pocket X.Y.Z` の形）。
 
 ```bash
-pocket-rs version
+pocket version
 ```
 
 ---
@@ -789,7 +789,7 @@ pocket django deploystatic --stage=dev
 (CI と資産更新で publish 経路を分ける等) は、staticfiles 宣言に
 `publish = "command"` を指定します ([Django ストレージ設定](configuration.md) 参照)。
 
-staticfiles の route が `versioning = "object_hash"`（[object_hash の staticfiles](django.md#object_hash)）のときは、deploystatic はエラーで止まります。`pocket-rs static publish` で上げてください（`pocket django deploy` / `promote` は deploystatic を飛ばし、同じ案内を出します）。
+staticfiles の route が `versioning = "object_hash"`（[object_hash の staticfiles](django.md#object_hash)）のときは、deploystatic はエラーで止まります。`pocket static publish` で上げてください（`pocket django deploy` / `promote` は deploystatic を飛ばし、同じ案内を出します）。
 
 link を常用する場合は、フラグではなく staticfiles 宣言に `link = true` を
 指定してください。deploy / promote 内の collectstatic にも適用され、
@@ -905,7 +905,7 @@ toml を読まない静的導出には Python API の `pocket.naming.ecr_repo_na
 ### neon
 
 !!! warning "実験的な機能です"
-    Neon 対応（[設定](configuration.md#neon)）は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket-rs resource neon`）は、予告なく変更・廃止することがあります。
+    Neon 対応（[設定](configuration.md#neon)）は実験的な機能です。現在 Neon を使う利用中のプロジェクトが無く、Neon の実アカウントでの動作確認を継続していません。`pocket resource neon` のコマンド（Python 版・Rust 版 `pocket resource neon`）は、予告なく変更・廃止することがあります。
 
 `pocket resource neon` のコマンド（`context` を除く）は、Neon の API キーを環境変数
 `NEON_API_KEY` から読みます。`.env` は読みません。API キーを読むのはこのコマンド群だけです。
@@ -1124,7 +1124,7 @@ pocket resource cloudfront-keys yaml --stage=dev --name=media
 
 ### cloudfront_waf
 
-CloudFront にアタッチする WAFv2 (IP allowlist / レートリミット) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。IPSet の中身の更新は `pocket waf ip ...`、レート超過として追跡中の IP の表示は `pocket waf ratelimit list` で行います（Rust 版は [`pocket-rs waf`](#pocket-rs-waf)。[設定ガイドの waf](configuration.md#waf) 参照）。
+CloudFront にアタッチする WAFv2 (IP allowlist / レートリミット) リソースを管理します。`waf` が設定されたディストリビューションのみ対象です。IPSet の中身の更新は `pocket waf ip ...`、レート超過として追跡中の IP の表示は `pocket waf ratelimit list` で行います（Rust 版は [`pocket waf`](#pocket-rs-waf)。[設定ガイドの waf](configuration.md#waf) 参照）。
 
 ```bash
 # 状態確認

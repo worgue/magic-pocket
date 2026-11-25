@@ -1,6 +1,6 @@
-"""Rust 版 `pocket-rs static` の e2e。
+"""Rust 版 `pocket static` の e2e。
 
-project dir と moto server 上の bucket に対して `pocket-rs static` をコマンドとして
+project dir と moto server 上の bucket に対して `pocket static` をコマンドとして
 実行し、S3 の key 集合と checksum・map 本文・release 表・current・終了コード・
 stderr の要旨を明示の値で確かめる。Python 版との parity テスト
 (Python 版 `pocket static` の削除で廃止) の各ケースを引き継いでいる。
@@ -146,7 +146,7 @@ class Project:
         """key の本文・ETag・Cache-Control を確かめる。
 
         moto server は ChecksumSHA256 を保存しない (HEAD で返さない) ため、内容は
-        本文と ETag (単一 part の MD5) で見る。pocket-rs の照合もこの場合は
+        本文と ETag (単一 part の MD5) で見る。pocket の照合もこの場合は
         ETag に落ちる。
         """
         assert self.body(key) == body

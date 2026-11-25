@@ -1,6 +1,6 @@
-"""container 系の書き込み (pocket-rs) を moto server 相手に確かめる。
+"""container 系の書き込み (pocket) を moto server 相手に確かめる。
 
-部品の入口は非表示の `pocket-rs deploy-parts` (通しの deploy は moto で作れない
+部品の入口は非表示の `pocket deploy-parts` (通しの deploy は moto で作れない
 stack で止まるため、部品ごとに通す)。
 Rust が書いたものを Python 版の実装で読み、Python 版が書いたものを Rust が壊さないことを
 見る (同じ store / stack を両方の CLI が扱う移行期間の前提)。

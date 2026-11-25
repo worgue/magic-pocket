@@ -82,7 +82,7 @@ pub fn staticfiles_link(context: &Context, env_name: Option<&str>) -> Result<boo
     Ok(container_staticfiles(context, env_name)?.is_some_and(|s| s.link))
 }
 
-/// staticfiles の route が `versioning = "object_hash"` か (`pocket-rs static publish` で上げる)
+/// staticfiles の route が `versioning = "object_hash"` か (`pocket static publish` で上げる)
 pub fn staticfiles_object_hash(context: &Context, env_name: Option<&str>) -> Result<bool> {
     Ok(container_staticfiles(context, env_name)?.is_some_and(|s| s.object_hash))
 }

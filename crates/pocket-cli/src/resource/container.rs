@@ -1,4 +1,4 @@
-//! `pocket-rs resource container` / `image` の読み取り (Python 版 `container_cli.py` の
+//! `pocket resource container` / `image` の読み取り (Python 版 `container_cli.py` の
 //! yaml / status / url / secrets list / status-env と `image_cli.py`)。
 
 use std::collections::{BTreeMap, HashMap};

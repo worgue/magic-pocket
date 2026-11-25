@@ -1,6 +1,6 @@
-"""inbound / inbound-domain の手順 (pocket-rs) を moto server 相手に確かめる。
+"""inbound / inbound-domain の手順 (pocket) を moto server 相手に確かめる。
 
-部品の入口は非表示の `pocket-rs deploy-parts` (通しの deploy は moto で作れない
+部品の入口は非表示の `pocket deploy-parts` (通しの deploy は moto で作れない
 stack で止まるため、部品ごとに通す)。
 
 moto は inbound / inbound-domain の stack を作れない (`AWS::SES::EmailIdentity` と
