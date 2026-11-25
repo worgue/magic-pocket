@@ -1549,14 +1549,15 @@ staticfiles = { store = "s3", location = "static", static = true, manifest = tru
     `link = true` を宣言すると、`pocket django deploy` / `promote` /
     `deploystatic` のすべての経路で collectstatic に `--link` が付きます。
     ビルド先が全量 symlink（0 バイト）になり、大容量資産の複製コストが
-    かかりません。`aws s3 sync` は symlink を追うためアップロードは
+    かかりません。upload は symlink の指す先の内容を上げるので
+    （Python 版の `aws s3 sync`・Rust 版 `pocket-rs django` とも）、
     従来と互換です。CLI の `pocket django deploystatic --link/--no-link`
     フラグは宣言の上書き用に使えます。
 
     link 有効時はビルド先（`pocket_cache/static_build/<stage>/`）を
     collectstatic の前に毎回クリアします。非 link で作られた実体ファイルが
     混在すると collectstatic が全ファイルを実体コピーで作り直すこと、
-    ソースファイル削除後に壊れた symlink が残ると `aws s3 sync` が失敗する
+    ソースファイル削除後に壊れた symlink が残ると upload が失敗する
     ことを避けるためです（symlink の再作成は安価なのでクリアのコストは
     無視できます）。非 link 時は従来どおりクリアしません。
 

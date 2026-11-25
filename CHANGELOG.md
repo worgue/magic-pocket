@@ -10,7 +10,6 @@
 - `pocket-rs build` を追加しました。Python 版 `pocket build` と同じく、作業ツリーを build して
   git commit hash を tag に ECR へ push します（backend の `codebuild` / `docker` / `depot`、
   CodeBuild の project・IAM role・source の置き場も同じ名前）。Python 版も残ります。
-  昇格（`promote`）は引き続き Python 版 `pocket promote` を使います。
   [pocket-rs build](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-build)
 - `pocket-rs status` を追加しました。Python 版 `pocket status` と同じ順・文言で、deploy が管理する
   リソースの状態を出します（`--show-info` も同じ）。AWS には読み取りだけで接続し、削除予定の
@@ -21,7 +20,7 @@
 - `pocket-rs deploy` / `pocket-rs promote` / `pocket-rs destroy` を追加しました。Python 版
   `pocket deploy` / `promote` / `destroy` と同じ順・同じ stack 名・同じリソース名・同じ state で動くので、
   Python 版でデプロイ済みのステージにそのまま使えます（設定が変わっていなければ stack の更新は
-  起きません）。Python 版も残ります。`pocket django deploy` / `promote` は引き続き Python 版です。
+  起きません）。Python 版も残ります。
   [pocket-rs deploy](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-deploy)
 - `pocket-rs resource` に読み取り・表示のコマンドを追加しました（`vpc` / `container` / `cloudfront` /
   `cloudfront-keys` / `cloudfront-waf` / `inbound` の `yaml`・`status`、`s3` / `cloudfront` の `context`、
@@ -43,13 +42,22 @@
 - `pocket-rs waf`（`ip list` / `add` / `remove` / `clear`、`ratelimit list`）と `pocket-rs django`
   （`init` / `manage` / `resetdb`）を追加しました。出力・確認プロンプトは Python 版 `pocket waf` /
   `pocket django` と同じで、Python 版も残ります。`pocket-rs django` はローカルの Django を読み込まないので、
-  Django が入っていない環境でも動きます（`deploy` / `promote` / `deploystatic` などは引き続き Python 版です）。
+  Django が入っていない環境でも動きます。
   [pocket-rs waf](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-waf) /
   [pocket-rs django](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-django)
 - `pocket-rs permissions`（`list` / `roles` / `role-names`）を追加しました。出力は Python 版
   `pocket permissions` と同じで、Python 版も残ります。`roles` は Context を組むときに `domain` の
   hosted zone を引くので、Route53 に hosted zone が無い環境ではエラーになります（Python 版は引きません）。
   [pocket-rs permissions](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-permissions)
+
+- `pocket-rs django` に `deploy` / `promote` / `build` / `deploystatic` / `storage upload` を追加しました。
+  これで `pocket django` の全コマンドが Rust 版でも使えます。手順と確認の順は Python 版と同じで
+  （static を Lambda の更新より先に upload し、deploy の後に migrate と URL の表示）、同じ stage を
+  Python 版と行き来できます。`build` は `pocket-rs build` の別名です。Python 版も残ります。
+  - S3 への upload は AWS CLI を使わず Rust 版が直接行います（AWS CLI のインストールは不要）。
+    上げ直すかどうかは `aws s3 sync` のサイズと更新時刻ではなく、内容（ETag とローカルの MD5）で決めます
+  - `--delete` で、ローカルの出力先にファイルが 1 つも無いときは、S3 の object を消さずにエラーで止まります
+  [pocket-rs django](https://worgue.github.io/magic-pocket/guide/cli/#pocket-rs-django)
 
 ### Changed
 - `pocket resource dsql restore-status` は読むだけになり、切り替えをしなくなりました。中断した復元の続き
@@ -113,6 +121,10 @@
   [region を移すときの state bucket](https://worgue.github.io/magic-pocket/guide/configuration/#state-bucket-region)
 
 ### Fixed
+- staticfiles の route が `versioning = "object_hash"` のとき、`pocket django deploy` / `promote` が
+  deploystatic で `BACKEND pocket.django.storages.ObjectHashStaticStorage is not supported` を出し、
+  Lambda の更新の前に止まっていた問題を直しました。deploystatic を飛ばして `pocket-rs static publish`
+  を案内します。`pocket django deploystatic` は同じ案内のエラーで止まります。
 - `pocket django init`（と `pocket-rs django init`）が、既存の `pocket.toml` / `pocket.Dockerfile` /
   `settings.py` を確認なしで上書きしていた不具合を修正しました。既にあるファイルは上書きするかを
   ファイルごとに確認します（既定は上書きしない）。`.env` を上書きしたときのメッセージの綴り

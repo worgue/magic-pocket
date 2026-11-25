@@ -346,7 +346,7 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 |---|---|---|
 | `static` 系（`hash generate` / `publish` / `adopt` / `purge` / `status`） | **Rust 版 `pocket-rs` のみ** | Python 版 `pocket static` は廃止（案内だけを出して終了コード 2） |
 | `build` | **Rust 版 `pocket-rs build`** | Python 版 `pocket build`（と `pocket django build`）も残っている（deploy が同じ builder を使うため。一本化まで不具合修正は両方） |
-| `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方）。`pocket django deploy` / `promote` は Python 版のみ |
+| `deploy` / `promote` / `destroy` | **Rust 版 `pocket-rs deploy` / `promote` / `destroy`** | Python 版 `pocket deploy` / `promote` / `destroy` も残っている（同じ stack 名・リソース名・state を使うので、同じ stage をどちらから操作しても構わない。一本化まで不具合修正は両方） |
 | `status` | **Rust 版 `pocket-rs status`** | Python 版 `pocket status` も残っている（同じ表示。一本化まで不具合修正は両方） |
 | `resource` | **Rust 版 `pocket-rs resource`** | Python 版 `pocket resource` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方）。`yaml-diff` は移さない（`status` と `yaml` で代わりになる） |
 | `backup cleanup` / `cleanup-deprecated` | **Rust 版 `pocket-rs backup cleanup` / `cleanup-deprecated`** | Python 版も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
@@ -357,7 +357,7 @@ CLI は Python 版から Rust 版へ段階的に移行しています。どの�
 | `context` | **Rust 版 `pocket-rs context`** | Python 版 `pocket context` も残っている（同じ出力。一本化まで不具合修正のみ） |
 | `version` | **Rust 版 `pocket-rs version`** | Python 版 `pocket version` も残っている（同じ出力） |
 | `django init` / `manage` / `resetdb` | **Rust 版 `pocket-rs django`** | Python 版 `pocket django` も残っている（同じ出力・同じ確認。一本化まで不具合修正は両方） |
-| `django deploy` / `promote` / `build` / `deploystatic` / `storage upload` | Python 版 `pocket` | |
+| `django deploy` / `promote` / `build` / `deploystatic` / `storage upload` | **Rust 版 `pocket-rs django`** | Python 版 `pocket django` も残っている（同じ順・同じ確認。一本化まで不具合修正は両方）。Rust 版は S3 への upload に AWS CLI を使わない（[違い](#pocket-rs-django)） |
 
 移植が進んだらこの表を更新します。
 
@@ -592,22 +592,32 @@ Python 版との違いは次のとおりです。
 
 ### pocket-rs django {#pocket-rs-django}
 
-Django の [`init`](#pocket-django-init) / [`manage`](#pocket-django-manage) / [`resetdb`](#pocket-django-resetdb) の Rust 版です。コマンド名・オプション・出力・確認は Python 版 `pocket django …` と同じです。ローカルの Django を読み込まないので、Django が入っていない環境でも動きます。`deploy` / `promote` / `build` / `deploystatic` / `storage upload` は Python 版だけです。
+Django の [`init`](#pocket-django-init) / [`deploy`](#pocket-django-deploy) / [`promote`](#pocket-django-promote) / [`build`](#pocket-django-build) / [`manage`](#pocket-django-manage) / [`resetdb`](#pocket-django-resetdb) / [`deploystatic`](#pocket-django-deploystatic) / [`storage upload`](#pocket-django-storage-upload) の Rust 版です。コマンド名・オプション・確認の順は Python 版 `pocket django …` と同じです。Rust 版は Django を import しません（storage の upload 先は pocket.toml だけで決まります）。project の Python を呼ぶのは collectstatic（`manage.py collectstatic`）と、`init` の django-environ の確認だけです。
 
 ```bash
 pocket-rs django init
+pocket-rs django deploy --stage=dev
+pocket-rs django promote --stage=stg --commit-hash=<full-sha>
+pocket-rs django deploystatic --stage=dev
+pocket-rs django storage upload management --stage=dev
 pocket-rs django manage migrate --stage=dev
 pocket-rs django manage createsuperuser --username=admin --noinput --stage=dev
 pocket-rs django resetdb --stage=dev
 ```
+
+`deploy` / `promote` は [`pocket-rs deploy`](#pocket-rs-deploy) / [`promote`](#pocket-rs-promote) と同じ手順で stage を deploy し、Python 版と同じく static を Lambda の更新より先に upload して、deploy の後に migrate と URL の表示を行います。同じ stack・同じ bucket・同じ state を使うので、Python 版 `pocket django deploy` と同じ stage を行き来して構いません。`build` は [`pocket-rs build`](#pocket-rs-build) の別名です。
 
 `manage` は Python 版と同じく、management command の handler を非同期で呼び出し、CloudWatch Logs の出力を表示します。handler が成功の印を出さないまま終わったとき・`--timeout-seconds`（既定 120 秒）までに終わらなかったときは終了コード 1 で止まります。`--stage` と `--timeout-seconds` は command の後ろに書いても読みます（`--` より後ろは command にそのまま渡します）。
 
 Python 版との違いは次のとおりです。
 
 - `--stage` を省略して `POCKET_DEPLOY_STAGE` も無いときは、入力を求めずにエラーで止まります
+- S3 への upload（`deploy` / `promote` / `deploystatic` / `storage upload`）は AWS CLI を使わず、Rust 版が直接行います。AWS CLI のインストールは要りません
+    - 上げ直すかどうかは**内容**（S3 の ETag とローカルの MD5）で決めます。Python 版の `aws s3 sync` はサイズと更新時刻で決めていました。内容が同じファイルは、collectstatic で作り直されても上げ直しません
+    - `--delete` で、ローカルの出力先にファイルが 1 つも無いときは、S3 の object を消さずにエラーで止まります（build の失敗や path の誤りで prefix を丸ごと消さないため）
+    - `storage upload` は `aws s3 sync …` のコマンド行の代わりに `<ローカル> -> s3://<bucket>/<location>` を 1 行出し、上げる・消すファイルを 1 行ずつ出します（`--dryrun` も同じ）
 - `init` は django-environ が入っているかを project の Python（`uv` があれば `uv run python`、無ければ `python3` / `python`）に聞きます。Python 版は pocket を動かしている Python で確かめます
-- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ）
+- 削除予定の managed secret を restore しません（[`pocket-rs status`](#pocket-rs-status) と同じ。`manage` / `resetdb`）
 
 ### pocket-rs version {#pocket-rs-version}
 
@@ -766,7 +776,7 @@ pocket django deploystatic --stage=dev
 |-----------|------|
 | `--stage` | 対象ステージ |
 | `--skip-collectstatic` | collectstaticをスキップしてアップロードのみ実行 |
-| `--delete` | collectstatic 出力に無い S3 上のファイルを削除する (`aws s3 sync --delete`) |
+| `--delete` | collectstatic 出力に無い S3 上のファイルを削除する |
 | `--link` / `--no-link` | collectstatic に `--link` を渡す (大容量資産の複製コスト削減)。省略時は staticfiles 宣言の `link` に従う |
 
 !!! note "`--delete` は opt-in"
@@ -778,6 +788,8 @@ pocket django deploystatic --stage=dev
 静的ファイルの publish を deploy / promote から切り離したい場合
 (CI と資産更新で publish 経路を分ける等) は、staticfiles 宣言に
 `publish = "command"` を指定します ([Django ストレージ設定](configuration.md) 参照)。
+
+staticfiles の route が `versioning = "object_hash"`（[object_hash の staticfiles](django.md#object_hash)）のときは、deploystatic はエラーで止まります。`pocket-rs static publish` で上げてください（`pocket django deploy` / `promote` は deploystatic を飛ばし、同じ案内を出します）。
 
 link を常用する場合は、フラグではなく staticfiles 宣言に `link = true` を
 指定してください。deploy / promote 内の collectstatic にも適用され、
