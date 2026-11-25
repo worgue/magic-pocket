@@ -46,6 +46,14 @@ lint-rust: _target-gc-guard
     cargo clippy -p magic-pocket-rs --all-features -- -D warnings
     cargo clippy -p magic-pocket-settings -- -D warnings
 
+# prod 昇格 (op が host の main worktree で実行): origin/dev 先端の CI (test) を検証 → origin/main を
+# ff → pyproject.toml の version の tag が無ければ tag を打ってリリース (deploy の代わり。
+# release.yml が PyPI へ publish し、CLI の binary を GitHub Release に置く)。version が
+# 変わっていなければ ff だけ。sha 明示はリリースコミットだけを昇格するとき。
+# 表示だけ見るなら DRY_RUN=1 just ship-prod (手順は docs/releasing.md)
+ship-prod sha="":
+    bash scripts/ship.sh prod {{sha}}
+
 # SAST (semgrep) を repo 全量に掛ける。CI の test.yml も呼ぶ。検出があれば exit 1 (--error)
 semgrep-all:
     uvx semgrep@{{semgrep_version}} scan --config p/python --config p/django --error --metrics=off .
