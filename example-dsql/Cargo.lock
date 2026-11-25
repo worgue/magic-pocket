@@ -2240,7 +2240,7 @@ dependencies = [
 [[package]]
 name = "magic-pocket-rs"
 version = "0.1.0"
-source = "git+https://github.com/worgue/magic-pocket.git?tag=0.48.0#d9d090a7c1f35961d54e0ab975e2a7f20fc3fcd0"
+source = "git+https://github.com/worgue/magic-pocket.git?tag=0.49.0#57de986d5df73043966e885c85ea15699f29de77"
 dependencies = [
  "aws-config",
  "aws-sdk-cloudformation",
@@ -2264,7 +2264,7 @@ dependencies = [
 [[package]]
 name = "magic-pocket-settings"
 version = "0.1.0"
-source = "git+https://github.com/worgue/magic-pocket.git?tag=0.48.0#d9d090a7c1f35961d54e0ab975e2a7f20fc3fcd0"
+source = "git+https://github.com/worgue/magic-pocket.git?tag=0.49.0#57de986d5df73043966e885c85ea15699f29de77"
 dependencies = [
  "regex",
  "serde",
