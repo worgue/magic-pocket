@@ -40,6 +40,11 @@ typecheck:
 # Rust の lint (clippy -D warnings)。チェックのみでリンクしないので test より軽い。CI の test.yml も呼ぶ
 lint-rust: _target-gc-guard
     cargo clippy --workspace --all-targets {{cli_features}} -- -D warnings
+    # runtime lib を、利用側 (git 依存で magic-pocket-rs だけを引く project) と同じ feature の
+    # 組み合わせでビルドする。workspace 全体では CLI が magic-pocket-settings の `context` を
+    # 有効にするので、runtime lib が CLI 専用の feature に依存しても上の行では気づけない
+    cargo clippy -p magic-pocket-rs --all-features -- -D warnings
+    cargo clippy -p magic-pocket-settings -- -D warnings
 
 # SAST (semgrep) を repo 全量に掛ける。CI の test.yml も呼ぶ。検出があれば exit 1 (--error)
 semgrep-all:

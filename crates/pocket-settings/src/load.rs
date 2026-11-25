@@ -4,6 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
+#[cfg(feature = "context")]
 use crate::context::{GeneralContext, VpcContext};
 use crate::error::{from_serde, path, SettingsError};
 use crate::model::cloudfront::reject_legacy_route_keys;
@@ -43,6 +44,7 @@ impl Settings {
         Settings::from_parts(&text, stage, &ctx)
     }
 
+    #[cfg(feature = "context")]
     /// stage を指定しないときの `[vpc]` (Python の `VpcContext.from_toml`)。
     ///
     /// `[general]` と top-level の `[vpc]` だけを読み、stage の上書きは見ない。
@@ -62,6 +64,7 @@ impl Settings {
         Settings::common_vpc_from_parts(&text, &ctx)
     }
 
+    #[cfg(feature = "context")]
     /// stage を指定しないときの `GeneralContext` (Python の `GeneralContext.from_toml`)。
     ///
     /// `[general]` だけを読み、stage の上書き (`[<stage>.general]`) は見ない
@@ -80,6 +83,7 @@ impl Settings {
         Settings::general_context_from_parts(&text, &ctx)
     }
 
+    #[cfg(feature = "context")]
     /// [`Settings::load_general_context`] の純粋層
     pub fn general_context_from_parts(
         toml_text: &str,
@@ -102,6 +106,7 @@ impl Settings {
             .map_err(|e| SettingsError::value(Vec::new(), e.0))
     }
 
+    #[cfg(feature = "context")]
     /// stage の `[vpc]` の Context (Python の `VpcContext.from_settings`)。宣言が無ければ `None`
     pub fn vpc_context(&self) -> Option<VpcContext> {
         self.vpc
@@ -109,6 +114,7 @@ impl Settings {
             .map(|vpc| VpcContext::from_settings(vpc, &self.general))
     }
 
+    #[cfg(feature = "context")]
     /// [`Settings::load_common_vpc`] の純粋層
     pub fn common_vpc_from_parts(
         toml_text: &str,
@@ -405,6 +411,7 @@ mod tests {
 
     const BASE: &str = "[general]\nregion = \"r\"\nstages = [\"dev\"]\n";
 
+    #[cfg(feature = "context")]
     #[test]
     fn test_common_vpc_ignores_stage_override() {
         let ctx = LoadContext {

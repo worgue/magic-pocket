@@ -100,6 +100,7 @@ impl Settings {
         format!("{}-{}", self.stage.as_str(), self.general.project_name)
     }
 
+    #[cfg(feature = "context")]
     /// `[iam] external_roles` の role 名の prefix。e.g) dev-myprj-platform-
     /// (Python の `Settings.external_role_prefix`)。resource_prefix と同じ形で、namespace
     /// だけ `[iam] namespace` で上書きできる
