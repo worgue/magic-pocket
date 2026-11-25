@@ -23,6 +23,11 @@ cloudfront-keyvaluestore:*)。
 「どのグループにも未宣言」型だったため。条件分岐の正しさは
 tests/test_permissions.py の per-condition テストの守備範囲。
 
+- (c) Rust 版 CLI (`crates/pocket-cli/src`) の aws-sdk 呼び出し → テキスト走査
+  (`collect_rust_usage`)。`.send()` / `.into_paginator()` で終わる method chain
+  から operation を取り出し、(a) と同じ union に含まれることを検証する。
+  SDK を使わず署名した HTTP で呼ぶ API は表 (`_RUST_SIGNED_HTTP`) で宣言する。
+
 検知の限界 (false confidence を避けるため明記):
 - メソッド呼び出しの receiver を同一ファイル内でしか追跡しない。関数引数で
   client を受け取るヘルパーは、引数の型注釈 (mypy-boto3-* の `IAMClient` 等)
@@ -31,6 +36,25 @@ tests/test_permissions.py の per-condition テストの守備範囲。
   引数を探す)。
 - メソッド名→Action 名は機械的な PascalCase 変換。IAM Action と API 名が乖離する
   ケース (例: dsql:DbConnectAdmin) はワイルドカード宣言 (`dsql:*`) で吸収する。
+
+Rust 側 (c) の検知の限界:
+- 構文木ではなくテキストを走査する。追跡するのは `.send()` /
+  `.into_paginator()` で終わる呼び出しだけで、operation は「その method chain
+  (builder を変数に入れた場合は同じ関数の `let` 文) の中で、botocore の service
+  model にある operation 名に当たる最初の method」とする。macro が展開して作る
+  呼び出し、builder を関数の引数・戻り値・struct の field で受け渡す書き方、
+  waiter (`.wait()`) は追跡できない。operation を特定できない `.send()` は
+  test_rust_sends_all_resolved が落とすので、黙って漏れるのは `.send()` の形を
+  取らない呼び出しだけ。
+- service は型ではなく operation 名から決める。同じ名前の operation を持つ
+  service が複数あるときは、そのファイルが名指しする `aws_sdk_*` crate で絞り、
+  1 つに決まらなければ候補すべての Action を要求する (多めに要求する側に倒す)。
+- operation 名は botocore の model (Rust の SDK と同じ Smithy model から生成)
+  で判定する。botocore が知らない新しい API は「特定できない `.send()`」として
+  落ちるので、botocore を上げる。
+- 対象は deploy ロールで動く CLI だけ。Lambda の実行ロールで動く runtime lib
+  (`crates/pocket-rs`) は対象外。
+- Action 名は (a) と同じ機械的な変換で、条件付き group の正しさも見ない。
 """
 
 from __future__ import annotations
@@ -426,18 +450,19 @@ def collect_template_resource_types() -> set[str]:
     return types
 
 
-def find_uncovered_boto3(allowed: list[str]) -> dict[str, str]:
-    """boto3 由来の必要 Action のうち allowed が包含しないものを返す。
-
-    返り値: {問題の説明キー: 詳細}。空なら同期している。
-    """
-    services, calls = collect_boto3_usage()
+def _find_uncovered_calls(
+    services: set[str],
+    calls: set[tuple[str, str]],
+    allowed: list[str],
+    origin: str,
+) -> dict[str, str]:
+    """(service, method) 由来の必要 Action のうち allowed が包含しないもの。"""
     problems: dict[str, str] = {}
     for service in sorted(services):
         prefix = _SERVICE_TO_IAM_PREFIX.get(service, service)
         if not _prefix_covered(prefix, allowed):
             problems[f"prefix:{prefix}"] = (
-                f"boto3.client('{service}') が使われているが、IAM prefix "
+                f"{origin} が service '{service}' を使っているが、IAM prefix "
                 f"'{prefix}:' の Action が action_groups() のどこにも無い"
             )
     for service, method in sorted(calls):
@@ -449,10 +474,19 @@ def find_uncovered_boto3(allowed: list[str]) -> dict[str, str]:
         action = f"{prefix}:{_pascal(method)}"
         if not _action_covered(action, allowed):
             problems[f"action:{action}"] = (
-                f"deploy コードが {service}.{method}() を呼ぶが、"
+                f"{origin} が {service}.{method}() を呼ぶが、"
                 f"'{action}' が action_groups() でカバーされない"
             )
     return problems
+
+
+def find_uncovered_boto3(allowed: list[str]) -> dict[str, str]:
+    """boto3 由来の必要 Action のうち allowed が包含しないものを返す。
+
+    返り値: {問題の説明キー: 詳細}。空なら同期している。
+    """
+    services, calls = collect_boto3_usage()
+    return _find_uncovered_calls(services, calls, allowed, "deploy コード (Python)")
 
 
 def find_uncovered_template_actions(allowed: list[str]) -> dict[str, str]:
@@ -466,6 +500,193 @@ def find_uncovered_template_actions(allowed: list[str]) -> dict[str, str]:
                     f"action_groups() でカバーされない"
                 )
     return problems
+
+
+# ---------------------------------------------------------------------------
+# Rust 版 CLI (crates/pocket-cli) の aws-sdk 呼び出し
+# ---------------------------------------------------------------------------
+
+_RUST_SRC = _REPO / "crates" / "pocket-cli" / "src"
+
+# aws-sdk の crate 名 (aws_sdk_<x>) と botocore の service 名が異なるもの
+_RUST_CRATE_TO_SERVICE = {
+    "cloudfrontkeyvaluestore": "cloudfront-keyvaluestore",
+    "cloudwatchlogs": "logs",
+    "resourcegroupstagging": "resourcegroupstaggingapi",
+}
+
+# AWS の API ではない `.send()` (reqwest 等)。キーは (src からの相対パス, 関数名)。
+# 追加する場合は「何を呼んでいるか」を必ずコメントで書くこと。
+_RUST_NON_AWS_SENDS: set[tuple[str, str]] = {
+    # Neon の API (reqwest)
+    ("resource/neon_api.rs", "raw"),
+    # 自分の global IP を調べる HTTP (checkip 等。reqwest)
+    ("waf.rs", "fetch_text"),
+    # 署名した HTTP で呼ぶ CloudFront の API。Action は _RUST_SIGNED_HTTP で宣言する
+    ("deploy/upload.rs", "create_invalidation"),
+}
+
+# SDK を使わず、署名した HTTP (aws_sigv4) で直接呼ぶ API。
+# `aws_sigv4` を使うファイルがここに無いと test_rust_signed_http_declared が落ちる。
+# ファイルの中で呼ぶ API を増やしたときは、ここに Action を足す (機械では追えない)。
+_RUST_SIGNED_HTTP: dict[str, list[str]] = {
+    "deploy/upload.rs": ["cloudfront:CreateInvalidation"],
+}
+
+_RUST_SEND = re.compile(r"\.\s*(?:send|into_paginator)\s*\(\s*\)")
+_RUST_METHOD = re.compile(r"\.\s*((?:r#)?\w+)\s*\(")
+_RUST_BLANK = re.compile(r"[^\n]")
+
+
+def _rust_code_only(src: str) -> str:
+    """コメント・文字列・文字 literal の中身を空白にする (位置と行は保つ)。"""
+    pattern = re.compile(
+        r"//[^\n]*"
+        r"|/\*.*?\*/"
+        r'|b?r(#*)".*?"\1'
+        r'|b?"(?:\\.|[^"\\])*"'
+        r"|b?'(?:\\.|[^'\\])'",
+        re.S,
+    )
+    return pattern.sub(lambda m: _RUST_BLANK.sub(" ", m.group(0)), src)
+
+
+def _rust_open_paren(code: str, close: int) -> int:
+    """close にある `)` に対応する `(` の位置。"""
+    depth = 0
+    i = close
+    while True:
+        if code[i] == ")":
+            depth += 1
+        elif code[i] == "(":
+            depth -= 1
+            if depth == 0:
+                return i
+        i -= 1
+
+
+def _rust_chain(code: str, end: int) -> tuple[list[str], str]:
+    """end (`.send` の `.` の位置) で終わる method chain を逆向きに辿る。
+
+    返り値: (chain の method 名 (呼び出し順), chain の根の式の末尾の識別子)。
+    `self.client(region).create_cluster().send()` なら
+    (["client", "create_cluster"], "self")。
+    """
+    methods: list[str] = []
+    pos = end
+    while True:
+        i = pos - 1
+        while code[i].isspace():
+            i -= 1
+        if code[i] != ")":
+            break
+        i = _rust_open_paren(code, i)
+        j = i - 1
+        while code[j].isalnum() or code[j] in "_#":
+            j -= 1
+        k = j
+        while code[k].isspace():
+            k -= 1
+        name = code[j + 1 : i]
+        if code[k] != "." or not name:
+            break  # method ではなく関数の呼び出し (`Client::new(..)` 等) が根
+        methods.append(name.removeprefix("r#"))
+        pos = k
+    root = re.search(r"(\w+)\s*$", code[:pos])
+    return methods[::-1], root.group(1) if root else ""
+
+
+def _rust_enclosing_fn(code: str, pos: int) -> tuple[str, int]:
+    """pos を含む (直前に始まる) 関数の名前と開始位置。"""
+    found = ("", 0)
+    for m in re.finditer(r"\bfn\s+(\w+)", code[:pos]):
+        found = (m.group(1), m.start())
+    return found
+
+
+def _rust_services(code: str) -> set[str]:
+    crates: list[str] = re.findall(r"\baws_sdk_([a-z0-9]+)\b", code)
+    return {_RUST_CRATE_TO_SERVICE.get(crate, crate) for crate in crates}
+
+
+def collect_rust_usage(
+    root: Path | None = None,
+) -> tuple[set[str], set[tuple[str, str]], list[str]]:
+    """(全 service 名, (service, operation) ペア, 特定できない `.send()`) を返す。
+
+    方式と限界は module の docstring の「Rust 側 (c)」を参照。
+    """
+    root = root or _RUST_SRC
+    sources = {
+        str(path.relative_to(root)): _rust_code_only(path.read_text())
+        for path in sorted(root.rglob("*.rs"))
+    }
+    services: set[str] = set()
+    for code in sources.values():
+        services |= _rust_services(code)
+    session = botocore.session.get_session()
+    operations = {
+        service: {
+            xform_name(op) for op in session.get_service_model(service).operation_names
+        }
+        for service in services
+    }
+
+    def known(methods: list[str]) -> list[str]:
+        return [m for m in methods if any(m in ops for ops in operations.values())]
+
+    calls: set[tuple[str, str]] = set()
+    unresolved: list[str] = []
+    for rel, code in sources.items():
+        named = _rust_services(code)
+        for m in _RUST_SEND.finditer(code):
+            methods, var = _rust_chain(code, m.start())
+            fn_name, fn_start = _rust_enclosing_fn(code, m.start())
+            found = known(methods)
+            if not found and var:
+                # builder を変数に入れてから send する書き方。同じ関数の let 文を探す
+                lets = re.findall(
+                    rf"\blet\s+(?:mut\s+)?{re.escape(var)}\s*=([^;]*);",
+                    code[fn_start : m.start()],
+                )
+                if lets:
+                    found = known(_RUST_METHOD.findall(lets[-1]))
+            if not found:
+                if (rel, fn_name) not in _RUST_NON_AWS_SENDS:
+                    line = code.count("\n", 0, m.start()) + 1
+                    unresolved.append(f"{rel}:{line} fn {fn_name}")
+                continue
+            operation = found[0].removeprefix("r#")
+            candidates = {s for s, ops in operations.items() if operation in ops}
+            if len(candidates) > 1 and candidates & named:
+                candidates &= named
+            calls.update((service, operation) for service in candidates)
+    return services, calls, unresolved
+
+
+def find_uncovered_rust(allowed: list[str]) -> dict[str, str]:
+    """Rust 版 CLI 由来の必要 Action のうち allowed が包含しないものを返す。"""
+    services, calls, _unresolved = collect_rust_usage()
+    problems = _find_uncovered_calls(services, calls, allowed, "Rust 版 CLI")
+    for rel, actions in sorted(_RUST_SIGNED_HTTP.items()):
+        for action in actions:
+            if not _action_covered(action, allowed):
+                problems[f"action:{action}"] = (
+                    f"Rust 版 CLI の {rel} が署名した HTTP で '{action}' を呼ぶが、"
+                    "action_groups() でカバーされない"
+                )
+    return problems
+
+
+def find_undeclared_signed_http(root: Path | None = None) -> list[str]:
+    """`aws_sigv4` を使うのに _RUST_SIGNED_HTTP に無いファイル。"""
+    root = root or _RUST_SRC
+    return sorted(
+        rel
+        for path in sorted(root.rglob("*.rs"))
+        if re.search(r"\baws_sigv4\b", _rust_code_only(path.read_text()))
+        and (rel := str(path.relative_to(root))) not in _RUST_SIGNED_HTTP
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -579,6 +800,115 @@ def test_analyzer_tracks_known_callsites():
     assert ("iam", "create_role") in calls
 
 
+def test_rust_actions_covered():
+    """Rust 版 CLI が呼ぶ API の Action と service prefix が宣言されている。
+
+    manifest に無い API を Rust 版 CLI から呼ぶとここで fail する。
+    → pocket/permissions.py (と docs/permissions/aws.md) に足し、`just vectors` で
+      Rust 側の写し (crates/pocket-cli/src/permissions.rs) も直す。
+    """
+    problems = find_uncovered_rust(_allowed_actions())
+    assert not problems, "\n".join(problems.values())
+
+
+def test_rust_sends_all_resolved():
+    """Rust 版 CLI の `.send()` / `.into_paginator()` はすべて operation が分かる。
+
+    特定できない呼び出しは必要 Action の検知から漏れる。AWS の API なら
+    `client.operation()...send()` の形 (builder を変数に入れるなら同じ関数の
+    `let`) に書き直す。AWS の API でないなら _RUST_NON_AWS_SENDS に理由を書いて足す。
+    """
+    _services, _calls, unresolved = collect_rust_usage()
+    assert not unresolved, "operation を特定できない send:\n" + "\n".join(unresolved)
+
+
+def test_rust_non_aws_sends_exist():
+    """_RUST_NON_AWS_SENDS の除外が指す関数は実在する (古い除外を残さない)。"""
+    stale = [
+        f"{rel} fn {fn}"
+        for rel, fn in sorted(_RUST_NON_AWS_SENDS)
+        if not re.search(
+            rf"\bfn\s+{re.escape(fn)}\b", _rust_code_only((_RUST_SRC / rel).read_text())
+        )
+    ]
+    assert not stale, "実在しない除外:\n" + "\n".join(stale)
+
+
+def test_rust_signed_http_declared():
+    """`aws_sigv4` で署名した HTTP を使うファイルは _RUST_SIGNED_HTTP に宣言する。"""
+    undeclared = find_undeclared_signed_http()
+    assert not undeclared, (
+        f"_RUST_SIGNED_HTTP に未宣言のファイル: {undeclared}。"
+        "呼ぶ API の Action を表に書いてください"
+    )
+    stale = [
+        rel
+        for rel in _RUST_SIGNED_HTTP
+        if not re.search(r"\baws_sigv4\b", (_RUST_SRC / rel).read_text())
+    ]
+    assert not stale, f"aws_sigv4 を使っていないファイルの宣言: {stale}"
+
+
+def test_rust_analyzer_tracks_known_callsites():
+    """Rust の走査が代表的な書き方を実際に捕捉していることの自己検証。"""
+    services, calls, _unresolved = collect_rust_usage()
+    # struct の field の client (stack/ops.rs)
+    assert ("cloudformation", "create_stack") in calls
+    # client を返す method 経由 + builder を変数に入れてから send (deploy/dsql.rs)
+    assert ("dsql", "create_cluster") in calls
+    # chain の途中に r#type がある (deploy/stored_value.rs)
+    assert ("ssm", "put_parameter") in calls
+    # paginator
+    assert ("s3", "list_objects_v2") in calls
+    # `Client::new(..)` から直接呼ぶ + feature `ec2` の後ろ (ec2.rs)
+    assert ("ec2", "create_security_group") in calls
+    # crate 名と service 名が違う
+    assert "cloudfront-keyvaluestore" in services
+    assert ("resourcegroupstaggingapi", "tag_resources") in calls
+    assert ("logs", "filter_log_events") in calls
+
+
+def test_rust_analyzer_detector(tmp_path):
+    """走査の単体検証: 解決・曖昧な operation・特定できない send・署名 HTTP。"""
+    (tmp_path / "a.rs").write_text(
+        "use aws_sdk_iam::Client;\n"
+        "// client.delete_role().send() はコメントなので数えない\n"
+        "async fn direct(client: &Client) {\n"
+        '    client.create_role().role_name("x)").send().await;\n'
+        "}\n"
+        "async fn builder(client: &Client) {\n"
+        "    let mut request = client.list_roles();\n"
+        "    request = request.max_items(1);\n"
+        "    request.send().await;\n"
+        "}\n"
+        "async fn other(http: &reqwest::Client) {\n"
+        '    http.get("https://example.com").send().await;\n'
+        "}\n"
+    )
+    (tmp_path / "b.rs").write_text(
+        "fn clients() -> (aws_sdk_dsql::Client, aws_sdk_backup::Client) { todo!() }\n"
+        "async fn tag(c: &aws_sdk_dsql::Client) {\n"
+        "    c.tag_resource().send().await;\n"
+        "}\n"
+        "async fn pages(c: &aws_sdk_dsql::Client) {\n"
+        "    c.list_clusters().into_paginator().send();\n"
+        "}\n"
+        "use aws_sigv4::sign::v4;\n"
+    )
+    services, calls, unresolved = collect_rust_usage(tmp_path)
+    assert services == {"iam", "dsql", "backup"}
+    assert calls == {
+        ("iam", "create_role"),
+        ("iam", "list_roles"),
+        # dsql と backup の両方にあり、ファイルが両方を名指しするので両方を要求する
+        ("dsql", "tag_resource"),
+        ("backup", "tag_resource"),
+        ("dsql", "list_clusters"),
+    }
+    assert unresolved == ["a.rs:12 fn other"]
+    assert find_undeclared_signed_http(tmp_path) == ["b.rs"]
+
+
 # ---------------------------------------------------------------------------
 # 回帰: 既知の事故ケースを意図的に欠落させると検知が fail する
 # ---------------------------------------------------------------------------
@@ -642,3 +972,11 @@ def test_regression_rds_ssm_delete_parameter():
     カバーできない点に注意。"""
     problems = find_uncovered_boto3(_allowed_without("ssm:DeleteParameter"))
     assert "action:ssm:DeleteParameter" in problems
+
+
+def test_regression_rust_only_action():
+    """Rust 版 CLI の呼び出しも、宣言から消すと検知する (署名 HTTP の宣言を含む)。"""
+    problems = find_uncovered_rust(_allowed_without("iam:ListRolePolicies"))
+    assert "action:iam:ListRolePolicies" in problems
+    problems = find_uncovered_rust(_allowed_without("cloudfront:*"))
+    assert "action:cloudfront:CreateInvalidation" in problems

@@ -96,6 +96,11 @@ uv run pyright
   ```
 
 - **boto3 client を引数で受け取るとき**: `mypy-boto3-*` の client 型を注釈する (`def ensure_role(iam_client: IAMClient, ...)`、import は `if TYPE_CHECKING:` 内)。deploy 権限の同期テスト (`tests/test_permissions_sync.py`) が型注釈で呼び出しを追跡しており、注釈の無い client 引数はテストで落ちる。新しい service は `pyproject.toml` の `boto3-stubs-lite` の extras に足す
+- **Rust 版 CLI から AWS の API を呼ぶとき**: 同じテストが `crates/pocket-cli/src` の `.send()` /
+  `.into_paginator()` を走査し、呼ぶ API が `pocket/permissions.py` に無いと落ちる。
+  `client.operation()...send()` の形で書く (builder を変数に入れるなら同じ関数の `let`)。
+  AWS でない `.send()` (reqwest) と、署名した HTTP で呼ぶ API は、テストの表
+  (`_RUST_NON_AWS_SENDS` / `_RUST_SIGNED_HTTP`) に足す
 
 ### Pythonの制約事項
 

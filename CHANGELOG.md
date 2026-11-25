@@ -56,7 +56,9 @@
   （job の完了を待って現用を切り替え、endpoint を公開する）は `restore --resume --job-id=<id>` で行います。
   現用と違う cluster へ切り替えるときは確認を出します（`--yes` で省略）。これまでは `restore-status` に
   過去に完了した job の ID を渡すと、確認なしで現用がその job の cluster に切り替わり直していました。
-  `restore` は job を始めた直後に再開のコマンドを表示します。Python 版・Rust 版とも同じです。
+  `restore` は job を始めた直後に再開のコマンドを表示します。`restore-status` は進行中の job を待たずに終わり、
+  job が失敗・中止していても終了コードは 0 です（これまでは完了まで待ち、失敗なら 1 でした。失敗の判定は
+  表示される Status で行います）。Python 版・Rust 版とも同じです。
   [dsql](https://worgue.github.io/magic-pocket/guide/cli/#dsql)
 - **破壊的変更**: Neon / TiDB / Upstash を deploy の中で用意する方式（`provisioning = "deploy"`。
   これまでの既定）を廃止しました。`pocket deploy` / `pocket destroy` / `pocket status`（Rust 版も
